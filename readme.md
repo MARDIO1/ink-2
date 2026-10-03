@@ -4,3 +4,4 @@
 
 文件管理使用分布式的，player的贴图就放当Player的tscn旁边
 
+依旧是参考ink-fffight，前作

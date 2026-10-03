@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://b78lla71aiabs"]
+
+[ext_resource type="Script" uid="uid://cakeu36yf50os" path="res://actor/player/hand.gd" id="1_hand"]
+[ext_resource type="Script" uid="uid://b1h15jg5kjuat" path="res://actor/player/hand_debug.gd" id="2_debug"]
+
+[node name="Hand" type="Node2D" unique_id=390951156]
+position = Vector2(-128, 140)
+script = ExtResource("1_hand")
+
+[node name="Visual" type="Polygon2D" parent="." unique_id=1587063917]
+polygon = PackedVector2Array(-10, -7, -10, 7, 20, 0)
+color = Color(0, 0, 0, 1)
+
+[node name="HandDebug" type="Node2D" parent="."]
+script = ExtResource("2_debug")

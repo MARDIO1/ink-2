@@ -1,3 +1,9 @@
 [gd_scene format=3 uid="uid://2raldosbm8v8"]
 
+[ext_resource type="Script" uid="uid://jnamfxlkxjqb" path="res://actor/canvas/canvas.gd" id="1_canvas"]
+
 [node name="Canvas" type="Node2D" unique_id=1726580571]
+script = ExtResource("1_canvas")
+
+[node name="InkSprite" type="Sprite2D" parent="."]
+centered = false

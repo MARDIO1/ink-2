@@ -12,5 +12,7 @@ visible = false
 script = ExtResource("2_778ba")
 rect_size = Vector2i(24, 32)
 
+[node name="Player" type="Node" parent="." unique_id=807353840]
+
 [node name="PlayerInput" type="Node" parent="." unique_id=440227940]
 script = ExtResource("1_wy78e")
