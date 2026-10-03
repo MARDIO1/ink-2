@@ -4,16 +4,21 @@
 #region 依赖
 extends Node
 const Query := preload("res://addons/pixel_destruction/physics/query.gd")
-@onready var body = get_parent().get("body")
+#body 不能 @onready 拿：PixelWorld 在 Main._ready 里烘焙，比本节点 _ready 晚，运行时才拿得到
+var body = null
 #endregion
 
 #region 移动
 ## 加速度
+func _ready() -> void:
+	process_priority = -30
+
+
 @export var move_accel := 1300.0
 ## 最大速度
 @export var max_speed := 210.0
 ## 执行移动
-func _apply_move(body, dt: float) -> void:
+func _apply_move(dt: float) -> void:
 	## 一个输入映射轴
 	var axis := Input.get_axis("move_left", "move_right")
 	var target_speed := axis * max_speed
@@ -26,10 +31,10 @@ func _apply_move(body, dt: float) -> void:
 ##起跳初速度，后续换算为冲量
 @export var jump_speed := 400.0
 
-func _apply_jump(body) -> void:
+func _apply_jump() -> void:
 	if not Input.is_action_just_pressed("jump"):
 		return
-	if not _is_grounded(body):
+	if not _is_grounded():
 		return
 	body.apply_central_impulse(
 		Vector2.UP * jump_speed * body.mass
@@ -38,7 +43,7 @@ func _apply_jump(body) -> void:
 
 #region 地面检测
 @export var ground_probe := 4.0
-func _is_grounded(body) -> bool:
+func _is_grounded() -> bool:
 	var box: Rect2 = body.aabb
 	var start := Vector2(box.get_center().x, box.end.y + 1.0)
 	var hit = Query.raycast(
@@ -54,12 +59,16 @@ func _is_grounded(body) -> bool:
 #region 物理帧主过程
 func _physics_process(dt: float) -> void:
 	#代码规范，控制器必须为一级子节点
-	var body = get_parent().get("body")
-	
+	#运行时懒获取父节点 PixelBody2D.body
+	if body == null:
+		body = get_parent().get("body")
+	if body == null:
+		return
+
 	body.clear_forces()
 	body.awake = true
 	body.sleep_timer = 0.0
 
-	_apply_move(body, dt)
-	_apply_jump(body)
+	_apply_move(dt)
+	_apply_jump()
 #endregion

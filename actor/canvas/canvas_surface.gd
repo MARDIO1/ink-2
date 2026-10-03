@@ -99,6 +99,13 @@ func _reset() -> void:
 	black_texture = ImageTexture.create_from_image(black_image)
 
 
+#清空画布上的黑色墨水（固化后调用）
+func clear() -> void:
+	black_image.fill(Color.TRANSPARENT)
+	black_texture.update(black_image)
+	queue_redraw()
+
+
 #两点之间插值补点，避免鼠标移动过快断线
 func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 	var steps := maxi(1, int(ceil(from.distance_to(to))))

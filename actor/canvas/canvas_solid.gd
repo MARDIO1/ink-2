@@ -1,5 +1,5 @@
 #固化：把 CanvasSurface 的黑色像素按连通分量拆成多个动态刚体
-#引擎集成暂时用门面（main2 的根），后续确定节点/门面架构后再迁
+#运行时用 PixelWorld.add_body_node 加进世界（类比 add_child）
 
 #region 依赖
 extends Node
@@ -7,14 +7,16 @@ extends Node
 const MATERIAL_ID := 1
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
+const PixelBody2D := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
+const CanvasShape := preload("res://actor/canvas/canvas_shape.gd")
 #endregion
 
 
 #region 固化
-#把画布表面固化成动态刚体：先按 4 邻域连通性拆分量，每个分量单独一个刚体
-func solidify(surface, physics) -> void:
-	if physics == null:
-		push_error("CanvasSolid.solidify: physics 为空")
+#把画布表面固化成动态刚体节点，并把结果打印到控制台
+func solidify(surface, world) -> void:
+	if world == null:
+		push_error("CanvasSolid.solidify: world 为空")
 		return
 	if surface == null or surface.black_image == null:
 		push_error("CanvasSolid.solidify: surface 无效")
@@ -35,14 +37,28 @@ func solidify(surface, physics) -> void:
 		push_error("CanvasSolid.solidify: 没有可固化的黑色像素")
 		return
 
-	#每个连通分量单独 spawn，避免不连通区域被刚性焊死成一块
+	#每个连通分量做成一个刚体节点，add_body_node 进世界（类比 add_child）
 	var spawned := 0
 	var total_pixels := 0
 	for part in parts:
-		var body = physics.spawn_shape(pos, part)
-		if body != null:
+		if _spawn_component(world, pos, part):
 			spawned += 1
 			total_pixels += part.pixel_count()
 
+	#固化成功后清空画布上的蓝图墨水
+	if spawned > 0:
+		surface.clear()
 	print("SOLID bodies=%d pixels=%d" % [spawned, total_pixels])
+#endregion
+
+
+#region 生成
+#把一个连通分量做成 PixelBody2D 节点并加进世界
+func _spawn_component(world, pos, part) -> bool:
+	var body_node = PixelBody2D.new()
+	body_node.position = pos
+	var shape_node = CanvasShape.new()
+	shape_node.shape = part
+	body_node.add_child(shape_node)
+	return world.add_body_node(body_node) != null
 #endregion

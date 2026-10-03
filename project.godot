@@ -14,6 +14,10 @@ config/name="ink2"
 run/main_scene="uid://vqdlx81yhmw3"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
+[display]
+
+window/size/mode=3
+
 [input]
 
 move_left={
