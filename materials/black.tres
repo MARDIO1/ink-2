@@ -4,7 +4,7 @@
 
 [resource]
 script = ExtResource("1_mat")
-display_name = "ink"
+display_name = "black"
 id = 1
 color = Color(0, 0, 0, 1)
 density = 1.0

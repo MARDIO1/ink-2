@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://cy8tq6760or7y"]
 
-[ext_resource type="Script" uid="uid://oh2508bekesm" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_cido3"]
+[ext_resource type="Script" path="res://map/main2.gd" id="1_main2"]
 [ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/canvas.tscn" id="2_canvas"]
 
 [node name="Main2" type="Node2D" unique_id=1541031598]
-script = ExtResource("1_cido3")
+script = ExtResource("1_main2")
 
 [node name="Canvas" parent="." instance=ExtResource("2_canvas")]
 position = Vector2(32, 32)

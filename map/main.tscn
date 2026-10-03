@@ -4,13 +4,13 @@
 [ext_resource type="Script" uid="uid://cxan6qqoucf54" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
 [ext_resource type="Script" uid="uid://b5iw1j4nnsbg1" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_kdw7h"]
 [ext_resource type="Script" uid="uid://b4mt2s3xwfvth" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="3_shape"]
-[ext_resource type="Resource" path="res://materials/ink.tres" id="4_ink"]
+[ext_resource type="Resource" path="res://materials/black.tres" id="4_black"]
 [ext_resource type="PackedScene" uid="uid://1n64fxhxd3hf" path="res://actor/player/player.tscn" id="6_vthes"]
 [ext_resource type="PackedScene" uid="uid://b78lla71aiabs" path="res://actor/player/hand.tscn" id="7_hand"]
 
 [node name="Main" type="Node2D" unique_id=1990985690]
 script = ExtResource("1_world")
-materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_ink")])
+materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_black")])
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 

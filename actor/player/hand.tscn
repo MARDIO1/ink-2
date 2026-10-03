@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://b38aey7p3jly0" path="res://actor/player/hand.gd" id="1_hand"]
 [ext_resource type="Script" uid="uid://b1h15jg5kjuat" path="res://actor/player/hand_debug.gd" id="2_debug"]
+[ext_resource type="Script" uid="uid://c7mmg5nyos81r" path="res://actor/player/hand_monitor.gd" id="4_monitor"]
 
 [node name="Hand" type="Node2D" unique_id=390951156]
 
@@ -13,6 +14,9 @@ polygon = PackedVector2Array(-10, -7, -10, 7, 20, 0)
 
 [node name="HandControl" type="Node" parent="." unique_id=1608951563]
 script = ExtResource("1_hand")
+
+[node name="HandMonitor" type="Node" parent="." unique_id=1863852506]
+script = ExtResource("4_monitor")
 
 [node name="HandDebug" type="Node2D" parent="." unique_id=1354468233]
 script = ExtResource("2_debug")

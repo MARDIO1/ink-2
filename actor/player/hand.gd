@@ -13,29 +13,6 @@ var target_angle_initialized := false
 #endregion
 
 
-#region 参数
-@export_group("径向控制")
-##
-@export var radial_stiffness := 400.0
-##
-@export var radial_damping_ratio := 1.05
-##最小半径
-@export var min_radius := 16.0
-##最大半径
-@export var max_radius := 160.0
-
-@export_group("角度控制")
-##
-@export var angular_stiffness := 400.0
-##
-@export var angular_damping_ratio := 1.05
-##最大角速度
-@export var max_angular_speed := 12.0
-##最大加速度
-@export var max_acceleration := 20000.0
-#endregion
-
-
 #region 调试输出
 var debug_target_position := Vector2.ZERO
 var debug_force := Vector2.ZERO
@@ -43,6 +20,12 @@ var debug_radial_error := 0.0
 var debug_tangential_error := 0.0
 var debug_current_radius := 0.0
 var debug_target_radius := 0.0
+#endregion
+
+
+#region 执行顺序
+func _ready() -> void:
+	process_priority = -10
 #endregion
 
 
@@ -83,7 +66,6 @@ func _physics_process(delta: float) -> void:
 		body.add_force(acceleration * body.mass)
 
 	_apply_radius_constraint(pivot)
-
 	var hand_offset: Vector2 = (body.position if body != null else hand_node.global_position) - pivot
 	hand_node.rotation = hand_offset.angle()
 	if body != null:
@@ -106,7 +88,12 @@ func _acquire_references() -> void:
 #endregion
 
 
-#region TD目标生成
+#region 目标生成
+@export_group("目标生成")
+@export var min_radius := 16.0
+@export var max_radius := 160.0
+@export var max_angular_speed := 12.0
+
 func _calculate_target_position(pivot: Vector2, delta: float) -> Vector2:
 	var mouse: Vector2 = _get_mouse_world_position()
 	var mouse_offset: Vector2 = mouse - pivot
@@ -128,6 +115,16 @@ func _calculate_target_position(pivot: Vector2, delta: float) -> Vector2:
 
 
 #region 极坐标控制
+@export_group("径向控制")
+@export var radial_stiffness := 400.0
+@export var radial_damping_ratio := 1.05
+
+@export_group("角度控制")
+@export var angular_stiffness := 400.0
+@export var angular_damping_ratio := 1.05
+
+@export var max_acceleration := 20000.0
+
 func _polar_acceleration(
 	pivot: Vector2,
 	hand_position: Vector2,
@@ -199,7 +196,7 @@ func _apply_radius_constraint(pivot: Vector2) -> void:
 #endregion
 
 
-#region 工具函数
+#region PBody 占位
 @export_group("基础质量")
 @export var base_mass := 5.0
 @export var base_inertia := 180.0
@@ -211,8 +208,10 @@ func _apply_body_mass_floor() -> void:
 	body.inertia = maxf(body.inertia, base_inertia)
 	body.inv_mass = 1.0 / body.mass
 	body.inv_inertia = 1.0 / body.inertia
+#endregion
 
 
+#region 工具函数
 func _slew_angle(current_angle: float, target_angle: float, max_delta: float) -> float:
 	if max_delta <= 0.0:
 		return target_angle

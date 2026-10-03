@@ -1,9 +1,17 @@
 [gd_scene format=3 uid="uid://2raldosbm8v8"]
 
 [ext_resource type="Script" uid="uid://jnamfxlkxjqb" path="res://actor/canvas/canvas.gd" id="1_canvas"]
+[ext_resource type="Script" path="res://actor/canvas/canvas_surface.gd" id="2_surface"]
+[ext_resource type="Script" path="res://actor/canvas/canvas_solid.gd" id="3_solid"]
 
 [node name="Canvas" type="Node2D" unique_id=1726580571]
 script = ExtResource("1_canvas")
 
-[node name="InkSprite" type="Sprite2D" parent="."]
+[node name="CanvasSurface" type="Node2D" parent="."]
+script = ExtResource("2_surface")
+
+[node name="BlackSprite" type="Sprite2D" parent="CanvasSurface"]
 centered = false
+
+[node name="CanvasSolid" type="Node" parent="."]
+script = ExtResource("3_solid")
