@@ -1,5 +1,6 @@
 #先搞最简单的版本，暂时没有抽象出接口出来，就是AD 空格直接控制
 #我希望模块化一点，不是一堆参数在代码一起，是应函数名字上面放己的参数
+
 #region 依赖
 extends Node
 const Query := preload("res://addons/pixel_destruction/physics/query.gd")
@@ -21,7 +22,6 @@ func _apply_move(body, dt: float) -> void:
 	body.add_force(Vector2(accel * body.mass, 0.0))
 #endregion
 
-
 #region 跳跃
 ##起跳初速度，后续换算为冲量
 @export var jump_speed := 400.0
@@ -35,7 +35,6 @@ func _apply_jump(body) -> void:
 		Vector2.UP * jump_speed * body.mass
 	)
 #endregion
-
 
 #region 地面检测
 @export var ground_probe := 4.0

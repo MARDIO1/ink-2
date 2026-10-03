@@ -1,17 +1,22 @@
+#region 依赖
 extends Node2D
 
 @export var trail_max_points := 120
 @export var force_scale := 0.0005
 
 var hand = null
+var control = null
 var target_trail: Line2D
 var hand_trail: Line2D
 var error_line: Line2D
 var force_line: Line2D
+#endregion
 
 
+#region 生命周期
 func _ready() -> void:
 	hand = get_parent()
+	control = get_node_or_null("../HandControl")
 	top_level = true
 	z_index = 100
 
@@ -19,29 +24,39 @@ func _ready() -> void:
 	hand_trail = _create_line(Color(1.0, 0.85, 0.1, 0.85), 2.0)
 	error_line = _create_line(Color(1.0, 0.12, 0.1, 0.9), 1.5)
 	force_line = _create_line(Color(0.15, 0.55, 1.0, 0.9), 1.5)
+#endregion
 
 
+#region 可视化更新
 func _process(_delta: float) -> void:
-	if hand == null or hand.player_body == null:
+	if hand == null or control == null or control.get("player_body") == null:
 		return
 
-	var hand_position: Vector2 = hand.body.position if hand.body != null else hand.global_position
-	_append_point(target_trail, hand.debug_target_position)
+	var hand_body = hand.get("body")
+	var hand_position: Vector2 = hand_body.position if hand_body != null else hand.global_position
+	_append_point(target_trail, control.get("debug_target_position"))
 	_append_point(hand_trail, hand_position)
-	error_line.points = PackedVector2Array([hand_position, hand.debug_target_position])
-	force_line.points = PackedVector2Array([hand_position, hand_position + hand.debug_force * force_scale])
+	error_line.points = PackedVector2Array([hand_position, control.get("debug_target_position")])
+	force_line.points = PackedVector2Array([
+		hand_position,
+		hand_position + control.get("debug_force") * force_scale,
+	])
 	queue_redraw()
+#endregion
 
 
+#region 半径约束环
 func _draw() -> void:
-	if hand == null or hand.player_body == null:
+	if hand == null or control == null or control.get("player_body") == null:
 		return
 
-	var pivot: Vector2 = hand.player_body.position
-	draw_arc(pivot, hand.max_radius, 0.0, TAU, 96, Color(0.85, 0.25, 0.6, 0.7), 1.0, true)
-	draw_arc(pivot, hand.min_radius, 0.0, TAU, 64, Color(0.4, 0.7, 1.0, 0.5), 1.0, true)
+	var pivot: Vector2 = control.get("player_body").position
+	draw_arc(pivot, control.get("max_radius"), 0.0, TAU, 96, Color(0.85, 0.25, 0.6, 0.7), 1.0, true)
+	draw_arc(pivot, control.get("min_radius"), 0.0, TAU, 64, Color(0.4, 0.7, 1.0, 0.5), 1.0, true)
+#endregion
 
 
+#region 工具函数
 func _create_line(color: Color, width: float) -> Line2D:
 	var line := Line2D.new()
 	line.width = width
@@ -57,3 +72,4 @@ func _append_point(line: Line2D, point: Vector2) -> void:
 	line.add_point(point)
 	while line.get_point_count() > trail_max_points:
 		line.remove_point(0)
+#endregion

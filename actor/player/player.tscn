@@ -16,3 +16,5 @@ rect_size = Vector2i(24, 32)
 
 [node name="PlayerInput" type="Node" parent="." unique_id=440227940]
 script = ExtResource("1_wy78e")
+
+[node name="Node" type="Node" parent="." unique_id=114527059]

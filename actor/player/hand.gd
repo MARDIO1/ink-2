@@ -1,54 +1,68 @@
-extends Node2D
+#region 依赖
+extends Node
 
-@export_group("Radial")
-@export var radial_stiffness := 400.0
-@export var radial_damping_ratio := 1.05
-@export var min_radius := 16.0
-@export var max_radius := 160.0
+@export var player_path := NodePath("../../Player")
+@export var physics_body_path := NodePath("../PBody")
 
-@export_group("Orbital")
-@export var angular_stiffness := 400.0
-@export var angular_damping_ratio := 1.05
-@export var max_angular_speed := 12.0
-
-@export var max_acceleration := 20000.0
-@export var player_path := NodePath("../Player")
-
+var hand_node = null
 var body = null
 var player_body = null
 var linear_velocity := Vector2.ZERO
 var target_angle_smoothed := 0.0
 var target_angle_initialized := false
+#endregion
 
+
+#region 参数
+@export_group("径向控制")
+##
+@export var radial_stiffness := 400.0
+##
+@export var radial_damping_ratio := 1.05
+##最小半径
+@export var min_radius := 16.0
+##最大半径
+@export var max_radius := 160.0
+
+@export_group("角度控制")
+##
+@export var angular_stiffness := 400.0
+##
+@export var angular_damping_ratio := 1.05
+##最大角速度
+@export var max_angular_speed := 12.0
+##最大加速度
+@export var max_acceleration := 20000.0
+#endregion
+
+
+#region 调试输出
 var debug_target_position := Vector2.ZERO
 var debug_force := Vector2.ZERO
 var debug_radial_error := 0.0
 var debug_tangential_error := 0.0
 var debug_current_radius := 0.0
 var debug_target_radius := 0.0
+#endregion
 
 
+#region 物理帧主流程
 func _physics_process(delta: float) -> void:
 	_acquire_references()
-	if player_body == null:
+	if hand_node == null or player_body == null:
 		return
 
 	var pivot: Vector2 = player_body.position
-	var mouse: Vector2 = get_global_mouse_position()
-	var mouse_offset: Vector2 = mouse - pivot
-	var target_radius: float = clampf(mouse_offset.length(), min_radius, max_radius)
-	var raw_target_angle: float = mouse_offset.angle()
-
-	if not target_angle_initialized:
-		target_angle_smoothed = raw_target_angle
-		target_angle_initialized = true
-	else:
-		target_angle_smoothed = _slew_angle(target_angle_smoothed, raw_target_angle, max_angular_speed * delta)
-
-	var target_position: Vector2 = pivot + Vector2.from_angle(target_angle_smoothed) * target_radius
-	var hand_position: Vector2 = body.position if body != null else global_position
+	var target_position: Vector2 = _calculate_target_position(pivot, delta)
+	var hand_position: Vector2 = body.position if body != null else hand_node.global_position
 	var hand_velocity: Vector2 = body.linear_velocity if body != null else linear_velocity
-	var control: Dictionary = _polar_acceleration(pivot, hand_position, hand_velocity, player_body.linear_velocity, target_position)
+	var control: Dictionary = _polar_acceleration(
+		pivot,
+		hand_position,
+		hand_velocity,
+		player_body.linear_velocity,
+		target_position
+	)
 	var acceleration: Vector2 = control["acceleration"]
 
 	debug_target_position = target_position
@@ -60,25 +74,60 @@ func _physics_process(delta: float) -> void:
 
 	if body == null:
 		linear_velocity += acceleration * delta
-		global_position += linear_velocity * delta
+		hand_node.global_position += linear_velocity * delta
 	else:
+		_apply_body_mass_floor()
 		body.clear_forces()
 		body.awake = true
 		body.sleep_timer = 0.0
 		body.add_force(acceleration * body.mass)
 
 	_apply_radius_constraint(pivot)
-	var final_offset: Vector2 = (body.position if body != null else global_position) - pivot
-	rotation = final_offset.angle()
+
+	var hand_offset: Vector2 = (body.position if body != null else hand_node.global_position) - pivot
+	hand_node.rotation = hand_offset.angle()
+	if body != null:
+		hand_node.global_position = body.position
+#endregion
 
 
+#region 引用获取
 func _acquire_references() -> void:
+	if hand_node == null:
+		hand_node = get_parent()
+	if body == null:
+		var physics_node := get_node_or_null(physics_body_path)
+		if physics_node != null:
+			body = physics_node.get("body")
 	if player_body == null:
 		var player_node := get_node_or_null(player_path)
 		if player_node != null:
 			player_body = player_node.get("body")
+#endregion
 
 
+#region TD目标生成
+func _calculate_target_position(pivot: Vector2, delta: float) -> Vector2:
+	var mouse: Vector2 = _get_mouse_world_position()
+	var mouse_offset: Vector2 = mouse - pivot
+	var target_radius: float = clampf(mouse_offset.length(), min_radius, max_radius)
+	var raw_target_angle: float = mouse_offset.angle()
+
+	if not target_angle_initialized:
+		target_angle_smoothed = raw_target_angle
+		target_angle_initialized = true
+	else:
+		target_angle_smoothed = _slew_angle(
+			target_angle_smoothed,
+			raw_target_angle,
+			max_angular_speed * delta
+		)
+
+	return pivot + Vector2.from_angle(target_angle_smoothed) * target_radius
+#endregion
+
+
+#region 极坐标控制
 func _polar_acceleration(
 	pivot: Vector2,
 	hand_position: Vector2,
@@ -106,8 +155,15 @@ func _polar_acceleration(
 	var radial_velocity_gain: float = 2.0 * radial_damping_ratio * sqrt(radial_stiffness)
 	var angular_velocity_gain: float = 2.0 * angular_damping_ratio * sqrt(angular_stiffness)
 
-	var radial_acceleration: float = radial_stiffness * radial_error - radial_velocity_gain * radial_velocity - current_radius * omega * omega
-	var tangential_acceleration: float = angular_stiffness * tangential_error - angular_velocity_gain * tangential_velocity
+	var radial_acceleration: float = (
+		radial_stiffness * radial_error
+		- radial_velocity_gain * radial_velocity
+		- current_radius * omega * omega
+	)
+	var tangential_acceleration: float = (
+		angular_stiffness * tangential_error
+		- angular_velocity_gain * tangential_velocity
+	)
 
 	var acceleration: Vector2 = radial_acceleration * radial + tangential_acceleration * tangent
 	if max_acceleration > 0.0:
@@ -120,10 +176,12 @@ func _polar_acceleration(
 		"current_radius": current_radius,
 		"target_radius": target_radius,
 	}
+#endregion
 
 
+#region 半径硬约束
 func _apply_radius_constraint(pivot: Vector2) -> void:
-	var hand_position: Vector2 = body.position if body != null else global_position
+	var hand_position: Vector2 = body.position if body != null else hand_node.global_position
 	var offset: Vector2 = hand_position - pivot
 	var radius: float = offset.length()
 	if radius <= max_radius or radius <= 0.001:
@@ -131,13 +189,28 @@ func _apply_radius_constraint(pivot: Vector2) -> void:
 
 	var radial: Vector2 = offset / radius
 	if body == null:
-		global_position = pivot + radial * max_radius
+		hand_node.global_position = pivot + radial * max_radius
 		var outward_velocity: float = maxf(linear_velocity.dot(radial), 0.0)
 		linear_velocity -= radial * outward_velocity
 	else:
 		body.position = pivot + radial * max_radius
 		var outward_velocity: float = maxf(body.linear_velocity.dot(radial), 0.0)
 		body.linear_velocity -= radial * outward_velocity
+#endregion
+
+
+#region 工具函数
+@export_group("基础质量")
+@export var base_mass := 5.0
+@export var base_inertia := 180.0
+
+func _apply_body_mass_floor() -> void:
+	if body == null:
+		return
+	body.mass = maxf(body.mass, base_mass)
+	body.inertia = maxf(body.inertia, base_inertia)
+	body.inv_mass = 1.0 / body.mass
+	body.inv_inertia = 1.0 / body.inertia
 
 
 func _slew_angle(current_angle: float, target_angle: float, max_delta: float) -> float:
@@ -145,3 +218,11 @@ func _slew_angle(current_angle: float, target_angle: float, max_delta: float) ->
 		return target_angle
 	var difference: float = wrapf(target_angle - current_angle, -PI, PI)
 	return current_angle + clampf(difference, -max_delta, max_delta)
+
+
+func _get_mouse_world_position() -> Vector2:
+	var camera := get_viewport().get_camera_2d()
+	if camera == null:
+		return Vector2.ZERO
+	return camera.get_global_mouse_position()
+#endregion
