@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://vqdlx81yhmw3"]
+
+[ext_resource type="Script" uid="uid://oh2508bekesm" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
+[ext_resource type="Script" uid="uid://cxan6qqoucf54" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
+[ext_resource type="Script" uid="uid://b5iw1j4nnsbg1" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_kdw7h"]
+[ext_resource type="Script" uid="uid://b4mt2s3xwfvth" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="3_shape"]
+[ext_resource type="Resource" path="res://materials/ink.tres" id="4_ink"]
+[ext_resource type="PackedScene" uid="uid://1n64fxhxd3hf" path="res://actor/player/player.tscn" id="6_vthes"]
+
+[node name="Main" type="Node2D" unique_id=1990985690]
+script = ExtResource("1_world")
+materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_ink")])
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
+
+[node name="Ground" type="Node2D" parent="." unique_id=696036291]
+position = Vector2(-133, 231)
+script = ExtResource("2_body")
+is_static = true
+
+[node name="Shape" type="Node2D" parent="Ground" unique_id=1647433287]
+visible = false
+script = ExtResource("3_shape")
+rect_size = Vector2i(800, 40)
+
+[node name="Box" type="Node2D" parent="." unique_id=1881270586]
+position = Vector2(322, 53)
+script = ExtResource("2_body")
+
+[node name="Shape" type="Node2D" parent="Box" unique_id=839729177]
+visible = false
+script = ExtResource("3_shape")
+rect_size = Vector2i(32, 32)
+
+[node name="Player" parent="." unique_id=1427605215 instance=ExtResource("6_vthes")]
+position = Vector2(-128, 196)
+
+[node name="HUD" type="Control" parent="." unique_id=1228885047]
+visible = false
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0

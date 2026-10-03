@@ -1,0 +1,35 @@
+# Godot generated cache
+.godot/
+.import/
+
+# External engine dependency (kept in its own repository)
+/addons/
+
+# Local editor and IDE state
+/.vscode/
+.idea/
+*.user
+
+# Build, export, and generated output
+/build/
+/export/
+export_presets.cfg
+*.translation
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# C# / .NET artifacts
+.mono/
+bin/
+obj/

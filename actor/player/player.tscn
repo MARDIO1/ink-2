@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://1n64fxhxd3hf"]
+
+[ext_resource type="Script" uid="uid://cxan6qqoucf54" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="1_7gqxp"]
+[ext_resource type="Script" uid="uid://1jec22iry3ih" path="res://actor/player/player_input.gd" id="1_wy78e"]
+[ext_resource type="Script" uid="uid://b4mt2s3xwfvth" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="2_778ba"]
+
+[node name="Player" type="Node2D" unique_id=1427605215]
+script = ExtResource("1_7gqxp")
+
+[node name="Shape" type="Node2D" parent="." unique_id=1293290646]
+visible = false
+script = ExtResource("2_778ba")
+rect_size = Vector2i(24, 32)
+
+[node name="PlayerInput" type="Node" parent="." unique_id=440227940]
+script = ExtResource("1_wy78e")

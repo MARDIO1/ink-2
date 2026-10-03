@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="PixelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="1_mat"]
+
+[resource]
+script = ExtResource("1_mat")
+display_name = "ink"
+id = 1
+color = Color(0, 0, 0, 1)
+density = 1.0
+compress_strength = 0.0
+shear_strength = -1.0
