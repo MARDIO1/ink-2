@@ -1,6 +1,7 @@
 extends SceneTree
 
 const MAIN_SCENE := preload("res://map/asset/main.tscn")
+const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 const DT := 1.0 / 60.0
 
 var _passed := 0
@@ -17,6 +18,8 @@ func _run() -> void:
 	_check("mass/body hand ratio", rig["player"].mass / rig["hand"].mass > 50.0,
 		"body=%.1f hand=%.1f" % [rig["player"].mass, rig["hand"].mass])
 	_test_angular_switch(rig)
+	_reset_rig(rig)
+	_test_fingertip_grab(rig)
 	_reset_rig(rig)
 	_test_free_arm(rig)
 	_reset_rig(rig)
@@ -123,6 +126,22 @@ func _test_presentation(rig: Dictionary) -> void:
 	_check("camera/follows player", camera.global_position.distance_to(player.com_world()) < 0.01)
 	_check("camera/player visible", view_rect.has_point(player.com_world()))
 	_check("camera/ground visible", view_rect.intersects(ground.aabb))
+
+
+func _test_fingertip_grab(rig: Dictionary) -> void:
+	var control: Node = rig["control"]
+	var hand = rig["hand"]
+	var box = rig["box"]
+	var visual: Polygon2D = control.get_node("../Visual")
+	var tip: Vector2 = control._fingertip_world()
+	_set_body_state(box, tip + Vector2(16.0, 0.0))
+	var center_hit = Query.closest_point(hand.com_world(), control.grab_radius, [hand, rig["player"]])
+	control.set_grip(true)
+	control._update_grip(DT)
+	_check("grab/fingertip pixel", control.grabbed_body == box)
+	_check("grab/hand center excluded", not center_hit.hit)
+	_check("grab/visual tip aligned", visual.polygon[2] == control.fingertip_offset)
+	control._release_grab()
 
 
 func _test_free_arm(rig: Dictionary) -> void:
@@ -381,6 +400,7 @@ func _test_grounded_pushup(rig: Dictionary) -> void:
 	var supplied_energy := 0.0
 	var late_min := Vector2(INF, INF)
 	var late_max := Vector2(-INF, -INF)
+	var late_max_speed := 0.0
 	for frame in 360:
 		control._physics_process(DT)
 		rig["world"].step(DT)
@@ -390,12 +410,14 @@ func _test_grounded_pushup(rig: Dictionary) -> void:
 		if frame >= 300:
 			late_min = late_min.min(player.com_world())
 			late_max = late_max.max(player.com_world())
+			late_max_speed = maxf(late_max_speed, player.linear_velocity.length())
 	_check("pushup/ground acquired through query", control.grabbed_body == rig["ground"])
 	_check("pushup/body supported under gravity", player.com_world().y < initial_y - 30.0,
 		"rise=%.3f" % (initial_y - player.com_world().y))
 	_check("pushup/power budget", maximum_power <= control.max_power * 1.00001)
 	_check("pushup/reach", maximum_reach <= control.max_reach)
-	_check("pushup/late jitter", (late_max - late_min).length() < 0.25)
+	_check("pushup/late jitter", (late_max - late_min).length() < 0.25,
+		"peak_to_peak=%.6f max_speed=%.6f" % [(late_max - late_min).length(), late_max_speed])
 	var gained_energy: float = player.mass * 980.0 * (initial_y - player.com_world().y) + _kinetic_energy([player])
 	_check("pushup/work covered by budget", gained_energy <= supplied_energy * 1.001)
 	control.set_grip(false)
