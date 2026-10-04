@@ -1,15 +1,15 @@
-[gd_scene format=3 uid="uid://dptudldwcvdnc"]
+[gd_scene format=3 uid="uid://vqdlx81yhmw3"]
 
 [ext_resource type="Script" uid="uid://c21vgjr7k5sgv" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
 [ext_resource type="Script" uid="uid://d356vg3m52niu" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
 [ext_resource type="Script" uid="uid://chdh46srdqdtn" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_kdw7h"]
 [ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="3_shape"]
-[ext_resource type="Resource" path="res://materials/black.tres" id="4_black"]
-[ext_resource type="PackedScene" uid="uid://cq2i3n4pj310x" path="res://actor/player/player.tscn" id="6_vthes"]
-[ext_resource type="PackedScene" uid="uid://ba04uiu5w4wek" path="res://actor/canvas/canvas.tscn" id="7_fxpqp"]
-[ext_resource type="Script" path="res://actor/player/player_camera.gd" id="8_camera"]
-[ext_resource type="Resource" path="res://materials/player_body.tres" id="9_player_mat"]
-[ext_resource type="Resource" path="res://materials/hand.tres" id="10_hand_mat"]
+[ext_resource type="Resource" path="res://Ink/asset/black.tres" id="4_black"]
+[ext_resource type="PackedScene" uid="uid://1n64fxhxd3hf" path="res://actor/player/asset/player.tscn" id="6_vthes"]
+[ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/asset/canvas.tscn" id="7_fxpqp"]
+[ext_resource type="Script" uid="uid://dcqnoa67srpgu" path="res://actor/player/src/player_camera.gd" id="8_camera"]
+[ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="9_player_mat"]
+[ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="10_hand_mat"]
 
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "player_body"
+id = 2
+color = Color(0, 0, 0, 1)
+density = 8.0

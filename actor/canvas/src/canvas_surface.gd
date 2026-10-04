@@ -2,29 +2,37 @@
 #1 像素 = 1 世界单位，本版本只做可见像素，不进入物理世界
 
 #region 依赖
-extends Node2D
-
-
+@tool
+extends Area2D
 #endregion
 
 #region 初始化
 var black_texture: ImageTexture
 @onready var black_sprite: Sprite2D = $BlackSprite
+@onready var bounds: CollisionShape2D = $Bounds
 func _ready() -> void:
 	black_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_reset()
-	black_sprite.texture = black_texture
-	queue_redraw()
+	_resize()
 #endregion
 
 
 #region 外观
 #画布宽高，单位是世界单位，也决定底层贴图分辨率
-@export var canvas_size := Vector2i(256, 256)
+@export var canvas_size := Vector2i(256, 256):
+	set(value):
+		canvas_size = Vector2i(maxi(value.x, 1), maxi(value.y, 1))
+		if is_node_ready():
+			_resize()
 #纸底颜色
-@export var background_color := Color(0.86, 0.85, 0.80, 1.0)
+@export var background_color := Color(0.86, 0.85, 0.80, 1.0):
+	set(value):
+		background_color = value
+		queue_redraw()
 #边框颜色
-@export var border_color := Color(0.12, 0.12, 0.12, 1.0)
+@export var border_color := Color(0.12, 0.12, 0.12, 1.0):
+	set(value):
+		border_color = value
+		queue_redraw()
 #边框线宽
 @export var border_width := 2.0
 
@@ -39,6 +47,8 @@ func _draw() -> void:
 #region 输入
 #原生引擎回调，处理鼠标左键右键
 func _input(event: InputEvent) -> void:
+	if Engine.is_editor_hint():
+		return
 	if event is InputEventMouseButton:
 		_on_mouse_button(event as InputEventMouseButton)
 	elif event is InputEventMouseMotion:
@@ -92,6 +102,15 @@ func _inside(point: Vector2) -> bool:
 
 #region 绘制
 var black_image: Image
+func _resize() -> void:
+	# Area 只表达可编辑的画布范围，不参与游戏刚体碰撞。
+	bounds.shape.size = Vector2(canvas_size)
+	bounds.position = Vector2(canvas_size) * 0.5
+	_reset()
+	black_sprite.texture = black_texture
+	queue_redraw()
+
+
 #重建透明画布，透明像素在 BlackSprite 下露出纸底
 func _reset() -> void:
 	black_image = Image.create_empty(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8)

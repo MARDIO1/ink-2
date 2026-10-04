@@ -1,0 +1,33 @@
+[gd_scene format=3 uid="uid://b78lla71aiabs"]
+
+[ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="1_body"]
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="2_shape"]
+[ext_resource type="Script" uid="uid://b38aey7p3jly0" path="res://actor/player/src/hand.gd" id="3_hand"]
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_sprite_2d.gd" id="6_sprite"]
+[ext_resource type="Script" path="res://actor/player/src/hand_visual.gd" id="7_visual"]
+
+[node name="Hand" type="Node2D" unique_id=390951156]
+script = ExtResource("1_body")
+world_path = NodePath("../..")
+gravity_scale = 0.0
+collision_layer = 0
+collision_mask = 0
+can_sleep = false
+
+[node name="Shape" type="Node2D" parent="." unique_id=1587063917]
+visible = false
+script = ExtResource("2_shape")
+rect_size = Vector2i(24, 14)
+material_id = 3
+
+[node name="Visual" type="Polygon2D" parent="." unique_id=315775535]
+script = ExtResource("7_visual")
+color = Color(0, 0, 0, 1)
+polygon = PackedVector2Array(-10, -7, -10, 7, 20, 0)
+
+[node name="PhysicsSprite" type="Sprite2D" parent="."]
+script = ExtResource("6_sprite")
+modulate = Color(1, 1, 1, 0)
+
+[node name="HandControl" type="Node" parent="." unique_id=1608951563]
+script = ExtResource("3_hand")

@@ -8,7 +8,7 @@ const MATERIAL_ID := 1
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const PixelBody2D := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
-const CanvasShape := preload("res://actor/canvas/canvas_shape.gd")
+const CanvasShape := preload("res://actor/canvas/src/canvas_shape.gd")
 #endregion
 
 

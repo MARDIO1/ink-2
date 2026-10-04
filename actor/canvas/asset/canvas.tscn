@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://2raldosbm8v8"]
+
+[ext_resource type="Script" uid="uid://jnamfxlkxjqb" path="res://actor/canvas/src/canvas.gd" id="1_canvas"]
+[ext_resource type="Script" path="res://actor/canvas/src/canvas_surface.gd" id="2_surface"]
+[ext_resource type="Script" path="res://actor/canvas/src/canvas_solid.gd" id="3_solid"]
+
+[sub_resource type="RectangleShape2D" id="CanvasBounds"]
+resource_local_to_scene = true
+size = Vector2(256, 256)
+
+[node name="Canvas" type="Node2D" unique_id=1726580571]
+z_index = -1
+script = ExtResource("1_canvas")
+
+[node name="CanvasSurface" type="Area2D" parent="."]
+script = ExtResource("2_surface")
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+input_pickable = false
+
+[node name="Bounds" type="CollisionShape2D" parent="CanvasSurface"]
+position = Vector2(128, 128)
+shape = SubResource("CanvasBounds")
+
+[node name="BlackSprite" type="Sprite2D" parent="CanvasSurface"]
+centered = false
+
+[node name="CanvasSolid" type="Node" parent="."]
+script = ExtResource("3_solid")
