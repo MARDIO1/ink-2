@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://cy17lvveigimk"]
+[gd_scene format=3 uid="uid://cfa1ceqdexja1"]
 
 [ext_resource type="Script" uid="uid://c21vgjr7k5sgv" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
 [ext_resource type="Script" uid="uid://d356vg3m52niu" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]

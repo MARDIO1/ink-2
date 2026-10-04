@@ -7,7 +7,7 @@ func _run() -> void:
 	var scene: Node = load("res://map/asset/main.tscn").instantiate()
 	root.add_child(scene)
 	await process_frame
-	var control: Node = scene.get_node("Player/Hand/HandControl")
+	var control: Node = scene.get_node("Player/Arm/Hand/HandControl")
 	for frame in 120:
 		control.set_target_world(control.player_body.com_world() + Vector2(60, -30))
 		await physics_frame

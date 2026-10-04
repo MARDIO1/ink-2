@@ -14,6 +14,7 @@
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10
 script = ExtResource("1_world")
+voxel_size = 1.0
 materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_black"), ExtResource("9_player_mat"), ExtResource("10_hand_mat")])
 densities_fallback = Array[float]([0.0, 1.0, 8.0, 0.25, 2.0])
 

@@ -2,10 +2,16 @@
 
 引擎也ignore了，在外部仓库
 
-文件管理使用分布式的，player的贴图就放当Player的tscn旁边
+文件管理规则：
+分布式模块化，player的贴图就放当Player的tscn旁边，并且给我整理好，src和assest
 
 依旧是参考ink-fffight，前作
 
+
+
+
+
+-----以下是AI写的，如果和上面有冲突，听我的-----
 ## 文件组织
 
 - `actor/player/src`：角色、手控制和视觉同步脚本。
@@ -22,7 +28,7 @@ PD 产生手与身体之间的成对力，限制最大力和主动做功功率�
 Hinge 在身体质心允许转动，Slider 允许长度变化并锁定手的相对转角。
 `Arm` 是这两个 Joint 之间的内部支座，质量为 4，无重力、无碰撞；不是额外的可操作肢体。
 当前引擎没有单个 Joint 同时表达这两个自由度，所以需要这个支座。
-`player_physics.gd` 只适配子刚体注册和初始坐标，Hand 仍是 Player 子节点。
+`player_physics.gd` 只适配子刚体注册和初始坐标；`hand.tscn` 内部是 `Arm/Hand`，整体挂在 Player 下。
 
 画布在编辑器 2D 舞台可见，选中 Canvas 修改 `canvas_size`。
 Area2D 的 Bounds 随尺寸更新，只显示范围，不参与像素刚体碰撞。

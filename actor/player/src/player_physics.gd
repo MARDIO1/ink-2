@@ -1,6 +1,6 @@
 @tool
 extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
-## 角色层级适配：子刚体独立注册，不并入 Player 的形状。
+## 手和身体不适是一个一起的
 
 @export var world_path := NodePath("..")
 

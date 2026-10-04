@@ -4,9 +4,9 @@ extends Node
 const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 
 @onready var body = $"..".body
-@onready var player_body = $"../..".body
-@onready var arm_body = $"../../Arm".body
-@onready var physics_world = $"../../..".world
+@onready var arm_body = $"../..".body
+@onready var player_body = $"../../..".body
+@onready var physics_world = $"../../../..".world
 var arm_joint = null
 var pivot_joint = null
 var grip_joint = null

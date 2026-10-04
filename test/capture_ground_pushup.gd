@@ -9,7 +9,7 @@ func _run() -> void:
 	var scene: Node = load("res://map/asset/main.tscn").instantiate()
 	root.add_child(scene)
 	await process_frame
-	var control: Node = scene.get_node("Player/Hand/HandControl")
+	var control: Node = scene.get_node("Player/Arm/Hand/HandControl")
 	control._remove_arm()
 	# 使用正常世界步进、地面查询抓取及重力，不手工创建抓取 Joint。
 	_place(control.player_body, Vector2(0, 215))

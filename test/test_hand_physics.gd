@@ -51,7 +51,7 @@ func _make_rig() -> Dictionary:
 	scene.auto_step = false
 	scene.auto_render = false
 	scene.set_physics_process(false)
-	var control: Node = scene.get_node("Player/Hand/HandControl")
+	var control: Node = scene.get_node("Player/Arm/Hand/HandControl")
 	var player_input: Node = scene.get_node("Player/PlayerInput")
 	control.set_physics_process(false)
 	player_input.set_physics_process(false)
@@ -65,7 +65,7 @@ func _make_rig() -> Dictionary:
 		"world": world,
 		"control": control,
 		"player": scene.get_node("Player").body,
-		"hand": scene.get_node("Player/Hand").body,
+		"hand": scene.get_node("Player/Arm/Hand").body,
 		"arm": scene.get_node("Player/Arm").body,
 		"box": scene.get_node("Box").body,
 		"ground": scene.get_node("Ground").body,
@@ -118,7 +118,7 @@ func _test_presentation(rig: Dictionary) -> void:
 		"window/logical size",
 		ProjectSettings.get_setting("display/window/size/viewport_width") == 960
 		and ProjectSettings.get_setting("display/window/size/viewport_height") == 540
-		and ProjectSettings.get_setting("display/window/size/mode") == 0
+		and ProjectSettings.get_setting("display/window/size/mode") == DisplayServer.WINDOW_MODE_FULLSCREEN
 	)
 	_check("camera/follows player", camera.global_position.distance_to(player.com_world()) < 0.01)
 	_check("camera/player visible", view_rect.has_point(player.com_world()))

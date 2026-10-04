@@ -18,7 +18,7 @@ func _run() -> void:
 			scene.auto_step = false
 			scene.auto_render = false
 			scene.set_physics_process(false)
-			var control: Node = scene.get_node("Player/Hand/HandControl")
+			var control: Node = scene.get_node("Player/Arm/Hand/HandControl")
 			var movement: Node = scene.get_node("Player/PlayerInput")
 			control.set_physics_process(false)
 			movement.set_physics_process(false)
