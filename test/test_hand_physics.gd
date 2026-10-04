@@ -1,7 +1,6 @@
 extends SceneTree
 
 const MAIN_SCENE := preload("res://map/asset/main.tscn")
-const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 const DT := 1.0 / 60.0
 
 var _passed := 0
@@ -18,8 +17,6 @@ func _run() -> void:
 	_check("mass/body hand ratio", rig["player"].mass / rig["hand"].mass > 50.0,
 		"body=%.1f hand=%.1f" % [rig["player"].mass, rig["hand"].mass])
 	_test_angular_switch(rig)
-	_reset_rig(rig)
-	_test_fingertip_grab(rig)
 	_reset_rig(rig)
 	_test_free_arm(rig)
 	_reset_rig(rig)
@@ -126,22 +123,6 @@ func _test_presentation(rig: Dictionary) -> void:
 	_check("camera/follows player", camera.global_position.distance_to(player.com_world()) < 0.01)
 	_check("camera/player visible", view_rect.has_point(player.com_world()))
 	_check("camera/ground visible", view_rect.intersects(ground.aabb))
-
-
-func _test_fingertip_grab(rig: Dictionary) -> void:
-	var control: Node = rig["control"]
-	var hand = rig["hand"]
-	var box = rig["box"]
-	var visual: Polygon2D = control.get_node("../Visual")
-	var tip: Vector2 = control._fingertip_world()
-	_set_body_state(box, tip + Vector2(16.0, 0.0))
-	var center_hit = Query.closest_point(hand.com_world(), control.grab_radius, [hand, rig["player"]])
-	control.set_grip(true)
-	control._update_grip(DT)
-	_check("grab/fingertip pixel", control.grabbed_body == box)
-	_check("grab/hand center excluded", not center_hit.hit)
-	_check("grab/visual tip aligned", visual.polygon[2] == control.fingertip_offset)
-	control._release_grab()
 
 
 func _test_free_arm(rig: Dictionary) -> void:

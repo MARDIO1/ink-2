@@ -112,11 +112,10 @@ func _calculate_target_position(pivot: Vector2, _delta: float) -> Vector2:
 
 func _calculate_motor(target_position: Vector2, hand_position: Vector2, delta: float) -> Vector2:
 	var velocity: Vector2 = body.linear_velocity - player_body.linear_velocity
-	# 隐式 PD 把本步速度与位移变化计入反馈，避免刚性支点附近形成高频极限环。
-	var denominator := 1.0 + position_damping * delta + position_stiffness * delta * delta
-	var stiffness := position_stiffness / denominator
-	var damping := (position_damping + position_stiffness * delta) / denominator
-	var acceleration := (target_position - hand_position) * stiffness - velocity * damping
+	# 隐式 PD：稳定刚性支点附近的离散反馈。
+	var stable := 1.0 / (1.0 + position_damping * delta + position_stiffness * delta * delta)
+	var acceleration := ((target_position - hand_position) * position_stiffness
+		- velocity * (position_damping + position_stiffness * delta)) * stable
 	var inverse_mass: float = _hand_side()["inv_mass"] + player_body.inv_mass
 	var force := (acceleration / inverse_mass).limit_length(max_force)
 	return _limit_power(force, 0.0, hand_position, delta)
@@ -202,10 +201,8 @@ func _limit_power(force: Vector2, torque: float, hand_position: Vector2, delta: 
 
 #region 抓握
 @export_group("抓握")
-## 三角形尖端相对手部质心的位置；抓取和视觉共用这一个定义。
-@export var fingertip_offset := Vector2(20.0, 0.0)
-## 一个像素中心到像素角的距离约为 0.707，只采样指尖所在的像素。
-@export var grab_radius := 0.72
+const FINGERTIP := Vector2(20.0, 0.0)
+const GRAB_RADIUS := 0.72
 
 func _update_grip(_delta: float) -> void:
 	var requested: bool = _grip_override if _grip_override != null else Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
@@ -215,7 +212,8 @@ func _update_grip(_delta: float) -> void:
 	if grip_joint != null and grip_joint.is_active():
 		return
 	_release_grab()
-	var hit = Query.closest_point(_fingertip_world(), grab_radius, [body, player_body])
+	var tip: Vector2 = body.com_world() + FINGERTIP.rotated(body.rotation)
+	var hit = Query.closest_point(tip, GRAB_RADIUS, [body, player_body])
 	if hit.hit and hit.body != null:
 		_begin_grab(hit.body, hit.point)
 
@@ -245,8 +243,6 @@ func _remove_joint(joint) -> void:
 		joint.remove()
 
 
-func _fingertip_world() -> Vector2:
-	return body.com_world() + fingertip_offset.rotated(body.rotation)
 #endregion
 
 
