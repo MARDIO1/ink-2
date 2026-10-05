@@ -11,6 +11,8 @@ var arm_joint = null
 var pivot_joint = null
 var grip_joint = null
 var grabbed_body = null
+## 开放抓点转动后，现有 PD 成对力驱动连杆和身体绕指尖运动。
+@export var rotate_grip: bool = false
 
 var target_relative := Vector2.ZERO
 var _target_override = null
@@ -29,8 +31,6 @@ var debug_force_vector: Vector2 = Vector2.ZERO
 #region 生命周期
 func _ready() -> void:
 	process_physics_priority = -10
-	# 轻手串联关节需要更细的自适应步长，避免高速抓取时角约束滞后。
-	physics_world.ccd_max_motion = 0.5
 	target_relative = rest_offset.limit_length(max_reach)
 	# 只在出生时设置位姿，之后由 Hinge + Slider 保证连杆自由度。
 	var center: Vector2 = player_body.com_world() + target_relative
@@ -47,6 +47,8 @@ func _exit_tree() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if Input.is_action_just_pressed("change_mode"):
+		set_rotation_mode(not rotate_grip)
 	_ensure_arm_joint()
 	_update_grip(delta)
 	var hand_position: Vector2 = body.com_world()
@@ -232,13 +234,22 @@ func _begin_grab(target_body, world_point: Vector2) -> bool:
 		return false
 	_ensure_arm_joint()
 	_release_grab()
-	# Weld 保持抓取瞬间的相对位置和角度，不会强行对齐两个物体。
-	grip_joint = physics_world.add_weld(target_body, body, world_point)
+	# 关闭时 Weld 锁当前相对角；打开时 Hinge 保留抓点，交给现有 PD 力控驱动摆动。
+	grip_joint = physics_world.add_hinge(target_body, body, world_point) if rotate_grip else physics_world.add_weld(target_body, body, world_point)
 	if grip_joint == null:
 		return false
 	grip_joint.contacts_enabled = false
 	grabbed_body = target_body
 	return true
+
+
+func set_rotation_mode(enabled: bool) -> void:
+	if rotate_grip == enabled:
+		return
+	rotate_grip = enabled
+	if grip_joint != null and grip_joint.is_active():
+		# 以当前锚点和相对角重建；不重置位姿、速度或把手拧回原角度。
+		_begin_grab(grabbed_body, grip_joint.anchor_b_world())
 
 
 func _release_grab() -> void:
@@ -275,14 +286,17 @@ func clear_grip_override() -> void:
 
 
 #region 负载与输入工具
-## 统一的执行器手侧：自由手、焊接组合体、固定支撑。
+## 执行器手侧：自由手、焊接组合体、固定抓点；铰接时不合并物体惯量。
 func _hand_side() -> Dictionary:
 	if grabbed_body != null and grabbed_body.is_static:
-		return {"center": body.com_world(), "inertia": 0.0, "inv_mass": 0.0, "inv_inertia": 0.0}
+		# 固定抓点的 Hinge 仍有绕指尖转动的动能，Weld 才完全固定。
+		var center: Vector2 = grip_joint.anchor_b_world() if rotate_grip else body.com_world()
+		var inertia: float = body.inertia + body.mass * body.com_world().distance_squared_to(center) if rotate_grip else 0.0
+		return {"center": center, "inertia": inertia, "inv_mass": 0.0, "inv_inertia": 1.0 / inertia if inertia > 0.0 else 0.0}
 	var mass: float = body.mass
 	var center: Vector2 = body.com_world()
 	var inertia: float = body.inertia
-	if grabbed_body != null:
+	if grabbed_body != null and not rotate_grip:
 		mass += grabbed_body.mass
 		center = (center * body.mass + grabbed_body.com_world() * grabbed_body.mass) / mass
 		inertia += grabbed_body.inertia + body.mass * body.com_world().distance_squared_to(center)

@@ -77,6 +77,36 @@ func _run() -> void:
 	var label: Label = scene.get_node("HUD/Stats")
 	print("HUD rect=%s viewport=%s text=%s" % [label.get_global_rect(), root.get_visible_rect(), label.text])
 	_check("HUD text lies inside viewport", not label.text.is_empty() and root.get_visible_rect().encloses(label.get_global_rect()))
+	var hud = scene.get_node("HUD")
+	var event: InputEventKey = InputEventKey.new()
+	event.physical_keycode = KEY_TAB
+	event.keycode = KEY_TAB
+	event.pressed = true
+	Input.parse_input_event(event)
+	await process_frame
+	_check("Tab hides debug HUD and stops force sampling", not hud.visible and not hud.forces.enabled)
+	event = event.duplicate()
+	event.pressed = false
+	Input.parse_input_event(event)
+	await process_frame
+	event = event.duplicate()
+	event.pressed = true
+	Input.parse_input_event(event)
+	await process_frame
+	_check("Tab restores debug HUD and force sampling", hud.visible and hud.forces.enabled)
+	event = event.duplicate()
+	event.pressed = false
+	Input.parse_input_event(event)
+	# 99 个10ms帧与1个100ms帧：最慢1%的均值为100ms，1% low 必须为10FPS。
+	hud.previous_tick = 0
+	hud.frame_times.resize(100)
+	hud.frame_times.fill(0.01)
+	hud.frame_times[99] = 0.1
+	hud.first = 0
+	hud.history_time = 1.09
+	hud.elapsed = 0.5
+	hud._process(0.0)
+	_check("1 percent low uses slowest frame time mean", label.text.contains("1% low 10 |"))
 	_check("ordinary material hardness doubled", scene.world.material_strength(1).x == 200.0)
 	scene.auto_step = false
 	_release(scene.world)

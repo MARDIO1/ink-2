@@ -22,9 +22,16 @@ func _ready() -> void:
 
 
 #region 固化输入
+## 开发复现文件留在 test，保存内容仍是未固化墨水。
+@export var capture_path: String = "res://test/canvas_capture.tres"
+
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_E:
 		solid.solidify(surface, world)
+	elif event.is_action_pressed("canvas_save"):
+		surface.save_ink(capture_path)
+	elif event.is_action_pressed("canvas_load"):
+		surface.load_ink(capture_path)
 #endregion

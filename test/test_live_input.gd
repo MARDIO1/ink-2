@@ -20,11 +20,27 @@ func _run() -> void:
 		await process_frame
 		_check("ground weld created", hand._begin_grab(scene.get_node("Ground").body, Vector2(0, 231)))
 		hand.set_grip(true)
-		hand.set_target_world(Vector2(side * 60, 211))
+		var climb: bool = OS.get_cmdline_user_args().has("--climb")
+		hand.set_target_world(Vector2(0, 271) if climb else Vector2(side * 60, 211))
 		var initial: Vector2 = feet.player.body.com_world()
 		scene.auto_step = true
+		var rotate: bool = OS.get_cmdline_user_args().has("--rotate")
+		var travel: float = 0.0
+		var rise: float = 0.0
+		var reach: float = 0.0
+		var power: float = 0.0
+		var grip_error: float = 0.0
 		for i in 60:
+			if rotate and i == 0:
+				_key(KEY_Q, true)
+			if rotate and i == 2:
+				_key(KEY_Q, false)
 			await physics_frame
+			travel = maxf(travel, (feet.player.body.com_world().x - initial.x) * -side)
+			rise = maxf(rise, initial.y - feet.player.body.com_world().y)
+			reach = maxf(reach, hand.body.com_world().distance_to(feet.player.body.com_world()))
+			power = maxf(power, hand.debug_active_power)
+			grip_error = maxf(grip_error, hand.grip_joint.anchor_a_world().distance_to(hand.grip_joint.anchor_b_world()))
 			if i == 1 or i == 59:
 				print("GRIP side=", side, " frame=", i, " displacement=", feet.player.body.com_world() - initial, " hand_force=", hand.debug_force_vector, " velocity=", feet.player.body.linear_velocity)
 		var debug = scene.get_node("HUD/ForceDebug")
@@ -33,6 +49,16 @@ func _run() -> void:
 				print("BODY_FORCE ", arrow.title, " = ", arrow.force)
 		_check("P+D equals applied force", (hand.debug_p_force + hand.debug_d_force).distance_to(hand.debug_force_vector) < 2.0)
 		_check("force vector observer sampled", not debug.arrows.is_empty())
+		if rotate:
+			_check("Q enables fingertip hinge", hand.rotate_grip and hand.grip_joint.kind == 0)
+			_check("grabbing floor lifts body" if climb else "opposite sideways movement restored", rise > 20.0 if climb else travel > 20.0)
+			print("ROTATION peak_reach=", reach, " peak_power=", power, " grip_error=", grip_error, " rise=", rise)
+			_check("rotation respects hand power and reach", power <= hand.max_power * (1.0 + 1e-6) and reach <= hand.max_reach)
+			_check("rotating fingertip stays attached", grip_error < 0.75)
+			var position: Vector2 = hand.body.position
+			var velocity: Vector2 = hand.body.linear_velocity
+			hand.set_rotation_mode(false)
+			_check("closing mode preserves state and creates weld", hand.grip_joint.kind == 2 and hand.body.position == position and hand.body.linear_velocity == velocity)
 		await _finish(scene, hand)
 		return
 	hand.set_target_world(Vector2(-44, 190))

@@ -84,3 +84,74 @@
 - 旧诊断要求120帧中至少100帧施力，加力后自然转动/间歇离地仅91帧，因此改为确认确实进入过施力分支；真实位移检查仍保留，空中无借力由18项回归验证。没有为了持续施力增添空中移动。
 - Q模式按用户要求先细化，不实现：确认末端转动位置、沿用PD成对力或额外角度控制、按次切换/按住及关闭时锁当前相对角。推荐保留手与物体角度绑定，开放杆/手末端转动，沿用现有PD成对力；不先加独立旋转马达，若需角度PD也须纳入手部总功率。等待用户确定。
 - 解释上次hand增加的代码：3个debug矢量字段和限幅后的P/D分解及最终力记录，只用于ForceDebug观察，没有改变关节或施力规律。本轮没有继续给hand加代码；之后每次新增先解释用途与改动范围。
+
+## 2026-10-05：接通Q抓点转动与Tab调试、1% low
+
+- 用户确认Q打开允许手相对物体转动，鼠标左侧使身体向右借力。hand新增export rotate_grip默认false、change_mode按次切换及set_rotation_mode：关闭Weld，打开指尖Hinge；已有抓点按当前锚点重建，保留位姿速度，关闭锁当前相对角。松手后保留所选模式，下次抓握继续使用。
+- 转动采用现有PD成对力驱动，未另开Rapier角度马达；力与功率上限沿用手部规则，没有双重驱动。用户已在新增前获告知用途：模式状态、输入、关节切换函数。新增惯量分支也先说明：Hinge固定抓点仍可绕指尖转动，不能沿用静态Weld零惯量；动态Hinge不按焊接组合体合并质量。静态Hinge计入I_hand+m_hand*r_tip²的转动动能。
+- Q真实按键事件加自动物理测试：左鼠标一秒使身体向右112.75px，右鼠标向左127.01px，分别8/8通过；峰值臂长95.32/108.56px，最大手功率420M未超，抓点误差约0.00002px。关闭模式没有位置或速度重置。
+- Q抓地抬升测试8/8：身体上升67.499px，臂长峰值147.500<160，功率峰值420M，抓点误差0.000015px。此为一秒功能与上限回归，不宣称已经完成全地图爬坡、长期抖动或Q模式全系统能量验收。
+- HUD读取现有debug(Tab)映射，统一切换文字和箭头；隐藏后停止力矢量采样绘制，移除ForceDebug旧F3处理。新增1% low：墙钟帧间隔，最近约10秒，最慢1%帧时间的平均值取倒数；100帧前显示--，0.5秒刷新，队列游标避免每帧搬移。UI另显示Q开关状态。
+- test_game_control增Tab隐藏/恢复与1% low定义验证（99帧10ms+1帧100ms应为10FPS），含原动量/功率等检查共21/21通过。新输入测试中修复了同帧复用可变InputEvent的测试错误，使用新实例并跨帧释放/按下，没有游戏输入补丁。
+- OpenGL实帧输入6/6通过，截图实际确认右上1% low和Q状态完整可读；截图示例FPS165、1% low94（包含启动与测试过程），不作为纯游戏稳态性能结论。临时截图仍复用test/hud_check.png。
+- 解释数值单位：玩家质量24*32*8=6144，重力600px/s²，重量3686400内部力单位；百万数值不等于牛顿，也不直接增加运算复杂度。风险主要是比例、惯量、过大运动触发CCD子步和float32精度，而非当前量级的浮点溢出。本轮没有修改引擎或按量级重缩放材料。
+
+## 2026-10-05：真实画布性能复现脚手架与清理
+
+- 按用户要求先搭脚手架，未用生成多边形冒充卡顿样本。Canvas增加F5保存、F9加载，默认res://test/canvas_capture.tres，capture_path可export修改；保存CPU Image为.tres，保留尺寸颜色透明度，加载仍为未固化墨水。canvas_surface增加save_ink/load_ink，Canvas负责按键路由；未给hand增代码。
+- test_canvas改为现有main场景，使用真实InputEvent F5/F9验证：改变画布尺寸后加载恢复320x180，像素字节完全一致，随后可固化。只将小笔划保存到user://canvas_roundtrip.tres，不占用用户真实capture路径。清理测试生命周期，退出无脚本/资源泄漏错误。
+- 重写现有test/profile_collision_damage.gd为文件复现：180步固定抬举，读回开关/形状矩形数，记录手、世界步、原生推送求解读回、接触和结算时间，单步超过2秒终止。不存在真实capture时退出提示，不执行替代性能实验。小笔划只跑一次脚手架连通性smoke，未据此宣称真实性能正常。
+- 核对当前实际运行路径：CollisionDamage接管_substep_rapier；contact_events显式false，profile/rp_debug/shading为false，soft_ccd=0，sleep=true，ccd=true，rp_ccd_substeps=1，hand设ccd_max_motion=0.5。并非全部开关打开。
+- 源码复杂度候选：native逐索引contact_get_points每次从头遍历接触对，全部查询累计O(P²)且逐子步重复；引擎和游戏重复查询接触数量；lanes按点排序/接触宽度展开，trace按深度*形状数访问；复杂体矩形数量与全局CCD子步共同放大原生求解和接触查询成本。
+- 另确认抓取CCD成本预算仅针对world.grabs，游戏用Joint而grabs为空，因此预算未覆盖当前hand抓握。具体贡献仍需真实形状消融，未修改addon或关闭CCD作为修复。调查路径/顺序追加到现有test/engine_performance_request.md。
+- 清理已被替代且无脚本引用的3组临时脚本及UID：capture_hand_visual、capture_ground_pushup、reproduce_tilted_stack；清理5张旧PNG及import：editor_canvas、box_pushup、ground_pushup、hand_visual、hud_check。删除通过原生Remove-Item在已校验test绝对路径内完成；此次有用户明确清理授权，执行允许。保留物理/抖动/破坏/输入核心回归。旧profile的Axial/HeavyArm分支随重写移除。
+- 已向用户提出F5/F9路径与真实样本请求。当前test/canvas_capture.tres不存在，真实性能消融等待用户画出并F5保存；不把样本缺失当作测试通过。未提交Git。
+
+## 2026-10-05 F5真实不规则物体性能消融
+
+- 用户保存canvas_capture.tres后，实测3770像素/275碰撞矩形。仅扩展test/profile_collision_damage.gd：自然提交、同步、渲染tile、CCD源头计时；加入--slam、--cut、--no-sync。未改游戏控制、材料或addon。
+- 抬举平均7.029ms/P95 11.960ms/峰值39.900ms，原生推送-求解-读回约82%；轻手求解前1556.281px/s而被抓物体0，触发52全局子步。仅诊断关闭CCD后平均0.355ms，不作为防穿修复。
+- 损伤尖峰的最大单项是800×40底板13/13贴图整图重绘约20ms；关闭全部sync后同一下砸峰值39.312降为19.051ms。原--no-render没有覆盖sync_world_bodies内部强制渲染，已纠正消融漏项。
+- 真实形状受控切37像素，新增3碎片。带窗口live：fracture_pixels 7.961ms、额外refresh_mass 0.856ms、sync 3.454ms，后继物理帧2.612ms。独立拷贝split3.733ms、质量0.780ms、矩形分解4.322ms，仅作算法诊断不可相加替代接口总计。
+- 本样本自然下砸只产生局部损伤，没有新碎片；真正断裂为明确标注的受控接口测试。没有复现秒级卡死，不把CPU段耗时当整帧GPU/FPS。日志无脚本错误，有已有Camera2D插值回调警告。
+- 详细优化Request写入现有test/engine_performance_request.md：局部脏范围，Joint组CCD调度，去重复rebuild，原生细分计时。没有提交git或改引擎。
+
+## 2026-10-05 引擎接口与性能开关复核
+
+- 读取引擎AGENTS、v0.3.5发布说明、性能手册及实际调用。安装脚本与本地引擎的差异是资源路径重写和去class_name，没有发现该处功能未更新。本轮未fetch/构建/覆盖，源仓库两DLL已有修改未触碰。
+- 事件/profile/rp_debug/shading关闭，休眠开启，GPU常量关闭且掩码破坏接口直走CPU。ccd_max_substeps、ccd_auto、ccd_clamp_motion、ccd_max_rotation、fill_contact_impulses_enabled、profile_enabled目前仅声明未读取；文档不能代替源码确认。
+- 仅既有测试新增--inactive-off与--engine-motion。顺序180步同批次：baseline均值10.091ms；残留bool关10.322ms；2px CCD步长3.639ms/子步52降13；事件开24.473ms。恢复2px约快2.8倍但改变轨迹，未验证薄壁与稳定性，不改hand生产配置。
+- 接口已接通contact_info和fracture_pixels；前者内部两次op35，后者仍CPU分片。节点固定步信号不会由游戏手动子步路径自动发出。auto_render不覆盖sync_world_bodies内部强制渲染。详细表与Request追加现有test/engine_performance_request.md。
+
+## 2026-10-05 统一游戏CCD步长
+
+- 按用户要求删除actor/player/src/hand.gd::_ready中的ccd_max_motion=0.5及对应注释，由引擎默认2.0统一控制。本次未改手质量、最大力、功率或损伤冷却；历史消融脚本的显式步长对照保留。
+- 真实画布profile运行读回motion=2.0，180步平均2.419ms/P95 4.003ms/峰值34.621ms，最大13子步。损伤整图同步尖峰仍存在。
+- 手部测试48通过/1失败：dynamic/weld relative angle最大0.122076度超过原阈值。未放宽阈值，也未新增控制补丁。测试退出还报告549 ObjectDB和3资源残留，性能脚本退出没有该残留；不能宣称全验收通过。
+- 向用户区分同一步像素并集去重、跨固定步的新损伤提交，以及fracture_pixels后refresh_mass造成的重复rebuild；冷却尚未实现。
+
+## 2026-10-06 更新安装stable v0.3.6
+
+- fetch origin后，stable快进7714886→0785037(v0.3.6)。origin/main另有b8e0ecb，保持stable发布路线，没有安装未发布main。
+- 原插件及源仓库两个已有修改DLL备份到T:/GODOT/bag/ink2_backup_20261006_036，项目外备份避免重复加载。build_addon.py --verify通过(32脚本/90内部引用)，安装生成文件，保留游戏原.uid及原生配置。该版本无原生源码改动，两个已安装DLL与源仓库本地DLL哈希相同，未重编译DLL；运行中的编辑器332572未终止。
+- 游戏新进程：Canvas保存/加载/尺寸/固化PASS；真实3770像素/275矩形cut删37像素、新增3碎片。CPU均值3.701ms/P95 7.786ms，最大56.173ms主要为底板同步33.176ms；当批主机负载变化，不据此断言新版退化。子步最大13，motion=2.0。
+- HandPhysics仍48pass/1fail，Weld相对角误差0.122076°超0.1°，与升级前一致；其测试退出仍549 ObjectDB/3资源残留。未放宽测试、未增加控制补丁。
+- 说明CCD为高速连续检测，不是额外手；全局子步与原生CCD并存，但前者还服务约束精度。限制子步可能穿透或增加约束误差，不能保证靠旧未读取clamp开关兜底。
+- 屏幕外冻结规则通过异步问题待用户确认。当前只有删除型cull_outside，没有独立可恢复禁用body接口；不能用隐藏、awake=false或直接删bodies冒充冻结。本轮未实现冻结。
+
+## 2026-10-06 启动报错修复及窗口性能复测
+
+- 真实godot.log与正常主场景复现Cannot get class RapierPhys，继发Nil.get_reference_count/cmd错误。根因是上次安装错误复制生成物根.gdignore，插件重新扫描时被忽略，extension_list为空。删除该文件并运行headless --editor --import --quit，重新确认扩展注册路径。承认安装遗漏，不归因引擎物理。
+- main.tscn仅移除PixelWorld外部脚本失效UID，保留固定路径。正常主场景无头和带窗口各180帧运行，最终startup036_final.log错误与invalidUID数0，仅已有Camera2D插值warning。未终止用户332572编辑器及其旧运行进程。
+- 窗口性能同批：slam平均4.327ms/P95 6.689ms/峰值56.283ms，底板同步35.345ms；no-sync同一损伤帧20.866ms；无伤害最大8.123ms。cut-live平均3.757ms，删37像素生成3碎片，fracture13.298ms/refresh1.390ms/sync5.923ms，物理子步峰值13。
+- 主机时序与旧批不同，不声称更新使某项快/慢多少倍；持续帧与损伤峰值区分。下一步主要优化局部脏范围与去重复rebuild，尚未改引擎算法。
+- 已记录现有engine_performance_request.md。后续安装排除.gdignore，必须扫描后验证正常主场景启动，避免旧缓存让测试假通过。
+
+## 2026-10-06 编辑器实际F5闭环修复
+
+- 用户旧编辑器332572从10/5 18:17持续运行。其主场景被改为旧UID d5tip6c722xe，对应map/main.tscn，仍引用materials和旧player/canvas脚本路径；扩展列表又缺失。此前正常新进程测试不能替代这个旧编辑器状态。
+- 用户明确回复“已保存，可以重启编辑器”后关闭332572。备份project.godot及两份编辑器配置到T:/GODOT/bag/ink2_backup_20261006_editor。
+- 搜索确认当前模块化场景不引用5个旧重复场景：map/main.tscn、map/main2.tscn、actor/player/player.tscn、actor/player/hand.tscn、actor/canvas/canvas.tscn。将它们按原相对路径移到上述项目外obsolete备份，可恢复；asset中的现行场景保留。
+- project.godot主场景明确使用res://map/asset/main.tscn；清理编辑器recent_files与选中路径的失效条目，重新import。import退出有既有3资源残留，运行时没有该错误。
+- 新可见编辑器391880(控制台父373200)已打开。通过窗口输入实际F5，生成子进程392196，命令明确--editor-pid 391880 --scene res://map/asset/main.tscn。新运行godot.log和editor_live_fixed.log均0个ERROR/SCRIPT ERROR/invalid UID；只已有Camera2D插值warning。扩展列表仍含fastphys.gdextension。
+- 保留新编辑器及F5游戏供用户操作。临时窗口截图已删除，没有留额外美术资产。未声称整个手部物理验收通过，已有Weld0.122°失败仍保留。

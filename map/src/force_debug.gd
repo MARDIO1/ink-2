@@ -1,6 +1,6 @@
 extends Node2D
 ## HUD 上的力观察器：接触冲量按固定步累加；关节合力用动量差扣除已知力得到。
-## 引擎未暴露逐关节矢量，余项不冒充某一个关节的精确反力。F3 开关。
+## 引擎未暴露逐关节矢量，余项不冒充某一个关节的精确反力。由 HUD 的 Tab 统一开关。
 @export var enabled: bool = true
 @export var force_scale: float = 0.000015
 @onready var main = $"../.."
@@ -17,11 +17,6 @@ const COLORS: Array[Color] = [Color.CYAN, Color.ORANGE, Color.LIME_GREEN, Color.
 #region 固定步采样
 func _ready() -> void:
 	process_physics_priority = -40
-
-func _unhandled_key_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F3:
-		enabled = not enabled
-		queue_redraw()
 
 func _physics_process(_delta: float) -> void:
 	if not enabled:
@@ -96,7 +91,7 @@ func _draw() -> void:
 	if not enabled:
 		return
 	var font: Font = ThemeDB.fallback_font
-	draw_string(font, Vector2(12, 20), "F3 力矢量 | 青 P / 橙 D / 绿 AD / 黄 跳跃", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.DARK_SLATE_GRAY)
+	draw_string(font, Vector2(12, 20), "Tab 调试 | 青 P / 橙 D / 绿 AD / 黄 跳跃", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.DARK_SLATE_GRAY)
 	draw_string(font, Vector2(12, 36), "灰 重力 / 蓝 支撑 / 紫 摩擦 / 红 约束余项", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.DARK_SLATE_GRAY)
 	# 两个 CanvasItem 的变换相除，抵消全屏拉伸；否则箭头会被再次放大到屏幕外。
 	var transform: Transform2D = get_global_transform_with_canvas().affine_inverse() * main.get_global_transform_with_canvas()

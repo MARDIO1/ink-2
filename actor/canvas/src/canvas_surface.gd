@@ -155,3 +155,32 @@ func _stamp(center: Vector2, color: Color) -> void:
 func is_solid(x: int, y: int) -> bool:
 	return black_image.get_pixel(x, y).a > 0.5
 #endregion
+
+
+#region 画布复现文件
+## 保存 CPU 像素缓冲，包含颜色、透明度和尺寸；不读取 GPU，不触发固化。
+func save_ink(path: String) -> Error:
+	var error: Error = ResourceSaver.save(black_image, path)
+	if error == OK:
+		print("CANVAS saved: ", ProjectSettings.globalize_path(path))
+	else:
+		push_error("Canvas save failed: %s (%d)" % [path, error])
+	return error
+
+
+func load_ink(path: String) -> Error:
+	if not ResourceLoader.exists(path):
+		push_error("Canvas file missing: " + path)
+		return ERR_FILE_NOT_FOUND
+	var image: Image = ResourceLoader.load(path, "Image", ResourceLoader.CACHE_MODE_IGNORE) as Image
+	if image == null or image.is_empty():
+		push_error("Canvas file is not an Image: " + path)
+		return ERR_INVALID_DATA
+	_painting = false
+	get_parent().canvas_size = image.get_size()
+	black_image = image
+	black_image.convert(Image.FORMAT_RGBA8)
+	black_texture.update(black_image)
+	print("CANVAS loaded: ", ProjectSettings.globalize_path(path))
+	return OK
+#endregion

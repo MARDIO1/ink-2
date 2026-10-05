@@ -1,12 +1,9 @@
-[gd_resource type="Resource" script_class="PixelMaterial" load_steps=2 format=3]
+[gd_resource type="Resource" format=3 uid="uid://5e73rqefu12n"]
 
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="1_mat"]
+[ext_resource type="Script" uid="uid://chdh46srdqdtn" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="1_mat"]
 
 [resource]
 script = ExtResource("1_mat")
 display_name = "black"
-id = 1
 color = Color(0, 0, 0, 1)
-density = 1.0
 compress_strength = 200.0
-shear_strength = -1.0
