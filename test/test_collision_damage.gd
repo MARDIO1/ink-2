@@ -162,17 +162,18 @@ func _release(world) -> void:
 			shape.owner_body = null
 		world.remove_body(body)
 		body.shapes.clear()
-	# 引擎的缓存 lambda 捕获 world；释放测试世界时解除自身引用。
-	world._density_fn = Callable()
-	world._friction_fn = Callable()
-	world._restitution_fn = Callable()
 	world._rp = null
 
 
 func _test_commit(calc) -> void:
 	var world = PWorld.new()
 	world.set_material_density(1, 2.0)
+	world.set_material_friction(1, 0.8)
+	world.set_material_restitution(1, 0.15)
 	var body = _body(world, Vector2.ZERO, Vector2i(8, 8))
+	body.collision_layer = 4
+	body.collision_mask = 3
+	body.gravity_scale = 0.25
 	body.linear_velocity = Vector2(5, 3)
 	body.angular_velocity = 2.0
 	var center: Vector2 = body.com_world()
@@ -200,6 +201,11 @@ func _test_commit(calc) -> void:
 	_check("fragments inherit local rigid velocity", velocities)
 	_check("fracture does not add kinetic energy", world.total_kinetic_energy() <= energy + 0.001)
 	_check("fragment mass keeps material density", is_equal_approx(world.bodies[0].mass + world.bodies[1].mass, 110.0))
+	var properties: bool = true
+	for fragment in world.bodies:
+		properties = properties and is_equal_approx(fragment.friction, 0.8) and is_equal_approx(fragment.restitution, 0.15)
+		properties = properties and fragment.collision_layer == 4 and fragment.collision_mask == 3 and fragment.gravity_scale == 0.25
+	_check("fracture preserves material and collision properties", properties)
 	var all: Dictionary = {}
 	for fragment in world.bodies:
 		all[fragment] = {}

@@ -20,12 +20,15 @@ var _grip_override = null
 var debug_active_power := 0.0
 var debug_angular_effort := 0.0
 var debug_linear_effort := 0.0
+var debug_p_force: Vector2 = Vector2.ZERO
+var debug_d_force: Vector2 = Vector2.ZERO
+var debug_force_vector: Vector2 = Vector2.ZERO
 #endregion
 
 
 #region 生命周期
 func _ready() -> void:
-	process_priority = -10
+	process_physics_priority = -10
 	# 轻手串联关节需要更细的自适应步长，避免高速抓取时角约束滞后。
 	physics_world.ccd_max_motion = 0.5
 	target_relative = rest_offset.limit_length(max_reach)
@@ -118,7 +121,12 @@ func _calculate_motor(target_position: Vector2, hand_position: Vector2, delta: f
 		- velocity * (position_damping + position_stiffness * delta)) * stable
 	var inverse_mass: float = _hand_side()["inv_mass"] + player_body.inv_mass
 	var force := (acceleration / inverse_mass).limit_length(max_force)
-	return _limit_power(force, 0.0, hand_position, delta)
+	force = _limit_power(force, 0.0, hand_position, delta)
+	var raw: Vector2 = acceleration / inverse_mass
+	var scale: float = force.length() / raw.length() if raw.length() > 0.0 else 0.0
+	debug_p_force = (target_position - hand_position) * position_stiffness * stable / inverse_mass * scale
+	debug_d_force = -velocity * (position_damping + position_stiffness * delta) * stable / inverse_mass * scale
+	return force
 
 #endregion
 
@@ -132,6 +140,7 @@ func _apply_internal_wrench(
 ) -> void:
 	# 成对中心冲量保持线动量；角动量开关决定是否给身体配平力矩。
 	var torques := _internal_torques(force, aim_torque, hand_position)
+	debug_force_vector = force
 	body.apply_central_impulse(force * delta)
 	body.apply_torque_impulse(torques.x * delta)
 	player_body.apply_central_impulse(-force * delta)

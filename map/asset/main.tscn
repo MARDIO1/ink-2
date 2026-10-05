@@ -11,6 +11,8 @@
 [ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="9_player_mat"]
 [ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="10_hand_mat"]
 [ext_resource type="Script" path="res://map/src/collision_damage.gd" id="11_damage"]
+[ext_resource type="Script" path="res://map/src/hud.gd" id="12_hud"]
+[ext_resource type="Script" path="res://map/src/force_debug.gd" id="13_forces"]
 
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10
@@ -47,12 +49,25 @@ rect_size = Vector2i(32, 32)
 [node name="Player" parent="." unique_id=1427605215 instance=ExtResource("6_vthes")]
 position = Vector2(-128, 196)
 
-[node name="HUD" type="Control" parent="." unique_id=1228885047]
-visible = false
-layout_mode = 3
-anchors_preset = 0
-offset_right = 40.0
-offset_bottom = 40.0
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1228885047]
+script = ExtResource("12_hud")
+
+[node name="Stats" type="Label" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -470.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = 80.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.1, 0.1, 0.1, 1)
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 2
 
 [node name="CollisionDamage" type="Node" parent="."]
 script = ExtResource("11_damage")
+
+[node name="ForceDebug" type="Node2D" parent="HUD"]
+script = ExtResource("13_forces")

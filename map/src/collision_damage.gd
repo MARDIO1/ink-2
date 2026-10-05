@@ -4,7 +4,6 @@ extends Node
 ## 不保存像素余量；碎片只需 PBody，不需要额外挂载脚本。
 
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
-const Destruction = preload("res://addons/pixel_destruction/core/destruction.gd")
 
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
 var damage_scale: float = 0.012
@@ -18,6 +17,8 @@ var _elapsed: float = 0.0
 var _main = null
 var _player = null
 var _protected: Array = []
+@onready var _feet = $"../Player/PlayerInput"
+@onready var _forces = get_node_or_null("../HUD/ForceDebug")
 #endregion
 
 
@@ -32,8 +33,8 @@ func _start() -> void:
 	_player = _main.get_node("Player")
 	_protected = [_player.get_node("Arm").body, _player.get_node("Arm/Hand").body]
 	_main.set_physics_process(false)
-	_main.world.contact_events_enabled = true
-	process_priority = _main.process_priority + 1
+	_main.world.contact_events_enabled = false
+	process_physics_priority = _main.process_physics_priority + 1
 
 
 func _physics_process(delta: float) -> void:
@@ -41,34 +42,35 @@ func _physics_process(delta: float) -> void:
 		return
 	_elapsed += delta
 	var steps: int = 0
-	var changed: Dictionary = {}
 	while _elapsed >= _main.fixed_dt and steps < _main.max_substeps:
 		var result: Dictionary = _step(_main.fixed_dt)
 		_player.apply_collision_damage(result.player_damage)
 		if not result.removals.is_empty():
-			var nodes: Dictionary = {}
-			for i in _main._body_nodes.size():
-				nodes[_main.world.bodies[i]] = _main._body_nodes[i]
-			var committed: Dictionary = commit(_main.world, result.removals)
-			_main._body_nodes.clear()
+			var nodes: Array = _main._body_nodes.duplicate()
+			commit(_main.world, result.removals)
+			_main.sync_world_bodies()
 			var live: Dictionary = {}
 			for body in _main.world.bodies:
-				_main._body_nodes.append(nodes.get(body))
 				live[body] = true
-			for body in committed.changed:
-				changed[body] = true
-				if not live.has(body) and is_instance_valid(nodes.get(body)):
-					nodes[body].queue_free()
+			for node in nodes:
+				if is_instance_valid(node) and not live.has(node.body):
+					node.queue_free()
 		_elapsed -= _main.fixed_dt
 		steps += 1
 	if _elapsed > _main.fixed_dt * _main.max_substeps:
 		_elapsed = 0.0
+	if is_instance_valid(_forces):
+		_forces.finish(delta)
 	if _main.auto_render and _main.renderer != null:
-		_main.renderer.prune(_main._live_ids())
+		# 内部连杆不可见，手已有三角形视觉；引擎 sync_world_bodies 尚未过滤自有视觉。
+		var visible: Dictionary = _main._live_ids()
+		for body in _protected:
+			visible.erase(body.id)
+		_main.renderer.prune(visible)
 		for i in _main.world.bodies.size():
 			var body = _main.world.bodies[i]
 			var node = _main._body_nodes[i]
-			if (not body.is_static or changed.has(body)) and (node == null or not _main.has_own_sprite(node)):
+			if not body.is_static and not _protected.has(body) and (node == null or not _main.has_own_sprite(node)):
 				_main.renderer.sync(body)
 
 
@@ -103,7 +105,12 @@ func _step(delta: float) -> Dictionary:
 ## 重叠删除取并集；每条 lane 独立消费预算，未满一个像素的余量舍弃。
 func calculate(world, player_body: PBody = null, protected_bodies: Array = []) -> Dictionary:
 	var result: Dictionary = {"removals": {}, "player_damage": 0.0}
-	for contact in world.contacts:
+	var contacts: Array = _contacts(world)
+	if is_instance_valid(_forces):
+		_forces.sample_contacts(contacts, _main.fixed_dt / world.last_substeps)
+	if is_instance_valid(_feet):
+		_feet.update_support(contacts)
+	for contact in contacts:
 		if contact.approach <= min_approach:
 			continue
 		for lane in _lanes(contact.points):
@@ -174,6 +181,30 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 
 
 #region 接触面
+## 只查询冲量，避免接触事件逐像素计算宽度与应力。
+func _contacts(world) -> Array:
+	if not world.contacts.is_empty():
+		return world.contacts
+	var bodies: Dictionary = {}
+	for body in world.bodies:
+		bodies[body.rapier_id] = body
+	var contacts: Array = []
+	for i in world.contact_pair_count():
+		var info: Dictionary = world.contact_info(i)
+		var a = bodies.get(info.id_a)
+		var b = bodies.get(info.id_b)
+		if a == null or b == null or info.points.is_empty():
+			continue
+		var point: Dictionary = info.points[0]
+		var ra: Vector2 = point.position - a.com_world()
+		var rb: Vector2 = point.position - b.com_world()
+		var va: Vector2 = Vector2(a.pre_vx, a.pre_vy) + Vector2(-ra.y, ra.x) * a.pre_w
+		var vb: Vector2 = Vector2(b.pre_vx, b.pre_vy) + Vector2(-rb.y, rb.x) * b.pre_w
+		contacts.append({"a": a, "b": b, "points": info.points,
+			"approach": -(vb - va).dot(point.normal)})
+	return contacts
+
+
 ## 同法线点投影到切线，两端间按像素宽度分配；总冲量严格归一。
 ## 当前 collider 是矩形，通常只有 1～2 点；不同法线分组，避免跨拐角连线。
 func _lanes(points: Array) -> Array:
@@ -271,72 +302,24 @@ func calculate_shear() -> void:
 
 
 #region 现有破坏接口
-## 每个受损物体一次提交：先删并集，再统一分片；不按切槽段反复重建整个物体。
+## 每个受损物体提交一次掩码，分片由引擎负责。
 func commit(physics, removals: Dictionary) -> Dictionary:
 	var changed: Array = []
 	for body in removals:
-		var center: Vector2 = body.com_world()
-		var velocity: Vector2 = body.linear_velocity
-		var angular: float = body.angular_velocity
-		var parts: Array = []
-		var dirty: Rect2i = Rect2i()
-		var replaced: bool = false
-		for shape in body.shapes:
-			var bounds: Rect2i = Rect2i()
-			for pixel: Vector2i in removals[body].get(shape, {}):
-				if shape.get_pixel(pixel.x, pixel.y) == 0:
-					continue
-				shape.clear_pixel(pixel.x, pixel.y)
-				var cell: Rect2i = Rect2i(pixel, Vector2i.ONE)
-				bounds = cell if not bounds.has_area() else bounds.merge(cell)
-			if not bounds.has_area():
-				parts.append(shape)
-				continue
-			dirty = bounds if not dirty.has_area() else dirty.merge(bounds)
-			# 复用引擎的保连通判据；无法证明时才做全量分片。
-			var connected: int = Destruction.local_connectivity(shape, bounds, physics.min_fragment_pixels)
-			if connected == Destruction.LOCAL_CONNECTED:
-				parts.append(shape)
-			elif connected == Destruction.LOCAL_UNKNOWN:
-				parts.append_array(Destruction.split(shape, physics.min_fragment_pixels))
-				replaced = true
-		if not dirty.has_area():
-			continue
-		changed.append(body)
-		if parts.is_empty():
-			physics.remove_body(body)
-			continue
-		var best: int = 0
-		if parts.size() > 1:
-			var best_count: int = parts[0].pixel_count()
-			for i in range(1, parts.size()):
-				var count: int = parts[i].pixel_count()
-				if count > best_count:
-					best = i
-					best_count = count
-		# 分片移走了远处像素时必须全量刷新；保连通时只标记实际改动范围。
-		body.rebuild([parts[best]], physics.density_callable(), physics.max_rects_per_shape,
-			Rect2i() if replaced or parts.size() > 1 else dirty, physics.friction_callable(), physics.restitution_callable())
-		var survivors: Array = [body]
-		for i in parts.size():
-			if i == best:
-				continue
-			var fragment = PBody.new()
-			fragment.position = body.position
-			fragment.rotation = body.rotation
-			physics.add_body(fragment, [parts[i]], physics.density_callable(), true)
-			survivors.append(fragment)
-			changed.append(fragment)
-		if survivors.size() > 1:
-			physics.solver.clear_warm()
-		for survivor in survivors:
-			var offset: Vector2 = survivor.com_world() - center
-			survivor.linear_velocity = velocity + Vector2(-angular * offset.y, angular * offset.x)
-			survivor.angular_velocity = angular
-			survivor.collision_layer = body.collision_layer
-			survivor.collision_mask = body.collision_mask
-			survivor.gravity_scale = body.gravity_scale
-			survivor.awake = true
-			survivor.sleep_timer = 0.0
+		var result: Dictionary = physics.fracture_pixels(body, removals[body], 0.0)
+		if result.removed > 0:
+			# 新接口未传材质摩擦/弹性回调；用公开接口恢复，避免破坏后手感改变。
+			if result.body_alive:
+				physics.refresh_mass(body)
+			for fragment in result.fragments:
+				fragment.collision_layer = body.collision_layer
+				fragment.collision_mask = body.collision_mask
+				fragment.gravity_scale = body.gravity_scale
+				# 保持原规则：地形断开的块成为可下落的物体。
+				if fragment.is_static:
+					fragment.is_static = false
+					physics.refresh_mass(fragment)
+			changed.append(body)
+			changed.append_array(result.fragments)
 	return {"changed": changed, "calls": removals.size()}
 #endregion

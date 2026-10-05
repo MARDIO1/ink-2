@@ -18,7 +18,7 @@ class Probe:
 			for pixels in result.removals.get(target, {}).values():
 				applied_pixels.merge(pixels, true)
 			return result
-		for contact in world.contacts:
+		for contact in _contacts(world):
 			if (contact.a == hand and contact.b == target) or (contact.b == hand and contact.a == target):
 				approach = maxf(approach, contact.approach)
 				for lane in _lanes(contact.points):
@@ -90,14 +90,14 @@ func _scenario(slam: bool, apply: bool = false) -> void:
 		for pixel: Vector2i in probe.applied_pixels:
 			depth = maxi(depth, pixel.y + 1)
 		print("APPLIED SLAM actual_ground_removed=%d depth=%d bodies=%d" % [removed, depth, scene.world.bodies.size()])
-		_check("calibrated slam only removes one surface layer", removed >= 1 and removed <= 32 and depth == 1)
+		_check("harder material withstands the former one-layer slam", removed == 0 and depth == 0)
 	else:
 		print("CALIBRATE slam=%s hand_approach=%.2f max_lane_impulse=%.2f scales_pixels_depth=%s" % [
 			slam, probe.approach, probe.impulse, str(probe.peaks)])
 		var selected: Vector2i = probe.peaks.get(0.012, Vector2i(-1, -1))
 		if slam:
 			_check("held block really strikes the ground", probe.approach > probe.min_approach and probe.impulse > 0.0)
-			_check("full slam is near the first-layer threshold", selected.x > 0 and selected.x <= 32 and selected.y == 1)
+			_check("hardness increase reduces the former slam damage", selected == Vector2i.ZERO)
 		else:
 			_check("ordinary fall produces no terrain damage", selected == Vector2i.ZERO)
 	scene.auto_step = false

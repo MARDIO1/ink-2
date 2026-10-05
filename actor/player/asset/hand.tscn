@@ -30,6 +30,7 @@ rect_size = Vector2i(24, 14)
 material_id = 3
 
 [node name="Visual" type="Polygon2D" parent="Hand" unique_id=315775535]
+process_physics_priority = 20
 script = ExtResource("7_visual")
 color = Color(0, 0, 0, 1)
 polygon = PackedVector2Array(-10, -7, -10, 7, 20, 0)
