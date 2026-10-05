@@ -60,5 +60,8 @@ func _spawn_component(world, pos, part) -> bool:
 	var shape_node = CanvasShape.new()
 	shape_node.shape = part
 	body_node.add_child(shape_node)
+	# add_body_node 只烘焙物理体；节点仍需由场景管理生命周期。
+	world.add_child(body_node)
+	body_node.global_position = pos
 	return world.add_body_node(body_node) != null
 #endregion

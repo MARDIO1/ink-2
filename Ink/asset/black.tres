@@ -8,5 +8,5 @@ display_name = "black"
 id = 1
 color = Color(0, 0, 0, 1)
 density = 1.0
-compress_strength = 0.0
+compress_strength = 100.0
 shear_strength = -1.0

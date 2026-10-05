@@ -10,6 +10,7 @@
 [ext_resource type="Script" uid="uid://dcqnoa67srpgu" path="res://actor/player/src/player_camera.gd" id="8_camera"]
 [ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="9_player_mat"]
 [ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="10_hand_mat"]
+[ext_resource type="Script" path="res://map/src/collision_damage.gd" id="11_damage"]
 
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10
@@ -52,3 +53,6 @@ layout_mode = 3
 anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
+
+[node name="CollisionDamage" type="Node" parent="."]
+script = ExtResource("11_damage")

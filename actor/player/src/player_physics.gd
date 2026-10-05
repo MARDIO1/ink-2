@@ -4,6 +4,15 @@ extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
 
 @export var world_path := NodePath("..")
 
+#region 碰撞伤害
+## 只累计世界结算器给出的伤害；身体像素保持完整，生命和死亡以后接入。
+var collision_damage: float = 0.0
+
+
+func apply_collision_damage(amount: float) -> void:
+	collision_damage += maxf(amount, 0.0)
+#endregion
+
 
 func _bake_lazily():
 	return get_node(world_path).add_body_node(self)
