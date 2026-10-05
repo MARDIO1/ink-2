@@ -31,6 +31,8 @@ var debug_force_vector: Vector2 = Vector2.ZERO
 #region 生命周期
 func _ready() -> void:
 	process_physics_priority = -10
+	# 仅提高手所在约束岛的精度，不增加全世界的碰撞检测次数。
+	body.additional_solver_iterations = 32
 	target_relative = rest_offset.limit_length(max_reach)
 	# 只在出生时设置位姿，之后由 Hinge + Slider 保证连杆自由度。
 	var center: Vector2 = player_body.com_world() + target_relative
@@ -42,6 +44,12 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	if body != null:
+		body.control_force = Vector2.ZERO
+		body.control_torque = 0.0
+	if player_body != null:
+		player_body.control_force = Vector2.ZERO
+		player_body.control_torque = 0.0
 	_release_grab()
 	_remove_arm()
 
@@ -107,7 +115,8 @@ func _calculate_target_position(pivot: Vector2, _delta: float) -> Vector2:
 #region 力控与朝向
 @export_group("主动马达")
 @export var position_stiffness := 140.0
-@export var position_damping := 32.0
+## 持续力积分下增加阻尼，使动态承重支点能收敛；不额外锁速度。
+@export var position_damping := 48.0
 ## 固定执行器上限，抓到重物后不增加。
 @export var max_force := 8000000.0
 @export var max_power := 420000000.0
@@ -133,20 +142,20 @@ func _calculate_motor(target_position: Vector2, hand_position: Vector2, delta: f
 #endregion
 
 
-#region 成对冲量与角动量
+#region 成对力与角动量
 func _apply_internal_wrench(
 	force: Vector2,
 	aim_torque: float,
 	hand_position: Vector2,
-	delta: float
+	_delta: float
 ) -> void:
-	# 成对中心冲量保持线动量；角动量开关决定是否给身体配平力矩。
+	# 成对中心力在物理子步中积分，避免轻手的整帧瞬态冲量放大全局子步。
 	var torques := _internal_torques(force, aim_torque, hand_position)
 	debug_force_vector = force
-	body.apply_central_impulse(force * delta)
-	body.apply_torque_impulse(torques.x * delta)
-	player_body.apply_central_impulse(-force * delta)
-	player_body.apply_torque_impulse(torques.y * delta)
+	body.control_force = force
+	body.control_torque = torques.x
+	player_body.control_force = -force
+	player_body.control_torque = torques.y
 	body.awake = true
 	body.sleep_timer = 0.0
 	player_body.awake = true

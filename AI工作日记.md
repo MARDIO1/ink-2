@@ -155,3 +155,43 @@
 - project.godot主场景明确使用res://map/asset/main.tscn；清理编辑器recent_files与选中路径的失效条目，重新import。import退出有既有3资源残留，运行时没有该错误。
 - 新可见编辑器391880(控制台父373200)已打开。通过窗口输入实际F5，生成子进程392196，命令明确--editor-pid 391880 --scene res://map/asset/main.tscn。新运行godot.log和editor_live_fixed.log均0个ERROR/SCRIPT ERROR/invalid UID；只已有Camera2D插值warning。扩展列表仍含fastphys.gdextension。
 - 保留新编辑器及F5游戏供用户操作。临时窗口截图已删除，没有留额外美术资产。未声称整个手部物理验收通过，已有Weld0.122°失败仍保留。
+
+## 2026-10-06 CPU优化实测（本地实现，未发布）
+
+- 基线：已安装v0.3.6；引擎源码在main、HEAD 0785037上进行本地修改，没有提交或推进stable。之前两份本地DLL备份在T:/GODOT/bag/ink2_opt_before_20261006。
+- `actor/player/src/hand.gd::_apply_internal_wrench` 改为覆盖PBody.control_force/control_torque，成对力进入Rapier子步积分，退出归零。以前先把整帧冲量塞给84质量的轻手，尚未求解Joint的瞬态速度让全世界CCD子步升到15；修改后同画布峰值4子步。保留CCD、碰撞、力和功率上限。
+- `src/physics/pbody.gd` 新增独立执行器输出及additional_solver_iterations；`src/physics/pworld.gd::_substep_rapier` 通过op40设置局部约束岛求解精度。`gdext/fastphys.cpp` 与 `gdext/rapier_bridge/src/lib.rs` 实现该指令。手用32追加迭代，不增加全世界窄相检测次数。PD阻尼32->48；未加位置/速度锁。
+- `src/physics/pworld.gd::fracture_pixels` 只处理修改的shape，已有局部连通性判据能证明连通时跳过全量split；无分片的损伤传实际dirty范围。重建统一计算材质摩擦、恢复系数，碎片继承layer/mask/gravity_scale；可选dynamic_fragments保持游戏地形脱落规则。`map/src/collision_damage.gd::commit` 因此删除重复refresh_mass及属性修补。
+- `gdext/rapier_bridge/src/lib.rs::rb_contact_get_points` 原来查询第i对每次从头扫，取全部接触对是O(N²)。现在每步懒建一次ColliderHandle索引，body删除/碰撞体重建时失效；不缓存跨步冲量或裸指针。
+
+### 三轮前后对照
+
+真实`test/canvas_capture.tres`，3770像素、275矩形；两组各180帧、各三次新进程。断裂阶段删37像素生成3碎片，真实fracture+refresh+sync计入帧统计，副本算法诊断不计。旧版本仅用--legacy-refresh复现原先额外refresh。两组保留渲染和调试观察。
+
+| 场景 | 原均值ms | 新均值ms | 原P95 ms | 新P95 ms |
+| --- | ---: | ---: | ---: | ---: |
+| 抬举后下砸 | 2.684 | 1.076 | 3.972 | 1.173 |
+| 不规则物体断裂，窗口运行 | 2.391 | 1.353 | 4.370 | 1.967 |
+
+两场景合计CPU均值提升2.09倍。下砸均值2.49倍；断裂均值1.77倍、P95 2.22倍。断裂场景最大帧35.450->15.084ms。新版一次首次启动第0帧出现202.174ms，已计入均值；该帧native计时1.130ms、无损伤或同步，未定位它属于初始化哪个阶段，不能声称所有卡顿已消失。其余两轮下砸均值0.708/0.700ms，峰值8.444/8.239ms。日志前缀opt_before_repeat_*、opt_final_slam_*、opt_final_cut_*；没有把CPU耗时倍数说成显示FPS翻倍。
+
+### 验收
+
+手部50项通过：Weld最大相对角误差0.026048度、动态承重晚期峰峰位移0.037750px；原0.1度和0.25px门槛保留。测试执行器代数配平改读持续力字段，长期实积分动量/能量/功率测试继续保留。脚部21项、碰撞损伤39项、真实AD/跳跃输入6项、Q爬升和Q横向借力各8项通过；Q爬升61.624px、最大臂长141.624px、功率不超预算。
+
+引擎破坏17、动力学16、Joint56、接触点7、懒查询23、接触条目6、瓦片增量16、一致性4、连续几何检测14项断言通过；build_addon.py --verify校验32脚本90引用通过。部分旧引擎测试/编辑器import退出仍报RefCounted资源残留，和实际游戏启动错误区分；本次手部测试清理循环引用后无退出错误。
+
+已更新两份DLL并核对源端与安装端SHA256一致；未复制生成物根.gdignore。可见编辑器403436真实F5生成377276，场景res://map/asset/main.tscn；编辑器与游戏日志无ERROR/SCRIPT ERROR/失效UID，仍有既有Camera2D插值warning。实际看到三角手、地面与力调试，临时截图已删除。保留编辑器和运行游戏。
+
+## 2026-10-06 v0.3.8更新与摄像机冻结
+
+- fetch确认origin/main与origin/stable均为91dc1ec、v0.3.8；本地main从0785037快进。旧修改保存在git stash `ink2 pre-v038 local optimizations preserved`及T:/GODOT/bag/ink2_pre_v038_20261006（含旧安装runtime）。没有提交或发布。
+- 保留上轮持续成对控制力、局部32次追加求解、接触索引、碎片属性继承；采用新版adopt分片、按shape脏范围与冻结API。旧本地op40与官方joint_set_softness冲突，迁移局部迭代指令为op42，官方op40/41完整保留。源码统一重新生成安装，两份DLL源/目标SHA256一致。
+- 官方build_native.py仍只静态链接gcc/stdc++，objdump确认依赖libwinpthread-1.dll，安装环境没有此文件。改为-static重新编译，消除加载126风险；未复制生成物根.gdignore，保留现有唯一.uid和根fastphys.gdextension。
+- map/src/collision_damage.gd::_step使用实际Camera2D viewport.size/zoom，宽高乘freeze_view_scale（默认4、Inspector可调），以get_screen_center_position为中心调用world.cull_freeze(rect,[player.body])。判定整个AABB完全在外才冻结；相交继续计算。回到范围自动解冻；玩家及任意关节连通动态组件例外保持活动，释放后恢复普通剔除。
+- 同步跳过冻结体，ForceDebug不采样/画冻结体的虚假重力；无新生产脚本。冻结仅暂停，保留形状、材料与线角速度，不删除存档中的物体。API仍保留碰撞体并按静态推送，不能称世界扫描/数据往返为零成本。
+- 手50项、游戏控制28项（新增7个游戏冻结断言）、损伤39项、Q攀爬8项通过。冻结断言覆盖停住、速度保留、AABB部分重叠、玩家关节组件豁免、释放冻结、摄像机返回恢复、缩放改变边界。原重复手渲染的旧“重现bug”断言已改为验证新版引擎自动排除自有视觉，不放宽物理门槛。
+- 引擎冻结19、破坏17、关节求解12、关节感知CCD12项通过。关节感知CCD默认仍关闭，没有借更新放松当前防穿规则。build_addon --verify通过32脚本90引用。
+- 同一真实3770像素/275矩形画布消融（各180帧，单轮）：完整抓取下砸mean0.795ms/P951.197/max12.978；去损伤+力调试mean0.555ms；再去手部驱动mean0.360ms。动作因去手/去损伤而变化，仅诊断额外路径，不把它说成Demo帧率或纯单变量速度收益。窗口切断37像素产生3碎片，API6.216ms、sync3.153ms，包含真实切断的帧mean1.478ms/P952.231/max14.764，子步峰值4。
+- Demo查源码：src/demo/game.gd::_process每60个渲染帧清理场外刚体并调用enforce_body_budget；默认目标400个动态体，预算仅淘汰休眠且未被抓的最小碎片（不是硬限制所有活动体）。_apply_impact_damage同一刚体对冷却0.5秒，每渲染帧最多处理1对破坏碰撞，该对可对多个contact_entries及双方多次调用fracture。圆形fracture规则与游戏每子步双方逐lane厚度/材质扫描不同；游戏也额外有PD手、连杆约束和力观察器。碎块个数不能替代矩形数、接触对、CCD子步与分片重建成本；没有认定Demo所有碎片不互相碰撞。
+- 重启后的可见编辑器412800实际F5启动412956，--scene res://map/asset/main.tscn。editor_v038.log与当前godot.log无ERROR/SCRIPT ERROR/失效UID，仍有既有Camera2D插值warning。保留编辑器及游戏；无残留截图。

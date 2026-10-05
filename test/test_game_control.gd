@@ -67,7 +67,7 @@ func _run() -> void:
 	_check("real separation clears support", feet.support == null)
 	# 记录引擎重复渲染，再验证游戏的最小排除规则。
 	scene.sync_world_bodies()
-	_check("engine sync reproduces duplicate hand renderer", scene.renderer._nodes.has(hand.body.id))
+	_check("engine sync excludes hand with its own visual", not scene.renderer._nodes.has(hand.body.id))
 	scene.auto_step = true
 	damage._physics_process(DT)
 	_check("game removes internal hand and arm renderers", not scene.renderer._nodes.has(hand.body.id) and not scene.renderer._nodes.has(hand.arm_body.id))
@@ -108,9 +108,50 @@ func _run() -> void:
 	hud._process(0.0)
 	_check("1 percent low uses slowest frame time mean", label.text.contains("1% low 10 |"))
 	_check("ordinary material hardness doubled", scene.world.material_strength(1).x == 200.0)
+	_test_camera_freeze(scene, damage)
 	scene.auto_step = false
 	_release(scene.world)
 	scene.queue_free()
 	await process_frame
 	print("[GameControl] %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+
+func _test_camera_freeze(scene, damage) -> void:
+	var camera: Camera2D = scene.get_node("Camera2D")
+	camera.set_physics_process(false)
+	camera.global_position = Vector2.ZERO
+	camera.reset_physics_interpolation()
+	camera.reset_smoothing()
+	camera.force_update_scroll()
+	var center: Vector2 = camera.get_screen_center_position()
+	var extent: Vector2 = camera.get_viewport_rect().size / camera.zoom * 2.0
+	var far = _body(scene.world, center + Vector2(extent.x + 100.0, 0), Vector2i(8, 8))
+	far.linear_velocity = Vector2(100, 0)
+	var edge = _body(scene.world, center + Vector2(extent.x - 4.0, 30), Vector2i(8, 8))
+	var held = _body(scene.world, center + Vector2(extent.x + 200.0, 60), Vector2i(8, 8))
+	var player = scene.get_node("Player").body
+	var joint = scene.world.add_hinge(player, held, held.com_world())
+	var position: Vector2 = far.position
+	damage._step(DT)
+	_check("outside fourfold camera freezes without moving", far.frozen and far.position == position)
+	_check("freeze retains velocity", far.linear_velocity == Vector2(100, 0))
+	_check("partly overlapping camera range remains active", not edge.frozen)
+	_check("player joint component never freezes", not player.frozen and not held.frozen)
+	scene.world.remove_joint(joint)
+	damage._step(DT)
+	_check("released distant object freezes", held.frozen)
+	camera.global_position = far.com_world()
+	camera.reset_physics_interpolation()
+	camera.reset_smoothing()
+	camera.force_update_scroll()
+	damage._step(DT)
+	print("FREEZE_RETURN frozen=%s position=%s velocity=%s camera=%s original=%s" % [far.frozen, far.position, far.linear_velocity, camera.get_screen_center_position(), position])
+	_check("returning camera restores motion", not far.frozen and far.position.x > position.x)
+	camera.global_position = center
+	camera.reset_physics_interpolation()
+	camera.reset_smoothing()
+	camera.zoom *= 2.0
+	camera.force_update_scroll()
+	damage._step(DT)
+	_check("zoom updates freeze boundary", edge.frozen)

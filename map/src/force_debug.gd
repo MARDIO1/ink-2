@@ -28,6 +28,8 @@ func _physics_process(_delta: float) -> void:
 	step_time = 0.0
 	support = feet.support
 	for body in main.world.bodies:
+		if body.frozen:
+			continue
 		momentum[body] = body.linear_velocity * body.mass
 
 func sample_contacts(contacts: Array, delta: float) -> void:
@@ -65,7 +67,7 @@ func finish(delta: float) -> void:
 		_add(side[0], "jump", feet.contact_point, feet.debug_jump_impulse * side[1] / delta, 3)
 		active[side[0]] = active.get(side[0], Vector2.ZERO) + (feet.debug_drive_impulse + feet.debug_jump_impulse) * side[1]
 	for body in main.world.bodies:
-		if body.is_static or not momentum.has(body):
+		if body.is_static or body.frozen or not momentum.has(body):
 			continue
 		var gravity: Vector2 = main.world.gravity * body.mass * body.gravity_scale
 		_add(body, "gravity", body.com_world(), gravity, 4)

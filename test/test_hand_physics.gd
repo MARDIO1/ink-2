@@ -39,6 +39,15 @@ func _run() -> void:
 	if control.arm_joint != null:
 		control._remove_arm()
 	control.arm_joint = null
+	for joint in rig["world"].joints.duplicate():
+		rig["world"].remove_joint(joint)
+	for body in rig["world"].bodies.duplicate():
+		for shape in body.shapes:
+			shape.owner_body = null
+		rig["world"].remove_body(body)
+		body.shapes.clear()
+	rig["world"].contacts.clear()
+	rig["world"]._rp = null
 	rig.clear()
 	scene.queue_free()
 	await process_frame
@@ -96,12 +105,15 @@ func _test_angular_switch(rig: Dictionary) -> void:
 	var hand = rig["hand"]
 	control.conserve_angular_momentum = false
 	control._apply_internal_wrench(Vector2(0, -1000), 0.0, hand.com_world(), DT)
-	_check("center force/no body torque", player.angular_velocity == 0.0)
-	_check("center force/no hand torque", hand.angular_velocity == 0.0)
+	_check("center force/no body torque", player.control_torque == 0.0)
+	_check("center force/no hand torque", hand.control_torque == 0.0)
+	_check("center force/equal opposite", player.control_force == -hand.control_force)
 	_reset_rig(rig)
 	control.conserve_angular_momentum = true
 	control._apply_internal_wrench(Vector2(0, -1000), 0.0, hand.com_world(), DT)
-	_check("angular switch/closed impulse", absf(_angular_momentum([player, hand])) < 0.01)
+	var torque: float = player.control_torque + hand.control_torque
+	torque += (hand.com_world() - player.com_world()).cross(hand.control_force)
+	_check("angular switch/closed wrench", absf(torque) < 0.01, "error=%.6f" % torque)
 	control.conserve_angular_momentum = false
 
 
@@ -441,7 +453,9 @@ func _test_box_pushup(rig: Dictionary) -> void:
 	_check("box pushup/reach", maximum_reach <= control.max_reach)
 	_check("box pushup/power", maximum_power <= control.max_power * 1.00001)
 	_check("box pushup/force", maximum_force <= control.max_force * 1.00001)
-	_check("box pushup/late jitter", (late_max - late_min).length() < 0.25)
+	_check("box pushup/late jitter", (late_max - late_min).length() < 0.25,
+		"peak_to_peak=%.6f range=%s player=%s velocity=%s box=%s" % [
+			(late_max - late_min).length(), late_max - late_min, player.com_world(), player.linear_velocity, box.com_world()])
 	var gained_energy: float = player.mass * 980.0 * (initial_y - player.com_world().y) + _kinetic_energy([player, hand, box])
 	_check("box pushup/work covered by budget", gained_energy <= supplied_energy * 1.001)
 	control._release_grab()

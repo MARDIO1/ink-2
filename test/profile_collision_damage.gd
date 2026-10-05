@@ -184,8 +184,8 @@ func _run() -> void:
 	for frame in 180:
 		if args.has("--live"):
 			await physics_frame
-		if frame == 60 and args.has("--cut"):
-			_cut_probe(scene, object)
+		# 真正切断与同步计入帧耗时；副本上的算法诊断不属于游戏工作量。
+		var cut_us: int = _cut_probe(scene, object) if frame == 60 and args.has("--cut") else 0
 		var start: int = Time.get_ticks_usec()
 		var native_before: int = controller.native_us
 		var commit_before: int = controller.commit_us
@@ -210,7 +210,7 @@ func _run() -> void:
 			print("CCD_DRIVER is_hand=", fastest == hand.body, " speed=", speed,
 				" hand_speed=", hand.body.linear_velocity.length(), " object_speed=", object.linear_velocity.length())
 		controller._physics_process(1.0 / 60.0)
-		samples.append(Time.get_ticks_usec() - start)
+		samples.append(Time.get_ticks_usec() - start + cut_us)
 		if samples[-1] > peak_us:
 			peak_us = samples[-1]
 			peak_frame = frame
@@ -250,7 +250,7 @@ func _run() -> void:
 
 
 ## 同一真实形状中线切断；独立测算法，再走公开接口。准备掩码不计入阶段耗时。
-func _cut_probe(scene, object) -> void:
+func _cut_probe(scene, object) -> int:
 	var shape = object.shapes[0]
 	var bounds: Rect2i = shape.local_aabb()
 	var copy = Shape.new()
@@ -280,7 +280,7 @@ func _cut_probe(scene, object) -> void:
 	var result: Dictionary = scene.world.fracture_pixels(object, {shape: mask}, 0.0)
 	var fracture_us: int = Time.get_ticks_usec() - start
 	start = Time.get_ticks_usec()
-	if result.body_alive:
+	if result.body_alive and OS.get_cmdline_user_args().has("--legacy-refresh"):
 		scene.world.refresh_mass(object)
 	var refresh_us: int = Time.get_ticks_usec() - start
 	start = Time.get_ticks_usec()
@@ -290,3 +290,4 @@ func _cut_probe(scene, object) -> void:
 		" greedy_ms=", rect_us / 1000.0, " fracture_api_ms=", fracture_us / 1000.0,
 		" extra_refresh_ms=", refresh_us / 1000.0, " sync_ms=", render_us / 1000.0,
 		" removed=", result.removed, " fragments=", result.fragments.size(), " parts=", parts.size())
+	return fracture_us + refresh_us + render_us

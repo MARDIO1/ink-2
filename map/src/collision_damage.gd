@@ -19,6 +19,8 @@ var _player = null
 var _protected: Array = []
 @onready var _feet = $"../Player/PlayerInput"
 @onready var _forces = get_node_or_null("../HUD/ForceDebug")
+@onready var _camera: Camera2D = $"../Camera2D"
+@export_range(1.0, 32.0, 0.5) var freeze_view_scale: float = 4.0
 #endregion
 
 
@@ -62,7 +64,7 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(_forces):
 		_forces.finish(delta)
 	if _main.auto_render and _main.renderer != null:
-		# 内部连杆不可见，手已有三角形视觉；引擎 sync_world_bodies 尚未过滤自有视觉。
+		# 内部连杆隐藏，手使用自己的三角形视觉；冻结体的变换不需要重复同步。
 		var visible: Dictionary = _main._live_ids()
 		for body in _protected:
 			visible.erase(body.id)
@@ -70,13 +72,16 @@ func _physics_process(delta: float) -> void:
 		for i in _main.world.bodies.size():
 			var body = _main.world.bodies[i]
 			var node = _main._body_nodes[i]
-			if not body.is_static and not _protected.has(body) and (node == null or not _main.has_own_sprite(node)):
+			if not body.is_static and not body.frozen and not _protected.has(body) and (node == null or not _main.has_own_sprite(node)):
 				_main.renderer.sync(body)
 
 
 ## 接触点必须匹配该子步的位姿；删除并集留到固定步末，避免重复重建。
 func _step(delta: float) -> Dictionary:
 	var physics = _main.world
+	# 用当前可见画面扩大范围，整组关节冻结；玩家连接的物体持续受力。
+	var size: Vector2 = _camera.get_viewport_rect().size / _camera.zoom * freeze_view_scale
+	physics.cull_freeze(Rect2(_camera.get_screen_center_position() - size * 0.5, size), [_player.body])
 	for body in physics.bodies:
 		body.refresh_com()
 	var count: int = physics._compute_substeps(delta)
@@ -306,19 +311,8 @@ func calculate_shear() -> void:
 func commit(physics, removals: Dictionary) -> Dictionary:
 	var changed: Array = []
 	for body in removals:
-		var result: Dictionary = physics.fracture_pixels(body, removals[body], 0.0)
+		var result: Dictionary = physics.fracture_pixels(body, removals[body], 0.0, true)
 		if result.removed > 0:
-			# 新接口未传材质摩擦/弹性回调；用公开接口恢复，避免破坏后手感改变。
-			if result.body_alive:
-				physics.refresh_mass(body)
-			for fragment in result.fragments:
-				fragment.collision_layer = body.collision_layer
-				fragment.collision_mask = body.collision_mask
-				fragment.gravity_scale = body.gravity_scale
-				# 保持原规则：地形断开的块成为可下落的物体。
-				if fragment.is_static:
-					fragment.is_static = false
-					physics.refresh_mass(fragment)
 			changed.append(body)
 			changed.append_array(result.fragments)
 	return {"changed": changed, "calls": removals.size()}
