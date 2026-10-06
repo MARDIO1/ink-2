@@ -1,0 +1,134 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Texture2D" path="res://ui/hud/asset/ink_jar.png" id="1_jar"]
+[ext_resource type="Texture2D" path="res://ui/hud/asset/health_frame.png" id="2_frame"]
+[ext_resource type="Texture2D" path="res://ui/hud/asset/icon_exit.svg" id="3_exit"]
+[ext_resource type="Script" path="res://ui/hud/src/hud.gd" id="4_script"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBox_bar_background"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_bar_fill"]
+bg_color = Color(0.035, 0.032, 0.026, 1)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBox_exit_normal"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_exit_pressed"]
+bg_color = Color(0.035, 0.032, 0.026, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.035, 0.032, 0.026, 1)
+corner_radius_top_left = 1
+corner_radius_top_right = 1
+corner_radius_bottom_right = 1
+corner_radius_bottom_left = 1
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_exit_hover"]
+bg_color = Color(0.985, 0.975, 0.935, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.035, 0.032, 0.026, 1)
+corner_radius_top_left = 1
+corner_radius_top_right = 1
+corner_radius_bottom_right = 1
+corner_radius_bottom_left = 1
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_exit_focus"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.035, 0.032, 0.026, 0.8)
+corner_radius_top_left = 1
+corner_radius_top_right = 1
+corner_radius_bottom_right = 1
+corner_radius_bottom_left = 1
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+
+[node name="Hud" type="CanvasLayer"]
+layer = 1
+script = ExtResource("4_script")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="InkJar" type="TextureRect" parent="Root"]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.025
+anchor_top = 0.02
+anchor_right = 0.14
+anchor_bottom = 0.245
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("1_jar")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StatusBar" type="ProgressBar" parent="Root"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.2245
+anchor_top = 0.061
+anchor_right = 0.7055
+anchor_bottom = 0.135
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBox_bar_background")
+theme_override_styles/fill = SubResource("StyleBox_bar_fill")
+value = 72.0
+show_percentage = false
+
+[node name="HealthFrame" type="TextureRect" parent="Root"]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.16
+anchor_top = 0.04
+anchor_right = 0.77
+anchor_bottom = 0.17
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_frame")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ExitButton" type="Button" parent="Root"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.9
+anchor_top = 0.035
+anchor_right = 0.975
+anchor_bottom = 0.145
+grow_horizontal = 2
+grow_vertical = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/icon_normal_color = Color(0.035, 0.032, 0.026, 1)
+theme_override_colors/icon_pressed_color = Color(0.035, 0.032, 0.026, 1)
+theme_override_colors/icon_hover_color = Color(0.035, 0.032, 0.026, 1)
+theme_override_constants/icon_max_width = 40
+theme_override_styles/normal = SubResource("StyleBox_exit_normal")
+theme_override_styles/pressed = SubResource("StyleBox_exit_pressed")
+theme_override_styles/hover = SubResource("StyleBox_exit_hover")
+theme_override_styles/focus = SubResource("StyleBox_exit_focus")
+icon = ExtResource("3_exit")
+expand_icon = true
+
+[connection signal="pressed" from="Root/ExitButton" to="." method="_on_exit_button_pressed"]

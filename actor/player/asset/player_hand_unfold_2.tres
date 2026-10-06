@@ -2,9 +2,9 @@
 
 [resource]
 data = {
-"data": PackedByteArray(3, 3, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 3, 3),
+"data": PackedByteArray(3, 3, 3),
 "format": "Red8",
-"height": 4,
+"height": 3,
 "mipmaps": false,
-"width": 8
+"width": 1
 }

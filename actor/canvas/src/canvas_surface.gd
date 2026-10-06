@@ -65,12 +65,14 @@ var _last_point := Vector2.ZERO
 @export var black_color := Color(0.04, 0.08, 0.05, 1.0)
 ## 中键放置的单像素钉子颜色；固化后使用 grey1 材料并固定所在连通块。
 @export var nail_color := Color(0.12, 0.12, 0.12, 1.0)
+## 中键放置的钉子场景；大贴图，只有中心像素起固定作用。
+const NAIL_SCENE := preload("res://actor/nail/nail.tscn")
 #左键落笔时写入的黑色墨水颜色
 func _on_mouse_button(button: InputEventMouseButton) -> void:
 	if button.button_index == MOUSE_BUTTON_MIDDLE:
 		_painting = false
 		if button.pressed:
-			_place_nail(_mouse_point())
+			_spawn_nail()
 		return
 	if button.button_index != MOUSE_BUTTON_LEFT and button.button_index != MOUSE_BUTTON_RIGHT:
 		return
@@ -166,6 +168,18 @@ func _place_nail(point: Vector2) -> void:
 		return
 	black_image.set_pixelv(Vector2i(point.floor()), nail_color)
 	black_texture.update(black_image)
+
+
+# 中键在鼠标世界位置放一枚钉子（大贴图）。钉子自包含：直接把中心点所在的
+# 已有刚体钉成静态，不再往画布写钉像素。_place_nail 仍保留给图纸预埋钉点用。
+func _spawn_nail() -> void:
+	var nail := NAIL_SCENE.instantiate()
+	# 挂到世界上层（与 Canvas 同级），保证 global_position 即世界坐标。
+	var host: Node = get_parent().get_parent()
+	if host == null:
+		host = get_tree().current_scene
+	host.add_child(nail)
+	nail.global_position = get_global_mouse_position()
 
 
 #该像素是否为黑色墨水，供固化时采样

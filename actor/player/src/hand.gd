@@ -232,7 +232,7 @@ func _limit_power(force: Vector2, torque: float, hand_position: Vector2, delta: 
 
 #region 抓握
 @export_group("抓握")
-const FINGERTIP := Vector2(14.643, 1.643)
+const FINGERTIP := Vector2(24.201, 3.122)
 const GRAB_RADIUS := 0.72
 
 func _update_grip(_delta: float) -> void:

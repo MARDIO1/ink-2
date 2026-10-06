@@ -72,31 +72,17 @@ func _run() -> void:
 	damage._physics_process(DT)
 	_check("game removes internal hand and arm renderers", not scene.renderer._nodes.has(hand.body.id) and not scene.renderer._nodes.has(hand.arm_body.id))
 	await process_frame
-	_check("HUD fixed on screen and has debug text", scene.get_node("HUD") is CanvasLayer and not scene.get_node("HUD").follow_viewport_enabled and scene.get_node("HUD/Stats").visible)
-	await create_timer(0.15).timeout
-	var label: Label = scene.get_node("HUD/Stats")
-	print("HUD rect=%s viewport=%s text=%s" % [label.get_global_rect(), root.get_visible_rect(), label.text])
-	_check("HUD text lies inside viewport", not label.text.is_empty() and root.get_visible_rect().encloses(label.get_global_rect()))
-	var hud = scene.get_node("HUD")
+	var hud = scene.get_node("debugHUD")
+	var ui = scene.get_node("Hud")
+	_check("debug HUD is a screen-space layer", hud is CanvasLayer and not hud.follow_viewport_enabled)
+	_check("game HUD owns the screen until Tab", ui.visible and not hud.visible)
 	var event: InputEventKey = InputEventKey.new()
 	event.physical_keycode = KEY_TAB
 	event.keycode = KEY_TAB
 	event.pressed = true
 	Input.parse_input_event(event)
 	await process_frame
-	_check("Tab hides debug HUD and stops force sampling", not hud.visible and not hud.forces.enabled)
-	event = event.duplicate()
-	event.pressed = false
-	Input.parse_input_event(event)
-	await process_frame
-	event = event.duplicate()
-	event.pressed = true
-	Input.parse_input_event(event)
-	await process_frame
-	_check("Tab restores debug HUD and force sampling", hud.visible and hud.forces.enabled)
-	event = event.duplicate()
-	event.pressed = false
-	Input.parse_input_event(event)
+	_check("Tab swaps game HUD for debug HUD", hud.visible and hud.forces.enabled and not ui.visible)
 	# 99 个10ms帧与1个100ms帧：最慢1%的均值为100ms，1% low 必须为10FPS。
 	hud.previous_tick = 0
 	hud.frame_times.resize(100)
@@ -106,7 +92,22 @@ func _run() -> void:
 	hud.history_time = 1.09
 	hud.elapsed = 0.5
 	hud._process(0.0)
+	var label: Label = scene.get_node("debugHUD/Stats")
+	print("HUD rect=%s viewport=%s text=%s" % [label.get_global_rect(), root.get_visible_rect(), label.text])
+	_check("HUD text lies inside viewport", not label.text.is_empty() and root.get_visible_rect().encloses(label.get_global_rect()))
 	_check("1 percent low uses slowest frame time mean", label.text.contains("1% low 10 |"))
+	event = event.duplicate()
+	event.pressed = false
+	Input.parse_input_event(event)
+	await process_frame
+	event = event.duplicate()
+	event.pressed = true
+	Input.parse_input_event(event)
+	await process_frame
+	_check("Tab restores the game HUD", not hud.visible and not hud.forces.enabled and ui.visible)
+	event = event.duplicate()
+	event.pressed = false
+	Input.parse_input_event(event)
 	_check("ordinary material hardness doubled", scene.world.material_strength(1).x == 200.0)
 	_test_camera_freeze(scene, damage)
 	scene.auto_step = false

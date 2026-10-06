@@ -35,12 +35,10 @@ var _main = null
 var _player = null
 var _protected: Array = []
 @onready var _feet = $"../Player/PlayerInput"
-@onready var _forces = get_node_or_null("../HUD/ForceDebug")
+@onready var _forces = get_node_or_null("../debugHUD/ForceDebug")
 @onready var _camera: Camera2D = $"../Camera2D"
 ## 活动范围相对当前可见画面的宽高倍率；4 表示宽高各四倍，完全在外的刚体冻结。
 @export_range(1.0, 32.0, 0.5) var freeze_view_scale: float = 4.0
-## 连续碰撞检测；关闭可降低高速/抓取时的子步开销，但允许穿模。
-@export var ccd_enabled: bool = false
 var profile_enabled: bool = false
 var _profile: Dictionary = {}
 #endregion
@@ -68,8 +66,6 @@ func _start() -> void:
 	_main = get_parent()
 	_player = _main.get_node("Player")
 	_protected = [_player.get_node("Arm").body, _player.get_node("Arm/Hand").body]
-	_main.world.ccd_enabled = ccd_enabled
-	_main.world.rp_ccd_substeps = 1 if ccd_enabled else 0
 	_main.set_physics_process(false)
 	_main.world.contact_events_enabled = false
 	process_physics_priority = _main.process_physics_priority + 1
@@ -105,16 +101,18 @@ func _physics_process(delta: float) -> void:
 		_forces.finish(delta)
 	if _main.auto_render and _main.renderer != null:
 		var render_start: int = Time.get_ticks_usec() if profile_enabled else 0
-		# 内部连杆隐藏，手使用自己的三角形视觉；冻结体的变换不需要重复同步。
-		var visible: Dictionary = _main._live_ids()
-		for body in _protected:
-			visible.erase(body.id)
-		_main.renderer.prune(visible)
+		# 归属判据只有引擎那一个 uses_internal_render（rebuild/bake_node/sync_world_bodies 同源）；
+		# 不归内部渲染器画的刚体必须 forget 掉旧贴图，否则它会停在旧位置变成鬼影。
+		_main.renderer.prune(_main._live_ids())
 		for i in _main.world.bodies.size():
 			var body = _main.world.bodies[i]
-			var node = _main._body_nodes[i]
-			if not body.is_static and not body.frozen and not _protected.has(body) and (node == null or not _main.has_own_sprite(node)):
-				_main.renderer.sync(body)
+			var node = _main._body_nodes[i] if i < _main._body_nodes.size() else null
+			if not _main.uses_internal_render(node):
+				_main.renderer.forget(body.id)
+				continue
+			if body.is_static or body.frozen:
+				continue
+			_main.renderer.sync(body)
 		if profile_enabled:
 			_profile.render_sync_us = _profile.get("render_sync_us", 0) + Time.get_ticks_usec() - render_start
 	if profile_enabled:

@@ -258,7 +258,7 @@ func _run() -> void:
 		scene.world.ccd_auto = false
 		scene.world.ccd_clamp_motion = false
 		scene.world.fill_contact_impulses_enabled = false
-	var forces = scene.get_node("HUD/ForceDebug")
+	var forces = scene.get_node("debugHUD/ForceDebug")
 	var force_state: Dictionary = {}
 	for property in forces.get_property_list():
 		if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
@@ -268,7 +268,7 @@ func _run() -> void:
 		forces.set(key, force_state[key])
 	forces.set_physics_process(false)
 	forces.enabled = not args.has("--no-debug")
-	scene.get_node("HUD").visible = forces.enabled
+	scene.get_node("debugHUD").visible = forces.enabled
 	scene.auto_render = not args.has("--no-render")
 	scene.renderer.visible = scene.auto_render
 	if args.has("--one-step"):

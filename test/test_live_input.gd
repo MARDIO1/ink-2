@@ -43,7 +43,7 @@ func _run() -> void:
 			grip_error = maxf(grip_error, hand.grip_joint.anchor_a_world().distance_to(hand.grip_joint.anchor_b_world()))
 			if i == 1 or i == 59:
 				print("GRIP side=", side, " frame=", i, " displacement=", feet.player.body.com_world() - initial, " hand_force=", hand.debug_force_vector, " velocity=", feet.player.body.linear_velocity)
-		var debug = scene.get_node("HUD/ForceDebug")
+		var debug = scene.get_node("debugHUD/ForceDebug")
 		for arrow in debug.arrows:
 			if arrow.body == feet.player.body:
 				print("BODY_FORCE ", arrow.title, " = ", arrow.force)
@@ -78,7 +78,7 @@ func _run() -> void:
 			active += 1
 	_key(KEY_D, false)
 	print("WALK delta=", feet.player.body.com_world() - start, " active=", active, " velocity=", feet.player.body.linear_velocity)
-	for arrow in scene.get_node("HUD/ForceDebug").arrows:
+	for arrow in scene.get_node("debugHUD/ForceDebug").arrows:
 		if arrow.body == feet.player.body:
 			print("WALK_FORCE ", arrow.title, " = ", arrow.force)
 	_check("automatic input moves over 100 pixels in two seconds", feet.player.body.com_world().x - start.x > 100.0)

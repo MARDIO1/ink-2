@@ -99,7 +99,7 @@ func _watch_hang(tick: int, duration_us: int) -> bool:
 	if low_log != null:
 		low_log.close()
 	var stamp: String = Time.get_datetime_string_from_system().replace(":", "-")
-	log_path = "res://test/hang_%s.jsonl" % stamp
+	log_path = "user://hang_%s.jsonl" % stamp
 	low_log = FileAccess.open(log_path, FileAccess.WRITE)
 	if low_log != null:
 		_record_low_frame(tick, duration_us, damage.take_profile(), forces.take_profile())
@@ -113,10 +113,6 @@ func _watch_hang(tick: int, duration_us: int) -> bool:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("record_low_frames"):
 		_toggle_log()
-	elif event.is_action_pressed("debug"):
-		visible = not visible
-		forces.enabled = visible
-		forces.queue_redraw()
 
 func _process(delta: float) -> void:
 	# 用墙钟间隔统计卡顿，不受游戏时间缩放影响；队列游标避免每帧搬移数组。

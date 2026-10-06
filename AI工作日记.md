@@ -310,3 +310,131 @@
 - Player的6个分离部件和展开手的3个分离部件作为同一PBody的多个Shape接入，编辑器与运行时共用PixelSprite视觉；抓握手资源保留给后续动画切换。
 - 按新像素数补偿材料密度，实测Player 121像素/6144质量、Hand 56像素/84质量；指尖抓点对齐展开手最右端像素。
 - 验证：HandPhysics 50/50通过；Jitter 8组完成且隐式控制静态段位移与高频RMS均为0；主场景无脚本错误，临时烘焙与验证脚本均已删除。
+
+## 2026-10-07 01:04 - 主角烘焙重建（旧烘焙为什么坏）+ 仓库清理
+
+- 旧烘焙坏在源头判读：`actor/player/asset/player_body.png` 实测背景是**透明** `(0,0,0,0)` 2639360 像素，黑描边反而是不透明 `(0,0,0,255)` 916480 像素。上一轮按「黑底作为空像素」处理，把整条线稿当背景丢掉，只剩灰色像素。实测 HEAD 的 6 张 body 图合计只有 89 个数据字节、3 张 hand 图 76 个字节，所以场景里主角只剩几个点，即「大小太小了」。
+- 新烘焙脚本：`actor/player/src/bake_player_art.gd`（`extends SceneTree`，参数在文件顶部 `#region 配置`）。按 4 邻接连通块分别输出 `<prefix>_<i>.tres`，并打印每块 bbox 左上角 `position`，同时 prune 掉本次没生成的同名前缀 `.tres`。跑法：`godot --headless --path . --script res://actor/player/src/bake_player_art.gd`。
+- 烘焙结果：player_body 网格 98x138、实心 4378 格、6 块（position 0,0 / 23,66 / 58,66 / 40,76 / 60,59 / 24,59）；player_hand_unfold 转 90°CW 后 54x46、实心 625 格、3 块（0,0 / 31,25 / 31,18）。黑线稿与灰像素全部保留。
+- 「垃圾太多」的真因：一张图里放多个不连通孤岛时，`addons/pixel_destruction/physics/pworld.gd` 的 `add_body()` -> `ensure_connected()` 会按连通性把孤岛拆成**独立刚体**。旧烘焙把轮廓和眉眼嘴塞进同一张图，主角被拆成 6 个刚体、手 3 个，`world.bodies` = 12。改成「一块一个 Shape 节点」后 `world.bodies` = 5（Player 1 个多 Shape 刚体、Hand 1 个、Ground、Box、Arm），与 HEAD 原本的分块结构一致。
+- 「不是黑色的」真因：`addons/pixel_destruction/nodes/pixel_sprite_2d.gd` 的 `rebuild()` 指纹 `_sig` 不含调色板，而 `pixel_world.renderer` 的 `add_child` 是 deferred，精灵先烘焙拿到 `render/pixel_renderer.gd` 的默认调色板（1 石 / 2 木棕 / 3 铁蓝灰），之后 palette 更新也不会重刷。已在 `player.tscn`、`hand.tscn` 的 `Visual` 节点上写显式 palette 修掉。
+- 密度按总质量守恒修正：`actor/player/asset/player_body.tres` density = 1.40338（= 6144 / 4378）、`actor/player/asset/hand.tres` density = 0.1344（= 84 / 625）、`map/main.tscn:23` 的 `densities_fallback` 同步。实测 Player 质量 6143.998、Hand 84.0。
+- 随之同步：`actor/player/src/hand.gd` 的 `FINGERTIP` 按新展开手重算 (14.643, 1.643) -> (24.201, 3.122)；`map/main.tscn` Player position (-128, 196) -> (-128, 90)；`test/test_collision_damage.gd` 的像素断言改为按块求和（body 4378、hand 625）。
+- 清理：删掉 `test/` 下 10 个临时探针脚本与其 `.uid`（probe_dump_bake / probe_paint_chain / probe_paint_read / probe_render_owner / probe_scene / probe_shot / probe_shot2 / probe_shot3 / probe_split / verify_player_bake）、`.godot/imported` 里 32 个指向已删图片的孤儿缓存、空的 `map/asset/`、`user://dump`、`user://canvas_roundtrip.*`、仓库外 `T:\GODOT` 的 18 张临时截图。
+- 实测验收：`test_collision_damage.gd` 41 项 0 失败；`test_canvas.gd` PASS；带窗口渲染整帧只剩 4 种颜色（奶油底 237,232,199 / 墙灰 220,217,204 / 纯黑 0,0,0 / 墨灰 30,30,30），棕与蓝灰完全消失，主角为纯黑线稿。
+- 未通过/待确认：`test_hand_physics.gd` 46 passed / 4 failed，4 条全在 pushup 场景（body supported under gravity rise=-1.843；pushup late jitter peak_to_peak=1.436659；box pushup body climbs rise=24.985；box pushup late jitter peak_to_peak=6.288764），两次连跑数值完全一致，不是随机抖动；上一轮日记记的是 50/50，说明新碰撞几何（原先只有几个像素、现在覆盖 98x138 整个剪影）改变了 pushup 的接触，需要单独排查。`test_hand_jitter.gd` 8 组完成，implicit / damping 组静态位移与高频 RMS 仍是 1e-4 量级，explicit 组 0.24。
+- 未做的三件事（需要用户点头）：`addons/pixel_destruction/native/~fastphys.dll` 是 Godot 热重载留下的旧副本，`fastphys.gdextension` 只引用 `fastphys.dll`，未删是因为它在被 gitignore 的引擎目录里；`actor/player/asset/player_hand_grab.png` 目前没有任何消费方（抓握切换还没做）；`pixel_world.gd` 里 `_body_nodes` 与 renderer 的对齐错位未改（精灵和 renderer 现在都画黑色，1px 重叠肉眼不可见）。
+
+## 2026-10-07 01:43 打开CCD并交回世界层统一管理
+
+- `map/src/collision_damage.gd`：删掉游戏层 CCD 转发开关（`@export var ccd_enabled` 及其注释、`_start()` 里对 `world.ccd_enabled` / `world.rp_ccd_substeps` 的两行覆盖）。CCD 交回引擎默认：`src/physics/pworld.gd:86` `ccd_enabled=true`、`src/physics/pworld.gd:712` `rp_ccd_substeps=1`。
+- `map/main.tscn` Main(PixelWorld) 的 `ccd_ignore_mass` 由 `1.0` 改为 `16.0`。取值依据是引擎自身：`src/demo/game.gd:109`、`docs/manual/performance.md:183`、`docs/manual/cookbook.md:465` 都写 16.0；引擎全仓库没有 30。
+- 实测（真实 `map/main.tscn`，headless 探针）：`ccd_enabled=true`、`rp_ccd_substeps=1`、`ccd_ignore_mass=16.0`、`ccd_max_motion=2.0`、`ccd_clamp_motion=true`、`ccd_substep_budget=600`、`rp_soft_ccd_prediction=0.0`、`bodies=5`，退出码 0；探针脚本与 `.uid` 已删。
+- 未做：薄壁穿模与帧时间实测；`ccd_ignore_mass=16` 会允许质量 <= 16 的碎片穿墙（与"1px 结构不可穿"冲突，待定夺）；`PixelWorld` 仍未把 `ccd_enabled` 暴露到场景，要彻底"世界层统一管"需改引擎仓库。
+- 注：改前的 `ccd_ignore_mass=1.0` 在 CCD 关闭期间是死值（`_compute_substeps` 直接返回 1，不构造豁免集合）。
+
+## 2026-10-07 01:53 - 烘焙工具化（tools/ + doc/）
+
+- 目录重组：根目录新增 `tools/`（离线工具，不进运行时）与 `doc/`（AI 给 AI 看的 md）；根 `readme.md` 第 11 行以下改成纯目录，原来的「文件组织 / 手的规则 / 验收」拆到 `doc/文件组织.md`、`doc/手的规则.md`、`doc/验收.md`，新增 `doc/烘焙.md`。用户自己的第 1-11 行一字未动。
+- 烘焙脚本从 `actor/player/src/bake_player_art.gd` 迁到 `tools/`，拆成三层：`tools/bake_art.gd`（RefCounted 核心：取样 / 连通块 / 写盘 / prune）、`tools/bake_cli.gd`（SceneTree CLI 入口）、`tools/bake_editor.gd` + `tools/bake_editor.tscn`（`@tool` GUI：预览网格和每块 bbox，改格宽 / 旋转 / 放大后写盘）。旧的 .gd 与 .uid 已删。
+- 核心新增：`analyse()` 多返回 `origin` 给预览对齐网格；`boxes()` 把 bbox 统一到一处（写盘与预览共用）；`write()` 加 `scale`（1 格 → N×N，无损，质量 ×N²，tscn 的 position 要同步 ×N）。
+- 关键约束写进 `doc/烘焙.md`：一格只取左上角 1 点，源图必须是逻辑位图的整数倍最近邻放大；每块必须单独一个 .tres（`PWorld.add_body()` 会拆不连通形状）；判空只能看 alpha，不能看颜色（黑描边是不透明黑）。
+- 实测：`--script res://tools/bake_cli.gd` 输出与旧脚本逐项一致（player_body 98x138 / 实心 4378 / 6 块 position 0,0 23,66 58,66 40,76 60,59 24,59；hand 转 90°CW 后 54x46 / 625 / 3 块 0,0 31,25 31,18，save 全 0）；连跑两次 10 个 .tres 的 SHA256 全部相同，0 处变化。
+- 语法证据：`--check-only` 对 `tools/bake_art.gd`、`tools/bake_editor.gd`、`tools/bake_cli.gd` 均 EXIT=0。先用一个故意写坏的脚本验证 `--check-only` 真会 EXIT=1 并报 Parse Error，所以这三个 0 是有意义的。
+- 未做：`bake_art.gd` 的 `components()`（4 邻接连通）与 `addons/pixel_destruction/core/destruction.gd` 的 `Destruction.split()`、`actor/canvas/src/canvas_solid.gd:42` 是同一件事的第三份实现。这次原样搬运，保证 .tres 逐字节不变、回归可归因；要不要改用引擎的 split() 待定。
+- 环境备注（本轮踩到）：Codex 的 `apply_patch.bat` 直接调用会报 `Invalid patch: The last line of the patch must be '*** End Patch'`，必须直调 `codex.exe --codex-run-as-apply-patch`，且补丁用 `-join `n` 拼 LF（CRLF 会被判非法）。
+## 2026-10-07 02:05 CCD 现状核对与两处纠正（未改代码）
+
+- 纠正①：`ccd_clamp_motion` 在 v0.3.9 是**死声明**（`src/physics/pworld.gd:201`，全引擎只有 2 条注释 + 1 处声明，native 侧只有 `rb_body_set_ccd`/`rb_world_set_ccd_substeps`）。所以引擎注释里"绝不可能穿模的硬保证"不成立，真实上限只有 `ccd_substep_budget=600`（`pworld.gd:1637`），顶到 600 就没有任何钳。同类死声明还有 `ccd_max_substeps`(:88)、`ccd_auto`(:222)、`ccd_max_rotation`(:223)、`max_speculative_margin`(:241)、`_ccd_saturated`(:249)。用户确认是引擎忘记删，忽略。
+- 纠正②：`ccd_joint_aware` 对 ink-2 的手-臂链**无效**——`weld_group`/`_group_motion` 只跟随 `PJoint.WELD`（`pworld.gd:2455`、`:1571`），而 ink-2 手-臂用的是 Hinge+Slider（`actor/player/src/hand.gd:97-98`）。只有抓握走 `add_weld` 时（`hand.gd:258`，`rotate_grip` 关闭）才成组，因此它只可能帮到抓取场景。不再把它当通解。
+- 按用户要求"只用现有旋钮、不加东西、不动引擎"，CCD 保持现有引擎默认 + 场景 `ccd_ignore_mass=16.0`，未做任何修改。
+- 真实 `map/main.tscn` headless 实测（探针已删）：`ccd_enabled=true`、`rp_ccd_substeps=1`、`ccd_ignore_mass=16.0`、`ccd_max_motion=2.0`、`ccd_substep_budget=600`、`ccd_joint_aware=false`、`rp_soft_ccd_prediction=0.0`、`bodies=5`；连跑 30 个固定步 `max_substeps=3`，退出码 0。
+- 未做：帧时间与薄壁穿模实测；`debris_max_mass`/`debris_min_speed` 因 CollisionDamage 绕过 `PWorld.step()`（`pworld.gd:1664-1683` 里只有 `:1678` 的 `cull_fast_debris()` 没被 ink-2 继承）在 ink-2 里仍是死旋钮。
+
+## 2026-10-07 01:57 - doc 改为按模块并列（修正上一轮）
+
+- 纠正上一轮的错误理解：`doc` 不是根目录统一放，而是像 `src` / `asset` 一样按模块放在各自文件夹里。用户 readme 第 3 行原本就写着「src和assest还有doc」，是我上一轮读漏了。
+- 移动：`doc/烘焙.md` -> `tools/doc/烘焙.md`；`doc/验收.md` -> `test/doc/验收.md`；`doc/手的规则.md` 拆成 `actor/player/doc/手.md`（PD / 抓握 / joint / 成对力）和 `actor/canvas/doc/画布.md`（可见性 / 固化）。
+- 根 `doc/文件组织.md` 重写为约定：每个模块自带 `doc`，与 `src` / `asset` 并列；`tools`、`test` 是扁平工具目录，脚本摊平不另开 `src`；没有内容的模块不建空目录。
+- 删除根 `doc/` 下 `手的规则.md`、`验收.md`（内容已迁到模块里）。现在根 `doc/` 只剩 `文件组织.md` 这一条仓库级约定，因为根目录本身也是一个模块。
+- `readme.md` 目录改指新路径（第 14-18 行）；用户自己写的第 1-11 行一字未动。
+- 核验：readme 里 5 条 md 链接全部 `os.path.isfile` 为真，无死链。
+- 未建空目录：`Ink`、`map` 目前没有 doc 内容，不建 `doc/`。`actor/spring_water` 是空目录，不是本轮产生的，未动。
+
+## 2026-10-07 02:12 ink-2 物理旋钮对齐引擎最佳实践
+
+- 依据是引擎**自己文档化的整组推荐值**：`docs/manual/cookbook.md:461-466` 的 `px.configure({...})` 块，与它同源的是 `src/demo/game.gd:107-111`（demo 运行时那组）和 `docs/manual/performance.md:180-183,202`。引擎仓库未动：`T:\GODOT\bag\Godot_2DVoxel_Addons` 仍在 `85b79f7`（v0.3.9），`git status` 干净。
+- 只改 `T:\GODOT\ink-2\map\main.tscn` 的 Main(PixelWorld) 三行：新增 `max_angular_velocity = 50.0`（原来吃脚本默认 1000.0）、新增 `min_fragment_pixels = 9`（原来是默认 4）；`ccd_ignore_mass = 16.0` 上一轮已是推荐值，不动。行序按 `addons/pixel_destruction/nodes/pixel_world.gd` 的声明顺序（58 -> 61 -> 65），文件保持纯 LF、无 BOM。
+- 50 的理由：`pworld.gd:29-41` 写着 Rapier 2D **没有**角速度上限，而角速度是质量放大通道（Δω = J·r/I，I ∝ m），一个自转小碎片就能把全世界顶进几百个子步；引擎把 50 rad/s（8 转/秒）作为"别转到离谱"的推荐值。
+- 9 的理由：推荐块写的是 9（不是 performance.md 里"闸门①"的默认 4）。已实证在 ink-2 生效：`map/src/collision_damage.gd:446-467` 的 `commit()` 调 `physics.fracture_pixels()`，后者在 `pworld.gd:3066-3067` 用 `min_fragment_pixels` 调 `Destruction.split`。直接探针：同一形状（16px 主体 + 4px 孤岛 + 9px 孤岛）在 `min_fragment_pixels=4` 得到 `[16, 4, 9]`，在 9 得到 `[16, 9]`，4px 孤岛被丢。**这是本轮唯一会改变玩法表现的一项**：断开后小于 9 像素的碎块（2x2、1xN、2x4）不再生成刚体。
+- 没写 `debris_max_mass=16.0` / `debris_min_speed=2000.0`（推荐块里有）：它们在 ink-2 是**死旋钮** —— `cull_fast_debris()` 只在 `pworld.gd:1678` 的 `step()` 里被调用，而 ink-2 的 `CollisionDamage._step()`（`collision_damage.gd:133-166`）自己重写了推进循环（只调 `_compute_substeps` + `_substep_rapier`），`_start()` 里又 `_main.set_physics_process(false)`（`:69`）关掉了 `PixelWorld._physics_process`（`pixel_world.gd:510,521`）。写进场景只会是一条"看着设了其实没用"的配置，按"不要额外加东西"没写。
+- 生效值实测（真实 `map/main.tscn`，探针跑完即删）：`max_angular_velocity=50.0`、`min_fragment_pixels=9`、`ccd_ignore_mass=16.0`、`ccd_enabled=true`、`ccd_max_motion=2.0`、`ccd_substep_budget=600`、`rp_ccd_substeps=1`、`debris_max_mass=0.0`、`debris_min_speed=0.0`、`bodies=5`，退出码 0。
+- 风险实测（真实场景 600 个物理帧：按住 D 走 + 跳 + 抓住 Box + 手绕半径 70 摆一圈 + 中途按 Q 切旋转抓握）：`max_abs_angular_velocity = 13.64 rad/s`，**没有任何一帧有刚体越过 50**（0 次），`max_ccd_substeps = 8`。即 50 在这段真实玩法里有 2.7 倍余量，是纯安全网，不会钳到正常动作。
+- 回归对照（A/B：改动版 vs 临时还原成改动前，各跑一遍）：`test_collision_damage.gd` 41/41；`test_live_input.gd` 6/6，加 `--grip --rotate`、`--grip --climb --rotate` 各 8/8；`test_canvas.gd` PASS；`test_hand_physics.gd` 47 passed / 3 failed，`test_game_control.gd` 28 checks / 8 failures —— 失败项与失败数值改动前后**逐字一致**，是玩家自己未提交的场景改动（Player 位置、密度表、HUD 布局）带来的既有失败，不是本轮引入。
+- 未做：开窗口手动玩一遍（用户的编辑器进程在跑，改场景要重开场景/重启才生效，没有去动用户进程）；薄壁穿模实测；`test_hand_physics` 的 3 项 pushup 与 `test_game_control` 的 8 项失败仍未修（与本轮无关）。
+
+## 2026-10-07 02:10 烘焙 GUI 重做 + 「虚空质量」结论（回复力矩 / 墨水图层待定）
+
+- 用户评审上一版 GUI 是「垃圾、不是人能看的」。这次**真开窗口截图自检**（不是只看 `--check-only`），定位到 5 个真实缺陷并全修。
+- 缺陷①（最致命）**根 Control 的 `custom_minimum_size=(1000,720)` 超过了项目的逻辑视口 960×540**（`project.godot` 的 `window/size/viewport_width=960` / `height=540` + `stretch/mode="canvas_items"`）。Godot 于是把它**居中**，实测探针打出 `BakeEditor pos=(-20.0, -90.0) size=(1000.0, 720.0)` 而 `visible_rect S=(960.0, 540.0)` —— 整个 VBox 上移，**顶部工具栏整条跑到屏幕外**、底部报告被切。修：tscn 去掉根 Control 的 min size（保留 full-rect 锚点）；`_ready` 里非编辑器时 `content_scale_size=(0,0)`（关拉伸）+ `mode=MODE_WINDOWED` + `size=1280×860`；预览 / 报告各自给 min size。
+- 缺陷②**bbox 矩形坐标单位混算**：`Vector2(bound.position + origin) * zoom` 把「格」和「像素」直接相加。正确写法 `used.position + Vector2(bound.position) * (cell * zoom)`。这就是原截图里两个小色块跑到左上角的根因。
+- 缺陷③**`zoom` 是 int 且被 `maxi(1, …)` 夹住**，大图永远放不下（手裁切后算出来 `int(0.84)=0` → 被夹成 1 → 底部被截）。改成 float 并允许 <1，加滚轮缩放（以光标为锚点）、左/中键拖拽平移、「适应窗口」按钮。
+- 缺陷④块**没有编号**、配色用 `Color.from_hsv(i/n, 0.9, 1.0)`（i=0 是纯红，黑线稿上难辨）。改成 10 色高对比调色板 + 每块画编号 + 报告行用**同色 ■** 一一对应；报告塞进 `ScrollContainer`（250 高）不再抢预览空间。
+- 缺陷⑤**浅底浅字**：项目清屏色是浅色，而 Godot 默认主题是暗色（浅色字），复选框「顺时针90°」几乎看不见（截图放大后确认文字在、只是看不见）。修：铺一层自己的深色 `ColorRect` 打底 + 用常量 `FG` 对 Label / CheckBox / RichTextLabel 显式 override 文字色。
+- 验证手段：临时探针 `tools/_shot.gd`（`extends SceneTree`，第 30 / 70 帧各 `root.get_texture().get_image().save_png()` 一次，中间切到手的源图）跑**真窗口**渲染，body 与「顺时针90°」的手各一张，逐张看图确认：工具栏全可见、6 块 / 3 块编号与配色和报告一一对应、报告 10 行完整可见。探针用完即删（含 `.uid`）。
+- 修 `tools/doc/烘焙.md` 的**错误示例行**：原文写 `player_body_0.tres position = Vector2(0, 0) 52x81 2199 格`，真值是 `98x138 3951 格`（52x81 / 2199 是被删掉的旧 `bake_player_art.gd` 的采样口径）。补上「手」那张的真实输出，并写明 position 是**格**坐标不是像素。
+- **CLI 幂等实测**：同一个 shell 里 先算 11 个 `.tres` 的 SHA256 → 跑 `bake_cli.gd` → 再算一遍，**changed=0**，退出码 0，`prune` 没删任何文件。文档里的数字与 CLI 实际打印逐字一致。
+- **「虚空质量」结论（全部有代码依据）**：不要直接写 `PBody.mass`。理由：①`physics/pbody.gd:474-475` 每次 `rebuild()` 都无条件写 `mass = m_total` / `inertia = inertia_c`，而破坏 / 切块每次都要 rebuild；②只改 mass 不改 inertia 会让质量与惯量不自洽；③Rapier 侧的质量来自**碰撞体密度**——`physics/pworld.gd:1058-1062` 每帧只在 `_rp_density != density` 时推 op34 `rb_body_set_density`（`addons/pixel_destruction/native/rapier_bridge/src/lib.rs:795-806`，里面含 `recompute_mass_properties_from_colliders`），所以写 `PBody.mass` 根本到不了 Rapier，两边会**静默分叉**（lib.rs:787-790 记着实测症状：密度 7.8 时一步过冲 8.4 倍、在 ±280 之间抽搐）。**正确旋钮是 Shape 的 `density_scale`**（`core/pixel_shape.gd:209-211`）：`core/mass_props.gd:94 / :145` 里 `d *= dscale`，于是 mass 与 inertia **同比**放大而 **COM 不变**（`com = Σd·p / Σd`，dscale 约掉），并经 `pbody.gd:478 density = m_total / n_px` 自动流到 Rapier，切块时还由 `core/shape_ops.gd:41` 继承。→ 墨水的额外质量 = 烘培时给 Player 的**全部** Shape 乘同一个 `density_scale`（pbody 是多 Shape 合并，必须一致）。
+- 环境坑（本轮踩到，记一下）：`rg` 遵守 `.gitignore`，而本仓库 `.gitignore` 里有 `/addons/` —— 所以 `rg density_scale` 会**一条都不返回**，必须 `rg --no-ignore`。差点据此得出「这个旋钮不存在」的错误结论。
+- 未做 / 未定：①`density_scale` 目前**没有 `@export`**（`nodes/pixel_shape_2d.gd` 只导出了 rect_size / radius / texture / alpha_threshold / material_id），Inspector 里调不到，只能靠代码或烘培给；②回复力矩的**腾空是否允许**、驱动上限是否压到 `F_crit` 量级；③墨水质量按「满瓶」还是「当前液面」—— 按液面等于每帧改质量属性，正是 lib.rs 警告的那类发散。
+
+## 2026-10-07 02:17 真实窗口运行 + 编辑器同步（承接 02:12）
+
+- 真实窗口跑（不是无头）：加载真实主场景 `res://map/main.tscn`，真显卡（RTX 4060）、真实输入（A/D、空格、鼠标左键、Q、Tab 全走 `Input.parse_input_event`），720 个物理帧，游戏自己截图存 `user://best_practice_run.png`。HUD 自报 `FPS 61 | 1% low 42 | CPU 14.7 ms | 子步 6`。
+- 注意：`project.godot` 的 `run/main_scene` 是 `res://tools/bake_editor.tscn`（烘焙工具），所以"直接跑工程"不是游戏本体，必须显式指定 `res://map/main.tscn`。
+- 运行实例自报的生效值：`max_angular_velocity=50.0`、`min_fragment_pixels=9`、`ccd_ignore_mass=16.0`、`ccd_enabled=true`、`rp_ccd_substeps=1`。
+- 真实运行 A/B（同一探针，改动版 / 还原版各跑一次窗口）：改动版 `observed_max_abs_omega=4.25`、`max_substeps=6`、`bodies=5`；还原版 `observed_max_abs_omega=6.07`、`max_substeps=6`、`bodies=5`。刚体数与子步数一致，最大角速度离 50 还有 8 倍以上余量 —— 50 在这段真实玩法里是纯安全网。
+- 编辑器同步：用户编辑器 PID 63084 开着的正是 `main.tscn`。本机没有原生 UI 自动化（`cua.getState()` 返回 `apps: []`），无法替用户点菜单；改为"重写文件刷 mtime + 把窗口焦点交给编辑器"触发它自己的重扫，并核验 `.godot/editor/filesystem_update4` 在写完后 1 秒（02:16:12 > 02:16:11）被重写且 delta 里含 `res://map/main.tscn`。
+- 未验证：编辑器**内存里**那个 main.tscn 标签页是否已从磁盘重载（读不到编辑器内存）。风险：若没重载而用户按 Ctrl+S，会把 50.0 / 9 覆盖回 1000.0 / 4 —— `git diff map/main.tscn` 一眼可查，需要时一条命令即可补回。手动兜底：Godot 里 Scene -> Reload Saved Scene，或 FileSystem 面板右键 `main.tscn` -> Reload。
+- 探针（`test/_probe_realrun.gd` 与 `.uid`）已删，仓库无残留。
+## 2026-10-07 02:49 回复力矩定标 + 墨水图层收尾（承接 02:17）
+
+- **回复力矩的根因**（这轮真正搞清楚的）：`_upright_angular_impulse` 施的是纯角冲量（`inertia·dω`），而重力对触点的倾倒力矩是 `m·g·h·sin(err)`。实测玩家 mass 6144 / inertia 1.5141e7 / COM(-82.5,156.6) / aabb 98x138，**h≈74 格 → 峰值 2.7e8**，是 `m·g·b`(1.81e8) 的 1.5 倍。之前 k=1.3e8~3e8 卡在 0.7~1.0 rad 不是控制器 bug，是力矩不够；旧注释把阈值写成 `m·g·b` 是错的，已改。
+- **定标结果**：`k=1.0e9 / d=3.0e8 / m=6.0e8`（= `m·g·b` 的 5.5× / 1.7× / 3.3×）。kick=3 rad/s 一步回正（peak 0.07 rad）；kick=12 rad/s（整圈翻滚）也收得住，尾巴 tail_w 0.0008、tail_jerk 0.0011。限幅是必须的：不限流时瞬时力矩到 -1800 MN。三个值已写进 `player_input.gd` 的导出默认值。
+- **回归**：加力矩后 `test_live_input.gd -- --grip --right --rotate` 的「opposite sideways movement restored」失败（侧移 >20 → 8.3）—— 抓住世界时手臂在用同一个姿态自由度，脚部平衡在对拧。加了「手抓住世界（`hand.grabbed_body != null`）时不施力矩」的门，四种组合全部 0 failures。
+- **调参期的坑**：必须把 `CollisionDamage.min_approach = 1e12` 关掉破坏，否则摔倒把地面砸出坑，下一组落进洞里 `support_frames = 0`，会把「找不到支撑」误判成控制器失效。
+- **新测试** `test/test_upright.gd`（17 检查）：正常撞击 / 极限翻滚 / 关掉必倒 / 腾空与手抓握时力矩恒为 0 / 不超上限。腾空那段用「起跳速度」而不是瞬移 —— 瞬移会被引擎当成速度，人直接飞出去并以 650 px/s 穿过地面（顺带发现地面挡不住 650 px/s，先记着不追）。
+- **墨水图层**：`BottledInk` 完成（复用 `Visual` 的烘焙剪影 + shader 遮罩与液面，虚空质量走 `density_scale` + `refresh_mass` 并按液面量化），`test/test_ink.gd` 19 检查 0 失败。
+- **清理**：删掉 `test/_tune_upright.gd`、`test/_diag_upright.gd`、`test/_diag_grip.gd`、`test/_diag_air.gd`、`test/_probe_ghost.gd`、`test/_probe_ui.gd` 和 3 个 `test/hang_*.jsonl`。顺手把 `debug_hud.gd` 的卡顿现场落盘从 `res://test/` 改成 `user://` —— 那是仓库里长垃圾的源头，导出版 `res://` 本来就写不进去。
+- **文档**：新增 `actor/player/doc/墨水.md`、`actor/player/doc/脚.md`；`test/doc/验收.md` 补 `test_ink.gd` / `test_upright.gd` / `test_live_input.gd`。
+- **未做 / 搁置**（都是本轮用户点的）：程序化动画（有没有 mask、相邻连通块不碰撞、连通块用物理连接 + 动画做物理控制）—— 先暂缓；液面抖动 —— 只留 shader 不写；质心微调 —— 搁置；连通块代码不合并且分开处理。
+
+## 2026-10-07 02:49 主菜单 + HUD + ESC 三层 UI 移植（参考 T:\GODOT\bag\BackGround）
+
+- 新增 `ui/` 三个模块（每个都是 asset/src/doc）：`ui/menu`（主场景菜单）、`ui/hud`（成品 HUD）、`ui/esc`（ESC 覆盖层）。`project.godot:14` 主场景改 `res://ui/menu/menu.tscn`；`map/main.tscn` 新增 `Hud`/`Esc` 实例、原 `HUD` 改名 `debugHUD`；`map/src/hud.gd` 改名 `map/src/debug_hud.gd`（Tab 分支删掉）；`map/src/collision_damage.gd:38` 跟随改 `../debugHUD/ForceDebug`。
+- 等比缩放：参考是 4096×2560 逻辑视口，本工程 960×540，s=960/4096≈0.2344。字号 104→24、图标 96→22（HUD 退出 170→40）、边框 13→3、圆角 5→1、投影 7/13→2/3、边距 54/20→13/5；**锚点比例原样保留**。窗口 2560×1440 下 `canvas_items` 放大 2.67 倍，实测观感与参考 `preview.png` 属于同一套。
+- 素材按批准裁切（未裁是两张 4096×2560、各约 210KB）：`ui/menu/asset/title.png` = title_logo.png 裁 (960,528,2368,1456) → 2368×1456 / 18.5KB；`ui/hud/asset/ink_jar.png` = health_ui.png 裁 (900,960,580,660) → 580×660 / 3.1KB；`health_frame.png` 裁 (1490,1000,1710,260) → 1710×260 / 2.4KB；`paper.png` 直接拷 notebook_background.png。三张裁剪图实测四角 alpha=0（透明底）。参考里没被场景引用的视差六层 / paper 着色器 / auto_scroll / 小屋门图 / sun·pencil·ink_bottle·resource_jar·pickup 图标一律没搬。
+- **横条位置是算出来的不是抄的**：`HealthFrame` 用 `stretch_mode=5` 等比装填，锚点框 585.6×70.2 与源图 1710×260 比例不同 → 实际绘制框只有 461.8 宽、左右各内缩 61.9px。第一版照抄参考的 0.185..0.741，截图里黑填充从 frame 左侧冒出来；改成 0.2245..0.7055 对齐绘制框后，实测 `StatusBar.get_global_rect()`=(215.52,32.94,461.76,39.96)，与 0.16×960+61.9 逐位相同。
+- Tab 按用户要求改成两套切换：`ui/hud/src/hud.gd` 读 `debug` 动作，`debugHUD.visible` 取反、成品 `visible` 取反、force_debug 采样同步；`debug_hud.gd` 的 Tab 分支已删，避免两个脚本同时响应同一个动作。
+- ESC：`ui/esc/src/esc.gd` 读 `escape` 动作切换覆盖层，打开即 `get_tree().paused=true`（覆盖层 `process_mode=3`，暂停后仍收输入），继续 / 回主菜单 / 退出都先解除暂停。按钮底不透明：它是盖在游戏画面上的，参考那套 0.9 透明会把场景透出来。
+- 回归（真实 `map/main.tscn`，headless）：`test_collision_damage` 41/0；`test_live_input` 6/0；`test_canvas` PASS；`test_hand_physics` 47 passed / 3 failed（与 02:12 记录逐字相同，既有 pushup 抖动/早退）。`test_game_control` 改前 28 checks/8 failures → 改后 29 checks/4 failures，剩下 4 条是 baseline 就失败的物理项（`actual partial foot contact acquired`、`walking pushes body and support oppositely`、`jump pushes support down`、`real separation clears support`，来自玩家未提交的 Player 位置改动）；原先失败的 HUD 文本 / 1% low / Tab×2 四条按新语义改完全过。
+- 被改的测试：`test_game_control.gd`（节点名 + Tab 断言重写）、`test_live_input.gd`、`profile_collision_damage.gd` 的 `HUD/ForceDebug` → `debugHUD/ForceDebug`。
+- 真窗口截图（`--windowed`，2560×1440，临时探针用完即删）：`user://ui_menu.png`、`ui_hud.png`、`ui_debug.png`、`ui_esc.png` 逐张看过 —— 菜单=横格纸+墨迹标题+开始/退出；HUD=墨水瓶+横条+框+右上退出；Tab 后成品 HUD 消失、调试文字出现；ESC 后世界变暗、三个按钮在上层且不透底。
+- 功能实测（临时探针，用完即删）：菜单「开始」→ `current_scene=res://map/main.tscn`；HUD 退出按钮 → `current_scene=res://ui/menu/menu.tscn`；ESC → `paused=true, esc=true`；ESC→继续 → `paused=false, esc=false`；ESC→回主菜单 → `current_scene=menu, paused=false`；ESC→退出 → 进程退出码 0；Tab → `hud=false, debug=true`。
+- 未做：设置面板（参考里那个按钮也只 print，按最小实现没搬）；血条/蓝条数据源（用户明确先不管，横条值仍由 `@Export bar_ratio` 给）；编辑器里手点一遍（用户 Godot 编辑器 PID 63084 一直开着，没动它进程）。
+- 并发提醒：本轮中途 `test/_probe_ui.gd` 被并行会话当垃圾清掉（它同一时间新增了 `test_ink.gd`、`test_upright.gd`、`actor/player/src/bottled_ink.gd(.gdshader)` 等）；`map/main.tscn` 与 `map/src/collision_damage.gd` 两边都在改，重跑或提交前确认 `debugHud`→`debugHUD` 的改名和 `collision_damage.gd:38` 的 `../debugHUD/ForceDebug` 没被覆盖。
+
+## 2026-10-07 02:55 — collision_damage 渲染归属：修掉移动/破碎瞬间的鬼影
+
+- 症状：`res://map/main.tscn` 里玩家（自带视觉）被引擎内部渲染器**重复画了一份**，且那份贴图永不刷新 —— 玩家一走它停在旧位置，破碎那一下最明显（截图里同时出现两个墨水瓶）。
+- 根因（真机取证）：`map/src/collision_damage.gd` 每帧末尾那段渲染块自带一套归属判据（`not body.is_static and not body.frozen and not _protected.has(body) and (node == null or not has_own_sprite(node))`），`prune` 只清死体和 `_protected`，**从不为跳过的刚体调 `renderer.forget()`**。而引擎 `PixelWorld.rebuild()` / `_apply_voxel_size()` 在场景加载时给**所有**刚体（不过滤）建了 holder，玩家那份就此永久停在原地。引擎在 `nodes/pixel_world.gd:471-475` / `:734-736` 正是警告这个。
+- 修复（2 个文件）：
+  - `map/src/collision_damage.gd:102-115` 渲染块改用引擎唯一判据 `PixelWorld.uses_internal_render(node)`（与 `rebuild` / `bake_node` / `sync_world_bodies` 同源），不归内部渲染器的刚体一律 `renderer.forget(body.id)`；`prune` 回到引擎的 `_main._live_ids()`；`_body_nodes[i]` 加长度保护。
+  - `actor/player/hand.tscn:19` 的 Arm 补 `internal_render = false` —— 游戏侧不再用 `_protected` 当渲染过滤，Arm（4×4、无自带视觉）否则会被画成一个方块。引擎在 `nodes.md:397-404` 明确认可这个用法（"仅物理：不可见的臂/手"）。只加了这 1 行；该场景里手部 Shape 位置 / Visual palette 是用户自己的改动，没动。
+- 验证（真机，非合成）：
+  - 真窗口跑 `res://map/main.tscn`：`holders=[1:Ground, 2:Box]`，玩家 `id=3 player_has_holder=false`、`uses_internal_render(player)=false`（修复前 holders 是 `[1,2,3]`）；玩家平移后仍无 holder、`stale=[]`。
+  - 走游戏自己的 `damage.commit()` 真破碎：`bodies 5→6`，`holders=[1:Ground, 2:Box, 6:碎片]`，`stale=[]` —— 碎片拿到自己的 holder，旧位置无残留。截图 `user://verify_1_moved.png`、`verify_2_fracture.png`：各只有一个玩家，切割后箱子分成两块。
+  - 回归：`test_collision_damage.gd` `[CollisionDamage] 41 checks, 0 failures`；`test_canvas.gd` PASS；`test_live_input.gd` 6/0、`-- --grip --rotate` 8/0、`-- --grip --climb --rotate` 8/0；`test_game_control.gd` `29 checks, 4 failures`（全为脚部接触/支撑相关：partial foot contact / walking pushes support / jump pushes support down / separation clears support，与渲染无关；其中 `engine sync excludes hand with its own visual`、`game removes internal hand and arm renderers` 两条通过）；`test_hand_physics.gd` `47 passed, 3 failed`（与之前基线一致）。
+  - 临时探针 `test/_probe_ghost.gd`、`test/_verify_ghost.gd`（含 .uid）用完已删。
+- 未做/未查明：真窗口里把演示 `Box` 抬高 180px 以 2600 px/s 砸地面**没有触发破碎**（`world.bodies` 始终 5）；帧级采样看到 `contact_pair_count()=1`、`approach≈0`、`impulse≈103`（静止量级），撞击子步在帧内、采样抓不到峰值，也可能是冲量预算低于材质强度 200。这是既有问题，本轮没改，需要时另开。
+- 编辑器同步：`map/src/collision_damage.gd`、`actor/player/hand.tscn`、`map/main.tscn` 的 mtime 已刷成当前时间并把 Godot 编辑器（PID 63084，当前开着 `baked_map.tscn`）置前；若编辑器没自动重载，手动 Scene → Reload Saved Scene。

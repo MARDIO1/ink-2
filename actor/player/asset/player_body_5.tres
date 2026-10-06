@@ -1,10 +1,10 @@
-[gd_resource type="Image" format=3]
+[gd_resource type="Image" format=4]
 
 [resource]
 data = {
-"data": PackedByteArray(2, 2, 2, 2, 2, 0, 2, 2, 2, 2),
+"data": PackedByteArray("AAAAAAAAAAAAAgICAAAAAAAAAAACAgICAAAAAAAAAAICAgICAAAAAAAAAgICAgICAAAAAAICAgICAgIAAgICAgICAgICAgAAAgICAgICAgIAAAAAAgICAgICAgAAAAAAAAICAgAAAAAAAAAA"),
 "format": "Red8",
-"height": 2,
+"height": 9,
 "mipmaps": false,
-"width": 5
+"width": 12
 }

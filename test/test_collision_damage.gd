@@ -265,7 +265,13 @@ func _test_scene() -> void:
 	_check("ordinary main scene landing keeps terrain intact", remaining == original)
 	_check("scene body/node indices stay aligned", indices)
 	_check("static ground renderer is refreshed", scene.renderer._rev.get(ground.id) == ground.shapes[0].revision)
-	_check("player and hand retain all pixels", scene.get_node("Player").body.shapes[0].pixel_count() == 768 and control.body.shapes[0].pixel_count() == 336)
+	var player_px: int = 0
+	for shape in scene.get_node("Player").body.shapes:
+		player_px += shape.pixel_count()
+	var hand_px: int = 0
+	for shape in control.body.shapes:
+		hand_px += shape.pixel_count()
+	_check("player and hand retain all pixels", player_px == 4378 and hand_px == 625)
 	_check("ordinary landing does not damage player", scene.get_node("Player").collision_damage == 0.0)
 	print("[CollisionDamage] main 120 fixed steps: %.2f ms" % (float(elapsed) / 1000.0))
 	scene.auto_step = false

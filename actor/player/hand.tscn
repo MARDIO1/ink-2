@@ -16,6 +16,7 @@ material_id = 3
 gravity_scale = 0.0
 collision_layer = 0
 collision_mask = 0
+internal_render = false
 
 [node name="Hand" type="Node2D" parent="."]
 script = ExtResource("1_body")
@@ -26,19 +27,18 @@ collision_mask = 0
 can_sleep = false
 
 [node name="Shape0" type="Node2D" parent="Hand"]
-position = Vector2(14, 0)
 script = ExtResource("2_shape")
 source = 3
 paint = ExtResource("4_hand0")
 
 [node name="Shape1" type="Node2D" parent="Hand"]
-position = Vector2(0, 2)
+position = Vector2(31, 25)
 script = ExtResource("2_shape")
 source = 3
 paint = ExtResource("5_hand1")
 
 [node name="Shape2" type="Node2D" parent="Hand"]
-position = Vector2(28, 2)
+position = Vector2(31, 18)
 script = ExtResource("2_shape")
 source = 3
 paint = ExtResource("6_hand2")
@@ -46,6 +46,7 @@ paint = ExtResource("6_hand2")
 [node name="Visual" type="Sprite2D" parent="Hand"]
 process_physics_priority = 20
 script = ExtResource("7_visual")
+palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0.12, 0.12, 0.12, 1)])
 
 [node name="HandControl" type="Node" parent="Hand"]
 script = ExtResource("3_hand")

@@ -3,6 +3,7 @@ extends Node
 
 @onready var player = $".."
 @onready var world = $"../.."
+@onready var hand = get_node_or_null("../Arm/Hand/HandControl")
 var support = null
 var contact_point: Vector2 = Vector2.ZERO
 var support_normal: Vector2 = Vector2.UP
@@ -10,6 +11,7 @@ var debug_active_power: float = 0.0
 var debug_force: float = 0.0
 var debug_drive_impulse: Vector2 = Vector2.ZERO
 var debug_jump_impulse: Vector2 = Vector2.ZERO
+var debug_upright_torque: float = 0.0
 
 @export_group("脚部执行器")
 ## AD 最大切向驱动力，单位 引擎质量单位·px/s²；只在脚部有接触支撑时生效。
@@ -21,6 +23,22 @@ var debug_jump_impulse: Vector2 = Vector2.ZERO
 @export var move_speed: float = 200.0
 ## 跳跃请求冲量，单位 引擎质量单位·px/s；沿支撑法向施加，仍受功率限制。
 @export var jump_impulse: float = 1800000.0
+#endregion
+
+
+#region 世界竖直回复力矩
+## 到**世界竖直**的角刚度（力矩 / 弧度）；0 = 关闭。
+## ⚠️ 参考取世界竖直，不是支撑面法向 —— 支撑面会凹凸不平，而世界竖直的代码就是 body.rotation。
+## ⚠️ 必须大于「倾倒自重的最大力矩」 m·g·h 才可能真的站稳（h≈质心高度 74 格 → ≈2.7e8），
+##    只比 m·g·b（≈1.8e8）大是不够的，会卡在半倒的姿态上慢慢磨。
+## 实测（kick=3 rad/s，玩家 6144 质量 / 1.5141e7 惯量）：1.0e9 一步回正，尾巴角度 0.000。
+@export var upright_stiffness: float = 1000000000.0
+## 相对**支撑**的角阻尼（力矩 / (弧度/秒)），用来把来回摆压下去。
+## 地面是静态体 → support.angular_velocity 恒为 0，这一项不会把力矩吃掉。
+@export var upright_damping: float = 300000000.0
+## 回复力矩绝对值上限（力矩）。0 = 不限。
+## 必须限：不限流时瞬时力矩可达 -1800 MN，作用在 1 格高的碎块上会把它甩飞。
+@export var max_upright_torque: float = 600000000.0
 #endregion
 
 
@@ -56,7 +74,9 @@ func apply_input(axis: float, jump: bool, delta: float) -> void:
 	debug_force = 0.0
 	debug_drive_impulse = Vector2.ZERO
 	debug_jump_impulse = Vector2.ZERO
-	if (axis == 0.0 and not jump) or support == null or delta <= 0.0 or not world.world.bodies.has(support):
+	debug_upright_torque = 0.0
+	# ⚠️ 不能再用「没输入就早退」——回复力矩没有输入也要工作，否则一松手就倒。
+	if support == null or delta <= 0.0 or not world.world.bodies.has(support):
 		return
 	var body = player.body
 	var tangent: Vector2 = Vector2(-support_normal.y, support_normal.x)
@@ -69,21 +89,46 @@ func apply_input(axis: float, jump: bool, delta: float) -> void:
 	if jump:
 		debug_jump_impulse = support_normal * jump_impulse
 		impulse += debug_jump_impulse
-	_apply_pair(impulse, delta)
+	# 回复力矩和脚步推力共用**同一份**功率预算，所以并进同一次 _apply_pair。
+	var angular: float = _upright_angular_impulse(delta)
+	if impulse == Vector2.ZERO and angular == 0.0:
+		return
+	_apply_pair(impulse, delta, angular)
 	if jump:
 		support = null
 #endregion
 
 
+## 世界竖直回复力矩的**角冲量**。腾空（support == null）时调用方已经早退，所以这里不处理腾空。
+func _upright_angular_impulse(delta: float) -> float:
+	if upright_stiffness == 0.0 and upright_damping == 0.0:
+		return 0.0
+	# 手抓住世界时姿态归手臂管：此时脚部平衡会和抓握摆动对拧（实测侧移 >20 → 8.3）。
+	# 和「腾空不允许」同一条原则 —— 支撑不是自己的脚时，不替它站正。
+	if hand != null and hand.grabbed_body != null:
+		return 0.0
+	var body = player.body
+	var err: float = wrapf(-body.rotation, -PI, PI)
+	var spin: float = body.angular_velocity - support.angular_velocity
+	var torque: float = upright_stiffness * err - upright_damping * spin
+	if max_upright_torque > 0.0:
+		torque = clampf(torque, -max_upright_torque, max_upright_torque)
+	debug_upright_torque = torque
+	return torque * delta
+
+
 #region 接触点成对冲量
 ## 两边在同一世界点受相反冲量；功率只计算执行器的做功，包含转动与起步动能。
-func _apply_pair(impulse: Vector2, delta: float) -> void:
+## angular 是**角冲量**（不是力矩），和 impulse 共享同一份预算。
+func _apply_pair(impulse: Vector2, delta: float, angular: float = 0.0) -> void:
 	var body = player.body
 	var ra: Vector2 = contact_point - body.com_world()
 	var rb: Vector2 = contact_point - support.com_world()
 	var a: float = 0.5 * (impulse.length_squared() * (body.inv_mass + support.inv_mass)
-		+ pow(ra.cross(impulse), 2) * body.inv_inertia + pow(rb.cross(impulse), 2) * support.inv_inertia)
-	var b: float = impulse.dot(body.velocity_at(contact_point) - support.velocity_at(contact_point))
+		+ pow(ra.cross(impulse), 2) * body.inv_inertia + pow(rb.cross(impulse), 2) * support.inv_inertia
+		+ angular * angular * (body.inv_inertia + support.inv_inertia))
+	var b: float = impulse.dot(body.velocity_at(contact_point) - support.velocity_at(contact_point)) \
+		+ angular * (body.angular_velocity - support.angular_velocity)
 	var budget: float = maxf(max_power, 0.0) * delta
 	var scale: float = 1.0
 	if a + b > budget:
@@ -92,10 +137,14 @@ func _apply_pair(impulse: Vector2, delta: float) -> void:
 	impulse *= scale
 	debug_drive_impulse *= scale
 	debug_jump_impulse *= scale
+	debug_upright_torque *= scale
 	debug_active_power = maxf(a * scale * scale + b * scale, 0.0) / delta
 	debug_force = impulse.length() / delta
 	body.apply_impulse(impulse, contact_point)
 	support.apply_impulse(-impulse, contact_point)
+	if angular != 0.0:
+		body.apply_torque_impulse(angular)
+		support.apply_torque_impulse(-angular)
 	for receiver in [body, support]:
 		receiver.awake = true
 		receiver.sleep_timer = 0.0

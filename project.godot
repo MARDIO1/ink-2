@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="ink2"
-run/main_scene="res://map/main.tscn"
+run/main_scene="res://ui/menu/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
