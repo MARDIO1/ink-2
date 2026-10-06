@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://vqdlx81yhmw3"]
 
-[ext_resource type="Script" uid="uid://che8niruuu5nq" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
-[ext_resource type="Script" uid="uid://d356vg3m52niu" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
+[ext_resource type="Script" uid="uid://bxeqry66jsq28" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
+[ext_resource type="Script" uid="uid://cjoigmrhvvtvx" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
 [ext_resource type="Script" uid="uid://chdh46srdqdtn" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_kdw7h"]
 [ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="3_shape"]
 [ext_resource type="Resource" uid="uid://5e73rqefu12n" path="res://Ink/asset/black.tres" id="4_black"]
@@ -19,10 +19,11 @@
 process_priority = 10
 script = ExtResource("1_world")
 materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_black"), ExtResource("9_player_mat"), ExtResource("10_hand_mat"), ExtResource("14_grey1")])
-densities_fallback = Array[float]([0.0, 1.0, 8.0, 0.25, 2.0])
+densities_fallback = Array[float]([0.0, 1.0, 50.77686, 1.5, 2.0])
 voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
+process_callback = 0
 position = Vector2(-116, 212)
 script = ExtResource("8_camera")
 

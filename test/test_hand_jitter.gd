@@ -41,8 +41,9 @@ func _measure(config: Array) -> void:
 	scene.get_node("Player/PlayerInput").set_physics_process(false)
 	control._remove_arm()
 	_place(player, Vector2(0, 180))
-	_place(hand, Vector2(0, 211))
-	control.target_relative = Vector2(0, 31)
+	var grab_reach: float = 51.0 - control.FINGERTIP.x
+	_place(hand, Vector2(0, 180 + grab_reach))
+	control.target_relative = Vector2(0, grab_reach)
 	control.position_stiffness = config[1]
 	control.position_damping = config[2]
 	scene.world.ccd_max_motion = config[3]

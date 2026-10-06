@@ -4,6 +4,8 @@ extends Node
 ## 不保存像素余量；碎片只需 PBody，不需要额外挂载脚本。
 
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
+const NAIL_MATERIAL_ID := 4
+const ANCHOR_TAG := "static_anchor_points"
 
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
 ## 碰撞冲量转为破坏预算的倍率；越大越容易删像素。
@@ -48,6 +50,18 @@ var _profile: Dictionary = {}
 func _ready() -> void:
 	# 等父世界及 Player 完成初始化，再接管步进，避免同一帧推进两次。
 	call_deferred("_start")
+
+
+## 停止场景时解除形状与刚体的引用环，避免每次编辑器运行都残留物理资源。
+func _exit_tree() -> void:
+	if _main == null or _main.world == null:
+		return
+	for body in _main.world.bodies.duplicate():
+		for shape in body.shapes:
+			shape.owner_body = null
+		_main.world.remove_body(body)
+		body.shapes.clear()
+	_main.world._rp = null
 
 
 func _start() -> void:
@@ -439,16 +453,43 @@ func commit(physics, removals: Dictionary) -> Dictionary:
 	var removed: int = 0
 	var fragments: int = 0
 	for body in removals:
-		var result: Dictionary = physics.fracture_pixels(body, removals[body], 0.0, true)
+		var anchor_points: Dictionary = body.tags.get(ANCHOR_TAG, {})
+		var result: Dictionary = physics.fracture_pixels(body, removals[body], 0.0, true,
+			_anchor_map(body, anchor_points))
 		removed += result.removed
 		fragments += result.fragments.size()
 		if result.removed > 0:
 			changed.append(body)
 			changed.append_array(result.fragments)
+			for changed_body in [body] + result.fragments:
+				_update_anchors(changed_body, anchor_points)
 	if profile_enabled:
 		_profile.commit_us = _profile.get("commit_us", 0) + Time.get_ticks_usec() - profile_start
 		_profile.commit_calls = _profile.get("commit_calls", 0) + removals.size()
 		_profile.removed_pixels = _profile.get("removed_pixels", 0) + removed
 		_profile.fragments = _profile.get("fragments", 0) + fragments
 	return {"changed": changed, "calls": removals.size()}
+
+
+func _anchor_map(body: PBody, points: Dictionary) -> Dictionary:
+	var anchors: Dictionary = {}
+	for shape in body.shapes:
+		for point: Vector2i in points:
+			if shape.get_pixel(point.x, point.y) == NAIL_MATERIAL_ID:
+				if not anchors.has(shape):
+					anchors[shape] = {}
+				anchors[shape][point] = true
+	return anchors
+
+
+func _update_anchors(body: PBody, points: Dictionary) -> void:
+	var live: Dictionary = {}
+	for shape in body.shapes:
+		for point: Vector2i in points:
+			if shape.get_pixel(point.x, point.y) == NAIL_MATERIAL_ID:
+				live[point] = true
+	if live.is_empty():
+		body.tags.erase(ANCHOR_TAG)
+	else:
+		body.tags[ANCHOR_TAG] = live
 #endregion

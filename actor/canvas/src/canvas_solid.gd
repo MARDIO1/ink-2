@@ -4,7 +4,8 @@
 #region 依赖
 extends Node
 
-const MATERIAL_ID := 1
+const NAIL_MATERIAL_ID := 4
+const ANCHOR_TAG := "static_anchor_points"
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const PixelBody2D := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
@@ -27,10 +28,14 @@ func solidify(surface, world) -> void:
 
 	#先收集墨水，再只扫描实体与画布相交的局部区域。
 	var shape = PixelShape.new()
+	var anchors: Dictionary = {}
 	for y in range(size.y):
 		for x in range(size.x):
-			if surface.is_solid(x, y):
-				shape.set_pixel(x, y, MATERIAL_ID)
+			var material: int = surface.material_at(x, y)
+			if material != 0:
+				shape.set_pixel(x, y, material)
+				if material == NAIL_MATERIAL_ID:
+					anchors[Vector2i(x, y)] = true
 	var ink_pixels: int = shape.pixel_count()
 	var rejected_pixels: int = _remove_overlaps(shape, surface, world.world.bodies)
 
@@ -45,7 +50,7 @@ func solidify(surface, world) -> void:
 	var spawned := 0
 	var total_pixels := 0
 	for part in parts:
-		if _spawn_component(world, pos, part):
+		if _spawn_component(world, pos, part, anchors):
 			spawned += 1
 			total_pixels += part.pixel_count()
 
@@ -89,14 +94,22 @@ func _remove_overlaps(shape, surface, bodies: Array) -> int:
 
 #region 生成
 #把一个连通分量做成 PixelBody2D 节点并加进世界
-func _spawn_component(world, pos, part) -> bool:
+func _spawn_component(world, pos, part, anchors: Dictionary) -> bool:
+	var local_anchors: Dictionary = {}
+	for point: Vector2i in anchors:
+		if part.get_pixel(point.x, point.y) == NAIL_MATERIAL_ID:
+			local_anchors[point] = true
 	var body_node = PixelBody2D.new()
 	body_node.position = pos
+	body_node.is_static = not local_anchors.is_empty()
 	var shape_node = CanvasShape.new()
 	shape_node.shape = part
 	body_node.add_child(shape_node)
 	# add_body_node 只烘焙物理体；节点仍需由场景管理生命周期。
 	world.add_child(body_node)
 	body_node.global_position = pos
-	return world.add_body_node(body_node) != null
+	var body = world.add_body_node(body_node)
+	if body != null and not local_anchors.is_empty():
+		body.tags[ANCHOR_TAG] = local_anchors
+	return body != null
 #endregion

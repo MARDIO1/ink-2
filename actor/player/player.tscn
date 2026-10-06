@@ -1,21 +1,62 @@
-[gd_scene format=3 uid="uid://1n64fxhxd3hf"]
+[gd_scene load_steps=12 format=3 uid="uid://1n64fxhxd3hf"]
 
-[ext_resource type="Script" uid="uid://pek8hqxhme7i" path="res://actor/player/src/player_physics.gd" id="1_7gqxp"]
-[ext_resource type="Script" uid="uid://1jec22iry3ih" path="res://actor/player/src/player_input.gd" id="1_wy78e"]
-[ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="2_778ba"]
-[ext_resource type="PackedScene" uid="uid://b78lla71aiabs" path="res://actor/player/hand.tscn" id="3_hand"]
+[ext_resource type="Script" uid="uid://pek8hqxhme7i" path="res://actor/player/src/player_physics.gd" id="1_body"]
+[ext_resource type="Script" uid="uid://1jec22iry3ih" path="res://actor/player/src/player_input.gd" id="2_input"]
+[ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="3_shape"]
+[ext_resource type="Image" path="res://actor/player/asset/player_body_0.tres" id="4_body0"]
+[ext_resource type="Image" path="res://actor/player/asset/player_body_1.tres" id="5_body1"]
+[ext_resource type="Image" path="res://actor/player/asset/player_body_2.tres" id="6_body2"]
+[ext_resource type="Image" path="res://actor/player/asset/player_body_3.tres" id="7_body3"]
+[ext_resource type="Image" path="res://actor/player/asset/player_body_4.tres" id="8_body4"]
+[ext_resource type="Image" path="res://actor/player/asset/player_body_5.tres" id="9_body5"]
+[ext_resource type="Script" path="res://actor/player/src/pbody_visual.gd" id="10_visual"]
+[ext_resource type="PackedScene" uid="uid://b78lla71aiabs" path="res://actor/player/hand.tscn" id="11_hand"]
 
 [node name="Player" type="Node2D" unique_id=1427605215]
-script = ExtResource("1_7gqxp")
+script = ExtResource("1_body")
 can_sleep = false
 
-[node name="Shape" type="Node2D" parent="." unique_id=1293290646]
-visible = false
-script = ExtResource("2_778ba")
-rect_size = Vector2i(24, 32)
-material_id = 2
+[node name="Shape0" type="Node2D" parent="."]
+position = Vector2(10, 0)
+script = ExtResource("3_shape")
+source = 3
+paint = ExtResource("4_body0")
 
-[node name="PlayerInput" type="Node" parent="." unique_id=440227940]
-script = ExtResource("1_wy78e")
+[node name="Shape1" type="Node2D" parent="."]
+position = Vector2(9, 4)
+script = ExtResource("3_shape")
+source = 3
+paint = ExtResource("5_body1")
 
-[node name="Arm" parent="." unique_id=687357374 instance=ExtResource("3_hand")]
+[node name="Shape2" type="Node2D" parent="."]
+position = Vector2(0, 6)
+script = ExtResource("3_shape")
+source = 3
+paint = ExtResource("6_body2")
+
+[node name="Shape3" type="Node2D" parent="."]
+position = Vector2(0, 24)
+script = ExtResource("3_shape")
+source = 3
+paint = ExtResource("7_body3")
+
+[node name="Shape4" type="Node2D" parent="."]
+position = Vector2(10, 24)
+script = ExtResource("3_shape")
+source = 3
+paint = ExtResource("8_body4")
+
+[node name="Shape5" type="Node2D" parent="."]
+position = Vector2(11, 25)
+script = ExtResource("3_shape")
+source = 3
+paint = ExtResource("9_body5")
+
+[node name="Visual" type="Sprite2D" parent="."]
+process_physics_priority = 20
+script = ExtResource("10_visual")
+
+[node name="PlayerInput" type="Node" parent="."]
+script = ExtResource("2_input")
+
+[node name="Arm" parent="." instance=ExtResource("11_hand")]

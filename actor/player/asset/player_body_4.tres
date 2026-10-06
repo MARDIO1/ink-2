@@ -1,0 +1,10 @@
+[gd_resource type="Image" format=4]
+
+[resource]
+data = {
+"data": PackedByteArray("AAAAAAAAAAAAAAAAAgIAAAAAAAAAAAAAAgICAgAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAACAgAAAAAAAAAAAAICAgIAAgICAgICAgICAgIAAAA="),
+"format": "Red8",
+"height": 7,
+"mipmaps": false,
+"width": 14
+}

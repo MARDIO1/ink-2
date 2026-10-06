@@ -63,8 +63,15 @@ var _paint_color := Color.TRANSPARENT
 var _last_point := Vector2.ZERO
 ## 左键绘制的墨水颜色；固化材料由 CanvasSolid 决定。
 @export var black_color := Color(0.04, 0.08, 0.05, 1.0)
+## 中键放置的单像素钉子颜色；固化后使用 grey1 材料并固定所在连通块。
+@export var nail_color := Color(0.12, 0.12, 0.12, 1.0)
 #左键落笔时写入的黑色墨水颜色
 func _on_mouse_button(button: InputEventMouseButton) -> void:
+	if button.button_index == MOUSE_BUTTON_MIDDLE:
+		_painting = false
+		if button.pressed:
+			_place_nail(_mouse_point())
+		return
 	if button.button_index != MOUSE_BUTTON_LEFT and button.button_index != MOUSE_BUTTON_RIGHT:
 		return
 	if button.pressed:
@@ -154,9 +161,26 @@ func _stamp(center: Vector2, color: Color) -> void:
 				black_image.set_pixelv(Vector2i(x, y), color)
 
 
+func _place_nail(point: Vector2) -> void:
+	if not _inside(point):
+		return
+	black_image.set_pixelv(Vector2i(point.floor()), nail_color)
+	black_texture.update(black_image)
+
+
 #该像素是否为黑色墨水，供固化时采样
 func is_solid(x: int, y: int) -> bool:
 	return black_image.get_pixel(x, y).a > 0.5
+
+
+## 透明=空，普通墨水=1，灰色钉子=4。
+func material_at(x: int, y: int) -> int:
+	var color: Color = black_image.get_pixel(x, y)
+	if color.a <= 0.5:
+		return 0
+	var nail_delta: Vector3 = Vector3(color.r, color.g, color.b) - Vector3(nail_color.r, nail_color.g, nail_color.b)
+	var ink_delta: Vector3 = Vector3(color.r, color.g, color.b) - Vector3(black_color.r, black_color.g, black_color.b)
+	return 4 if nail_delta.length_squared() < ink_delta.length_squared() else 1
 #endregion
 
 

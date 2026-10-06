@@ -1,0 +1,10 @@
+[gd_resource type="Image" format=3]
+
+[resource]
+data = {
+"data": PackedByteArray(2, 2, 2, 2, 2, 0, 2, 2, 2, 2),
+"format": "Red8",
+"height": 2,
+"mipmaps": false,
+"width": 5
+}

@@ -7,4 +7,4 @@ script = ExtResource("1")
 display_name = "player_body"
 id = 2
 color = Color(0, 0, 0, 1)
-density = 8.0
+density = 50.77686

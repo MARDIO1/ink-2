@@ -290,3 +290,23 @@
 - map/src/collision_damage.gd 将同一碰撞面的多个接触点按冲量合成一次撞击，使用总冲量/接触宽度作为力度，避免 N 个接触点产生 N 份伤害。
 - 力度生成 1~4 条主裂纹；方向展开、初始扰动和分段转角采用可复现伪随机，总破坏预算在分支间分配，不额外增加伤害或内核提交。
 - 新增 5 个带 Inspector 说明的裂纹参数。真实 DLL 回归 41/41 通过，主场景 120 固定步 17.41 ms；普通落地、对称损坏、静压、动量和能量检查通过。
+
+## 2026-10-06 20:51 - 实装可破坏钉子
+
+- 中键在画布放置单像素 grey1 钉子；左键仍绘制，右键仍擦除。
+- 含钉子的固化连通块成为静态体；破坏时把存活钉子传给引擎，未连接碎块转为动态，钉子像素被破坏后解除静态。
+- 同步本次引擎构建的 addon 脚本；原生 DLL 哈希原本已一致。
+- 验证：test_canvas（保存/加载、固化、分裂、钉子断裂）PASS；test_collision_damage 41/41 PASS；Godot 编辑器扫描通过。
+- 修复安装时误带 .gdignore 导致编辑器 F5/F6 无法注册 RapierPhys；重建 extension_list，并更新 PixelWorld/PBody 场景 UID。主场景按编辑器启动链运行 180 帧无脚本错误。
+
+
+## 2026-10-06 21:07 - 编辑器启动与退出闭环修复
+- 旧编辑器再次清空 extension_list，新增 Ink/src/runtime.gd 自启动确认 GDExtension 注册，消除 F5/F6 对扫描缓存的依赖。
+- 相机明确使用物理回调；CollisionDamage 在场景退出时清理 Shape/Body 引用环和原生世界。
+- 故意移走扩展缓存后的带窗口启动通过；最终带窗口主场景180帧正常退出，无 ERROR/WARNING。钉子闭环回归 PASS。
+
+## 2026-10-06 21:50 - Player与Hand像素烘焙
+- 将用户命名的 player_body、player_hand_unfold、player_hand_grab 原图按16像素网格还原并等比缩放，烘焙为 actor/player/asset 下的 Image .tres；黑底作为空像素。
+- Player的6个分离部件和展开手的3个分离部件作为同一PBody的多个Shape接入，编辑器与运行时共用PixelSprite视觉；抓握手资源保留给后续动画切换。
+- 按新像素数补偿材料密度，实测Player 121像素/6144质量、Hand 56像素/84质量；指尖抓点对齐展开手最右端像素。
+- 验证：HandPhysics 50/50通过；Jitter 8组完成且隐式控制静态段位移与高频RMS均为0；主场景无脚本错误，临时烘焙与验证脚本均已删除。

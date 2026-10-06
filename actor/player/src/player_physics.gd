@@ -1,6 +1,7 @@
 @tool
 extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
 ## 玩家、手和连杆的物理节点，分别持有自己的 PBody。
+const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 
 ## 所属 PixelWorld 的相对路径，初始化时用于注册该节点的物理体。
 @export var world_path := NodePath("..")
@@ -20,7 +21,12 @@ func _bake_lazily():
 
 
 func collect_shapes() -> Array:
-	return [$Shape.get_shape()] if has_node("Shape") else [get_shape()]
+	var shapes: Array = []
+	for child in get_children():
+		# 只烘焙直接形状；嵌套的 Arm/Hand 各自持有独立 PBody。
+		if child.get_script() == PixelShape2D:
+			shapes.append(child.get_shape())
+	return shapes if not shapes.is_empty() else [get_shape()]
 
 
 func bake():
