@@ -1,7 +1,7 @@
 #region 依赖
 extends Camera2D
 
-## 跟随目标节点；相机读取其 PBody 质心，不读取视觉节点的位置。
+## 跟随目标节点；相机读取其 PBody 质心
 @export var player_path := NodePath("../Player")
 
 var player_body = null

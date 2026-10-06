@@ -14,6 +14,8 @@ var contact_impulses: Dictionary = {}
 var indices: Dictionary = {}
 var support = null
 var step_time: float = 0.0
+var profile_enabled: bool = false
+var _profile: Dictionary = {}
 const COLORS: Array[Color] = [Color.CYAN, Color.ORANGE, Color.LIME_GREEN, Color.YELLOW, Color.GRAY, Color.CORNFLOWER_BLUE, Color.MAGENTA, Color.RED]
 
 #region 固定步采样
@@ -37,6 +39,7 @@ func _physics_process(_delta: float) -> void:
 func sample_contacts(contacts: Array, delta: float) -> void:
 	if not enabled:
 		return
+	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	step_time += delta
 	for contact in contacts:
 		# 休眠流形可能保留上次冲量，不能把缓存当成当前子步的新力。
@@ -51,10 +54,13 @@ func sample_contacts(contacts: Array, delta: float) -> void:
 				# 同点各分量分别画，子步同类箭头合并，避免越多子步越多图元。
 				_add(body, "N", point.position, normal * side[1], 5)
 				_add(body, "friction", point.position, friction * side[1], 6)
+	if profile_enabled:
+		_profile.sample_us = _profile.get("sample_us", 0) + Time.get_ticks_usec() - profile_start
 
 func finish(delta: float) -> void:
 	if not enabled or step_time <= 0.0:
 		return
+	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	for arrow in arrows:
 		arrow.force /= step_time
 	var active: Dictionary = {}
@@ -79,6 +85,8 @@ func finish(delta: float) -> void:
 			- active.get(body, Vector2.ZERO) - contact_impulses.get(body, Vector2.ZERO)) / delta - gravity
 		_add(body, "constraint/residual", body.com_world(), residual, 7)
 	queue_redraw()
+	if profile_enabled:
+		_profile.finish_us = _profile.get("finish_us", 0) + Time.get_ticks_usec() - profile_start
 
 func _add(body, title: String, point: Vector2, force: Vector2, color: int) -> void:
 	if not indices.has(body):
@@ -94,6 +102,7 @@ func _add(body, title: String, point: Vector2, force: Vector2, color: int) -> vo
 func _draw() -> void:
 	if not enabled:
 		return
+	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var font: Font = ThemeDB.fallback_font
 	draw_string(font, Vector2(12, 20), "Tab 调试 | 青 P / 橙 D / 绿 AD / 黄 跳跃", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.DARK_SLATE_GRAY)
 	draw_string(font, Vector2(12, 36), "灰 重力 / 蓝 支撑 / 紫 摩擦 / 红 约束余项", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.DARK_SLATE_GRAY)
@@ -117,4 +126,17 @@ func _draw() -> void:
 		if text_position.y < get_viewport_rect().size.y - 12:
 			draw_string(font, text_position, "body %d | %s (%+.2f, %+.2f) M" % [arrow.body.id, arrow.title, force.x / 1e6, force.y / 1e6], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, color)
 		row += 1
+	if profile_enabled:
+		_profile.draw_us = _profile.get("draw_us", 0) + Time.get_ticks_usec() - profile_start
+
+
+func set_profile_enabled(value: bool) -> void:
+	profile_enabled = value
+	_profile.clear()
+
+
+func take_profile() -> Dictionary:
+	var result: Dictionary = _profile.duplicate()
+	_profile.clear()
+	return result
 #endregion

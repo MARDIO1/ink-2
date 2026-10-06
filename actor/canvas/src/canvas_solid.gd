@@ -25,16 +25,20 @@ func solidify(surface, world) -> void:
 	var pos: Vector2 = surface.global_position
 	var size: Vector2i = surface.canvas_size
 
-	#收集全部实心像素，再用引擎的连通性工具拆成分量
+	#先收集墨水，再只扫描实体与画布相交的局部区域。
 	var shape = PixelShape.new()
 	for y in range(size.y):
 		for x in range(size.x):
 			if surface.is_solid(x, y):
 				shape.set_pixel(x, y, MATERIAL_ID)
+	var ink_pixels: int = shape.pixel_count()
+	var rejected_pixels: int = _remove_overlaps(shape, surface, world.world.bodies)
 
 	var parts: Array = Destruction.split(shape, 1)
 	if parts.is_empty():
-		push_error("CanvasSolid.solidify: 没有可固化的黑色像素")
+		if ink_pixels > 0:
+			surface.clear()
+		print("SOLID bodies=0 pixels=0 rejected=%d" % rejected_pixels)
 		return
 
 	#每个连通分量做成一个刚体节点，add_body_node 进世界（类比 add_child）
@@ -48,7 +52,38 @@ func solidify(surface, world) -> void:
 	#固化成功后清空画布上的蓝图墨水
 	if spawned > 0:
 		surface.clear()
-	print("SOLID bodies=%d pixels=%d" % [spawned, total_pixels])
+	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
+#endregion
+
+
+#region 重叠
+func _remove_overlaps(shape, surface, bodies: Array) -> int:
+	var removed: int = 0
+	var canvas_rect: Rect2 = Rect2(surface.global_position, Vector2(surface.canvas_size))
+	for body in bodies:
+		var overlap: Rect2 = body.aabb.intersection(canvas_rect)
+		if overlap.size.x <= 0.0 or overlap.size.y <= 0.0:
+			continue
+		var from: Vector2i = Vector2i(surface.to_local(overlap.position).floor()).max(Vector2i.ZERO)
+		var to: Vector2i = Vector2i(surface.to_local(overlap.end).ceil()).min(surface.canvas_size)
+		var world_start: Vector2 = surface.to_global(Vector2(from) + Vector2.ONE * 0.5)
+		var row_start: Vector2 = body.to_local(world_start)
+		var step_x: Vector2 = body.to_local(surface.to_global(Vector2(from) + Vector2(1.5, 0.5))) - row_start
+		var step_y: Vector2 = body.to_local(surface.to_global(Vector2(from) + Vector2(0.5, 1.5))) - row_start
+		for y in range(from.y, to.y):
+			var local: Vector2 = row_start
+			for x in range(from.x, to.x):
+				if shape.get_pixel(x, y) == 0:
+					local += step_x
+					continue
+				for body_shape in body.shapes:
+					if body_shape.get_pixel(floori(local.x), floori(local.y)) != 0:
+						shape.clear_pixel(x, y)
+						removed += 1
+						break
+				local += step_x
+			row_start += step_y
+	return removed
 #endregion
 
 

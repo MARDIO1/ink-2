@@ -21,6 +21,7 @@ func _run() -> void:
 	surface._stroke(Vector2(20, 20), Vector2(40, 20), Color.BLACK)
 	var path: String = "user://canvas_roundtrip.tres"
 	canvas.capture_path = path
+	canvas.baked_map_path = "user://canvas_roundtrip.png"
 	var before: PackedByteArray = surface.black_image.get_data()
 	await _press(KEY_F5)
 	valid = valid and ResourceLoader.exists(path)

@@ -27,6 +27,10 @@ var _protected: Array = []
 @onready var _camera: Camera2D = $"../Camera2D"
 ## 活动范围相对当前可见画面的宽高倍率；4 表示宽高各四倍，完全在外的刚体冻结。
 @export_range(1.0, 32.0, 0.5) var freeze_view_scale: float = 4.0
+## 连续碰撞检测；关闭可降低高速/抓取时的子步开销，但允许穿模。
+@export var ccd_enabled: bool = false
+var profile_enabled: bool = false
+var _profile: Dictionary = {}
 #endregion
 
 
@@ -40,6 +44,8 @@ func _start() -> void:
 	_main = get_parent()
 	_player = _main.get_node("Player")
 	_protected = [_player.get_node("Arm").body, _player.get_node("Arm/Hand").body]
+	_main.world.ccd_enabled = ccd_enabled
+	_main.world.rp_ccd_substeps = 1 if ccd_enabled else 0
 	_main.set_physics_process(false)
 	_main.world.contact_events_enabled = false
 	process_physics_priority = _main.process_physics_priority + 1
@@ -48,6 +54,7 @@ func _start() -> void:
 func _physics_process(delta: float) -> void:
 	if _main == null or not _main.auto_step:
 		return
+	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	_elapsed += delta
 	var steps: int = 0
 	while _elapsed >= _main.fixed_dt and steps < _main.max_substeps:
@@ -56,7 +63,10 @@ func _physics_process(delta: float) -> void:
 		if not result.removals.is_empty():
 			var nodes: Array = _main._body_nodes.duplicate()
 			commit(_main.world, result.removals)
+			var sync_start: int = Time.get_ticks_usec() if profile_enabled else 0
 			_main.sync_world_bodies()
+			if profile_enabled:
+				_profile.sync_us = _profile.get("sync_us", 0) + Time.get_ticks_usec() - sync_start
 			var live: Dictionary = {}
 			for body in _main.world.bodies:
 				live[body] = true
@@ -70,6 +80,7 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(_forces):
 		_forces.finish(delta)
 	if _main.auto_render and _main.renderer != null:
+		var render_start: int = Time.get_ticks_usec() if profile_enabled else 0
 		# 内部连杆隐藏，手使用自己的三角形视觉；冻结体的变换不需要重复同步。
 		var visible: Dictionary = _main._live_ids()
 		for body in _protected:
@@ -80,10 +91,27 @@ func _physics_process(delta: float) -> void:
 			var node = _main._body_nodes[i]
 			if not body.is_static and not body.frozen and not _protected.has(body) and (node == null or not _main.has_own_sprite(node)):
 				_main.renderer.sync(body)
+		if profile_enabled:
+			_profile.render_sync_us = _profile.get("render_sync_us", 0) + Time.get_ticks_usec() - render_start
+	if profile_enabled:
+		_profile.physics_us = _profile.get("physics_us", 0) + Time.get_ticks_usec() - profile_start
+		_profile.physics_calls = _profile.get("physics_calls", 0) + 1
+
+
+func set_profile_enabled(enabled: bool) -> void:
+	profile_enabled = enabled
+	_profile.clear()
+
+
+func take_profile() -> Dictionary:
+	var result: Dictionary = _profile.duplicate()
+	_profile.clear()
+	return result
 
 
 ## 接触点必须匹配该子步的位姿；删除并集留到固定步末，避免重复重建。
 func _step(delta: float) -> Dictionary:
+	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var physics = _main.world
 	# 用当前可见画面扩大范围，整组关节冻结；玩家连接的物体持续受力。
 	var size: Vector2 = _camera.get_viewport_rect().size / _camera.zoom * freeze_view_scale
@@ -92,10 +120,16 @@ func _step(delta: float) -> Dictionary:
 		body.refresh_com()
 	var count: int = physics._compute_substeps(delta)
 	physics.last_substeps = count
+	if profile_enabled:
+		_profile.fixed_steps = _profile.get("fixed_steps", 0) + 1
+		_profile.substeps = _profile.get("substeps", 0) + count
 	var result: Dictionary = {"removals": {}, "player_damage": 0.0}
 	for i in count:
 		physics.contacts.clear()
+		var native_start: int = Time.get_ticks_usec() if profile_enabled else 0
 		physics._substep_rapier(delta / count)
+		if profile_enabled:
+			_profile.native_us = _profile.get("native_us", 0) + Time.get_ticks_usec() - native_start
 		var impact: Dictionary = calculate(physics, _player.body, _protected)
 		result.player_damage += impact.player_damage
 		for body in impact.removals:
@@ -107,6 +141,8 @@ func _step(delta: float) -> Dictionary:
 					result.removals[body][shape] = impact.removals[body][shape]
 				else:
 					result.removals[body][shape].merge(impact.removals[body][shape], true)
+	if profile_enabled:
+		_profile.step_us = _profile.get("step_us", 0) + Time.get_ticks_usec() - profile_start
 	return result
 #endregion
 
@@ -115,8 +151,13 @@ func _step(delta: float) -> Dictionary:
 ## 返回 {removals: {PBody: {PixelShape: {Vector2i: true}}}, player_damage: float}。
 ## 重叠删除取并集；每条 lane 独立消费预算，未满一个像素的余量舍弃。
 func calculate(world, player_body: PBody = null, protected_bodies: Array = []) -> Dictionary:
+	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var result: Dictionary = {"removals": {}, "player_damage": 0.0}
+	var contacts_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var contacts: Array = _contacts(world)
+	if profile_enabled:
+		_profile.contacts_us = _profile.get("contacts_us", 0) + Time.get_ticks_usec() - contacts_start
+		_profile.contact_pairs = _profile.get("contact_pairs", 0) + contacts.size()
 	if is_instance_valid(_forces):
 		_forces.sample_contacts(contacts, _main.fixed_dt / world.last_substeps)
 	if is_instance_valid(_feet):
@@ -149,6 +190,8 @@ func calculate(world, player_body: PBody = null, protected_bodies: Array = []) -
 					continue  # 连第一层都删不掉，不必扫描厚度。
 				var path: Array = _trace(body, side[1], side[2], world, 0.0 if body == player_body else budget, body == player_body)
 				_damage_side(world, body, path, side[4], lane.impulse, player_body, protected_bodies, result)
+	if profile_enabled:
+		_profile.damage_us = _profile.get("damage_us", 0) + Time.get_ticks_usec() - profile_start
 	return result
 
 
@@ -315,11 +358,21 @@ func calculate_shear() -> void:
 #region 现有破坏接口
 ## 每个受损物体提交一次掩码，分片由引擎负责。
 func commit(physics, removals: Dictionary) -> Dictionary:
+	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var changed: Array = []
+	var removed: int = 0
+	var fragments: int = 0
 	for body in removals:
 		var result: Dictionary = physics.fracture_pixels(body, removals[body], 0.0, true)
+		removed += result.removed
+		fragments += result.fragments.size()
 		if result.removed > 0:
 			changed.append(body)
 			changed.append_array(result.fragments)
+	if profile_enabled:
+		_profile.commit_us = _profile.get("commit_us", 0) + Time.get_ticks_usec() - profile_start
+		_profile.commit_calls = _profile.get("commit_calls", 0) + removals.size()
+		_profile.removed_pixels = _profile.get("removed_pixels", 0) + removed
+		_profile.fragments = _profile.get("fragments", 0) + fragments
 	return {"changed": changed, "calls": removals.size()}
 #endregion

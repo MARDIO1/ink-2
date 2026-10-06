@@ -25,6 +25,8 @@ func _ready() -> void:
 #region 固化输入
 ## 开发复现文件留在 test，保存内容仍是未固化墨水。
 @export var capture_path: String = "res://test/canvas_capture.tres"
+## 大地图预览图；保存后可由 BakedMap 在编辑器中加载和拖动。
+@export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
 
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
@@ -33,6 +35,7 @@ func _input(event: InputEvent) -> void:
 		solid.solidify(surface, world)
 	elif event.is_action_pressed("canvas_save"):
 		surface.save_ink(capture_path)
+		surface.save_png(baked_map_path)
 	elif event.is_action_pressed("canvas_load"):
 		surface.load_ink(capture_path)
 #endregion

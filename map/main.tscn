@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://vqdlx81yhmw3"]
 
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
+[ext_resource type="Script" uid="uid://che8niruuu5nq" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
 [ext_resource type="Script" uid="uid://d356vg3m52niu" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
 [ext_resource type="Script" uid="uid://chdh46srdqdtn" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_kdw7h"]
 [ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="3_shape"]
-[ext_resource type="Resource" path="res://Ink/asset/black.tres" id="4_black"]
+[ext_resource type="Resource" uid="uid://5e73rqefu12n" path="res://Ink/asset/black.tres" id="4_black"]
 [ext_resource type="PackedScene" uid="uid://1n64fxhxd3hf" path="res://actor/player/player.tscn" id="6_vthes"]
 [ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/canvas.tscn" id="7_fxpqp"]
 [ext_resource type="Script" uid="uid://dcqnoa67srpgu" path="res://actor/player/src/player_camera.gd" id="8_camera"]
@@ -13,11 +13,12 @@
 [ext_resource type="Script" uid="uid://dujchjtyhoikf" path="res://map/src/collision_damage.gd" id="11_damage"]
 [ext_resource type="Script" uid="uid://c6qq6cj82333o" path="res://map/src/hud.gd" id="12_hud"]
 [ext_resource type="Script" uid="uid://drdj5ctwnkrob" path="res://map/src/force_debug.gd" id="13_forces"]
+[ext_resource type="Resource" path="res://Ink/asset/grey1.tres" id="14_grey1"]
 
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10
 script = ExtResource("1_world")
-materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_black"), ExtResource("9_player_mat"), ExtResource("10_hand_mat")])
+materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_black"), ExtResource("9_player_mat"), ExtResource("10_hand_mat"), ExtResource("14_grey1")])
 densities_fallback = Array[float]([0.0, 1.0, 8.0, 0.25, 2.0])
 voxel_size = 1.0
 
@@ -26,6 +27,8 @@ position = Vector2(-116, 212)
 script = ExtResource("8_camera")
 
 [node name="Canvas" parent="." unique_id=1726580571 instance=ExtResource("7_fxpqp")]
+position = Vector2(41, -42)
+baked_map_path = null
 
 [node name="Ground" type="Node2D" parent="." unique_id=696036291]
 position = Vector2(-133, 231)
@@ -50,6 +53,7 @@ rect_size = Vector2i(32, 32)
 position = Vector2(-128, 196)
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=1228885047]
+visible = false
 script = ExtResource("12_hud")
 
 [node name="Stats" type="Label" parent="HUD" unique_id=931896447]

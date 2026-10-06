@@ -51,8 +51,12 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		_on_mouse_button(event as InputEventMouseButton)
-	elif event is InputEventMouseMotion:
-		_on_mouse_motion()
+
+
+#摄像机移动不会产生 MouseMotion，因此按住画笔时每帧按世界坐标补线。
+func _process(_delta: float) -> void:
+	if not Engine.is_editor_hint() and _painting:
+		_continue_stroke()
 
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
@@ -74,9 +78,7 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 		_painting = false
 
 
-func _on_mouse_motion() -> void:
-	if not _painting:
-		return
+func _continue_stroke() -> void:
 	var point := _mouse_point()
 	#移出画布时停笔，避免从外侧拖回时突然补一条线
 	if not _inside(point):
@@ -166,6 +168,16 @@ func save_ink(path: String) -> Error:
 		print("CANVAS saved: ", ProjectSettings.globalize_path(path))
 	else:
 		push_error("Canvas save failed: %s (%d)" % [path, error])
+	return error
+
+
+## 保存供 BakedMap 同时用于编辑器预览和物理烘焙的透明 PNG。
+func save_png(path: String) -> Error:
+	var error: Error = black_image.save_png(ProjectSettings.globalize_path(path))
+	if error == OK:
+		print("MAP saved: ", ProjectSettings.globalize_path(path))
+	else:
+		push_error("Map save failed: %s (%d)" % [path, error])
 	return error
 
 

@@ -138,6 +138,10 @@ func _calculate_motor(target_position: Vector2, hand_position: Vector2, delta: f
 	var acceleration := ((target_position - hand_position) * position_stiffness
 		- velocity * (position_damping + position_stiffness * delta)) * stable
 	var inverse_mass: float = _hand_side()["inv_mass"] + player_body.inv_mass
+	if inverse_mass <= 0.0 or not is_finite(inverse_mass) or not acceleration.is_finite():
+		debug_p_force = Vector2.ZERO
+		debug_d_force = Vector2.ZERO
+		return Vector2.ZERO
 	var force := (acceleration / inverse_mass).limit_length(max_force)
 	force = _limit_power(force, 0.0, hand_position, delta)
 	var raw: Vector2 = acceleration / inverse_mass
@@ -314,10 +318,13 @@ func _hand_side() -> Dictionary:
 	var inertia: float = body.inertia
 	if grabbed_body != null and not rotate_grip:
 		mass += grabbed_body.mass
-		center = (center * body.mass + grabbed_body.com_world() * grabbed_body.mass) / mass
+		if mass > 0.0:
+			center = (center * body.mass + grabbed_body.com_world() * grabbed_body.mass) / mass
 		inertia += grabbed_body.inertia + body.mass * body.com_world().distance_squared_to(center)
 		inertia += grabbed_body.mass * grabbed_body.com_world().distance_squared_to(center)
-	return {"center": center, "inertia": inertia, "inv_mass": 1.0 / mass, "inv_inertia": 1.0 / inertia}
+	return {"center": center, "inertia": inertia,
+		"inv_mass": 1.0 / mass if mass > 0.0 else 0.0,
+		"inv_inertia": 1.0 / inertia if inertia > 0.0 else 0.0}
 
 ## 获得鼠标在世界坐标下的位置；没有摄像机时退化为相对位置。
 func _get_mouse_world_position() -> Vector2:
