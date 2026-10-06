@@ -18,6 +18,16 @@ const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 @export_range(0.0, 1.0, 0.01) var min_thickness_factor: float = 0.2
 ## 强度 0 表示不删像素；作为攻击方及玩家伤害的参考抗性仍需有限值。
 @export var reference_strength: float = 100.0
+## 单次撞击最多生成的主裂纹数；实际数量仍由可破坏像素预算决定。
+@export_range(1, 4, 1) var crack_max_count: int = 4
+## 每增加一条主裂纹需要的等效可破坏像素数；越大越难出现多条裂纹。
+@export_range(1.0, 32.0, 0.5) var crack_pixels_per_branch: float = 6.0
+## 主裂纹围绕受力进入方向的最大展开角；实际角度带确定性扰动，不形成整齐扇形。
+@export_range(0.0, 80.0, 1.0) var crack_spread_degrees: float = 35.0
+## 每段裂纹的最大随机转角；越大越接近闪电或树根，越小越接近玻璃直裂纹。
+@export_range(0.0, 30.0, 1.0) var crack_turn_degrees: float = 10.0
+## 裂纹前进多少像素后重新取一次转角；越小折线越密。
+@export_range(1, 16, 1) var crack_turn_pixels: int = 4
 var _elapsed: float = 0.0
 var _main = null
 var _player = null
@@ -165,39 +175,45 @@ func calculate(world, player_body: PBody = null, protected_bodies: Array = []) -
 	for contact in contacts:
 		if contact.approach <= min_approach:
 			continue
-		for lane in _lanes(contact.points):
-			var point: Vector2 = lane.position
-			var normal: Vector2 = lane.normal
-			var a_origin: Vector2 = point - normal * 0.001
-			var b_origin: Vector2 = point + normal * (maxf(lane.dist, 0.0) + 0.001)
-			var a_material: int = _material_at(contact.a, a_origin)
-			var b_material: int = _material_at(contact.b, b_origin)
-			if a_material == 0 or b_material == 0:
+		var impact: Dictionary = _impact(contact.points)
+		if impact.is_empty():
+			continue
+		var point: Vector2 = impact.position
+		var normal: Vector2 = impact.normal
+		var a_origin: Vector2 = point - normal * 0.001
+		var b_origin: Vector2 = point + normal * (maxf(impact.dist, 0.0) + 0.001)
+		var a_material: int = _material_at(contact.a, a_origin)
+		var b_material: int = _material_at(contact.b, b_origin)
+		if a_material == 0 or b_material == 0:
+			continue
+		for side in [[contact.a, a_origin, -normal, a_material, b_material, -1.0],
+				[contact.b, b_origin, normal, b_material, a_material, 1.0]]:
+			var body: PBody = side[0]
+			if protected_bodies.has(body):
 				continue
-			for side in [[contact.a, a_origin, -normal, a_material, b_material],
-					[contact.b, b_origin, normal, b_material, a_material]]:
-				var body: PBody = side[0]
-				if protected_bodies.has(body):
-					continue
-				var strength: float = world.material_strength(side[3]).x
-				if strength <= 0.0 and body != player_body:
-					continue
-				strength = strength if strength > 0.0 else reference_strength
-				var attacker: float = world.material_strength(side[4]).x
-				attacker = attacker if attacker > 0.0 else reference_strength
-				var budget: float = damage_scale * lane.impulse * attacker / strength
-				if body != player_body and budget < strength:
-					continue  # 连第一层都删不掉，不必扫描厚度。
-				var path: Array = _trace(body, side[1], side[2], world, 0.0 if body == player_body else budget, body == player_body)
-				_damage_side(world, body, path, side[4], lane.impulse, player_body, protected_bodies, result)
+			var strength: float = world.material_strength(side[3]).x
+			if strength <= 0.0 and body != player_body:
+				continue
+			strength = strength if strength > 0.0 else reference_strength
+			var attacker: float = world.material_strength(side[4]).x
+			attacker = attacker if attacker > 0.0 else reference_strength
+			var budget: float = damage_scale * impact.impulse * attacker / strength
+			if body != player_body and budget < strength:
+				continue  # 连第一层都删不掉，不必扫描厚度。
+			var path: Array = _trace(body, side[1], side[2], world, 0.0 if body == player_body else budget, body == player_body)
+			var seed: int = hash(Vector3i(roundi(point.x * 16.0), roundi(point.y * 16.0), roundi(impact.impulse)))
+			_damage_side(world, body, path, side[4], impact.impulse, player_body,
+				protected_bodies, result, side[1], side[2], seed, side[5])
 	if profile_enabled:
 		_profile.damage_us = _profile.get("damage_us", 0) + Time.get_ticks_usec() - profile_start
 	return result
 
 
 func _damage_side(world, body: PBody, path: Array, attacker_material: int,
-		impulse: float, player_body: PBody, protected_bodies: Array, result: Dictionary) -> void:
-	if protected_bodies.has(body):
+		impulse: float, player_body: PBody, protected_bodies: Array, result: Dictionary,
+		origin: Vector2 = Vector2.INF, direction: Vector2 = Vector2.ZERO, seed: int = 0,
+		mirror: float = 1.0) -> void:
+	if protected_bodies.has(body) or path.is_empty():
 		return
 	var surface_strength: float = world.material_strength(path[0].material).x
 	if surface_strength <= 0.0:
@@ -221,6 +237,25 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 	if body == player_body:
 		result.player_damage += budget
 		return
+	if not origin.is_finite() or direction.is_zero_approx():
+		_consume_path(world, body, path, budget, result)
+		return
+	var count: int = _crack_count(budget / surface_strength)
+	var branch_budget: float = budget / float(count)
+	for i in count:
+		var spread: float = 0.0 if count == 1 else remap(float(i), 0.0, float(count - 1), -1.0, 1.0)
+		var jitter: float = (_noise(seed, i) * 2.0 - 1.0) * crack_turn_degrees
+		var angle: float = deg_to_rad((spread * crack_spread_degrees + jitter) * mirror)
+		var crack: Array = _crack_path(body, origin, direction.rotated(angle), world,
+			branch_budget, seed + i * 97, mirror)
+		_consume_path(world, body, crack, branch_budget, result)
+
+
+func _crack_count(pixel_budget: float) -> int:
+	return clampi(1 + floori(maxf(0.0, pixel_budget - 1.0) / crack_pixels_per_branch), 1, crack_max_count)
+
+
+func _consume_path(world, body: PBody, path: Array, budget: float, result: Dictionary) -> void:
 	for pixel in path:
 		var cost: float = world.material_strength(pixel.material).x
 		if cost <= 0.0 or budget < cost:
@@ -259,35 +294,32 @@ func _contacts(world) -> Array:
 	return contacts
 
 
-## 同法线点投影到切线，两端间按像素宽度分配；总冲量严格归一。
-## 当前 collider 是矩形，通常只有 1～2 点；不同法线分组，避免跨拐角连线。
-func _lanes(points: Array) -> Array:
-	var groups: Dictionary = {}
+## 同一碰撞对只形成一次撞击；多接触点按各自冲量合成，避免 N 个点产生 N 份伤害。
+func _impact(points: Array) -> Dictionary:
+	var total: float = 0.0
+	var position: Vector2 = Vector2.ZERO
+	var normal: Vector2 = Vector2.ZERO
+	var dist: float = 0.0
 	for point in points:
 		if point.impulse <= 0.0:
 			continue
-		var normal: Vector2 = point.normal
-		var key: Vector2i = Vector2i(roundi(normal.x * 1000.0), roundi(normal.y * 1000.0))
-		if not groups.has(key):
-			groups[key] = []
-		groups[key].append(point)
-	var lanes: Array = []
-	for group in groups.values():
-		var normal: Vector2 = group[0].normal
-		var tangent: Vector2 = Vector2(-normal.y, normal.x)
-		group.sort_custom(func(a, b): return a.position.dot(tangent) < b.position.dot(tangent))
-		var first: Dictionary = group[0]
-		var last: Dictionary = group[-1]
-		var total: float = 0.0
-		for point in group:
-			total += point.impulse
-		var count: int = maxi(1, ceili(first.position.distance_to(last.position)))
-		var weight_sum: float = count * (first.impulse + last.impulse) * 0.5
-		for i in count:
-			var t: float = (float(i) + 0.5) / float(count)
-			lanes.append({"position": first.position.lerp(last.position, t), "normal": normal,
-				"dist": lerpf(first.dist, last.dist, t), "impulse": total * lerpf(first.impulse, last.impulse, t) / weight_sum})
-	return lanes
+		total += point.impulse
+		position += point.position * point.impulse
+		normal += point.normal * point.impulse
+		dist += point.dist * point.impulse
+	if total <= 0.0 or normal.is_zero_approx():
+		return {}
+	normal = normal.normalized()
+	var tangent: Vector2 = Vector2(-normal.y, normal.x)
+	var first: float = INF
+	var last: float = -INF
+	for point in points:
+		if point.impulse > 0.0:
+			first = minf(first, point.position.dot(tangent))
+			last = maxf(last, point.position.dot(tangent))
+	var width: int = maxi(1, ceili(last - first))
+	return {"position": position / total, "normal": normal, "dist": dist / total,
+		"impulse": total / float(width), "total_impulse": total, "width": width}
 #endregion
 
 
@@ -347,6 +379,50 @@ func _trace(body: PBody, origin: Vector2, direction: Vector2, world = null,
 			cell.y += step.y
 			next.y += delta.y
 	return path
+
+
+## 半像素步进保证不跨格；每段只改变方向，不增加破坏预算。
+func _crack_path(body: PBody, origin: Vector2, direction: Vector2, world,
+		budget: float, seed: int, mirror: float = 1.0) -> Array:
+	var point: Vector2 = body.to_local(origin)
+	var base: Vector2 = direction.rotated(-body.rotation).normalized()
+	var ray: Vector2 = base
+	var last: Vector2i = Vector2i(1 << 30, 1 << 30)
+	var path: Array = []
+	var cost: float = 0.0
+	var turn: int = 0
+	while true:
+		var cell: Vector2i = Vector2i(point.floor())
+		if cell != last:
+			last = cell
+			var hit = null
+			for shape in body.shapes:
+				var material: int = shape.get_pixel(cell.x, cell.y)
+				if material != 0:
+					hit = {"shape": shape, "position": cell, "material": material}
+					break
+			if hit == null:
+				return path
+			path.append(hit)
+			var strength: float = world.material_strength(hit.material).x
+			if strength <= 0.0:
+				return path
+			cost += strength
+			if cost >= budget:
+				return path
+			if path.size() % crack_turn_pixels == 0:
+				var angle: float = (_noise(seed, turn + 31) * 2.0 - 1.0) * crack_turn_degrees * mirror
+				ray = base.rotated(deg_to_rad(angle))
+				turn += 1
+		point += ray * 0.5
+	return path
+
+
+func _noise(seed: int, index: int) -> float:
+	var value: int = absi(seed % 2147483647)
+	value = (value + (index + 1) * 48271) % 2147483647
+	value = (value * 1103515245 + 12345) % 2147483647
+	return float(value) / 2147483647.0
 
 
 ## 预留剪切入口；第一版不消费切向摩擦冲量。

@@ -59,11 +59,9 @@ func _run() -> void:
 		{"position": Vector2(8, 8), "normal": Vector2.RIGHT, "impulse": 12000.0, "dist": 0.0},
 	]
 	world.contacts = [contact]
-	var lanes: Array = calc._lanes(contact.points)
-	var sum: float = 0.0
-	for lane in lanes:
-		sum += lane.impulse
-	_check("face lane impulse conserved", lanes.size() == 8 and is_equal_approx(sum, 24000.0))
+	var impact: Dictionary = calc._impact(contact.points)
+	_check("contact points merge without multiplying impulse", is_equal_approx(impact.total_impulse, 24000.0)
+		and is_equal_approx(impact.impulse, 3000.0) and impact.position.is_equal_approx(Vector2(8, 4)))
 	var result: Dictionary = calc.calculate(world)
 	_check("symmetric bodies lose symmetric pixels", result.removals[a][a.shapes[0]].size() == result.removals[b][b.shapes[0]].size())
 	_check("calculation leaves source shapes unchanged", a.shapes[0].pixel_count() == 64 and b.shapes[0].pixel_count() == 64)
@@ -112,6 +110,17 @@ func _run() -> void:
 	calc._damage_side(world, long_body, bounded, 1, 3000.0, null, [], bounded_result)
 	_check("ray early exit preserves deleted pixels", full_result == bounded_result)
 	_check("large budgets continue beyond saturated support", calc._trace(long_body, Vector2(100.01, 0.5), Vector2.RIGHT, world, 10000.0).size() == 100)
+	_check("impact budget selects one to four cracks", calc._crack_count(1.0) == 1
+		and calc._crack_count(7.0) == 2 and calc._crack_count(13.0) == 3 and calc._crack_count(19.0) == 4)
+	var glass = _body(world, Vector2(100, 10), Vector2i(64, 64))
+	var crack_a: Array = calc._crack_path(glass, Vector2(100.01, 42.5), Vector2.RIGHT, world, 2000.0, 123)
+	var crack_b: Array = calc._crack_path(glass, Vector2(100.01, 42.5), Vector2.RIGHT, world, 2000.0, 123)
+	var reproducible: bool = crack_a.size() == crack_b.size()
+	var bent: bool = false
+	for i in crack_a.size():
+		reproducible = reproducible and crack_a[i].position == crack_b[i].position
+		bent = bent or crack_a[i].position.y != 32
+	_check("glass crack is deterministic and turns", reproducible and bent)
 	_release(world)
 	_test_native(calc)
 	_test_commit(calc)
