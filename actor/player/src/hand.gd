@@ -68,11 +68,14 @@ func _physics_process(delta: float) -> void:
 
 #region 手臂范围与目标
 @export_group("手臂范围")
-@export var rest_offset := Vector2(72.0, 0.0)
-@export var min_target_radius := 16.0
-@export var max_reach := 160.0
-## 给 Joint 求解误差预留余量。
-@export var reach_solver_margin := 4.0
+## 出生时手相对身体质心的偏移，单位 px；仅初始化使用。
+@export var rest_offset: Vector2 = Vector2(72.0, 0.0)
+## 鼠标目标与身体质心的最小距离，单位 px；避免连杆收缩到零。
+@export var min_target_radius: float = 16.0
+## 连杆最大长度，单位 px；实际目标会减去求解余量。
+@export var max_reach: float = 160.0
+## Joint 求解余量，单位 px；增大可减少手臂越界，但会缩短可达范围。
+@export var reach_solver_margin: float = 4.0
 
 func _ensure_arm_joint() -> void:
 	if arm_joint != null and arm_joint.is_active():
@@ -114,15 +117,19 @@ func _calculate_target_position(pivot: Vector2, _delta: float) -> Vector2:
 
 #region 力控与朝向
 @export_group("主动马达")
-@export var position_stiffness := 140.0
-## 持续力积分下增加阻尼，使动态承重支点能收敛；不额外锁速度。
-@export var position_damping := 48.0
-## 固定执行器上限，抓到重物后不增加。
-@export var max_force := 8000000.0
-@export var max_power := 420000000.0
+## PD 位置系数，单位 1/s²；越大追踪越快，仍受最大力和功率限制。
+@export var position_stiffness: float = 140.0
+## PD 速度阻尼，单位 1/s；越大收敛越稳，但跟手会变慢。
+@export var position_damping: float = 48.0
+## 手部执行器最大力，单位 引擎质量单位·px/s²；决定静态承重上限。
+## 抓到重物不会自动增加；运动中还会被最大功率进一步裁剪。
+@export var max_force: float = 16000000.0
+## 手与身体成对内力的最大正做功率，单位 引擎质量单位·px²/s³。
+## 决定持续抬举/挥动速度，包含起步动能与执行器转动做功，不计重力等外力。
+@export var max_power: float = 840000000.0
 
-## 可选的中心力偶配平；默认沿用中心成对力。
-@export var conserve_angular_momentum := false
+## 开启后为中心成对力补偿力偶，保持执行器总角动量；关闭时不补偿。
+@export var conserve_angular_momentum: bool = false
 
 func _calculate_motor(target_position: Vector2, hand_position: Vector2, delta: float) -> Vector2:
 	var velocity: Vector2 = body.linear_velocity - player_body.linear_velocity

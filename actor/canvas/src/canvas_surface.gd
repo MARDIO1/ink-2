@@ -17,23 +17,23 @@ func _ready() -> void:
 
 
 #region 外观
-#画布宽高，单位是世界单位，也决定底层贴图分辨率
+## 表面宽高，单位 px；由父 Canvas 的 canvas_size 同步，直接修改父节点即可。
 @export var canvas_size := Vector2i(256, 256):
 	set(value):
 		canvas_size = Vector2i(maxi(value.x, 1), maxi(value.y, 1))
 		if is_node_ready():
 			_resize()
-#纸底颜色
+## 纸底颜色；只影响显示，不属于可固化墨水。
 @export var background_color := Color(0.86, 0.85, 0.80, 1.0):
 	set(value):
 		background_color = value
 		queue_redraw()
-#边框颜色
+## 画布边框颜色；只影响显示。
 @export var border_color := Color(0.12, 0.12, 0.12, 1.0):
 	set(value):
 		border_color = value
 		queue_redraw()
-#边框线宽
+## 画布边框线宽，单位 px。
 @export var border_width := 2.0
 
 #纸底和边框由表面画，黑色墨水由 BlackSprite 盖在上面
@@ -57,6 +57,7 @@ func _input(event: InputEvent) -> void:
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
 var _last_point := Vector2.ZERO
+## 左键绘制的墨水颜色；固化材料由 CanvasSolid 决定。
 @export var black_color := Color(0.04, 0.08, 0.05, 1.0)
 #左键落笔时写入的黑色墨水颜色
 func _on_mouse_button(button: InputEventMouseButton) -> void:
@@ -133,7 +134,7 @@ func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 	black_texture.update(black_image)
 
 
-#笔刷半径，单位与画布像素一致
+## 圆形笔刷半径，单位 px；绘制和擦除使用相同范围。
 @export var brush_radius := 3.0
 #落一个圆形笔刷，只有落在半径内的像素才写
 func _stamp(center: Vector2, color: Color) -> void:

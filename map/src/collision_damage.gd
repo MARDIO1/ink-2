@@ -6,13 +6,18 @@ extends Node
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
-var damage_scale: float = 0.012
-var min_approach: float = 300.0
-var support_max: float = 64.0
-var thickness_scale: float = 0.5
-var min_thickness_factor: float = 0.2
+## 碰撞冲量转为破坏预算的倍率；越大越容易删像素。
+@export var damage_scale: float = 0.012
+## 触发损坏的最小接近速度，单位 px/s；低于该值不结算，避免静态压力损坏。
+@export var min_approach: float = 300.0
+## 厚度支撑累加上限，以表面材料强度归一化；超过后不再增加减伤。
+@export var support_max: float = 64.0
+## 厚度对数减伤系数；越大，同样厚度下的损坏越小。
+@export var thickness_scale: float = 0.5
+## 厚度修正的最低倍率；即使支撑很厚也保留该比例的破坏预算。
+@export_range(0.0, 1.0, 0.01) var min_thickness_factor: float = 0.2
 ## 强度 0 表示不删像素；作为攻击方及玩家伤害的参考抗性仍需有限值。
-var reference_strength: float = 100.0
+@export var reference_strength: float = 100.0
 var _elapsed: float = 0.0
 var _main = null
 var _player = null
@@ -20,6 +25,7 @@ var _protected: Array = []
 @onready var _feet = $"../Player/PlayerInput"
 @onready var _forces = get_node_or_null("../HUD/ForceDebug")
 @onready var _camera: Camera2D = $"../Camera2D"
+## 活动范围相对当前可见画面的宽高倍率；4 表示宽高各四倍，完全在外的刚体冻结。
 @export_range(1.0, 32.0, 0.5) var freeze_view_scale: float = 4.0
 #endregion
 

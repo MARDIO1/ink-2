@@ -1,6 +1,6 @@
 extends SceneTree
 
-const MAIN := preload("res://map/asset/main.tscn")
+const MAIN := preload("res://map/main.tscn")
 const DT := 1.0 / 60.0
 const SETTLE_FRAME := 540
 const TOTAL_FRAMES := 720

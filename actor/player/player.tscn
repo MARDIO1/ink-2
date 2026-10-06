@@ -1,9 +1,9 @@
-[gd_scene format=3 uid="uid://0e6j4med7d72"]
+[gd_scene format=3 uid="uid://1n64fxhxd3hf"]
 
 [ext_resource type="Script" uid="uid://pek8hqxhme7i" path="res://actor/player/src/player_physics.gd" id="1_7gqxp"]
 [ext_resource type="Script" uid="uid://1jec22iry3ih" path="res://actor/player/src/player_input.gd" id="1_wy78e"]
 [ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="2_778ba"]
-[ext_resource type="PackedScene" path="res://actor/player/asset/hand.tscn" id="3_hand"]
+[ext_resource type="PackedScene" uid="uid://b78lla71aiabs" path="res://actor/player/hand.tscn" id="3_hand"]
 
 [node name="Player" type="Node2D" unique_id=1427605215]
 script = ExtResource("1_7gqxp")

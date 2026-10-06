@@ -4,7 +4,7 @@
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="3_mat"]
 [ext_resource type="Resource" path="res://Ink/asset/black.tres" id="4_black"]
-[ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/asset/canvas.tscn" id="5_canvas"]
+[ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/canvas.tscn" id="5_canvas"]
 
 [node name="Main2" type="Node2D" unique_id=1541031598]
 script = ExtResource("1_world")

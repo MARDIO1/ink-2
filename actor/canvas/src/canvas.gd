@@ -9,6 +9,7 @@ extends Node2D
 
 
 #region 画布范围
+## 画布宽高，单位 px；同时决定编辑器可见范围和墨水贴图分辨率。
 @export var canvas_size := Vector2i(256, 256):
 	set(value):
 		canvas_size = Vector2i(maxi(value.x, 1), maxi(value.y, 1))

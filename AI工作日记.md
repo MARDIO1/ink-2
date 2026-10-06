@@ -195,3 +195,22 @@
 - 同一真实3770像素/275矩形画布消融（各180帧，单轮）：完整抓取下砸mean0.795ms/P951.197/max12.978；去损伤+力调试mean0.555ms；再去手部驱动mean0.360ms。动作因去手/去损伤而变化，仅诊断额外路径，不把它说成Demo帧率或纯单变量速度收益。窗口切断37像素产生3碎片，API6.216ms、sync3.153ms，包含真实切断的帧mean1.478ms/P952.231/max14.764，子步峰值4。
 - Demo查源码：src/demo/game.gd::_process每60个渲染帧清理场外刚体并调用enforce_body_budget；默认目标400个动态体，预算仅淘汰休眠且未被抓的最小碎片（不是硬限制所有活动体）。_apply_impact_damage同一刚体对冷却0.5秒，每渲染帧最多处理1对破坏碰撞，该对可对多个contact_entries及双方多次调用fracture。圆形fracture规则与游戏每子步双方逐lane厚度/材质扫描不同；游戏也额外有PD手、连杆约束和力观察器。碎块个数不能替代矩形数、接触对、CCD子步与分片重建成本；没有认定Demo所有碎片不互相碰撞。
 - 重启后的可见编辑器412800实际F5启动412956，--scene res://map/asset/main.tscn。editor_v038.log与当前godot.log无ERROR/SCRIPT ERROR/失效UID，仍有既有Camera2D插值warning。保留编辑器及游戏；无残留截图。
+
+## 2026-10-06 引擎修改审计与上游 Request 文档
+
+- 核对当前官方基线91dc1ec与本地完整diff，明确当前是v0.3.8加本地未提交补丁；引擎源码、公开字段、fracture_pixels签名、原生opcode42和两DLL均改过，不能再使用早期“没有修改addon”的描述。
+- 新增test/engine_local_changes_v038.md，逐项说明修改路径/函数、持续控制力生命周期、局部约束岛迭代、接触索引复杂度、碎片属性/静态地面分离、构建链接与混装风险、备份和已有日志证据。
+- test/engine_performance_request.md顶部加入当前有效R1至R7请求，保留历史记录并明确时效；Request尚未对外发送。提出compound矩形与多边形后端两个阶段，未实施。
+- 核验当前源码和游戏安装两份DLL的SHA256分别一致；读回先前hand/control/damage/climb与断裂日志，未重跑物理测试，未修改生产代码或打断当前编辑器。
+- 源码确认每矩形一个独立Rapier Collider；旧ink-fffight为BitMap轮廓+CollisionPolygon2D，epsilon2至8并只取最大轮廓，不能直接照搬保证1px结构。性能收益仍需相同轨迹A/B验证。
+- 审查另发现同一PBody移除后重加时追加迭代同步缓存未重置的风险，写入修改说明和Request，未冒充已验证或本次已修复。
+
+## 2026-10-06 13:44 场景归位与执行器参数说明
+
+- 按模块边界把actor/player的player.tscn、hand.tscn，actor/canvas的canvas.tscn，map的main.tscn、main2.tscn从asset移到各自模块根目录。保留场景UID；更新场景互相引用、project.godot主场景与已有测试脚本。asset继续存放.tres等资源，没有移动插件资产。
+- 给游戏全部export字段补齐##说明：用途、单位、力/功率区别、PD追踪/阻尼、臂长和求解余量、脚部支撑与跳跃预算、冻结倍率、HUD采样窗口、调试矢量倍率、画布尺寸/笔刷/颜色等。损坏重要参数改为export，保持原数值和原计算规则。
+- 手部max_force从8000000提高到16000000，max_power从420000000提高到840000000，按两倍作为初始调整；PD系数、脚部参数不改。参数入口为Player/Arm/Hand/HandControl的主动马达分组。
+- 新路径下test_hand_physics 50项通过，test_canvas保存/加载像素相等、尺寸/边界与固化通过。主场景无头运行180帧，没有解析或路径错误，但退出有549 ObjectDB泄漏warning与3资源未释放ERROR，不能称完整日志干净。
+- 同时打开第二个headless editor import遇到~fastphys.dll复制/加载占用错误，后续扫描仍注册了扩展；没有关闭用户现有编辑器。保留scene_layout_import.log作为失败记录，不把这次import标为全通过。普通运行测试均成功加载Rapier DLL。
+- 裂缝保持瞬间生成方向，讨论主干偏折/有限分叉/玻璃放射的区别及共享损坏预算；尚未选择最终形态，因此未修改裂缝算法。保留当前即时破坏/厚度规则，未添加贴图裂缝延迟重建方案。
+- 固化接触规则用户接受重叠或共享边、允许连接地面；讨论Weld可避免重采样却仍保留两个PBody、重叠质量和约束开销。现有Weld默认关闭连接双方接触，未实现固化粘合、未改引擎。

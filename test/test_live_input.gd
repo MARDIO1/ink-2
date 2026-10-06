@@ -4,7 +4,7 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	var scene = load("res://map/asset/main.tscn").instantiate()
+	var scene = load("res://map/main.tscn").instantiate()
 	var grip: bool = OS.get_cmdline_user_args().has("--grip")
 	var side: float = 1.0 if OS.get_cmdline_user_args().has("--right") else -1.0
 	if grip:

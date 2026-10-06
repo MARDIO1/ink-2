@@ -5,7 +5,7 @@ const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Player = preload("res://actor/player/src/player_physics.gd")
-const MAIN = preload("res://map/asset/main.tscn")
+const MAIN = preload("res://map/main.tscn")
 
 var failures: int = 0
 var checks: int = 0

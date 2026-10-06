@@ -1,6 +1,6 @@
 extends SceneTree
 
-const MAIN_SCENE := preload("res://map/asset/main.tscn")
+const MAIN_SCENE := preload("res://map/main.tscn")
 const DT := 1.0 / 60.0
 
 var _passed := 0

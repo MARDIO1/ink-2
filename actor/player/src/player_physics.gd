@@ -1,7 +1,8 @@
 @tool
 extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
-## 手和身体不适是一个一起的
+## 玩家、手和连杆的物理节点，分别持有自己的 PBody。
 
+## 所属 PixelWorld 的相对路径，初始化时用于注册该节点的物理体。
 @export var world_path := NodePath("..")
 
 #region 碰撞伤害

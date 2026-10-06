@@ -1,7 +1,9 @@
 extends Node2D
 ## HUD 上的力观察器：接触冲量按固定步累加；关节合力用动量差扣除已知力得到。
 ## 引擎未暴露逐关节矢量，余项不冒充某一个关节的精确反力。由 HUD 的 Tab 统一开关。
+## 是否采样并绘制力矢量；HUD 的 Tab 显隐另行控制。
 @export var enabled: bool = true
+## 力到箭头长度的显示倍率，只影响调试画面，不修改物理力。
 @export var force_scale: float = 0.000015
 @onready var main = $"../.."
 @onready var hand = $"../../Player/Arm/Hand/HandControl"

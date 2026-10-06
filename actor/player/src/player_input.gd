@@ -1,4 +1,4 @@
-﻿#region 状态与上限
+#region 依赖
 extends Node
 
 @onready var player = $".."
@@ -11,10 +11,15 @@ var debug_force: float = 0.0
 var debug_drive_impulse: Vector2 = Vector2.ZERO
 var debug_jump_impulse: Vector2 = Vector2.ZERO
 
+@export_group("脚部执行器")
+## AD 最大切向驱动力，单位 引擎质量单位·px/s²；只在脚部有接触支撑时生效。
 @export var max_force: float = 6000000.0
-## 双倍起步冲量需要四倍动能预算，否则跳跃仍被原功率上限裁回。
+## 脚部成对冲量的最大正做功率，单位 引擎质量单位·px²/s³，与手部独立。
+## 移动与跳跃共用此预算；跳跃冲量翻倍约需四倍起步动能，可能被该上限裁剪。
 @export var max_power: float = 16800000000.0
+## 沿接触面移动的目标相对速度，单位 px/s；不是直接设置刚体速度。
 @export var move_speed: float = 200.0
+## 跳跃请求冲量，单位 引擎质量单位·px/s；沿支撑法向施加，仍受功率限制。
 @export var jump_impulse: float = 1800000.0
 #endregion
 
