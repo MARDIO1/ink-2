@@ -100,6 +100,9 @@ var _rp_vx := 0.0
 var _rp_vy := 0.0
 var _rp_w := 0.0
 var _rp_static := false
+## 上次推给 Rapier 的**逐体** CCD 开关（-1 = 未推送）。
+## ⚠️ 原来是**世界级**镜像（PWorld._rp_ccd_pushed）：改一个刚体的 ccd 要先把全世界重推一遍。
+var _rp_ccd := -1
 ## 解冻后要不要显式叫醒 Rapier 那边（见 PWorld.unfreeze 的说明）。
 var _rp_need_wake := false
 ## 上次推给 Rapier 的矩形版本号（-1 = 还没推过）
@@ -192,6 +195,84 @@ func bounding_radius() -> float:
 	## AABB 半对角线，用来估算旋转带来的表面线速度（推测接触的边际要用）
 	var e := aabb.size
 	return 0.5 * sqrt(e.x * e.x + e.y * e.y)
+
+
+## 最薄尺寸（局部空间，世界单位）—— **CCD 判据的分母**。
+##
+## ⚠️ 为什么判据要**逐体按尺寸**，而不是一个全局常数（ccd_max_motion = 2.0）：
+##    穿模的条件是「每步位移 > 厚度」，而**厚度是每个刚体自己的属性**。
+##    业界五个引擎用的是同一个形状的判据 ——
+##      · Rapier  `is_moving_fast`: max_point_velocity * dt > 0.5 * ccd_thickness
+##      · Box2D v3 `b2_isFast`:      maxMotion > safetyFactor(0.5) * sim->minExtent
+##    拿一个全局常数代替，等于假设世界里所有东西都一样厚。
+##
+## ⚠️ 判据只对 **rects** 取 min：rects 是贪心分解的产物，一条 1 像素宽的矩形
+##    就是一条真实的薄壁 —— 那正是能穿过去的那条缝。
+##    用 bounding_radius 是**错的**：一根 1x100 的细条外接半径约 50，但它只有 1 像素厚。
+## ⚠️ 按 rects_rev 缓存：rebuild() 是 rects 的唯一改动点（pbody.gd 里 rects.clear/append
+##    全在它内部），所以版本号一变就重算。没有缓存的话每步对每个刚体都是 O(矩形数)。
+var _thin_cache := 1.0
+var _thin_rev := -1
+
+func thinnest_extent() -> float:
+	if _thin_rev == rects_rev:
+		return _thin_cache
+	var t := INF
+	for r: Rect2 in rects:
+		t = minf(t, minf(r.size.x, r.size.y))
+	if not is_finite(t) or t <= 0.0:
+		# 没有矩形（空刚体 / 还没 rebuild）：退回外接盒。别返回 0 —— 那会让 needs_ccd 恒真。
+		t = minf(aabb.size.x, aabb.size.y)
+	_thin_cache = maxf(t, 1e-3)
+	_thin_rev = rects_rev
+	return _thin_cache
+
+
+## **看得见的尺寸**：所有 shape 局部外接盒并集的**短边**（世界单位）。
+##
+## ⚠️⚠️ 与 thinnest_extent() 是**两个完全不同的量**，别混：
+##   · thinnest_extent() = 贪心分解出的**矩形**里最薄的那条 -> 「能不能穿过去」（CCD 判据）
+##   · visible_short_side() = 整个形状的**外接盒**短边        -> 「看不看得见」（灰尘判据）
+##
+## ⚠️⚠️ 拿 thinnest_extent 去判「这算不算灰尘」会**大面积误伤**，而且症状很刺眼：
+##    一个斜切的方块，贪心分解沿**斜边**必然会切出 1 像素宽的矩形 -> thinnest = 1
+##    -> 一块几百像素、外接盒 29x29 的**大块**被判成灰尘，玩家看到的是
+##    「碎片直接消失」。实测（斜切角用例）：435 像素 / 外接盒 29x29 / 短边 29。
+##    根因是两个量的语义不同：厚度决定**能不能钻过去**，外接盒决定**看不看得见**。
+func visible_short_side() -> float:
+	var r := Rect2i()
+	var first := true
+	for s in shapes:
+		if s == null or s.is_empty():
+			continue
+		var b: Rect2i = s.local_aabb()
+		r = b if first else r.merge(b)
+		first = false
+	if first:
+		# 没有 shape（空刚体）：退回世界 AABB。别返回 0 —— 那会让判据恒真。
+		return minf(aabb.size.x, aabb.size.y)
+	return float(mini(r.size.x, r.size.y))
+
+
+## 本步的**表面运动**（世界单位/步）：线速度 + |w| x 外接半径。
+## 与 PWorld._motion_of 同一个度量（子步估计用的就是它），只是乘上了 dt。
+func motion_per_step(dt: float) -> float:
+	return (linear_velocity.length() + absf(angular_velocity) * bounding_radius()) * dt
+
+
+## 这个刚体这一步**需不需要连续检测**（Rapier / Box2D v3 的判据）。
+##
+## ⚠️ 这个判据对**小碎片是反向的**：物体越小，变成「快体」所需的速度越低 ——
+##    60 Hz 下阈值是 v > 30 x 最薄尺寸，1 像素的碎片只要 30 px/s 就永久满足。
+##    PhysX 把这写成了一条明确的失败模式警告（Advanced Collision Detection -> Limitations）：
+##    「paper-thin rigid body ... Such an object would always be moving at above its CCD
+##      velocity threshold ... It is therefore recommended that paper-thin/tiny objects
+##      should be avoided if possible.」
+##    所以调用方**不要**拿它去给每个碎片开 CCD —— 它的用途恰恰相反：
+##    用来**认出**哪些是「永远满足判据」的灰尘，然后别让它们拖累全世界
+##    （见 PWorld.ccd_min_driver_thickness）。
+func needs_ccd(dt: float, safety_factor: float = 0.5) -> bool:
+	return motion_per_step(dt) > safety_factor * thinnest_extent()
 
 func refresh_com() -> void:
 	## 缓存世界质心。求解器里每次算相对速度都会用到它，

@@ -96,11 +96,51 @@ var sleep_delay := 0.4
 ## （sub-stepping instead of solver iterations）。
 var ccd_enabled := true
 var ccd_max_motion := 2.0      ## 每个子步允许的最大位移（世界单位）
-var ccd_max_substeps := 16     ## 子步上限
+## 全局子步数的**硬上限**（0 = 不限，**默认**）。
+##
+## ⚠️⚠️ 这个声明曾经是**死的**：写成 16，而全引擎没有一处读它 —— 真实的钳制是
+##    ccd_substep_budget = 600（在 _compute_substeps 的 clampi 里），两者差 37 倍。
+##    历史：Rapier 迁移**之前它是活的**（开发日志：「_ccd_saturated = (n >= ccd_max_substeps)
+##    —— 只有顶满才需要兜底」），迁移时对象路径整块删掉，把这个上限一起带走了，
+##    而手册 docs/manual/performance.md 一直写着「手动调 ccd_max_substeps 要小心：
+##    子步数会改变接触时序」—— **文档说它有用，代码里它什么都不做**。
+##    静默失效是最坏的失败方式，所以现在接回来。
+## ⚠️ 默认 **0 = 不限**（保持 8 条逐位基准不变）；要收口就显式设一个值。
+##    与 ccd_substep_budget 的分工：那个是「按世界大小的代价预算」，
+##    这个是「不管世界多大，步数都不许超过 N」。
+var ccd_max_substeps := 0
 ## 子步是**全局**的：最快的那个物体会逼着所有物体陪它把整条管线重跑 N 遍。
 ## 所以子步数必须按物体数摊一个预算，否则一屏碎块会把帧时间直接乘 16。
 ## （实测 240 个高速碎块时 60 帧里有 57 帧跑满 16 子步，帧时间 500 ms。）
 var ccd_substep_budget := 600
+## 子步循环的**时间预算**（微秒/固定步，0 = 关，**默认**）。
+##
+## ⚠️ 与 ccd_grab_substep_cost_budget_us 的唯一区别：那个**只在抓取时**生效，
+##    这个**任何时候**都生效。换算公式同源（见 grab_substep_cap）。
+## ⚠️ 为什么需要「任何时候」的那一道：「抓着一个东西拖动」和「一个碎片飞过去」
+##    对帧时间的破坏是**同一个机制** —— 子步数只由**一个**最快的刚体决定，
+##    而子步是全局的（每子步都要步进整个世界）。抓取那道闸门恰好漏掉了后者。
+##    实测（876 矩形 = 真实地图规模，tests/ 外的使用方场景）：
+##      一个 2x2 碎片以 20000 px/s 飞过 -> 167 子步 -> 307 ms/固定步
+##      以 40000 px/s                    -> 334 子步 -> 593 ms/固定步
+##    配合「一帧追 4 个固定步」的累加器，一帧能叠到几秒。
+## ⚠️ 代价：重场景里子步变少 -> 每子步位移变大 -> 超高速物体**穿模**。
+##    这是「用穿模换帧时间」的旋钮；引擎自带的第二层防穿（Rapier 的逐体 CCD）
+##    还在，所以不是必然穿（见 ccd_ignore_mass 的墓碑）。
+var ccd_substep_cost_budget_us := 0.0
+## 只有**最薄尺寸 >= 本值**的刚体才参与「全世界最快运动」的统计（0 = 关，全都参与）。
+##
+## 比它薄的算**灰尘**：不驱动子步（一个 2x2 碎片不该让全世界重跑 N 遍），
+## 防穿交给 Rapier 的逐体 CCD（rp_ccd_substeps）或者干脆放它们穿。
+##
+## ⚠️ 与 ccd_ignore_mass 的分工：那个按**质量**判，而质量 = 像素数 x **密度** ——
+##    同一个「看起来一样大」的碎片，石头（2.5）和金属（7.8）差 3 倍，换个材质就跨过阈值。
+##    **看得见看不见是尺寸说了算，不是密度。** 两个都开就取并集（各自独立豁免）。
+## ⚠️ 判据是 PBody.thinnest_extent()（逐体按尺寸），**不是** bounding_radius：
+##    一根 1x100 的细条外接半径约 50，但它只有 1 像素厚，照样穿得过去。
+##    实测（本引擎的 diag_dust_substep 场景）：一个 2x2 碎片以 40000 px/s 飞行，
+##    子步 3 -> 334，那一帧 3.2 ms -> 346 ms —— 而那是个**看不见**的东西。
+var ccd_min_driver_thickness := 0.0
 ## 轻碎片**豁免子步估计**（0 = 关，**默认关**）。质量 <= 它的刚体不参与"全世界最快"的统计。
 ##
 ## ⚠️ 为什么需要它（实测 tests/diag_dust_substep.gd）：子步数取的是**全世界最快**的
@@ -208,6 +248,70 @@ var last_debris_removed := 0
 ##    （退回逐刚体最大）—— 焊接断掉那一帧刚体是真在飞，摊平它等于放松防穿。
 var ccd_joint_aware := false
 
+## **逐体** CCD（默认 false = 老行为：ccd_enabled 一开，全世界每个刚体都是 Rapier 的 bullet）。
+##
+## ⚠️⚠️ 为什么需要：Rapier 的 CCD 有**两档**（官方文档 rigid_body_ccd）——
+##   ① 「每个快速动态刚体都会被扫过**固定**碰撞体」，**自动的、不用开**，
+##      用来挡「快物体 vs 静态世界」（掉下来的箱子、飞出去的子弹撞墙）；
+##   ② 「开了 CCD 的刚体（bullet）连**运动学/动态**目标一起扫」——文档原话
+##      "This is more expensive, therefore it is disabled by default and should be
+##       reserved to the objects that must not tunnel through moving obstacles."
+##    而本引擎推的是 `1 if ccd_enabled else 0` —— **全世界每个刚体都变成 bullet**。
+##    第 ① 档本来就在挡最常见的那种穿模，把每个碎片都升成 bullet 是纯浪费：
+##    bullet 的扫掠目标集包含动态体，而碎片堆里动态体最多。
+## ⚠️ 开着时：ccd_enabled 只当**总闸**，具体谁开由 PBody.ccd 决定
+##    （ccd_auto 已经能给「按自身尺寸需要它」的刚体自动打标，见 PBody.needs_ccd）。
+## ⚠️ 默认 **false** -> 8 条逐位基准与既有闸门逐位不变。
+var ccd_per_body := false
+
+## 速度的**表面速度**上限（px/s，0 = 关，**默认**）。
+##
+## ⚠️⚠️ 为什么角速度要按表面速度收：max_angular_velocity 是**绝对 rad/s**，
+##    而子步估计用的是 |w| x 外接半径（表面速度，见 _motion_of）。同一个物理量，两把尺子：
+##      · 线速度上限 1000 px/s 只值 ceil(1000/120) = **9 子步**；
+##      · 60 rad/s x 300 px 外接半径 = 17860 px/s -> **151 子步**。
+##    Rapier 自己在 CCD 组件上把角速度钳成 "~45°/step **to keep CCD reliable**" ——
+##    它关心的是**表面走了多远**，不是转了多少弧度。引擎对**睡眠**用的也是表面速度
+##    （sleep_surface 的墓碑：「绝对角速度阈值会把小碎块永久钉在醒着」），
+##    只有 CCD 这一侧用了裸 rad/s。
+## ⚠️ 它与 max_angular_velocity **并存**（取更紧的那个）：
+##    那个是"绝对转速别离谱"（数值安全），这个是"表面速度别离谱"（CCD 成本）。
+## ⚠️ 默认 **0 = 关** -> 基准逐位不变。
+var max_surface_speed := 0.0
+
+## **不做全局子步**：子步数恒为 1，防穿完全交给**逐体 CCD**（默认 false = 老行为）。
+##
+## ⚠️⚠️ 为什么这才是对的：子步是**全局**的（每个子步都要把整个世界重跑一遍），
+##    而防穿是**逐体**的。用全局子步防穿 = 让一个最快的小碎片决定全世界的帧时间。
+##    实测（4 像素薄墙 + 12x12 块，tests/_probe_tunnel2.gd 的同款用例）：
+##      · 全局子步 开 + 逐体 CCD 软预测 0.0：20000 px/s -> 峰值 **167 子步**，停在 x=188.1
+##      · 不做全局子步 + 逐体 CCD 软预测 1.5：20000 px/s -> 峰值 **1 子步**，停在 x=188.0
+##    花 167 倍的代价，换来的是一个**更差**的结果。
+##    对照：把 Rapier 的 CCD 也关掉 -> 20000 px/s 停在 x=3247（穿过去了）。
+##
+## ⚠️ 打开后，下面这一整组「怎么算子步数」的旋钮都不再参与：
+##    ccd_max_motion / ccd_substep_budget / ccd_ignore_mass / ccd_min_driver_thickness /
+##    ccd_max_substeps / ccd_substep_cost_budget_us / ccd_joint_aware / grab_substep_cap。
+##
+## ⚠️⚠️ **开了它就必须确认逐体 CCD 真的武装好了**，否则这是「把防穿整个关掉」。
+##    两个前提：`rp_ccd_substeps >= 1`（Rapier 的总闸）**且**
+##    `rp_soft_ccd_prediction > 0`（没有提前量的逐体 CCD 约等于半开 —— 见那个旋钮的说明）。
+##    缺任何一个，下面会 push_warning 吵一声（静默失效是最坏的失败方式）。
+var ccd_per_body_only := false
+## 逐体模式下用**固定**几个子步（默认 1）。
+##
+## ⚠️⚠️ **为什么不是恒为 1**：子步不只是防穿 —— 它**同时**是求解器的收敛手段
+##    （TGS / Box2D v3 的「Soft Step」：用更小的时间步代替更多迭代）。
+##    实测：把子步从 2~4 塌到 1，使用方的 test_hand_physics 里
+##    「grounded/held object lifted」当场变红（抬升 46.25 -> 39.88）—— **抓取变软了**。
+##    所以逐体模式的正确形态是「步数**固定且小**」，不是「恒为 1」。
+## ⚠️ 它必须是**常数**：要拿掉的是「按最快刚体自适应」，不是子步本身 ——
+##    前者才是「一个碎片决定全世界帧时间」的来源。
+## ⚠️ 默认 1 = 保持既有基准（8 条逐位基准跑的就是这条路，而它们不开逐体模式）。
+var ccd_fixed_substeps := 1
+## 上面那个警告只吵一次（不然每步一条，日志会被淹掉）。
+var _ccd_per_body_warned := false
+
 var ccd_grab_substep_cost_budget_us := 6000
 ## 每个**矩形每子步**的实测代价（微秒）。抓取时的子步上限按它换算成时间。
 ##
@@ -221,29 +325,41 @@ var ccd_grab_substep_cost_budget_us := 6000
 ##    宁可偏保守 —— 偏保守的代价是重场景里拖动变慢动作（见 ccd_clamp_motion），
 ##    偏松的代价是掉帧。
 const CCD_RECT_COST_US := 4.4
-## 子步上限被顶满时，位移会被**硬钳**在这个值上。
-## 代价是超高速物体变成慢动作，换来的是"绝不可能穿模"的硬保证。
+## ⚠️⚠️ **这个旋钮现在是死的**（Rapier 迁移的遗留）：全引擎没有一处读它。
+##    它描述的行为（"子步被顶满时把每子步位移硬钳在 ccd_max_motion"）属于**已删除的
+##    对象路径**里的 _integrate_transforms —— 现在位置由 Rapier 积分，引擎只在**读回时
+##    钳速度**（max_angular_velocity / terminal_speed / max_surface_speed），
+##    没有"事后把位移拉回来"这个环节。
+##
+##    历史（开发日志坑）：那条硬钳曾经**无条件生效**，把"偶发穿模"升级成"全局慢动作"
+##    —— 每子步 2 像素 = 60 fps 下 120 px/s 上限，而重力是 900 px/s²，
+##    箱子根本落不下来，看起来像浮在半空。教训原文：
+##      「安全网必须挂在它该生效的条件上。无条件生效的"保护"不是保护，
+##        是把故障从"偶发穿模"升级成"全局慢动作"。」
+##    **不要**为了让它"看起来有用"就把它接到 Rapier 路径上 —— 那等于把那个坑再踩一遍。
+##    真要硬保证就调 ccd_max_motion（每子步位移上限）或 ccd_max_substeps（步数上限）。
+##
+## ⚠️ 保留声明而不是删掉：它是**已发布的 API**（v0.3.2 起的 release notes 与
+##    tests/diag_* 都在引用），删掉会让下游代码直接报"属性不存在"。
+##    但它**什么都不做** —— 这一点必须写在脸上，不能让下一个人再猜一次。
 var ccd_clamp_motion := true
-## 自动 CCD：本**子步**位移超过 ccd_max_motion 的动态体自动做精确 OBB 扫掠。
+## 自动给刚体打**逐体 CCD** 标记：本步运动超过**自身最薄尺寸一半**的刚体
+## （PBody.needs_ccd，即 Rapier / Box2D v3 的判据）会被标成 Rapier 的 bullet。
 ##
-## 这是修掉"≥1500 px/s 撞墙反弹"的关键（见开发日志坑 33）：
-## 位移硬钳每子步推进 ccd_max_motion(2.0)，而挤出通道上限只有
-## max_depenetration_speed(100 px/s) —— 每子步净**陷进去**约 1.9，
-## 于是越陷越深，最后被挤出通道以极限速度顶回来。
-## 扫掠让物体停在表面，压根不产生穿透，挤出通道也就不会被激活。
+## ⚠️ 只在 ccd_per_body = true 时有意义：那个关着时 ccd_enabled 已经把**所有**刚体
+##    都推成 bullet 了（老行为），这个开关自然无所谓。
+## ⚠️⚠️ **必须**同时开 ccd_min_driver_thickness，否则这个开关是**有害**的：
+##    needs_ccd 的判据对小碎片是**反向**的（物体越小，变成"快体"所需速度越低 ——
+##    60 Hz 下 1 像素碎片只要 30 px/s 就永久满足），无脑开等于把每个碎片都升成 bullet，
+##    而 bullet 的扫掠目标集**包含动态体**，碎片堆里动态体最多。
+##    代码里已经硬性排除了比 ccd_min_driver_thickness 薄的刚体（见推 op 19 那段）。
+## ⚠️ 它**不**控制 Rapier 那一档"自动扫快物体 vs 固定碰撞体"—— 那一档永远开着，
+##    是引擎免费的防穿第一层（见 ccd_ignore_mass 的墓碑：薄墙 + 子步 1 仍然挡住）。
 ##
-## 慢速物体零开销：进入扫掠前有一道"扫掠 AABB 不相交就跳过"的便宜早退，
-## 而且它只在**需要**时才被调用。
-## ⚠️ 默认 **false**：精确 sweep 的原语已验证（tests/validation_sweep.gd 14/14），
-## 但接进 _integrate_transforms 后在大速度下会引入"反弹"，尚未定位完（见开发日志坑 33）。
-## 在弄清楚之前不默认启用 —— 基线必须保持可比。
-## ⚠️ 默认 **false**。自动触发的判定是"子步位移 > ccd_max_motion(2.0)"，
-## 而子步细分的目标恰好就是"每子步位移 <= 2.0" —— 两者**正好错开**，
-## 所以它在真实管线里几乎不触发（实测扫掠对默认列毫无影响）。
-## 手动打开能看到它确实有用（3000 px/s 撞墙从 -137.8 改善到 48.3），
-## 但会扰动基准（sleep_frag 变化），而 600~1500 的反弹另有原因（坑 34 根因 B）。
-## 等根因 B 解决后，这里应当改成"按**物体自身尺寸**判定是否需要 CCD"，
-## 而不是拿一个和子步阈值重合的常数。
+## 历史：这个声明的旧注释描述的是"接进 _integrate_transforms 做精确 OBB 扫掠"，
+##    而那条路径（对象路径 / GDScript 扫掠）**已经被删掉**（物理全交 Rapier）。
+##    旧注释里那句待办"等根因 B 解决后，应当改成按**物体自身尺寸**判定是否需要 CCD"
+##    **就是现在这件事** —— 判据已经是 PBody.needs_ccd（逐体按尺寸）。
 var ccd_auto := true
 var ccd_max_rotation := 0.25   ## 每个子步允许的最大转角（弧度）
 ## 推测接触的边际上限。
@@ -270,8 +386,10 @@ var _substeps_held := 1
 var _aabb_cache: Array = []
 
 
-## 子步被顶满时才会启用位移硬钳；正常情况靠子步本身保证精度
-var _ccd_saturated := false
+## ⚠️ 这里曾有 `_ccd_saturated`（"子步被顶满"的标记，给位移硬钳用）—— 已删：
+##    它只被 tests/diag_grab.gd 读过一次，而它驱动的那个硬钳属于**已删除的对象路径**
+##    （见上面 ccd_clamp_motion 的墓碑）。删掉它而不是留一个永远 false 的变量 ——
+##    "永远为假的状态位"比没有更糟，它会让人以为某处还在用它做判断。
 
 ## ---- 多线程 ----
 ## WorkerThreadPool 并行度阈值：工作量太小的时候线程开销大于收益
@@ -309,6 +427,35 @@ var bp_resolve_us := 0
 var last_parallel_tasks := 0
 
 var min_fragment_pixels := 4
+## 碎片的最薄尺寸低于它就不生成刚体（0 = 关，**默认**）。
+##
+## ⚠️ 与 min_fragment_pixels 是**两个轴**，不是同一件事的两种写法：
+##    那个数**像素个数**（一个 1x20 的细条有 20 像素，照样过），
+##    这个数**最薄尺寸**（同一条细条是 1，被挡住）—— 而厚度正是「能不能穿过去」的那个量。
+##
+## ⚠️ 命中的碎片**不消失**：它们随结果一起交回调用方（result.downgraded），
+##    由美术层决定怎么处理（本仓库使用方的用法是降级成短命灰尘）。
+##    为什么不能直接删：那会**打破体素守恒**（detach 的不变量），玩家会看见东西凭空消失。
+##
+## ⚠️ 为什么值得做：PBody.needs_ccd 的判据对小碎片是**反向**的（越小越容易满足），
+##    所以「每个碎片都值得 CCD」是个陷阱 —— PhysX 官方把它写成失败模式警告
+##    （paper-thin rigid body -> always above its CCD velocity threshold）。
+##    业界做法是**根本不给它们刚体**：Teardown 有最小碎片尺寸、Noita 从不把散像素
+##    升格成刚体、roxlap 让碎片落地即碎成纯表现粒子。
+var min_fragment_thickness := 0.0
+## 碎片**像素数**低于它也不生成刚体（0 = 关，**默认**）。
+##
+## ⚠️ 与 min_fragment_thickness 是**两个触发器、取并集**，各自管一件事：
+##   · min_fragment_thickness  按**厚薄** —— 细长条会穿墙，而且穿过去没人看得出来
+##   · min_fragment_pixels_downgrade 按**大小** —— 一小撮像素不值得一个刚体
+##
+## ⚠️⚠️ **为什么两个都要**：只按厚薄会**反直觉**。实测（使用方报的）：
+##    一条 3x200 的细长条（600 像素，看着不小）因为「薄」变成灰尘，
+##    而一颗 5x5 的方块（25 像素，看着很小）因为「不薄」留下来 ——
+##    玩家看到的正是「大的成了灰尘、小的没成」。
+##    反过来只按像素数也不行：1x20 和 4x5 都是 20 像素，但前者会穿墙。
+##    **厚薄决定能不能钻过去，大小决定值不值得存在，两个问题，两个判据。**
+var min_fragment_pixels_downgrade := 0
 # 0 = 不设上限，永远精确。
 # 精确覆盖与矩形上限不可兼得，宁可多几个矩形也不要幻影碰撞体。
 var max_rects_per_shape := 0
@@ -661,7 +808,9 @@ var _rp_joints_pending: Array = []
 ## 阻尼与引擎 _integrate_forces 里那两行**同值**。Rapier 的公式也是 v *= 1/(1+d*dt)，
 ## 所以直接设进去就等价，不需要自己再乘一遍。
 ## ⚠️ 改引擎那两行时必须同步改这里，否则两条路径会静默分叉。
-var _rp_ccd_pushed := false
+## ⚠️ 这里曾有 `_rp_ccd_pushed`（**世界级** CCD 镜像）—— 已删：镜像改成逐体的
+##    PBody._rp_ccd（见 _substep_rapier 里推 op 19 的那段）。世界级镜像的毛病是
+##    "改一个刚体的 ccd 要把全世界重推一遍"，而逐体 CCD 的意义恰恰是**大多数刚体不开**。
 ## 临时探针：打印每次 cmd 的容量/实际写入量。
 var rp_debug := false
 ## Rapier 的长度单位：把它的"米"制默认参数换算到本引擎的像素尺度。
@@ -726,11 +875,27 @@ var _rp_max_linvel_pushed := 0.0
 ##    推测接触 2.0 px（略大于原来的 1.5，留一点余量）
 ##    挤出速度 300 px/s
 ##    允许误差 0.5 px
-## **软 CCD 预测距离**（逐刚体，Rapier 默认 **0.0 —— 等于关着**）。
+## **软 CCD 预测距离**（逐刚体，Rapier 默认 **0.0 —— 等于半关**）。
 ##
 ## 这是推测 CCD：把碰撞体按这个距离外扩去做连续检测。它就是本引擎原本
-## max_speculative_margin(1.5 px) 的对应物。默认 0.0 意味着快物体没有任何
-## 提前量 —— 这正是穿模的来源之一。
+## max_speculative_margin(1.5 px) 的对应物。
+##
+## ⚠️⚠️ **它才是「逐体 CCD 到底有没有在工作」的那个开关**，比 enable_ccd 重要得多。
+##    enable_ccd 只决定「要不要连动态目标一起扫」（bullet 旗）；而**自动层**
+##    （快动态体 vs **固定**碰撞体）由 rp_ccd_substeps 控制、**不看** enable_ccd。
+##    但两层都吃这个提前量：提前量是 0 时，逐体 CCD 只能「正好撞上」才发现，
+##    对一步跨几百像素的快物体等于不起作用。
+##
+## 实测（4 像素薄墙 + 12x12 块，20000 px/s 冲过去）：
+##    rp_soft_ccd_prediction = 0.0 -> 靠全局子步：峰值 167 子步，停在 x=188.1
+##    rp_soft_ccd_prediction = 1.5 -> 逐体 CCD 单独搞定：峰值 **1** 子步，停在 x=188.0
+##    把 rp_ccd_substeps 设成 0（两层全关）时会停在 x=3247（穿过去了）。
+##    也就是说：**开了软预测之后，全局子步对「快物体 vs 静态世界」是纯浪费**。
+##
+## ⚠️ 对**动态-动态**高速相撞它仍然挡不住（Rapier 官方：two CCD-enabled objects
+##    might still tunnel，因为两边都在动）。实测 20000 px/s 撞一块会被推动的墙：
+##    两个都开 CCD 也穿。那是引擎层面没有便宜解的那一类（Box2D 的建议是自己
+##    ray / shape cast），本引擎不做。
 var rp_soft_ccd_prediction := 0.0
 
 ## CCD 子步上限（世界级，Rapier 默认 **1**）。
@@ -883,10 +1048,15 @@ func _rp_create_missing() -> void:
 		_rp_f64(props, b.linear_velocity.y)
 		_rp_f64(props, b.angular_velocity)
 		m += 1
+		# ⚠️ 必须和 _substep_rapier 里那段**同一套判据**，否则新建的刚体先被当成 bullet，
+		#    下一子步又被改回来 —— 而镜像 b._rp_ccd 记的是「建的时候推了什么」，
+		#    两边不一致会让「变了才推」的判断错位。
 		_rp_u8(props, 19)
 		_rp_u32(props, b.rapier_id)
-		_rp_i32(props, 1 if ccd_enabled else 0)
+		var init_ccd: int = 1 if (ccd_enabled and (not ccd_per_body or b.ccd)) else 0
+		_rp_i32(props, init_ccd)
 		_rp_f64(props, rp_soft_ccd_prediction)
+		b._rp_ccd = init_ccd
 		# 新刚体一律先推一次矩形与全部状态
 		b._rp_rects_rev = -1
 		# 层/掩码也先打回"未推送"：新刚体在 Rapier 侧拿的是默认分组（全 1），
@@ -1036,11 +1206,25 @@ func _substep_rapier(dt: float) -> void:
 			_rp_u8(cmds, 10)
 			_rp_u32(cmds, b.rapier_id)
 			b._rp_need_wake = false
-		if _rp_ccd_pushed != ccd_enabled:
+		# 逐体 CCD（op 19）。
+		# ⚠️⚠️ 老行为是 `1 if ccd_enabled else 0` —— **全世界每个刚体都变成 Rapier 的 bullet**，
+		#    而 bullet 会连动态/运动学目标一起扫（见 ccd_per_body 的说明）。
+		#    ccd_per_body 打开后：ccd_enabled 只当总闸，具体谁开由下面两条决定。
+		# ⚠️ 镜像改成**逐体**的 b._rp_ccd，世界级的 _rp_ccd_pushed 已删（它逼着"改一个刚体
+		#    就要重推全世界"）。
+		# ⚠️ 自动打标**必须**排除灰尘：PBody.needs_ccd 的判据对小碎片是反向的（越小越容易
+		#    满足），拿它无脑开 CCD 等于把每个碎片都升成 bullet —— 正是要避免的那件事。
+		#    （拆成两条 if 而不是一个长布尔式，是为了让两条判据各自能单独读。）
+		var auto_ccd: bool = ccd_auto and b.needs_ccd(dt)
+		if auto_ccd and ccd_min_driver_thickness > 0.0 and b.thinnest_extent() < ccd_min_driver_thickness:
+			auto_ccd = false
+		var want_ccd: int = 1 if (ccd_enabled and (not ccd_per_body or b.ccd or auto_ccd)) else 0
+		if b._rp_ccd != want_ccd:
 			_rp_u8(cmds, 19)
 			_rp_u32(cmds, b.rapier_id)
-			_rp_i32(cmds, 1 if ccd_enabled else 0)
+			_rp_i32(cmds, want_ccd)
 			_rp_f64(cmds, rp_soft_ccd_prediction)
+			b._rp_ccd = want_ccd
 		if b._rp_gravity_scale != b.gravity_scale:
 			_rp_u8(cmds, 17)
 			_rp_u32(cmds, b.rapier_id)
@@ -1199,6 +1383,9 @@ func _substep_rapier(dt: float) -> void:
 		#    未钳制的角速度积分 —— 钳制等于没做。
 		if max_angular_velocity > 0.0 and absf(raw_w) > max_angular_velocity:
 			b4.angular_velocity = clampf(raw_w, -max_angular_velocity, max_angular_velocity)
+		# ⚠️ raw_vx/raw_vy 必须在**任何**钳制之前抓：镜像的语义是"Rapier 现在是多少"。
+		#    （原来只有 raw_vy 是这么抓的；加了表面速度钳之后 x 分量也会被改，所以它也要。）
+		var raw_vx := b4.linear_velocity.x
 		var raw_vy := b4.linear_velocity.y
 		# 终端速度：Rapier 没有这个概念，所以在这里钳制。
 		#
@@ -1212,10 +1399,21 @@ func _substep_rapier(dt: float) -> void:
 		# validation_fall_feel 都在用的公开旋钮，静默失效比没有它更糟。
 		if terminal_speed > 0.0 and raw_vy > terminal_speed:
 			b4.linear_velocity.y = terminal_speed
+		# 【新】表面速度上限（max_surface_speed，默认 0 = 关）。
+		# ⚠️ 与上面两道**并存**，取更紧的那个 —— 见 max_surface_speed 的说明。
+		# ⚠️ 钳完**不能**把镜像写成钳制后的值（上面 terminal_speed 那段墓碑逐字同理）。
+		if max_surface_speed > 0.0:
+			var r_surf := b4.bounding_radius()
+			if r_surf > 1e-6 and absf(b4.angular_velocity) * r_surf > max_surface_speed:
+				var w_cap := max_surface_speed / r_surf
+				b4.angular_velocity = clampf(b4.angular_velocity, -w_cap, w_cap)
+			var v_len := b4.linear_velocity.length()
+			if v_len > max_surface_speed:
+				b4.linear_velocity = b4.linear_velocity * (max_surface_speed / v_len)
 		b4._rp_x = b4.position.x
 		b4._rp_y = b4.position.y
 		b4._rp_rot = b4.rotation
-		b4._rp_vx = b4.linear_velocity.x
+		b4._rp_vx = raw_vx
 		b4._rp_vy = raw_vy
 		b4._rp_w = raw_w
 		off += 48
@@ -1259,7 +1457,7 @@ func _substep_rapier(dt: float) -> void:
 			continue
 		b6.refresh_com()
 		b6.update_aabb()
-	_rp_ccd_pushed = ccd_enabled
+	# （世界级 _rp_ccd_pushed 已删：CCD 开关是逐体推的，见 _substep_rapier。）
 	_rp_cmd_us = Time.get_ticks_usec() - t0
 	_collect_contacts_rapier()
 
@@ -1488,9 +1686,20 @@ func _contact_add_rapier(a: PBody, b: PBody, point: Vector2, normal: Vector2, im
 ##
 ## ⚠️ 只在抓取时用得上（见 ccd_grab_substep_cost_budget_us）。
 func grab_substep_cap(total_rects: int) -> int:
-	if total_rects <= 0:
-		return 1
-	return maxi(1, int(float(ccd_grab_substep_cost_budget_us) / (float(total_rects) * CCD_RECT_COST_US)))
+	return _cost_cap(total_rects, float(ccd_grab_substep_cost_budget_us))
+
+
+## 「矩形数 + 时间预算 -> 子步上限」的**唯一**公式（grab 与全局两道闸门共用）。
+##
+## ⚠️ 抽成一个函数是为了**公式只有一个真源**：以前 tests/validation_grab_budget.gd
+##    自己抄了一遍 `budget / total_rects`，于是引擎改了标定（1 -> 4.4 us/矩形）
+##    而测试还在按旧公式算上限 —— 闸门会静默失效（它断言的是"子步 <= 上限"，
+##    上限算大了就永远通过）。
+## ⚠️ 预算 <= 0 返回一个大到不可能被选中的值（而不是 1）—— 语义是"不限"，不是"压到 1"。
+func _cost_cap(total_rects: int, budget_us: float) -> int:
+	if total_rects <= 0 or budget_us <= 0.0:
+		return 1 << 30
+	return maxi(1, int(budget_us / (float(total_rects) * CCD_RECT_COST_US)))
 
 
 ## 单个刚体的"运动"：线速度 + 角速度 x 外接半径（表面最快点）。
@@ -1504,11 +1713,17 @@ func _fastest_motion_plain() -> float:
 	# ⚠️ 只在 ccd_ignore_mass > 0 时构造这个集合 —— 默认关，老路径一次字典都不建
 	#    （8 条逐位基准跑的就是老路径）。
 	var exempt: Dictionary = _exempt_bodies() if ccd_ignore_mass > 0.0 else {}
+	# ⚠️ 尺寸豁免（ccd_min_driver_thickness，默认关）：比它薄的刚体不参与统计。
+	#    与质量豁免**独立**（两个都开就取并集）：质量受密度影响，换个材质就跨阈值，
+	#    而"看不看得见"是尺寸说了算。
+	var thin_gate: float = ccd_min_driver_thickness
 	for b: PBody in bodies:
 		# ⚠️ 冻结的刚体不参与：它不积分（速度是留着解冻用的），拿它算子步数纯属白算。
 		if b.is_static or not b.awake or b.frozen:
 			continue
 		if not exempt.is_empty() and exempt.has(b):
+			continue
+		if thin_gate > 0.0 and b.thinnest_extent() < thin_gate:
 			continue
 		fastest = maxf(fastest, _motion_of(b))
 	return fastest
@@ -1562,7 +1777,10 @@ func _fastest_motion_grouped() -> float:
 			# 单体：只有"焊死在静态世界"上才当 0（它整体动不了），否则照旧。
 			# ⚠️ 豁免只对**单体**生效：组内的灰尘已经被 _group_motion 的质量加权摊平了
 			#    （轻的拖不动重的），不需要也不应该把它从组里摘出去。
+			#    尺寸豁免（ccd_min_driver_thickness）**同一条理由**，所以也只在单体上生效。
 			if not exempt.is_empty() and exempt.has(b):
+				continue
+			if ccd_min_driver_thickness > 0.0 and b.thinnest_extent() < ccd_min_driver_thickness:
 				continue
 			fastest = maxf(fastest, 0.0 if _anchored_unbreakable(b) else _motion_of(b))
 			continue
@@ -1654,9 +1872,27 @@ func _compute_substeps(dt: float) -> int:
 	# ⚠️⚠️ 所有出口都必须**经过迟滞那一段**。
 	#    第一版这里保留了原来的 `return 1` 早退，结果拖动速度过零时（正弦拖动的
 	#    3 个零点）子步数照样掉回 1 —— 实测"回落 3 次"，抖动依旧。
+	# 【逐体模式】子步恒为 1：防穿交给逐体 CCD，不做全局子步。见 ccd_per_body_only。
+	#
+	# ⚠️ 这里是**早退**，而本函数顶上那条墓碑写着「所有出口都必须经过迟滞那一段」——
+	#    那条针对的是「子步数会**波动**」引起的抖动（正弦拖动过零时掉回 1 -> 回落 3 次）。
+	#    逐体模式下子步数是一个**常数**，不波动，也就没有抖动可言；
+	#    但仍然要维护 _substeps_held 这条不变量（返回值 == _substeps_held），否则
+	#    「自己驱动子步」的调用方读到的 last_substeps 会和真实步数分叉。
+	if ccd_per_body_only:
+		_substeps_held = maxi(1, ccd_fixed_substeps)
+		if not _ccd_per_body_warned and ccd_enabled \
+				and (rp_ccd_substeps <= 0 or rp_soft_ccd_prediction <= 0.0):
+			_ccd_per_body_warned = true
+			push_warning("[CCD] ccd_per_body_only 开着，但逐体 CCD 没武装好：" +
+				" rp_ccd_substeps=%d（需要 >=1）、rp_soft_ccd_prediction=%.2f（需要 >0）。" % [
+					rp_ccd_substeps, rp_soft_ccd_prediction] +
+				" **这等于把防穿整个关掉**。")
+		return _substeps_held
 	var need := 1
+	# ⚠️ total_rects 提到外面：迟滞那一段（返回值）也要用它做上限。
+	var total_rects := 0
 	if ccd_enabled and dt > 0.0:
-		var total_rects := 0
 		for b: PBody in bodies:
 			total_rects += b.rects.size()
 		# ⚠️ 取"最快运动"的两条路：默认逐刚体（老行为），可选的**关节感知**版本见
@@ -1670,6 +1906,13 @@ func _compute_substeps(dt: float) -> int:
 		# ccd_grab_substep_cost_budget_us 的说明）。⚠️ 只在抓取时生效 -> 基准逐位不变。
 		if not grabs.is_empty() and total_rects > 0:
 			need = mini(need, grab_substep_cap(total_rects))
+		# 【新】**任何时候**都生效的代价预算（ccd_substep_cost_budget_us，默认 0 = 关）。
+		#    与上面那道抓取闸门的分工见它的说明：抓取那道漏掉了"一个碎片飞过去"。
+		if ccd_substep_cost_budget_us > 0.0 and total_rects > 0:
+			need = mini(need, _cost_cap(total_rects, ccd_substep_cost_budget_us))
+		# 【新】硬上限（ccd_max_substeps，默认 0 = 不限）。
+		if ccd_max_substeps > 0:
+			need = mini(need, ccd_max_substeps)
 	# 迟滞：**涨立刻涨**（CCD 是安全项）；**抓着东西时不许落**。
 	#
 	# ⚠️⚠️ 为什么"不许落"：子步数是按**全世界最快的那个刚体**算的，它一变，**所有**刚体
@@ -1689,6 +1932,18 @@ func _compute_substeps(dt: float) -> int:
 	# ⚠️ 不抓东西时完全走原来的行为（need 是多少就是多少），所以基准逐位不变。
 	if need >= _substeps_held or grabs.is_empty():
 		_substeps_held = need
+	# ⚠️⚠️ 【新】迟滞**也不许超过本步的上限** —— 否则 cap 只压 need、压不住已经涨上去的 held。
+	#    实测（876 矩形场景，test/tools/bench_small_fragment_ccd.gd 的 E 段）：
+	#    grab_substep_cap 算出 1，而 _substeps_held 沿用抓取前被顶上去的 **77**，
+	#    一路返回 77 -> **768 ms/固定步**。cap 形同虚设。
+	#    这就是"卡死"的直接来源，所以上限必须**同时**作用在返回值上。
+	# ⚠️ 顺序无所谓（都是取 min），但放在迟滞**之后**是必须的 —— 放前面会被 need 重新顶上去。
+	if ccd_max_substeps > 0:
+		_substeps_held = mini(_substeps_held, ccd_max_substeps)
+	if ccd_substep_cost_budget_us > 0.0 and total_rects > 0:
+		_substeps_held = mini(_substeps_held, _cost_cap(total_rects, ccd_substep_cost_budget_us))
+	if not grabs.is_empty() and total_rects > 0:
+		_substeps_held = mini(_substeps_held, grab_substep_cap(total_rects))
 	return _substeps_held
 
 
@@ -3110,7 +3365,7 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 			dirty[s] = Rect2i(x0, y0, x1 - x0 + 2, y1 - y0 + 2)
 
 	if removed == 0:
-		return {"removed": 0, "body_alive": true, "fragments": []}
+		return {"removed": 0, "body_alive": true, "fragments": [], "downgraded": []}
 
 	# ③ 分裂：默认最大块留在原 body；有钉子时优先保留最大的含钉子块。
 	var kept: Array = []
@@ -3153,7 +3408,7 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 	# ④ 全删光 -> 原体消失
 	if kept.is_empty():
 		remove_body(body)
-		return {"removed": removed, "body_alive": false, "fragments": []}
+		return {"removed": removed, "body_alive": false, "fragments": [], "downgraded": []}
 
 	# ⑤ 原体重建 + 按**新质心**修正速度（质心动了，速度场要跟着走）
 	#
@@ -3177,6 +3432,8 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 
 	# ⑥ 碎片各自成体，同样继承速度场
 	var spawned: Array = []
+	# 【档 C-3】没进物理的那些（见 min_fragment_thickness）。
+	var downgraded: Array = []
 	for entry in loose:
 		var piece = entry.shape
 		var frag := PBody.new()
@@ -3188,6 +3445,30 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 		frag.gravity_scale = body.gravity_scale
 		frag.awake = body.awake
 		add_body(frag, [piece], Callable(), true)
+		# 【档 C-3】太薄的碎片**不进物理**：像素原样交回调用方（result.downgraded），
+		#    由美术层降级处理。理由见 min_fragment_thickness 的说明。
+		#
+		#    ⚠️⚠️ 判据是 **visible_short_side()（外接盒短边）**，不是 thinnest_extent()。
+		#    这里我犯过一次错，代价是玩家直接看见「碎片消失」，所以记下来：
+		#      第一版用的是 piece.local_aabb()（外接盒）—— 对，但是理由写错了；
+		#      然后我为了「梳子形碎片」把它改成 thinnest_extent()—— **那是错的**：
+		#      贪心分解沿**斜边**必然切出 1 像素宽的矩形，于是一块**斜切的大方块**
+		#      thinnest = 1 -> 整块被降级。实测：435 像素 / 外接盒 29x29 的碎片
+		#      被判成灰尘。而斜切在真实破坏里是最常见的形状（爆炸、擦除、裂纹）。
+		#    两个量的语义不同：**厚度决定能不能钻过去，外接盒决定看不看得见**。
+		#    灰尘判据要的是后者。thinnest_extent() 留给 CCD（PBody.needs_ccd）。
+		# 两个触发器取并集：太薄（会穿墙）**或**太小（不值得一个刚体）。
+		# 判据与理由见 min_fragment_thickness / min_fragment_pixels_downgrade 的说明。
+		var too_thin: bool = min_fragment_thickness > 0.0 \
+			and frag.visible_short_side() < min_fragment_thickness
+		var too_small: bool = min_fragment_pixels_downgrade > 0 \
+			and piece.pixel_count() < min_fragment_pixels_downgrade
+		if too_thin or too_small:
+			var dx := frag.position
+			var dr := frag.rotation
+			remove_body(frag)
+			downgraded.append({"shape": piece, "position": dx, "rotation": dr})
+			continue
 		var r := frag.com_world() - old_com
 		frag.linear_velocity = v_old + w_old * Vector2(-r.y, r.x)
 		frag.angular_velocity = w_old
@@ -3195,7 +3476,7 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 			# 可选的爆炸速度：从**原质心**向外。默认 0 = 不加（契约要求默认不产生爆炸速度）
 			frag.linear_velocity += r.normalized() * burst_speed
 		spawned.append(frag)
-	return {"removed": removed, "body_alive": true, "fragments": spawned}
+	return {"removed": removed, "body_alive": true, "fragments": spawned, "downgraded": downgraded}
 
 
 ## 分裂已经算完连通分量；这里只做钉子坐标的块查询，不再跑 flood fill。
