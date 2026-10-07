@@ -1,0 +1,117 @@
+[gd_scene format=3 uid="uid://dm3a4g8244i1v"]
+
+[ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="1_theme"]
+[ext_resource type="PackedScene" path="res://ui/components/ink_card.tscn" id="2_card"]
+[ext_resource type="PackedScene" path="res://ui/components/ink_meter.tscn" id="3_meter"]
+[ext_resource type="PackedScene" path="res://ui/components/ink_dialog.tscn" id="4_dialog"]
+[ext_resource type="PackedScene" path="res://root/root.tscn" id="5_75adw"]
+
+[node name="UIResourcePreview" type="Control" unique_id=1099691808]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_theme")
+
+[node name="Background" type="ColorRect" parent="." unique_id=977040144]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.0431373, 0.054902, 0.0745098, 1)
+
+[node name="SafeArea" type="MarginContainer" parent="." unique_id=1846567787]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 40
+theme_override_constants/margin_top = 32
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 32
+
+[node name="Layout" type="VBoxContainer" parent="SafeArea" unique_id=1842822311]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Eyebrow" type="Label" parent="SafeArea/Layout" unique_id=734102396]
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+text = "INK ATTACK / UI RESOURCE"
+
+[node name="Title" type="Label" parent="SafeArea/Layout" unique_id=388384374]
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+text = "统一界面资源预览"
+
+[node name="Buttons" type="HBoxContainer" parent="SafeArea/Layout" unique_id=1577197987]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Primary" type="Button" parent="SafeArea/Layout/Buttons" unique_id=1663723591]
+custom_minimum_size = Vector2(150, 44)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+text = "开始游戏"
+
+[node name="Secondary" type="Button" parent="SafeArea/Layout/Buttons" unique_id=1486522008]
+custom_minimum_size = Vector2(150, 44)
+layout_mode = 2
+text = "设置"
+
+[node name="Danger" type="Button" parent="SafeArea/Layout/Buttons" unique_id=355610419]
+custom_minimum_size = Vector2(150, 44)
+layout_mode = 2
+theme_type_variation = &"DangerButton"
+text = "返回标题"
+
+[node name="Columns" type="HBoxContainer" parent="SafeArea/Layout" unique_id=240635459]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 20
+
+[node name="Left" type="VBoxContainer" parent="SafeArea/Layout/Columns" unique_id=865163194]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 16
+
+[node name="Card" parent="SafeArea/Layout/Columns/Left" unique_id=1415451031 instance=ExtResource("2_card")]
+layout_mode = 2
+
+[node name="Meter" parent="SafeArea/Layout/Columns/Left" unique_id=717894985 instance=ExtResource("3_meter")]
+layout_mode = 2
+
+[node name="NameInput" type="LineEdit" parent="SafeArea/Layout/Columns/Left" unique_id=676211292]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+placeholder_text = "输入存档名称"
+
+[node name="Quality" type="OptionButton" parent="SafeArea/Layout/Columns/Left" unique_id=1771813483]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+selected = 1
+item_count = 3
+popup/item_0/text = "低"
+popup/item_0/id = 0
+popup/item_1/text = "中"
+popup/item_1/id = 1
+popup/item_2/text = "高"
+popup/item_2/id = 2
+
+[node name="Right" type="CenterContainer" parent="SafeArea/Layout/Columns" unique_id=1079294260]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Dialog" parent="SafeArea/Layout/Columns/Right" unique_id=1485975588 instance=ExtResource("4_dialog")]
+layout_mode = 2
+
+[node name="Root" parent="." unique_id=690913733 instance=ExtResource("5_75adw")]

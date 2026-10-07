@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f3f1eb" />
+  <title>MONO PIXEL｜Ink Attack 内嵌像素编辑器</title>
+  <link rel="stylesheet" href="./styles.css?v=ink-attack-3" />
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="#" aria-label="MONO PIXEL 首页">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span>MONO PIXEL</span>
+    </a>
+    <div class="header-note">黑白灰 · 像素化实验室</div>
+    <div class="header-actions">
+      <button class="assembler-btn" id="importAssembler" disabled>
+        <span>导入拼装台</span><kbd>↗</kbd>
+      </button>
+      <button class="primary-btn export-top" id="exportTop" disabled>
+        <span>导出 PNG</span><kbd>⌘ E</kbd>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="sidebar">
+      <section class="intro-block">
+        <p class="eyebrow">01 / INPUT</p>
+        <h1>把图片，<br />变成像素。</h1>
+        <p class="subcopy">上传任意图片，提炼成只有黑、白、灰与透明的像素画。</p>
+      </section>
+
+      <section class="control-section">
+        <label class="dropzone" id="dropzone" for="fileInput">
+          <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
+          <span class="drop-icon">↗</span>
+          <strong id="uploadLabel">选择或拖入图片</strong>
+          <small>可多选 PNG / JPG / WEBP / GIF · 单张最大 10MB</small>
+        </label>
+        <label class="pixel-import-btn" for="pixelArtInput">
+          <input id="pixelArtInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
+          <span class="mini-pixels" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span><b>导入已有像素画</b><small>跳过缩放，按原始像素格编辑</small></span>
+          <em>↗</em>
+        </label>
+        <div class="batch-panel" id="batchPanel" hidden>
+          <div><span>本次批次</span><b id="batchCount">0 张</b><button id="clearBatch" type="button">清空</button></div>
+          <div class="batch-list" id="batchList"></div>
+        </div>
+      </section>
+
+      <section class="control-section setting-group">
+        <div class="section-heading">
+          <p class="eyebrow">02 / RESOLUTION</p>
+          <output id="sizeOutput">80 × 80</output>
+        </div>
+        <div class="size-inputs">
+          <label><span>宽度 W</span><span class="number-field"><input id="canvasWidth" type="number" min="8" max="256" value="80" /><em>格</em></span></label>
+          <b>×</b>
+          <label><span>高度 H</span><span class="number-field"><input id="canvasHeight" type="number" min="8" max="256" value="80" /><em>格</em></span></label>
+        </div>
+        <p class="size-hint">可独立设置宽高 · 范围 8—256 格</p>
+        <label class="switch-row adaptive-row">
+          <span><b>自适应画布</b><small>按画面比例与细节自动使用最小清晰尺寸</small></span>
+          <input id="adaptiveCanvas" type="checkbox" checked /><i></i>
+        </label>
+      </section>
+
+      <section class="control-section setting-group">
+        <div class="section-heading">
+          <p class="eyebrow">03 / TONE</p>
+          <output id="toneOutput">4 阶</output>
+        </div>
+        <div class="segmented" role="radiogroup" aria-label="灰阶数量">
+          <button data-levels="2">2 阶</button>
+          <button data-levels="3">3 阶</button>
+          <button class="active" data-levels="4">4 阶</button>
+        </div>
+        <label class="range-label" for="contrast"><span>对比度</span><output id="contrastOutput">+10</output></label>
+        <input class="range" id="contrast" type="range" min="-50" max="80" value="10" />
+        <label class="range-label" for="threshold"><span>背景容差</span><output id="thresholdOutput">18</output></label>
+        <input class="range" id="threshold" type="range" min="0" max="80" value="18" />
+      </section>
+
+      <section class="control-section toggles">
+        <label class="switch-row">
+          <span><b>智能去背景</b><small>以图片四角颜色识别背景</small></span>
+          <input id="removeBg" type="checkbox" checked /><i></i>
+        </label>
+        <label class="switch-row">
+          <span><b>抖动纹理</b><small>用点阵保留更多明暗细节</small></span>
+          <input id="dither" type="checkbox" /><i></i>
+        </label>
+        <label class="switch-row">
+          <span><b>自动合并色块</b><small>减少零碎元素，锁定外部轮廓</small></span>
+          <input id="autoMerge" type="checkbox" checked /><i></i>
+        </label>
+        <div class="merge-strength" id="mergeStrengthRow">
+          <label class="range-label" for="mergeStrength"><span>合并强度</span><output id="mergeStrengthOutput">3</output></label>
+          <input class="range" id="mergeStrength" type="range" min="1" max="5" value="3" />
+        </div>
+      </section>
+
+      <button class="generate-btn" id="generateBtn" disabled>
+        <span>生成像素画</span><span>→</span>
+      </button>
+      <p class="privacy">图片仅在浏览器中处理 · 自动保存上次项目</p>
+    </aside>
+
+    <section class="workspace" id="workspace">
+      <div class="toolbar" aria-label="编辑工具">
+        <div class="tool-cluster">
+          <button class="tool active" data-tool="brush" title="画笔 (B)"><span>✦</span><em>画笔</em><kbd>B</kbd></button>
+          <button class="tool" data-tool="eraser" title="橡皮擦 (E)"><span>◇</span><em>擦除</em><kbd>E</kbd></button>
+          <button class="tool" data-tool="picker" title="取色 (I)"><span>⌾</span><em>取色</em><kbd>I</kbd></button>
+          <button class="tool" data-tool="replace" title="颜色替换 (R)"><span>⇄</span><em>替换</em><kbd>R</kbd></button>
+          <button class="tool" data-tool="select" title="框选删除 (X)"><span>▧</span><em>框删</em><kbd>X</kbd></button>
+        </div>
+        <span class="divider"></span>
+        <div class="brush-size-control" id="brushSizeControl" aria-label="笔刷尺寸">
+          <button id="brushSizeDown" type="button" title="缩小笔刷 ([)">−</button>
+          <output id="brushSizeOutput">1×1</output>
+          <button id="brushSizeUp" type="button" title="放大笔刷 (])">＋</button>
+        </div>
+        <span class="divider"></span>
+        <div class="palette" aria-label="颜色选择">
+          <button class="swatch active" data-color="0" style="--swatch:#111111" title="黑色 (1)"></button>
+          <button class="swatch" data-color="85" style="--swatch:#555555" title="深灰 (2)"></button>
+          <button class="swatch" data-color="170" style="--swatch:#aaaaaa" title="浅灰 (3)"></button>
+          <button class="swatch light" data-color="255" style="--swatch:#ffffff" title="白色 (4)"></button>
+        </div>
+        <span class="divider"></span>
+        <div class="tool-cluster compact">
+          <button class="icon-btn" id="undoBtn" title="撤销 (Ctrl/⌘ Z)" disabled>↶</button>
+          <button class="icon-btn" id="redoBtn" title="重做 (Ctrl/⌘ Shift Z)" disabled>↷</button>
+          <button class="text-btn symmetry-btn" id="symmetryBtn" title="左右对称绘制 (S)" aria-pressed="false"><span class="outline-icon">⇋</span> 对称 <kbd>S</kbd></button>
+          <button class="text-btn" id="outlineBtn" disabled><span class="outline-icon">□</span> 只留外框 <kbd>O</kbd></button>
+          <button class="text-btn" id="mergeBtn" disabled><span class="outline-icon">▰</span> 合并色块 <kbd>M</kbd></button>
+          <button class="text-btn" id="expandBtn" disabled><span class="outline-icon">⌗</span> 扩展画板 <kbd>C</kbd></button>
+          <button class="text-btn" id="centerBtn" disabled><span class="outline-icon">⊕</span> 图案居中 <kbd>G</kbd></button>
+          <button class="text-btn" id="mirrorRightBtn" disabled><span class="outline-icon">⧉</span> 右侧镜像 <kbd>F</kbd></button>
+        </div>
+        <div class="zoom-cluster">
+          <button class="icon-btn" id="zoomOut" title="缩小 (-)">−</button>
+          <output id="zoomOutput">100%</output>
+          <button class="icon-btn" id="zoomIn" title="放大 (+)">＋</button>
+        </div>
+      </div>
+
+      <div class="canvas-stage" id="canvasStage" tabindex="0" aria-label="像素画编辑区">
+        <button class="canvas-export" id="exportFloating" hidden disabled>
+          <span>↓</span><b>导出透明 PNG</b><kbd>Ctrl E</kbd>
+        </button>
+        <div class="empty-state" id="emptyState">
+          <div class="empty-art" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <h2>等待一张图片</h2>
+          <p>拖入图片，或从左侧选择文件开始。</p>
+          <button id="demoBtn">试试示例图案 <span>→</span></button>
+        </div>
+        <div class="canvas-scroller" id="canvasScroller" hidden>
+          <canvas id="pixelCanvas"></canvas>
+        </div>
+        <div class="cursor-tip" id="cursorTip" hidden>[ / ] 调笔刷 · X 框选删除 · Space 添加 · Delete 删除</div>
+        <div class="batch-nav" id="batchNav" hidden>
+          <button id="batchPrev" type="button" aria-label="上一张">←</button>
+          <span id="batchPosition">1 / 1</span>
+          <button id="batchNext" type="button" aria-label="下一张">→</button>
+        </div>
+      </div>
+
+      <footer class="statusbar">
+        <div><span class="status-dot"></span><b id="statusText">就绪</b></div>
+        <div class="status-details"><span id="dimensionText">— × — PX</span><span id="selectionSize">框选 — × — PX</span><span id="pixelCount">0 PIXELS</span><span id="saveState">本地自动保存</span></div>
+      </footer>
+    </section>
+  </main>
+
+  <dialog class="expand-dialog" id="expandDialog">
+    <form method="dialog" id="expandForm">
+      <div class="dialog-head">
+        <div><p class="eyebrow">CANVAS / EXPAND</p><h2>扩展透明画板</h2></div>
+        <button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button>
+      </div>
+      <p class="dialog-copy">在图案四周增加透明像素格。原图位置会按扩展方向自动偏移。</p>
+      <div class="expand-map">
+        <label class="side top"><span>上</span><input id="expandTop" type="number" min="0" max="128" value="4" /></label>
+        <label class="side left"><span>左</span><input id="expandLeft" type="number" min="0" max="128" value="4" /></label>
+        <div class="canvas-preview"><span>当前画板</span><b id="dialogDims">— × —</b></div>
+        <label class="side right"><span>右</span><input id="expandRight" type="number" min="0" max="128" value="4" /></label>
+        <label class="side bottom"><span>下</span><input id="expandBottom" type="number" min="0" max="128" value="4" /></label>
+      </div>
+      <div class="dialog-actions">
+        <button class="dialog-secondary" type="button" data-close-dialog>取消</button>
+        <button class="dialog-primary" id="confirmExpand" type="submit">确认扩展 <span>→</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="./app.js?v=ink-attack-4"></script>
+</body>
+</html>

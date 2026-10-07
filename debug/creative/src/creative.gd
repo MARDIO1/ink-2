@@ -84,6 +84,9 @@ func _enter() -> void:
 	var canvas := get_node_or_null(canvas_path)
 	_show_canvas(_canvas, false)
 	_show_canvas(_map_canvas, true)
+	#工具栏随身携带：大地图铺满全图，工具栏钉在画布角上就够不着了。
+	if _map_canvas != null:
+		_map_canvas.set_follow_player(true)
 	_set_ink_free(true)
 	if _player != null:
 		var health = _player.get_node_or_null("InkHealth")
@@ -105,6 +108,8 @@ func _exit() -> void:
 		_body.sleep_timer = 0.0
 	_show_canvas(_map_canvas, false)
 	_show_canvas(_canvas, true)
+	if _map_canvas != null:
+		_map_canvas.set_follow_player(false)
 	_set_ink_free(false)
 	if _player != null:
 		var health = _player.get_node_or_null("InkHealth")

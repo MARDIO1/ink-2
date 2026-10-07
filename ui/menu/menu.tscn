@@ -1,85 +1,69 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Texture2D" path="res://ui/menu/asset/paper.png" id="1_paper"]
 [ext_resource type="Texture2D" path="res://ui/menu/asset/title.png" id="2_title"]
 [ext_resource type="Texture2D" path="res://ui/menu/asset/icon_play.svg" id="3_play"]
 [ext_resource type="Texture2D" path="res://ui/menu/asset/icon_exit.svg" id="4_exit"]
-[ext_resource type="Script" path="res://ui/menu/src/menu.gd" id="5_script"]
+[ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="5_theme"]
+[ext_resource type="Script" path="res://ui/menu/src/menu.gd" id="6_script"]
 
-[sub_resource type="SystemFont" id="SystemFont_ui"]
-font_names = PackedStringArray("Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "SimHei")
-font_weight = 800
-subpixel_positioning = 0
-
-[sub_resource type="StyleBoxFlat" id="StyleBox_button_normal"]
-content_margin_left = 13.0
-content_margin_top = 5.0
-content_margin_right = 13.0
-content_margin_bottom = 5.0
-bg_color = Color(0.985, 0.975, 0.935, 0.9)
+[sub_resource type="StyleBoxFlat" id="StartNormal"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
-border_color = Color(0.035, 0.032, 0.026, 1)
-corner_radius_top_left = 1
-corner_radius_top_right = 1
-corner_radius_bottom_right = 1
-corner_radius_bottom_left = 1
-shadow_color = Color(0.2, 0.19, 0.17, 0.48)
-shadow_size = 2
-shadow_offset = Vector2(3, 3)
+border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 
-[sub_resource type="StyleBoxFlat" id="StyleBox_button_pressed"]
-content_margin_left = 13.0
-content_margin_top = 6.0
-content_margin_right = 13.0
-content_margin_bottom = 3.0
-bg_color = Color(0.2, 0.19, 0.17, 1)
+[sub_resource type="StyleBoxFlat" id="StartHover"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
-border_color = Color(0.035, 0.032, 0.026, 1)
-corner_radius_top_left = 1
-corner_radius_top_right = 1
-corner_radius_bottom_right = 1
-corner_radius_bottom_left = 1
-
-[sub_resource type="StyleBoxFlat" id="StyleBox_button_hover"]
-content_margin_left = 13.0
-content_margin_top = 5.0
-content_margin_right = 13.0
-content_margin_bottom = 5.0
-bg_color = Color(0.035, 0.032, 0.026, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.035, 0.032, 0.026, 1)
-corner_radius_top_left = 1
-corner_radius_top_right = 1
-corner_radius_bottom_right = 1
-corner_radius_bottom_left = 1
-shadow_color = Color(0.2, 0.19, 0.17, 0.48)
-shadow_size = 2
-shadow_offset = Vector2(3, 3)
-
-[sub_resource type="StyleBoxFlat" id="StyleBox_button_focus"]
-bg_color = Color(0, 0, 0, 0)
-border_width_left = 4
-border_width_top = 4
-border_width_right = 4
-border_width_bottom = 4
-border_color = Color(0.035, 0.032, 0.026, 0.9)
-corner_radius_top_left = 1
-corner_radius_top_right = 1
-corner_radius_bottom_right = 1
-corner_radius_bottom_left = 1
+border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 expand_margin_left = 3.0
 expand_margin_top = 3.0
 expand_margin_right = 3.0
 expand_margin_bottom = 3.0
+
+[sub_resource type="StyleBoxFlat" id="QuitNormal"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.231373, 0.219608, 0.192157, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+
+[sub_resource type="StyleBoxFlat" id="QuitHover"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.231373, 0.219608, 0.192157, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+expand_margin_left = 3.0
+expand_margin_top = 3.0
+expand_margin_right = 3.0
+expand_margin_bottom = 3.0
+
+[sub_resource type="StyleBoxEmpty" id="MenuFocus"]
 
 [node name="Menu" type="Control"]
 layout_mode = 3
@@ -88,10 +72,11 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("5_script")
+theme = ExtResource("5_theme")
+script = ExtResource("6_script")
 
 [node name="Paper" type="TextureRect" parent="."]
-texture_filter = 2
+texture_filter = 1
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -107,9 +92,9 @@ texture_filter = 1
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.18
-anchor_top = 0.025
+anchor_top = 0.04
 anchor_right = 0.82
-anchor_bottom = 0.525
+anchor_bottom = 0.5
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -117,69 +102,60 @@ texture = ExtResource("2_title")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StartButton" type="Button" parent="."]
+[node name="ButtonCenter" type="CenterContainer" parent="."]
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.37
-anchor_top = 0.54
-anchor_right = 0.63
-anchor_bottom = 0.63
+anchor_left = 0.31
+anchor_top = 0.52
+anchor_right = 0.69
+anchor_bottom = 0.8
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="Buttons" type="VBoxContainer" parent="ButtonCenter"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="StartButton" type="Button" parent="ButtonCenter/Buttons"]
+custom_minimum_size = Vector2(280, 58)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+theme_override_colors/font_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/font_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/font_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/icon_normal_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/icon_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/icon_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_styles/normal = SubResource("StartNormal")
+theme_override_styles/hover = SubResource("StartHover")
+theme_override_styles/pressed = SubResource("StartHover")
+theme_override_styles/focus = SubResource("MenuFocus")
 focus_neighbor_bottom = NodePath("../QuitButton")
 mouse_default_cursor_shape = 2
-theme_override_colors/font_color = Color(0.035, 0.032, 0.026, 1)
-theme_override_colors/font_focus_color = Color(0.035, 0.032, 0.026, 1)
-theme_override_colors/font_pressed_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/font_hover_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/font_hover_pressed_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/icon_normal_color = Color(0.035, 0.032, 0.026, 1)
-theme_override_colors/icon_focus_color = Color(0.035, 0.032, 0.026, 1)
-theme_override_colors/icon_pressed_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/icon_hover_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/icon_hover_pressed_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_constants/icon_max_width = 22
-theme_override_fonts/font = SubResource("SystemFont_ui")
-theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("StyleBox_button_normal")
-theme_override_styles/pressed = SubResource("StyleBox_button_pressed")
-theme_override_styles/hover = SubResource("StyleBox_button_hover")
-theme_override_styles/focus = SubResource("StyleBox_button_focus")
 text = "开始"
 icon = ExtResource("3_play")
 expand_icon = true
 
-[node name="QuitButton" type="Button" parent="."]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.37
-anchor_top = 0.67
-anchor_right = 0.63
-anchor_bottom = 0.76
-grow_horizontal = 2
-grow_vertical = 2
+[node name="QuitButton" type="Button" parent="ButtonCenter/Buttons"]
+custom_minimum_size = Vector2(280, 58)
+layout_mode = 2
+theme_type_variation = &"DangerButton"
+theme_override_colors/font_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/font_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/font_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/icon_normal_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/icon_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_colors/icon_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
+theme_override_styles/normal = SubResource("QuitNormal")
+theme_override_styles/hover = SubResource("QuitHover")
+theme_override_styles/pressed = SubResource("QuitHover")
+theme_override_styles/focus = SubResource("MenuFocus")
 focus_neighbor_top = NodePath("../StartButton")
 mouse_default_cursor_shape = 2
-theme_override_colors/font_color = Color(0.035, 0.032, 0.026, 1)
-theme_override_colors/font_focus_color = Color(0.035, 0.032, 0.026, 1)
-theme_override_colors/font_pressed_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/font_hover_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/font_hover_pressed_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/icon_normal_color = Color(0.035, 0.032, 0.026, 1)
-theme_override_colors/icon_focus_color = Color(0.035, 0.032, 0.026, 1)
-theme_override_colors/icon_pressed_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/icon_hover_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_colors/icon_hover_pressed_color = Color(0.985, 0.975, 0.935, 1)
-theme_override_constants/icon_max_width = 22
-theme_override_fonts/font = SubResource("SystemFont_ui")
-theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("StyleBox_button_normal")
-theme_override_styles/pressed = SubResource("StyleBox_button_pressed")
-theme_override_styles/hover = SubResource("StyleBox_button_hover")
-theme_override_styles/focus = SubResource("StyleBox_button_focus")
 text = "退出"
 icon = ExtResource("4_exit")
 expand_icon = true
 
-[connection signal="pressed" from="StartButton" to="." method="_on_start_button_pressed"]
-[connection signal="pressed" from="QuitButton" to="." method="_on_quit_button_pressed"]
+[connection signal="pressed" from="ButtonCenter/Buttons/StartButton" to="." method="_on_start_button_pressed"]
+[connection signal="pressed" from="ButtonCenter/Buttons/QuitButton" to="." method="_on_quit_button_pressed"]

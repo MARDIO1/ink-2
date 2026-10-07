@@ -3,7 +3,7 @@ extends Control
 
 const GAME_SCENE := "res://root/root.tscn"
 
-@onready var start_button: Button = $StartButton
+@onready var start_button: Button = $ButtonCenter/Buttons/StartButton
 
 
 func _ready() -> void:

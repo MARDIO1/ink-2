@@ -1,0 +1,45 @@
+[gd_scene format=3]
+
+[node name="InkDialog" type="PanelContainer"]
+custom_minimum_size = Vector2(460, 240)
+theme_type_variation = &"OverlayPanel"
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="Content" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Margin/Content"]
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+text = "确认操作"
+
+[node name="Message" type="Label" parent="Margin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_type_variation = &"MutedLabel"
+text = "对话框正文。通过脚本修改标题与内容。"
+autowrap_mode = 2
+
+[node name="Actions" type="HBoxContainer" parent="Margin/Content"]
+layout_mode = 2
+alignment = 2
+theme_override_constants/separation = 8
+
+[node name="Cancel" type="Button" parent="Margin/Content/Actions"]
+custom_minimum_size = Vector2(110, 44)
+layout_mode = 2
+text = "取消"
+
+[node name="Confirm" type="Button" parent="Margin/Content/Actions"]
+custom_minimum_size = Vector2(110, 44)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+text = "确认"
+

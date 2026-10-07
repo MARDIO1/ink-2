@@ -1066,6 +1066,61 @@ gym 场景 headless 空跑 --quit-after 150：exit 0，无 ERROR
   loose `Hud`/`Esc` 清不清。
 
 
+## 2026-10-07 18:35 — 手的失能/使能接口 + 画布非"手"工具时自动失能
+
+- **接口**（`actor/player/src/hand.gd`）：`set_enabled(on: bool)`（第 315 行）。
+  失能 = **藏起整只手 + 松开抓握 + 目标钉死在当前质心**：
+  - 藏：手的所有可见内容（物理像素层 `Visual` + `ArtUnfold/ArtGrab` + `ArmCurve`）都挂在
+    `Hand/Visual` 下，`visual.visible = enabled` 一处搞定（第 324 行）。
+  - ⚠️ **不是把马达关掉**：手与臂的 `gravity_scale` 都是 0，撤了力它会带着残余速度一路飘，
+    所以改成复用 `set_target_world(body.com_world())` 把目标钉住，姿势原地定住。
+  - ⚠️ 不能用 `@onready` 缓存来判断 ready：场景顺序里 `SmallCanvas` 排在 `Player` 前面，
+    画布的 `_ready` 会比手的 `_ready` 先调到这里，所以 `set_enabled` 用 `is_node_ready()` 挡一道，
+    真正生效交给 `_ready()` 末尾的 `_apply_enabled_state()`（第 53 行）。
+- **胶水**（`actor/canvas/src/canvas.gd`）：`hand_path = ^"Arm/Hand/HandControl"`（相对 `../Player`）
+  + `_sync_hand_enabled(tool)`（第 88 行），在 `_apply_tool()` 末尾调用（第 194 行）；
+  并且只有 `active` 的画布说了算，`active` 变 true 时重新 `_apply_tool`，
+  这样 F2 创造模式在小画布/大地图之间来回切时，手的状态跟着当前那块画布。
+- **实测**（headless，真开 `map/main.tscn` 走真实工具切换）：
+  - 进游戏默认 `tool=1`（画笔）→ `enabled=false visual.visible=false`
+  - 选"手" → `enabled=true visual.visible=true override=<null>`（重新跟鼠标）
+  - 选画笔 → `enabled=false visible=false 目标钉死=true`；连续 6 帧目标没漂
+  - 失能时按住左键（走 `set_grip` override）→ `art_grab.visible=false grabbed=<null>`（抓不住）
+  - 切回"手" → `enabled=true visible=true override=<null>`
+- **回归**：`test_canvas.gd` PASS；`test_hand_physics.gd` 50 passed / 4 failed —— 我复制一份把手
+  强制使能作对照，**同样是 50/4 且失败项完全相同**，所以那 4 个（pushup/ground acquired through
+  query、pushup/body supported under gravity、box pushup/grabbed、box pushup/body climbs）是既有问题。
+- **没动、要你定**：`actor/canvas/canvas.tscn:96` 是 `tool = 1`（画笔），所以**进游戏手就是失能隐身的**；
+  要默认能抓手就把默认工具改成 `0`（手）。
+
+
+## 2026-10-07 18:52 — 创造模式工具栏随身携带 + 隐藏/显示按钮
+
+- **场景**（`actor/canvas/canvas.tscn:127`）：`WorkbenchUI` 下加了一个 `Toggle` 按钮，
+  与 `Buttons` / `BrushPanel` 平级 —— 这样"手动隐藏"只藏工具栏本体，隐藏按钮自己留着，
+  不然藏起来就再也点不回来。位置在按钮列正上方（offset -222..-86 / 56..112），
+  复用现成的 `IconNormal/IconSelected/IconHover` 样式盒。
+- **跟随**（`actor/canvas/src/canvas.gd`）：
+  - `follow_offset`（默认 `(246, -106)`，导出，Inspector 可调）+ `set_follow_player(on)`（132 行）；
+    开启后 `_physics_process` 里把 `WorkbenchUI.position` 设成 `to_local(角色质心 + follow_offset)`（142 行）。
+  - `_refresh_workbench_visibility()` 在跟随模式下直接算"可见"，跳过原来的"离画布远近"迟滞判断。
+  - `_set_workbench_visible(nearby)`：工具栏本体 = `active and nearby and not 手动隐藏`，
+    隐藏按钮 = `active and nearby`。
+  - ⚠️ 加了 `process_physics_priority = 18`（37 行）：世界步进是 10、相机是 20，默认优先级 0 的话
+    `_physics_process` 跑在世界步进**之前**，跟随会读到上一帧的位姿。实测瞬移 300px 时偏移会飘
+    (262.8, -114.5)、加了优先级之后逐位精确回 `(246, -106)`。
+- **开关**（`debug/creative/src/creative.gd:89 / 112`）：`_enter()` 开跟随、`_exit()` 关掉回到原位置。
+- **实测**（headless，真开 `map/main.tscn`）：
+  - 平时 `follow=false`、工具栏在场景里的 `(61,-120)`；进创造 `follow=true`，小画布隐藏、大地图可见；
+    跟随时偏移恒为 `(246,-106)`。
+  - 瞬移角色 (300,-120) 后：工具栏位移 = 角色位移 = `(265.211, -104.4342)`（完全相同），偏移不变。
+  - 点隐藏 → `工具栏=false 隐藏按钮=true 文字=显示`；再点 → `工具栏=true 文字=隐藏`。
+  - 退出创造 → 位置回到 `(61,-120)`、`follow=false`、工具栏隐藏。
+- **回归**：`test_canvas.gd` PASS；`test_game_control.gd` 29 checks / 2 failed
+  （`actual partial foot contact acquired`、`jump pushes support down`）—— 把那行 `process_physics_priority`
+  临时注释掉再跑，**失败项完全相同**，所以是既有问题（脚/跳跃那套），与本次改动无关。
+
+
 ## 2026-10-07 18:20 — 大整理第一批：root/UI 装配 + debug/ 模块归位 + gym/ink_item 归位
 
 （本轮与用户的编辑并行进行；以下是我做的部分。）

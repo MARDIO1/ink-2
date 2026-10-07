@@ -1,0 +1,27 @@
+[gd_scene format=3]
+
+[node name="InkMeter" type="VBoxContainer"]
+custom_minimum_size = Vector2(280, 54)
+theme_override_constants/separation = 6
+
+[node name="Header" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"AccentLabel"
+text = "墨水量"
+
+[node name="Value" type="Label" parent="Header"]
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "70 / 100"
+
+[node name="Progress" type="ProgressBar" parent="."]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+theme_type_variation = &"InkMeter"
+value = 70.0
+show_percentage = false
+

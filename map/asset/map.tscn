@@ -43,6 +43,7 @@ voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
+visible = false
 position = Vector2(126.68803, -20.415234)
 process_callback = 0
 script = ExtResource("8_k68an")
@@ -53,10 +54,12 @@ position = Vector2(41, -42)
 active = false
 
 [node name="MapCanvas" parent="." unique_id=1305874354 instance=ExtResource("9_kwfhf")]
+visible = false
 position = Vector2(-512, -256)
 canvas_size = Vector2i(2048, 1024)
 
 [node name="Ground" type="Node2D" parent="." unique_id=696036291]
+visible = false
 position = Vector2(-133, 231)
 script = ExtResource("11_7j5hw")
 is_static = true
@@ -67,6 +70,7 @@ script = ExtResource("12_eghok")
 rect_size = Vector2i(800, 40)
 
 [node name="Box" type="Node2D" parent="." unique_id=1881270586]
+visible = false
 position = Vector2(-959.81024, 1164.4683)
 rotation = -0.65197533
 script = ExtResource("11_7j5hw")
@@ -77,7 +81,8 @@ script = ExtResource("12_eghok")
 rect_size = Vector2i(32, 32)
 
 [node name="Player" parent="." unique_id=1427605215 instance=ExtResource("13_51wry")]
-position = Vector2(86.43332, -57.90224)
+visible = false
+position = Vector2(390, -205.00002)
 rotation = -0.15464996
 
 [node name="Hud" parent="." unique_id=501461249 instance=ExtResource("15_6nj1v")]

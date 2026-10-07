@@ -1,0 +1,12 @@
+{
+  "godot_feature_version": "4.7",
+  "engine": {
+    "repository": "https://github.com/Rycbartbad/Godot_2DVoxel_Addons",
+    "inspected_commit": "c28a40f3c7cbb07bb83460c342396da604dbdd06"
+  },
+  "game_baseline": {
+    "repository": "https://github.com/MARDIO1/ink-2",
+    "commit": "f16f39884291f1b582d02511c64f56937edd76c2"
+  },
+  "runtime_addon_policy": "Keep the vendored scripts and native DLLs from the same tested snapshot; do not mix engine HEAD scripts with older binaries."
+}

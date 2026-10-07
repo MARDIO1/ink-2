@@ -3,7 +3,7 @@ extends CanvasLayer
 
 const MENU_SCENE := "res://ui/menu/menu.tscn"
 
-@onready var continue_button: Button = $Buttons/ContinueButton
+@onready var continue_button: Button = $Center/Panel/Buttons/ContinueButton
 
 
 func _ready() -> void:
