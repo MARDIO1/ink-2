@@ -51,6 +51,10 @@ func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
 	if event is InputEventMouseButton:
+		# 工具栏是屏幕固定 GUI，但本节点使用全局输入；若不主动拦截，按钮点击会同时
+		# 穿透到背后的世界画布。松开事件仍要放行，用来正确结束已开始的笔画/形状。
+		if event.pressed and get_viewport().gui_get_hovered_control() != null:
+			return
 		_on_mouse_button(event as InputEventMouseButton)
 
 

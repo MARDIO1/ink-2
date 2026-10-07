@@ -20,9 +20,14 @@ func _run() -> void:
 	# 画一个实心笔划，确认编辑器范围改造没有破坏固化。
 	surface._stroke(Vector2(20, 20), Vector2(40, 20), Color.BLACK)
 	surface._place_nail(Vector2(30, 20))
-	var path: String = "user://canvas_roundtrip.tres"
+	# 使用项目内临时路径，确保无 user:// 写权限的 headless/沙箱环境也能验收；退出前删除。
+	var path: String = "res://test/.canvas_roundtrip.tmp.tres"
+	var png_path: String = "res://test/.canvas_roundtrip.tmp.png"
+	for temp_path in [path, png_path]:
+		if FileAccess.file_exists(temp_path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
 	canvas.capture_path = path
-	canvas.baked_map_path = "user://canvas_roundtrip.png"
+	canvas.baked_map_path = png_path
 	var before: PackedByteArray = surface.black_image.get_data()
 	await _press(KEY_F5)
 	valid = valid and ResourceLoader.exists(path)
@@ -69,6 +74,9 @@ func _run() -> void:
 	_release(scene.world)
 	scene.queue_free()
 	await process_frame
+	for temp_path in [path, png_path]:
+		if FileAccess.file_exists(temp_path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
 	quit(0 if valid else 1)
 
 

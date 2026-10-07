@@ -7,6 +7,8 @@ extends Node
 
 signal map_saved(path: String)
 
+const HEALTH_UI_GROUP := &"health_ui"
+
 @export var player_path: NodePath = ^"../Player"
 ## 普通模式的小画布；创造模式里让位给大地图。
 @export var canvas_path: NodePath = ^"../SmallCanvas"
@@ -32,6 +34,7 @@ var _saved_layer := 1
 var _saved_mask := 0xFFFFFFFF
 var _saved_gravity := 1.0
 var _saved_player_visible := true
+var _saved_health_ui_visibility := {}
 #endregion
 
 
@@ -83,6 +86,7 @@ func _enter() -> void:
 	_saved_gravity = _body.gravity_scale
 	_saved_player_visible = _player.visible
 	_player.visible = false             # 保留物理体作为相机/飞行锚点，只隐藏角色视觉
+	_hide_health_ui()
 	_body.collision_layer = 0          # 不在任何层：碰不到任何东西
 	_body.collision_mask = 0
 	_body.gravity_scale = 0.0
@@ -123,6 +127,7 @@ func _exit() -> void:
 		var health = _player.get_node_or_null("InkHealth")
 		if health != null:
 			health.damage_enabled = true
+	_restore_health_ui()
 	print("CREATIVE off")
 
 
@@ -139,6 +144,22 @@ func _set_ink_free(free: bool) -> void:
 	for canvas in [_canvas, _map_canvas]:
 		if canvas != null:
 			canvas.set_ink_free(free)
+
+
+## 地图编辑只隐藏血条、瓶身填充和墨水文字，右上角退出按钮仍可用。
+func _hide_health_ui() -> void:
+	_saved_health_ui_visibility.clear()
+	for item in get_tree().get_nodes_in_group(HEALTH_UI_GROUP):
+		if item is CanvasItem:
+			_saved_health_ui_visibility[item] = item.visible
+			item.visible = false
+
+
+func _restore_health_ui() -> void:
+	for item in _saved_health_ui_visibility:
+		if is_instance_valid(item):
+			item.visible = bool(_saved_health_ui_visibility[item])
+	_saved_health_ui_visibility.clear()
 #endregion
 
 

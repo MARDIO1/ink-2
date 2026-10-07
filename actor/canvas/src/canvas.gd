@@ -314,10 +314,6 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("Redraw").pressed.connect(clear_canvas)
 	tool_grid.get_node("Generate").pressed.connect(generate)
 	tool_grid.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
-	resize_panel.get_node("Grid/Left").pressed.connect(expand_left)
-	resize_panel.get_node("Grid/Right").pressed.connect(expand_right)
-	resize_panel.get_node("Grid/Up").pressed.connect(expand_up)
-	resize_panel.get_node("Grid/Down").pressed.connect(expand_down)
 	resize_panel.get_node("Grid/PlayerVisibility").toggled.connect(_on_player_visibility_toggled)
 	resize_panel.get_node("Grid/NailVisibility").toggled.connect(_on_nail_visibility_toggled)
 	toggle_button.pressed.connect(_toggle_workbench)
@@ -412,6 +408,8 @@ func _input(event: InputEvent) -> void:
 		return
 	#绘图工具下，右键只充当临时橡皮：按住切换，松开恢复，不改变长期工具选择。
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		if event.pressed and get_viewport().gui_get_hovered_control() != null:
+			return
 		if event.pressed and not _temporary_eraser and surface.tool == SurfaceScript.Tool.BRUSH:
 			_temporary_eraser = true
 			_apply_tool(SurfaceScript.Tool.ERASER)
@@ -421,6 +419,23 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
+		# 地图扩展保留为快捷键，界面不再占一排方向按钮。
+		if _map_editor_mode and event.ctrl_pressed:
+			var expanded := true
+			match event.keycode:
+				KEY_LEFT:
+					expand_left()
+				KEY_RIGHT:
+					expand_right()
+				KEY_UP:
+					expand_up()
+				KEY_DOWN:
+					expand_down()
+				_:
+					expanded = false
+			if expanded:
+				get_viewport().set_input_as_handled()
+				return
 		match event.keycode:
 			KEY_1:
 				set_tool(SurfaceScript.Tool.HAND)

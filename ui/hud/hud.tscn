@@ -20,7 +20,7 @@ grow_vertical = 2
 mouse_filter = 2
 theme = ExtResource("3_theme")
 
-[node name="BottleFill" type="TextureProgressBar" parent="Root"]
+[node name="BottleFill" type="TextureProgressBar" parent="Root" groups=["health_ui"]]
 texture_filter = 1
 layout_mode = 0
 offset_left = 24.0
@@ -33,7 +33,7 @@ value = 72.0
 texture_progress = ExtResource("5_bottle_fill")
 tint_progress = Color(0.0352941, 0.0313726, 0.0235294, 1)
 
-[node name="HealthArt" type="TextureRect" parent="Root"]
+[node name="HealthArt" type="TextureRect" parent="Root" groups=["health_ui"]]
 texture_filter = 1
 layout_mode = 0
 offset_left = 24.0
@@ -45,7 +45,7 @@ texture = ExtResource("1_health")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="InkMeter" type="Label" parent="Root"]
+[node name="InkMeter" type="Label" parent="Root" groups=["health_ui"]]
 layout_mode = 0
 offset_left = 12.0
 offset_top = 178.0
