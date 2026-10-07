@@ -1,4 +1,4 @@
-[gd_resource type="Theme" format=3]
+[gd_resource type="Theme" format=3 uid="uid://co31d2rha8qdp"]
 
 [sub_resource type="StyleBoxFlat" id="Disabled"]
 content_margin_left = 12.0

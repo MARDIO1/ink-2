@@ -10,7 +10,7 @@
 
 -----以下是AI写的，如果和上面有冲突，听我的-----
 ## 目录
-
+- [代码规范](doc/代码规范.md)
 - [文件组织](doc/文件组织.md)
 - [身体](actor/player/doc/身体.md)
 - [脚](actor/player/doc/脚.md)
@@ -20,6 +20,7 @@
 - [画布](actor/canvas/doc/画布.md)
 - [烘焙](tools/doc/烘焙.md)
 - [验收](test/doc/验收.md)
+- [关卡选择](ui/level_select/doc/关卡选择.md)
 - [主菜单](ui/menu/doc/主菜单.md)
 - [HUD](ui/hud/doc/HUD.md)
 - [ESC 菜单](ui/esc/doc/ESC菜单.md)

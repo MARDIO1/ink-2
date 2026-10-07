@@ -1,7 +1,8 @@
 extends CanvasLayer
 ## 游戏内 ESC 菜单：打开时暂停世界，继续 / 回主菜单 / 退出。
 
-const MENU_SCENE := "res://ui/menu/menu.tscn"
+## 回主菜单 = 重新进 root：root 的第一屏就是主菜单，菜单/关卡/UI 全归它一套逻辑管。
+const ROOT_SCENE := "res://root/root.tscn"
 
 @onready var continue_button: Button = $Center/Panel/Buttons/ContinueButton
 
@@ -29,7 +30,7 @@ func _on_continue_button_pressed() -> void:
 
 func _on_menu_button_pressed() -> void:
 	_set_open(false)
-	get_tree().change_scene_to_file(MENU_SCENE)
+	get_tree().change_scene_to_file(ROOT_SCENE)
 
 
 func _on_quit_button_pressed() -> void:

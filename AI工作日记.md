@@ -1294,3 +1294,335 @@ HUD 与关卡不再同树后，`hud.gd` 的 `health_path = ../Player/InkHealth`�
 | `map/main.tscn` 冒烟 | `--quit-after 150` exit 0、无 ERROR | 关卡节点＝Camera2D/SmallCanvas/MapCanvas/Ground/Box/Player/debugHUD/CollisionDamage/Creative/PixelRenderer |
 
 **结论：搬迁没有留下任何新红，也没有挂死；两处由我引入的测试破坏已修。**
+
+## 2026-10-07 22:05 墨水分色：色表 + 右侧面板 + 每色记账；灰色与钉子拆开
+
+- 新增 `Ink/src/ink_palette.gd`：墨水色表（**唯一真源**）。`INKS` = [{名字, 材质}]，
+  加一种墨水 = 在 `Ink/asset/` 放一个 `PixelMaterial` + 在 `INKS` 加一行；画布、固化、墨水账、
+  右侧面板都从它读，别处不动。`NAIL` 单独一条，**不在 INKS 里**。
+- **灰色与钉子拆开**：`Ink/asset/grey1.tres` 仍是 id 4，颜色由 (0.12,0.12,0.12) 改成可见的
+  (0.35,0.35,0.35)；钉子新建 `actor/nail/asset/nail.tres`、**id 7**、颜色保持原来的深灰
+  (0.12,0.12,0.12)（贴图盖着，只为跟所有墨水颜色区分开）。5 个文件里的 `NAIL_MATERIAL_ID := 4`
+  全部改成查色表。
+- `actor/player/src/ink_health.gd`：改成**每色一本账**（`ink_of/max_of/ratio_of/add/reduce` 带材质 id）。
+  `max_ink` 现在是「**每种墨水各自的**上限」，每关不一样就改场景里这一个数；
+  `ink` / `ratio()` 仍是合计，HUD 与瓶身液面不用改。
+- `actor/canvas/src/canvas_surface.gd`：认墨水不再按颜色二分，改走色表；
+  画布账由 `ink_px:int` 改成 `ink_px_by_material:dict`，一笔末尾 `_flush_ink()` 对一次账；
+  擦除退的是**那个像素原来的颜色**；**钉子不扣不还、也不进账**。
+- `actor/canvas/src/canvas_solid.gd`：`_canvas_color()` 按色表回写任意墨水（钉子仍不回收）。
+- `Ink/src/runtime.gd`：运行时按 id 把色表并进每个像素材质世界的 `materials` ——
+  **场景里不用手写材质表**（`map/main.tscn:29` 那份现在只是编辑器预览副本）。编辑器里不注入，
+  免得把用户正在编辑的场景标脏。
+- `actor/canvas/src/canvas.gd`：新增**右侧面板**（另一套布局，不挂在跟随玩家的 WorkbenchUI 下）：
+  墨水按钮按色表生成；笔刷粗细条从左侧搬过来并细分（step 2→1、最大 33）。创造模式下面板贴工具栏右边。
+- 文档同步：`actor/nail/doc/钉子.md`、`actor/ink_item/doc/墨水道具.md`、
+  `actor/player/doc/生命值.md`、`actor/canvas/doc/画布.md`。
+
+实测（headless + 真 Rapier，全是本轮真跑，不是转述）：
+
+| 项 | 结果 |
+| --- | --- |
+| 9 个改动脚本 `--check-only` | 全 exit 0 |
+| `test_canvas` | exit 0 **PASS**（钉子像素 = 材质 7、不回收） |
+| `test_collision_damage` | **41 / 0** exit 0 |
+| 分色记账探针（临时脚本，已删） | 黑笔 20000→19848 且灰不变；灰笔各自扣；擦灰只退灰到 20000；重绘退还黑；落钉子不扣、`ink_px_of(7)=0` |
+| 世界材质探针（临时脚本，已删） | `materials` id = [1,2,3,4,5,6,7]；palette[4]=(0.35,0.35,0.35)、palette[7]=(0.12,0.12,0.12)；强度 4/7 都是 (200,60) |
+| `map/main.tscn` 冒烟 | `--quit-after 150` exit 0、无 ERROR |
+
+既有红项（**与本次改动无关，未修**）：
+
+- `test_hand_physics` 50 passed / 4 failed —— 就是日记 1090-1092 记的既有 4 条 pushup；
+  该测试文件不引用任何 ink 符号，两次连跑同值。
+- `test_game_control` 29 / 2（`actual partial foot contact acquired`、`jump pushes support down`）= 日记 693 的基线。
+- `test_upright` 18 / 1（`without the controller the same knock tips the player over`）= 日记 694 的基线。
+- `test_ink` 33 / 1：唯一红是 `full bottle puts the whole silhouette below the surface`。
+  实测 `ratio()` / `_fill` 都是**精确 1.0**，四角 `_below` = [-1.5e-5, +1.5e-5, 87, 87] ——
+  是测试的 `EPS = 1e-6` 比 87 px 坐标处的 float32 误差（≈1e-5）还紧，**不是行为回归**；
+  没擅自放宽阈值（要放宽得用户定）。
+  同文件里修掉两处早已失效的断言：`_hud.status_bar`（HUD 早改名 `bottle_fill`）、
+  `_set_fill` 直写 `ink`（分色后直写不再更新各色账本，改成走 `add(材质, ...)`）。
+
+未做 / 未验证：
+
+- **没在真窗口里点过右侧面板**（用户的编辑器进程一直在跑，没去动它）；面板在编辑器里不生成
+  （`Engine.is_editor_hint()` 早退），只能在运行的游戏里看。左侧那条 `BrushPanel` 是运行时
+  `reparent` 到右侧面板的，所以编辑器里它还画在左边 —— 这是有意的，免得场景被改。
+- 灰色现在和黑墨水的强度完全一样（都 200/60）。「高硬脆」那套没做。
+
+### 22:15 自查抓到并修掉的两处（我自己引入的）
+
+1. **回收路径会误记账**：`write_pixel()`（`CanvasSolid.rasterize` 把刚体重采样回画布那条路）
+   原来只补画布自己的账、不碰瓶子；我第一版让它走了 `_bump_ink` 的记账分支，会把回收的像素
+   再扣一次/加一次瓶子。修法：`_bump_ink(材质, ±1, charge)`，`write_pixel` 传 `charge = false`。
+   实测（临时脚本，已删）：画 19848 → 固化 19848 → **回收 19848**（不动瓶子），画布账 152 px 补回。
+2. **右侧面板初始可见性**：`_ready` 里 `_refresh_workbench_visibility()` 早于 `_build_side_panel()`，
+   面板刚建出来没人设 `visible`，未激活的大地图画布（`MapCanvas`，`active = false`）也会显示面板。
+   修法：`_build_side_panel()` 末尾补一次 `_refresh_workbench_visibility()`。
+   实测：`SmallCanvas` 面板 visible=true、`MapCanvas` 面板 visible=false。
+
+修完复跑：`test_canvas` exit 0 PASS；`test_collision_damage` 41/0 exit 0；
+`map/main.tscn` 冒烟 `--quit-after 150` exit 0 / 0 条 ERROR；`test_ink` 仍是 33/1（那条 float 容差）。
+
+### 22:30 颜色定稿（用户要求：钉子与灰墨水不同色，灰墨水更浅）
+
+- 灰（钢）墨水 `Ink/asset/grey1.tres`：颜色 `(0.12,0.12,0.12)` → **`(0.58,0.58,0.62)`**（浅钢灰，略偏蓝）。
+- 钉子 `actor/nail/asset/nail.tres`：`(0.12,0.12,0.12)` → **`(0.26,0.16,0.11)`**（锈铁色），与两种墨水都不撞色。
+- 三者互不接近（黑 0 / 钢 0.58 / 钉锈色），实测查表唯一命中：黑→1、钢→4、钉→7；
+  表里没有的颜色（如 0.4 灰）返回 **0（认不出来）**，不会静默认成别的墨水。
+- 复跑 `test_canvas` exit 0 PASS。世界 palette[1]/[4]/[7] 与表一致。
+- 遗留（未动）：`actor/player/player.tscn:60`、`actor/player/hand.tscn:40` 的 `Visual.palette` 里
+  index 4 还是旧的 0.12（它们本来就不画材质 4，纯摆设）；改它们要动场景，等编辑器关了再说。
+
+
+## 2026-10-07 22:10 — 关卡选择（扫 map 找真关卡）+ 删地形件 + gym 从"装地图"改成"地图里的一块"
+
+### 需求
+1. `root` 起来先给**关卡选择**，列表 = `map` 下所有 `.tscn`；
+2. gym 改成 canvas 那种格式 —— **地图装 gym**，gym 和 `SmallCanvas` / `MapCanvas` 平级，不是 gym 装地图。
+
+### 关卡判据：内容判据（A）
+`ui/level_select/src/level_select.gd` 递归扫 `res://map`，只收"场景状态里存在名为 `Player` 的节点"的场景：
+`PackedScene.get_state().get_node_count()` / `get_node_name()`，**不实例化、不进游戏**。
+实测 stdout：`LEVELS: ["res://map/asset/map.tscn", "res://map/main.tscn"]`（exit 0）。
+
+### 删掉"不是关卡"的（4 个文件，都在 git 里，`git checkout -- <path>` 可恢复）
+- `map/baked_map.tscn`、`map/asset/爬坡练习.tscn`：277 / 266 字节，只有 `BakedMap`(pixel_body_2d) + `Preview`，
+  是读 `baked_map.png` 的**地形件**，没有 Player，所以旧列表里点进去没法玩。
+- 顺带删了只被这两个场景引用的 `map/src/baked_map.gd` + `.uid`（删完无悬空引用，已核）。
+- **留着** `map/asset/baked_map.png`：canvas F5 / creative 导出还在写它（`baked_map_path`），现在没人读，只当参考图。
+
+### 新增 / 改动
+- 新增 `ui/level_select/`（`level_select.tscn` + `src/level_select.gd` + `doc/关卡选择.md`），
+  复用 `ui/menu/asset/paper.png` 与 `ui/theme` 的墨水主题，风格跟主菜单一致。
+- `root/src/root.gd`：`level_scene` 换成 `level_select_scene`；`_ready` 只挂选关；选中后 `load_level()` → **再挂** `ui/game_ui.tscn`。
+  ⚠️ 这个顺序是必须的：`ui/hud/src/hud.gd:30-35` 只在 `_ready` 抓一次 `InkHealth`，先挂 UI 再选关，墨水条会永远停在占位。
+- `actor/gym/gym.tscn`：删掉 `map/main.tscn` 实例和那条外链（现在只有根节点 + 脚本）。
+- `actor/gym/src/gym.gd`：12 条 `knobs.path` 从 `Main/Player/...` 改成 `../Player/...`；
+  面板 `CanvasLayer.layer = 10`（Hud / debugHUD = 1 之上、Esc = 20 之下）；
+  编辑器里不建面板（跟 canvas 一样只留节点）；加 `active`；**启动时一个值都不写**（只记基准 + 显示读数），
+  路径找不到走 `push_error`（原来是静默 `return` → 面板显示一堆 0 却什么都不改）。
+- `map/main.tscn`：末尾加 `Gym` 实例。**必须是 `Player` 之后**的子节点：它在 `_ready` 里记基准值，
+  排在 Player 前面会记到 Player 还没 `_ready` 的值。
+- 注释/文档：`doc/文件组织.md`（root / ui 两行 + 装配图 + 新增"关卡的判据"）、`readme.md` 目录、
+  `actor/gym/doc/健身房.md` 重写；`debug/creative/src/creative.gd:14`、`actor/canvas/src/canvas.gd:354`、
+  `actor/canvas/src/canvas_surface.gd:615` 里"BakedMap 读它"的注释已改（那个场景没了）。
+
+### 验收（真跑）
+| 项 | 结果 |
+| --- | --- |
+| `root/root.tscn` headless 120 帧 | exit 0，无 ERROR，打印 `LEVELS: ["res://map/asset/map.tscn", "res://map/main.tscn"]` |
+| `map/main.tscn` headless 150 帧 | exit 0，无 ERROR → gym 12 条路径**全部解析**（错一条就会 push_error + `_apply` 里空引用崩） |
+| `ui/level_select.tscn` 单跑 | exit 0，同样打印关卡表 |
+| `test_collision_damage` | 41 / 0 exit 0（= 基线） |
+| `test_canvas` | exit 0 PASS（= 基线） |
+| `test_game_control` | 29 / 2（FAIL = `actual partial foot contact acquired`、`jump pushes support down`，日记里记过的历史红） |
+| `test_upright` | 18 / 1（历史红） |
+| `test_live_input` | 6 / 0 ✓ |
+| `test_hand_jitter` | exit 0 ✓ |
+| `test_hand_physics` | 50 / 4（pushup 那族，见下面 A/B） |
+| `test_ink` | 33 / 1（`full bottle puts the whole silhouette below the surface`；上一条的并发会话正在重构多材质墨水） |
+| `tools/validate_project.ps1` | 仍报 1 条**既有**错：`res://addons/pixel_destruction/gpu/destruction.glsl` 不存在（来自没被改过的 `addons/pixel_destruction/gpu/gpu_destruction.gd:24`，与本轮无关） |
+
+### Gym 的 A/B（在项目外副本里做，没碰仓库）
+把当前工作树整体复制到 `T:\GODOT\_gymab_tmp`，**只删掉 `map/main.tscn` 里的 Gym 节点**再跑：
+`test_hand_physics` 仍 **50/4 且四条数字逐字相同**（`rise=-13.108` / `-4.660`）、`test_ink` 33/1 同一条、
+`test_game_control` 29/2 同样两条、`test_collision_damage` 41/0。
+→ 本轮改动**没有**引入任何测试增量；`51/3 → 50/4` 那一条来自并发会话的墨水/生命值改动，不是 Gym。副本已删（`T:\GODOT\_gymab_tmp` 已不存在）。
+
+### 没验到的
+- **按钮真的被点**那一下（headless 点不了）。已验的替代证据：root 里 `_select.connect(&"level_chosen", _on_level_chosen)` 没报错
+  （信号名对、场景能实例化）+ 关卡本身能单独 headless 加载。点下去 = `load_level()` + `remove_child(_select)` + 挂 `ui/game_ui.tscn`，三步都是既有代码路径。
+- `ui/level_select/src/level_select.gd.uid` 还没生成（Godot 只在编辑器导入时写 `.gd.uid`）；打开一次编辑器会出现，跟其它模块一样提交即可。
+
+
+## 2026-10-07 22:23 — root 第一屏改回主菜单（root 内三层：主菜单 → 选关 → 关卡）
+
+### 问题
+`project.godot` 的主场景是 `root/root.tscn`，但上一轮让 root 一进来就挂 `ui/level_select`，
+把主菜单整个绕过去了 —— F5 直接看到"选择关卡"，`ui/menu` 变成游戏内才够得到的死岔路。
+
+### 改法（不切场景，只换 root 的 `UI` 容器子场景）
+- `root/src/root.gd`：`_ready()` → `_show_menu()`；菜单喊 `start_pressed` → `_show_level_select()`；
+  选关喊 `level_chosen` → `load_level()` + 挂 `ui/game_ui`。新增 `_set_screen(screen)`：
+  把 `UI` 里旧屏 `remove_child` + `queue_free`，再挂新屏。
+- `ui/menu/src/menu.gd`：删掉 `GAME_SCENE` 和 `change_scene_to_file`，改成 `signal start_pressed`；
+  「开始」只发信号（换屏归 root），「退出」/ESC 仍然关程序。
+- `ui/esc/src/esc.gd`、`ui/hud/src/hud.gd`：`MENU_SCENE = ui/menu/menu.tscn` →
+  `ROOT_SCENE = root/root.tscn`。「回主菜单」= 重新进 root，而 root 第一屏就是主菜单
+  （沿用它们原本的换场景写法，各改 1 行，不引入跨节点查找）。
+- 文档：`doc/文件组织.md` 装配图改成 `[ui/menu] ─开始→ [ui/level_select] ─选关→ [ui/game_ui]`；
+  `ui/menu/doc/主菜单.md`（"menu 不是独立场景，是 root 的第一屏"）、`ui/level_select/doc/关卡选择.md`（改成"第二屏"）。
+
+### 验收（真跑）
+探针写在 `user://codex_root_chain_probe.gd`（**仓库外**，Godot 用户目录），跑完已删 —— 它能真按按钮，headless 也能闭环：
+`--headless --quit-after 900 --script user://codex_root_chain_probe.gd` → **11/11 PASS，exit 0，全程 0 条 ERROR/WARNING**：
+
+1. 第一屏是主菜单（`UI` 里 `scene_file_path == res://ui/menu/menu.tscn`）；
+2. 发真 `Button.pressed`（`ButtonCenter/Buttons/StartButton`）→ 第二屏是关卡选择；
+3. 列表正好 2 个真关卡；
+4. 发真 `Button.pressed`（列表第 1 个）→ `Level` 里挂上关卡（`res://map/asset/map.tscn`）、根级有 `Player`、玩家有 `InkHealth`；
+5. 第三屏是 `game_ui`，里面有 `Hud` + `Esc`；
+6. **`Hud._health != null`** —— 换屏顺序（先关卡后 UI）真的接上了；
+7. 旧屏（关卡选择）已释放；
+8. Esc「回主菜单」→ 新 root 的 `UI` 第一屏又是主菜单，且 `paused == false`（没把暂停态带过去）。
+
+主场景冒烟：`--quit-after 120 res://root/root.tscn` → exit 0、无 ERROR/WARNING。
+（探针里 `current_scene` 的根节点名不是 `Root`：同名的旧 root 还在同一棵树下，引擎给新场景改名 —— 探针环境产物，不影响游戏。）
+
+### 顺手抓到一个"活着的尸体"
+跑探针时每扫一次关卡就报 3 条 ERROR：`res://map/src/baked_map.gd` File not found ←
+`res://map/asset/爬坡练习.tscn:6`。时间线：我上一轮删掉它之后，**开着的 Godot 编辑器（PID 298644，19:29 起）在 22:16:35 又把它写回磁盘**
+（334 字节；`git diff` 只有 4.7 的存档归一化 —— 补 `uid=` / `unique_id=`、属性换序，语义没变），
+而它引用的脚本已删 → 变成坏场景。已第二次删除。
+⚠️ 只要那个编辑器还开着这个场景，它可能再写回来；要根治就在编辑器里关掉该标签页。
+
+### 没验到的
+- `menu.tscn` 单独 F6 跑时「开始」不再切场景（只发信号），是个死按钮 —— 它是 root 的屏幕，正常只从 root 进。
+- 编辑器若还开着 `root.tscn` / `map/main.tscn` 且没重载，按 Ctrl+S 可能把这次改动覆盖回去（Scene → Reload Saved Scene 可强制重载）。
+
+
+## 2026-10-07 22:42 — gym 面板改成 canvas 那套：世界物件 + 墨水主题（不再跟相机）
+
+### 问题
+上一轮我把 gym 面板做成代码建的 `CanvasLayer`：**贴屏幕**（相机怎么动它都黏在屏幕上、挡着 HUD），
+而且是 Godot 默认灰 UI，跟 canvas 的工具栏不是一个语言。要的是 canvas 那套。
+
+### 改法
+- `actor/gym/gym.tscn`：面板进场景，是 `Gym`(Node2D) 下的 `Panel`(PanelContainer) —— **世界物件**，
+  位置 = `map/main.tscn` 里 `Gym` 的 `position`（现在 `(-570, 44)`）。
+  结构 `Panel/Rows/{Header(Title+Toggle), Knobs}`，`Knobs` 下 12 行 `HBoxContainer`（`Name` / `Slider` / `Read`）。
+- 样式照 canvas：`theme = ui/theme/asset/ink_attack_theme.tres`，用 `CardPanel` / `TitleLabel` / `MutedLabel`
+  变体，**场景里不内联 StyleBox**（照 `ui/theme/doc/主题.md` 的规矩；`CardPanel` 就是主题里那张奶白纸 + 3px 墨边 + 墨色投影）。
+- `actor/gym/src/gym.gd`：删掉建 UI 那整段（`CanvasLayer`、`PANEL_LAYER`、`active`、`knobs` 表全删）。
+  现在只干四件事：按 `Knobs` 的行绑目标、显示读数、`_apply` 写值、`Toggle` 藏/显。
+  **打谁写在行节点的 metadata 上**（`target_path` / `target_prop`）—— 加/删旋钮只动场景，脚本不再有第二份表，两处不会对不上。
+  路径写错 → 启动 `push_error`（不静默）；启动仍然**一个值都不写**。
+- `map/main.tscn`：`Gym` 实例补 `position = Vector2(-570, 44)`。
+  ⚠️ 这是**量出来**的不是猜的：探针实测开局相机在 `(-94, 133.2)`（不是 `Camera2D` 场景里写的 `(-116, 212)` ——
+  那只是初值，`player_camera.gd` 每帧把相机贴到玩家质心），视口 960×540 → 面板 435×358 的屏幕矩形是
+  (4, 181)→(439, 539)：完全在屏内、不压玩家（玩家在屏幕中心 x≈446..514）、也落在 HUD 血条(y 16..172)下面。
+
+### 验收（真跑；探针在 `user://`，跑完已删）
+`--headless --quit-after 900 --script user://codex_gym_probe.gd` → **11/11 PASS，exit 0，0 条 ERROR**：
+
+1. 面板**不在任何 `CanvasLayer` 里**（是关卡坐标系里的东西）；
+2. 面板挂在 `Gym` 底下、世界坐标 = `Gym` 的位置，尺寸 435×358（不是铺满屏幕的层）；
+3. 12 行全绑上、12 个目标全找得到（**行节点 metadata 真的生效**）；
+4. 挪相机 +300/+120 → 面板世界坐标不动；
+5. `set_knob(0, 2.0)` → 玩家 `PlayerInput.max_force` 6000000 → 12000000，读数同步；拉回 ×1.00 = 原值；
+6. `Toggle` 藏 / 显旋钮本体（按钮文字跟着变）。
+
+**没验到一条**：headless 下相机不推 `canvas_transform`（没有真视口），"挪相机 → 屏幕坐标变"那句跳过；
+结构上已由第 1、4 条证完（世界物件不可能贴屏幕）。`map/main.tscn` 冒烟 `--quit-after 150` → exit 0 / 0 条 ERROR。
+
+### 环境干扰（不是本轮的改动）
+跑最后一遍时撞到：并行会话在 22:40:53 把原生扩展搬了家并重编
+（`addons/pixel_destruction/fastphys.gdextension` → `addons/pixel_destruction/native/`），
+`.godot/extension_list.cfg` 到 22:41:27 才更新，中间那一分钟 headless 起不来（报 fastphys.gdextension 找不到）。
+之后重跑正常。`tools/validate_project.ps1` 的 `$required` 里那条旧路径现在也该跟着改。
+
+### 顺带记一笔
+`ui/theme/asset/ink_attack_theme.tres` **没有 `HSlider` 样式** → 滑块是 Godot 默认外观；
+canvas 的 `PenSlider` 也一样（同一个主题）。要对齐就得往主题里加 HSlider 样式（换皮时一起做）。
+
+## 2026-10-07 23:07 — 引擎更新到 v0.4.0：重编 + 部署进 ink-2（addon 与 PR #5 快照逐字节一致）
+
+### 做了什么
+1. `T:\GODOT\bag\Godot_2DVoxel_Addons`：`stable` 从 v0.3.9 `85b79f7` 快进到 **v0.4.0 `97f0727`**（19 个提交）。
+2. `python -X utf8 tools/build_native.py` → 两个原生库重编通过（`fastphys.dll` 677340 B / `rapier_bridge.dll` 1924608 B），
+   依赖只有 `KERNEL32` + `api-ms-win-crt-*`，不含 `libwinpthread-1.dll`（无 Error 126 风险）。
+3. `python -X utf8 tools/build_addon.py --verify` → 33 个 .gd / 90 处内部引用自检过，产物移到 `T:\GODOT\bag\_addon_build`。
+   ⚠️ 生成器**只出 .gd + `.gdextension.template`，不带 DLL**；DLL 要单独从 `gdext/` 拷，模板要改名成 `.gdextension`。
+4. 部署进 `T:\GODOT\ink-2\addons\pixel_destruction`（robocopy，排除 `.gdignore` —— 带过去 Godot 会忽略整个 addon）；
+   旧根 `fastphys.gdextension` / `.uid` 移到项目树外 `T:\GODOT\bag\_addon_backup_2026-10-07\`。
+5. 消费方两处旧路径跟着改（就是上一段点出的那条 + 运行时保险丝）：`Ink/src/runtime.gd:8`、`tools/validate_project.ps1:53`。
+
+### 最终状态（按"最新 + 最干净"选）
+- 引擎仓库：HEAD = v0.4.0，`git status` **0 项**；重编出来的 DLL 已还原成仓库提交的那份，
+  cargo 缓存挪到 `T:\GODOT\bag\_build_cache_rb_target`（不在仓库里，想删直接删）。
+- ink-2 的 addon：**46 个非 `.uid` 文件与 PR #5（`0ae371c`）快照逐字节相同**（含两个 DLL）→ 合并 PR 时 `addons/` 不会再产生差异。
+- `.godot/extension_list.cfg` → `res://addons/pixel_destruction/native/fastphys.gdextension`。
+
+### 验收（真跑）
+- 主场景 headless 120 帧：0 条 ERROR / SCRIPT ERROR；注册日志含 `PixelRaster 已注册方法 components` + `PixelFluid 类已注册`。
+- `test/test_ink.gd` → `33 checks, 0 failures`；`test/test_canvas.gd` → PASS（收尾有 3 resources still in use 的退出期提示，不影响断言）。
+- `test/test_hand_physics.gd` → `50 passed, 4 failed`；4 条全是 pushup/爬起，
+  **用 git 里的旧 DLL 做 A/B 同样失败** → 与本次引擎更新无关，是手部代码的既有状态。
+- 官方提交的那份 DLL 与本机重编的那份**是同版**（都注册 `PixelRaster.components` + `PixelFluid.step`，测试结果一致），
+  只是编译器不同 → 按"最干净"留了仓库提交的那份。临时探针跑完已删，没有留在 `test/` 里。
+
+### PR #5（`MARDIO1/ink-2#5`，墨水瓶改 PBF 流体 + 引擎快照）review 结论
+没合并。核过：PR 里的引擎快照就是 v0.4.0 的忠实产物（我重新生成 44 个文件，43 个逐字节相同，唯一差异是 PR 正确地没有 `.gdignore`）。
+要作者处理的：① PR 没改 `runtime.gd` / `validate_project.ps1` 的旧路径（现在本地已由我们改掉）；
+② `bottled_ink.gd` 的注释和自己的取值打架（`gravity_px` 注释说 150 不行、默认却是 150；`max_fill` 注释说别用 1.0、默认就是 1.0）；
+③ `_build_render_mask` 的文档挂到了 `_carve_face` 上；④ 脸部那块透明能看见背景，未修；⑤ 5 个 `test/probe_*.gd` 要不要进 main。
+
+### 还没处理
+`tools/validate_project.ps1` 仍退出 1，第一条是 `Missing reference: res://addons/pixel_destruction/gpu/destruction.glsl`
+——**旧引擎也一样**：引擎 `src/gpu/destruction.glsl` 从来没被打进 addon（生成器只拷 `.gd`）。
+而且脚本开头 `$ErrorActionPreference='Stop'`，一条 Write-Error 就把后面（含 `$required` 检查）全盖住了。
+
+## 2026-10-07 23:42 — 接受 PR #5：墨水瓶换成 PBF 粒子流体（main 已推上去）
+
+### 怎么合的
+- 本地 HEAD `4003c6e` 正好就是 PR 的 base → `git merge --ff-only 0ae371c` 快进，42 个文件（9 个提交）。
+- 合之前先把与 PR 重叠的两块脏东西安顿好：
+  `addons/pixel_destruction/**` 还原到 HEAD（那时部署进去的内容本来就与 PR 逐字节相同，合完自然一致）；
+  `map/src/collision_damage.gd` 的本地 WIP（`NAIL_MATERIAL_ID` → `InkPalette.nail_material_id()`）
+  先 `git stash push -- <path>`，合完 `stash pop` → 自动合并，**无冲突**，两处改动都在。
+- 未跟踪的 `fluid/`、`native/fastphys.gdextension`(+`.uid`)、`native/~fastphys.dll` 挪到
+  `T:\GODOT\bag\_addon_backup_2026-10-07\premerge_untracked\`。
+- 推送到 `origin/main`（`4003c6e..0ae371c`）→ GitHub 上 **PR #5 已显示 merged**（23:41:56，merge_commit `0ae371c`）。
+
+### 验收（真跑）
+- 主场景 headless 120 帧：**0 条 ERROR / SCRIPT ERROR**。
+- `test/probe_ink_fluid.gd`（PR 自带探针）：容器 894 格 / 有墨 666 格，画面上液面是**真的自由面**；
+  **流体单步 0.235 ms（原生可用）**，GDScript 参照 9.226 ms（1159 粒子）→ 粒子流体确实在跑。
+- `test/test_canvas.gd` → PASS；`test/test_hand_physics.gd` → `50 passed, 4 failed`（与合并前一致）。
+
+### 合并暴露出来的问题（待处理）
+- **`test/test_ink.gd` 现在会卡死**：它第 129 行 `get_node("BottledInk/Liquid")`、第 67 行 `_liquid.global_transform`，
+  而 PR 把 `Liquid` 子节点删了 → `get_node` 报错、`_liquid` 为 null、脚本永远走不到 `quit()`。
+  另外 `INTERIOR_PX = 1810`（"被围住的空腔"）这套判据也过时了 —— 新实现是"最大连通分量外接框 + 把不透明身体并进来"。
+  **这份验收要按新实现重写才能当闸门用**（先出断言清单，别直接改）。
+- 作者自述的已知问题还在：**脸部那块透明能看见背景**，应该像手一样不透明。
+- 顺手记：为停掉卡住的测试，把当时所有 Godot 进程都停了（其中 23:38/23:40 那两个可能属于并行会话的测试）。
+- PR 带进来的 5 个 `test/probe_*.gd` 现在在 `test/` 里（作者明确要求保留的，先留着）。
+
+## 2026-10-08 00:05 — 回收墨水只算画布内的部分（画布外的那半留在世界里）
+
+### 问题
+「重新回到画布」（`CanvasSolid.rasterize`）原来是：只要刚体 AABB 和画布相交，就把**整块**
+重采样后 `remove_body_node` + `queue_free` —— 画布外的像素只是被 `write_pixel` 的越界检查悄悄丢掉，
+刚体本身也没了。一个跨在画布边上的形状按一下"回收"，画布外那半跟着一起消失。
+
+### 改法（`actor/canvas/src/canvas_solid.gd`）
+- `_sample_body()` 现在同时收一份 **plan**（`{PixelShape: {Vector2i: true}}`，只装画布内的像素）
+  和一份 **anchors**（刚体上的钉子像素，按 shape 分组）。判断"在不在画布里"用画布像素坐标
+  （`_inside_canvas()`，与 `write_pixel` 的收边同一条规则）。
+- `rasterize()`：写完画布后调 `world.fracture_pixels_and_sync(body, plan, 0.0, false, anchors)` ——
+  只摘画布内的像素，残留像素留在世界里（断成几块由引擎分片）；`body_alive == false` 才 `queue_free()` 节点。
+  整个刚体都在画布外时 `plan` 为空，直接跳过，什么都不动。
+- 钉子：材质 4 照旧不写回画布，但**画布内的**钉子像素一样从刚体上摘掉（不然会剩一颗孤零零的钉子像素飘在世界上）；
+  `_free_nails()` 改成只清"锚点像素已经没了"的 `Nail` 外观，画布外留下的钉子还钉着。
+- `keep_bodies = true`（创造模式存保底 PNG）路径语义没变：只采样、不摘像素。
+- `actor/canvas/canvas.tscn` 的按钮 tooltip 跟着改成「只回收画布内的部分，画布外的一半留在世界里」。
+- 顺带：`RESTORE` 那行 print 加了 `fragments=%d`。
+
+### 验收（真跑，headless；不是转述）
+`T:\GODOT\tool\Godot_v4.7.2-stable_win64_console.exe --headless --path T:\GODOT\ink-2 --script res://test/test_canvas.gd`
+→ **PASS / exit 0**，`test/test_canvas.gd` 新增两条用例：
+
+1. 跨边只收画布内那截：1px 笔划 x=10..60（51 px）固化后把画布右移 25px →
+   `RESTORE bodies=1 pixels=36 fragments=0`，画布上只剩 local x=0..35，刚体还剩 15 px（x=10..24，`bodies` 数不变）。
+2. 画布从中间切一刀：31 px 竖笔划，20x6 的小画布只覆盖 y=20..25 →
+   `RESTORE bodies=1 pixels=6 fragments=1`，断成两截的残留都还在世界里（刚体数 +1，`_body_nodes` 下标仍对齐）。
+
+回归：`test_collision_damage` → **41 checks / 0 failures / exit 0**；`root.tscn` 冒烟 `--quit-after 150` → exit 0、0 条 ERROR。
+
+### 已知取舍（没改，属既有状态）
+- 分片是引擎直接建的 `PBody`，没有节点包装 → 不进 `INK_GROUP`，F5 存关卡不会把它写进 tscn；
+  和碰撞破坏产生的碎片是同一条既有路径。
+- 退出时 `2 resources still in use` 的提示是既有的（本轮没碰）。
+- 没 commit。

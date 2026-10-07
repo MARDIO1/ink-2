@@ -16,6 +16,7 @@
 [ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="18_highlight"]
 [ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="17_creative"]
 [ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="20_debughud"]
+[ext_resource type="PackedScene" path="res://actor/gym/gym.tscn" id="21_gym"]
 
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10
@@ -73,3 +74,6 @@ script = ExtResource("11_damage")
 
 [node name="Creative" type="Node" parent="."]
 script = ExtResource("17_creative")
+
+[node name="Gym" parent="." instance=ExtResource("21_gym")]
+position = Vector2(-570, 44)

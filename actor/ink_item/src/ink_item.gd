@@ -5,7 +5,7 @@
 @tool
 extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
 
-const NAIL_MATERIAL_ID := 4
+const InkPalette := preload("res://Ink/src/ink_palette.gd")
 const ANCHOR_TAG := "static_anchor_points"
 const Nail := preload("res://actor/nail/src/nail.gd")
 #endregion
@@ -30,7 +30,7 @@ func _restore_nails() -> void:
 		var rect: Rect2i = shape.local_aabb()
 		for y in range(rect.position.y, rect.end.y):
 			for x in range(rect.position.x, rect.end.x):
-				if shape.get_pixel(x, y) == NAIL_MATERIAL_ID:
+				if shape.get_pixel(x, y) == InkPalette.nail_material_id():
 					points[Vector2i(x, y)] = true
 	if points.is_empty():
 		return
