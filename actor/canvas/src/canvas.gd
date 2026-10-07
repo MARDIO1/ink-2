@@ -90,6 +90,7 @@ func _place_brush_panel() -> void:
 func _bind_buttons() -> void:
 	buttons.get_node("Hand").pressed.connect(set_tool.bind(SurfaceScript.Tool.HAND))
 	buttons.get_node("Brush").pressed.connect(set_tool.bind(SurfaceScript.Tool.BRUSH))
+	buttons.get_node("Bucket").pressed.connect(set_tool.bind(SurfaceScript.Tool.BUCKET))
 	buttons.get_node("Rect").pressed.connect(set_tool.bind(SurfaceScript.Tool.RECT))
 	buttons.get_node("Circle").pressed.connect(set_tool.bind(SurfaceScript.Tool.CIRCLE))
 	buttons.get_node("Eraser").pressed.connect(set_tool.bind(SurfaceScript.Tool.ERASER))
@@ -132,6 +133,8 @@ func _input(event: InputEvent) -> void:
 				set_tool(SurfaceScript.Tool.RECT)
 			KEY_6:
 				set_tool(SurfaceScript.Tool.CIRCLE)
+			KEY_7:
+				set_tool(SurfaceScript.Tool.BUCKET)
 			KEY_E:
 				generate()
 	#保存/读取走输入动作，别和上面的裸键 match 串成一个分支。
