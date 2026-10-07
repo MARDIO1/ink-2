@@ -68,9 +68,12 @@ func _start() -> void:
 	_protected = [_player.get_node("Arm").body, _player.get_node("Arm/Hand").body]
 	_main.set_physics_process(false)
 	_main.world.contact_events_enabled = false
-	# 临时关闭 CCD：全局子步（ccd_enabled）+ Rapier 世界 CCD 子步一起关，允许穿模换帧时间；恢复=删这 3 行。
-	_main.world.ccd_enabled = false
-	_main.world.rp_ccd_substeps = 0
+	# ⚠️ 这里曾有 3 行「临时关闭 CCD」（ccd_enabled = false + rp_ccd_substeps = 0），
+	#    拿穿模换帧时间。**已恢复 CCD**：两层都回到引擎默认
+	#    （ccd_enabled = true、rp_ccd_substeps = 1），所以这里一行赋值都不写。
+	#    ⚠️ 要再关的话必须**两层一起关**才有穿模效果：只关一层时另一层还挡着。
+	#    pworld.gd 里 ccd_ignore_mass 的墓碑记过这条 —— 薄墙 + 子步 1 仍然挡住，
+	#    只有把 rp_ccd_substeps 也设成 0 才真的穿过去。
 	process_physics_priority = _main.process_physics_priority + 1
 
 
