@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://root/src/root.gd" id="1_root"]
+
+[node name="Root" type="Node"]
+script = ExtResource("1_root")
+
+[node name="Level" type="Node2D" parent="."]
+
+[node name="UI" type="CanvasLayer" parent="."]

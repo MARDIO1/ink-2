@@ -1,28 +1,24 @@
-[gd_scene format=4]
+[gd_scene format=4 uid="uid://jbdilxs1g5xw"]
 
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_vk6ij"]
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_f842d"]
-[ext_resource type="Resource" path="res://Ink/asset/black.tres" id="3_h4bjy"]
+[ext_resource type="Script" uid="uid://bxeqry66jsq28" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_vk6ij"]
+[ext_resource type="Script" uid="uid://chdh46srdqdtn" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_f842d"]
+[ext_resource type="Resource" uid="uid://5e73rqefu12n" path="res://Ink/asset/black.tres" id="3_h4bjy"]
 [ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="4_b3i6i"]
 [ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="5_x6104"]
 [ext_resource type="Resource" path="res://Ink/asset/grey1.tres" id="6_2u5ph"]
 [ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="7_j6cjg"]
-[ext_resource type="Script" path="res://actor/player/src/player_camera.gd" id="8_k68an"]
-[ext_resource type="PackedScene" path="res://actor/canvas/canvas.tscn" id="9_kwfhf"]
-[ext_resource type="Script" path="res://actor/canvas/src/canvas.gd" id="10_y3waj"]
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="11_7j5hw"]
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="12_eghok"]
-[ext_resource type="PackedScene" path="res://actor/player/player.tscn" id="13_51wry"]
-[ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="14_726wg"]
+[ext_resource type="Script" uid="uid://dcqnoa67srpgu" path="res://actor/player/src/player_camera.gd" id="8_k68an"]
+[ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/canvas.tscn" id="9_kwfhf"]
+[ext_resource type="Script" uid="uid://cjoigmrhvvtvx" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="11_7j5hw"]
+[ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="12_eghok"]
+[ext_resource type="PackedScene" uid="uid://1n64fxhxd3hf" path="res://actor/player/player.tscn" id="13_51wry"]
 [ext_resource type="PackedScene" path="res://ui/hud/hud.tscn" id="15_6nj1v"]
-[ext_resource type="Script" path="res://ui/hud/src/hud.gd" id="16_liwpj"]
 [ext_resource type="PackedScene" path="res://ui/esc/esc.tscn" id="17_y2lvl"]
-[ext_resource type="Script" path="res://ui/esc/src/esc.gd" id="18_pmtfc"]
-[ext_resource type="Script" path="res://map/src/debug_hud.gd" id="19_524uv"]
-[ext_resource type="Script" path="res://map/src/force_debug.gd" id="20_ciw6c"]
-[ext_resource type="Script" path="res://map/src/collision_damage.gd" id="21_63h2p"]
-[ext_resource type="Script" path="res://mode/creative/src/creative.gd" id="22_mlxwr"]
-[ext_resource type="Script" path="res://map/src/ink_item.gd" id="23_ekuxx"]
+[ext_resource type="Script" uid="uid://c6qq6cj82333o" path="res://debug/hud/src/debug_hud.gd" id="19_524uv"]
+[ext_resource type="Script" uid="uid://drdj5ctwnkrob" path="res://debug/hud/src/force_debug.gd" id="20_ciw6c"]
+[ext_resource type="Script" uid="uid://dujchjtyhoikf" path="res://map/src/collision_damage.gd" id="21_63h2p"]
+[ext_resource type="Script" uid="uid://dvtycwuj0keul" path="res://debug/creative/src/creative.gd" id="22_mlxwr"]
+[ext_resource type="Script" uid="uid://msw52rtj66lr" path="res://actor/ink_item/src/ink_item.gd" id="23_ekuxx"]
 
 [sub_resource type="Image" id="Image_sxjfh"]
 data = {
@@ -47,24 +43,23 @@ voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
+visible = false
 position = Vector2(126.68803, -20.415234)
 process_callback = 0
 script = ExtResource("8_k68an")
 
-[node name="Canvas" type="Node2D" parent="." unique_id=1726580571 instance=ExtResource("9_kwfhf")]
+[node name="Canvas" parent="." unique_id=1726580571 instance=ExtResource("9_kwfhf")]
 visible = false
-z_index = -1
 position = Vector2(41, -42)
-script = ExtResource("10_y3waj")
 active = false
 
-[node name="MapCanvas" type="Node2D" parent="." unique_id=1305874354 instance=ExtResource("9_kwfhf")]
-z_index = -1
+[node name="MapCanvas" parent="." unique_id=1305874354 instance=ExtResource("9_kwfhf")]
+visible = false
 position = Vector2(-512, -256)
-script = ExtResource("10_y3waj")
 canvas_size = Vector2i(2048, 1024)
 
 [node name="Ground" type="Node2D" parent="." unique_id=696036291]
+visible = false
 position = Vector2(-133, 231)
 script = ExtResource("11_7j5hw")
 is_static = true
@@ -75,6 +70,7 @@ script = ExtResource("12_eghok")
 rect_size = Vector2i(800, 40)
 
 [node name="Box" type="Node2D" parent="." unique_id=1881270586]
+visible = false
 position = Vector2(-959.81024, 1164.4683)
 rotation = -0.65197533
 script = ExtResource("11_7j5hw")
@@ -84,20 +80,16 @@ visible = false
 script = ExtResource("12_eghok")
 rect_size = Vector2i(32, 32)
 
-[node name="Player" type="Node2D" parent="." unique_id=1427605215 instance=ExtResource("13_51wry")]
-position = Vector2(86.43332, -57.90224)
-rotation = -0.15464996
-script = ExtResource("14_726wg")
-can_sleep = false
-
-[node name="Hud" type="CanvasLayer" parent="." unique_id=501461249 instance=ExtResource("15_6nj1v")]
-script = ExtResource("16_liwpj")
-
-[node name="Esc" type="CanvasLayer" parent="." unique_id=358689997 instance=ExtResource("17_y2lvl")]
-process_mode = 3
-layer = 2
+[node name="Player" parent="." unique_id=1427605215 instance=ExtResource("13_51wry")]
 visible = false
-script = ExtResource("18_pmtfc")
+position = Vector2(390, -205.00002)
+rotation = -0.15464996
+
+[node name="Hud" parent="." unique_id=501461249 instance=ExtResource("15_6nj1v")]
+visible = false
+
+[node name="Esc" parent="." unique_id=358689997 instance=ExtResource("17_y2lvl")]
+visible = false
 
 [node name="debugHUD" type="CanvasLayer" parent="." unique_id=1228885047]
 visible = false
@@ -134,6 +126,7 @@ rotation = -0.23164785
 script = ExtResource("23_ekuxx")
 
 [node name="@Node2D@155" type="Node2D" parent="Ink12" unique_id=1151792695]
+visible = false
 position = Vector2(202, 164)
 script = ExtResource("12_eghok")
 source = 3

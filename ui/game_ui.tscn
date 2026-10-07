@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://ui/hud/hud.tscn" id="1_hud"]
+[ext_resource type="PackedScene" path="res://ui/esc/esc.tscn" id="2_esc"]
+
+[node name="GameUI" type="Node"]
+
+[node name="Hud" parent="." instance=ExtResource("1_hud")]
+
+[node name="Esc" parent="." instance=ExtResource("2_esc")]

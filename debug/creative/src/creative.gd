@@ -7,10 +7,12 @@ extends Node
 
 @export var player_path: NodePath = ^"../Player"
 ## 普通模式的小画布；创造模式里让位给大地图。
-@export var canvas_path: NodePath = ^"../Canvas"
+@export var canvas_path: NodePath = ^"../SmallCanvas"
 ## 创造模式的大画布（铺满全图）；平时隐藏。
 @export var map_canvas_path: NodePath = ^"../MapCanvas"
 @export_file("*.tscn") var map_path: String = "res://map/asset/map.tscn"
+## 保底 PNG：存关卡的同时存一张整图，`BakedMap` 场景（爬坡练习.tscn）就是读它当静态地图。
+@export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
 ## 上帝位移速度，单位 px/s。
 @export var fly_speed := 600.0
 ## 按住 Shift 的倍率。
@@ -84,6 +86,9 @@ func _enter() -> void:
 	var canvas := get_node_or_null(canvas_path)
 	_show_canvas(_canvas, false)
 	_show_canvas(_map_canvas, true)
+	#工具栏随身携带：大地图铺满全图，工具栏钉在画布角上就够不着了。
+	if _map_canvas != null:
+		_map_canvas.set_follow_player(true)
 	_set_ink_free(true)
 	if _player != null:
 		var health = _player.get_node_or_null("InkHealth")
@@ -105,6 +110,8 @@ func _exit() -> void:
 		_body.sleep_timer = 0.0
 	_show_canvas(_map_canvas, false)
 	_show_canvas(_canvas, true)
+	if _map_canvas != null:
+		_map_canvas.set_follow_player(false)
 	_set_ink_free(false)
 	if _player != null:
 		var health = _player.get_node_or_null("InkHealth")
@@ -150,12 +157,13 @@ func _physics_process(delta: float) -> void:
 ## 把**整个关卡**存成一个场景：PixelWorld + 玩家 + 画布 + 全部墨水 + 地形/HUD 都在里面。
 ## 存出来的是和 main.tscn **平级**的关卡 —— 能单独打开、也能当主场景跑。
 func export_map() -> void:
-	var scene := get_tree().current_scene
+	var scene := _level_root()
 	if scene == null:
-		push_error("Creative: 拿不到 current_scene")
+		push_error("Creative: 找不到关卡根")
 		return
 	if _map_canvas != null:
 		_map_canvas.generate()       # 先把画布上剩的墨水固化，一个像素都不丢
+		_map_canvas.bake_png(baked_map_path)
 	_sync_node_transforms(scene)
 	var packed := PackedScene.new()
 	var error: Error = packed.pack(scene)
@@ -166,6 +174,17 @@ func export_map() -> void:
 		print("MAP saved: %s" % ProjectSettings.globalize_path(map_path))
 	else:
 		push_error("Map save failed: %s (%d)" % [map_path, error])
+
+
+## 要存的关卡根 = 装着画布的那个节点。
+## ⚠️ 别用 `get_tree().current_scene`：主场景是 `root/root.tscn` 的 Root 容器，
+##    关卡和 UI 都是它 `_ready()` 里运行时 add_child 挂上去的（owner 为空），
+##    `PackedScene.pack()` 只收 owner 指回根的节点 —— 存出来会是一个 314 字节的空壳。
+##    直接跑关卡场景（F6）时，画布的父节点正好就是关卡根，这条规则两种情况都对。
+func _level_root() -> Node:
+	if _map_canvas != null:
+		return _map_canvas.get_parent()
+	return get_tree().current_scene
 
 
 ## 把每个像素刚体的 PBody 位形写回它的节点。

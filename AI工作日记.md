@@ -871,3 +871,426 @@
 - 没碰引擎仓库 `T:\GODOT\bag\Godot_2DVoxel_Addons`，`addons/pixel_destruction/nodes/pixel_sprite_2d.gd`
   的尺寸判断缺陷**保持原样**。
 - 没 commit；没动并行会话的 `actor/canvas/**`、`ui/hud/**`、`map/**`、`actor/player/player.tscn`。
+
+
+## 2026-10-07 16:20 — 美术层架构落地：隐形墨水（材质 6）+ pixel_art_layer，手部改成"物理/美术两条轨"
+
+用户定的方向：以后会有很多"物理贴图 ≠ 美术贴图"，但**大部分仍是像素物理**，只是兼顾美术。
+于是把上一版的"美术=挂在 Visual 下的形状节点"换成**两条真正分开的轨**。
+
+### 1. 隐形墨水（新增材料 id 6）
+- `Ink/asset/invisible.tres`：`color = (0,0,0,0)`、`density = 1.0`、`compress_strength = 200`。
+- `map/main.tscn`：`materials` 追加它、`densities_fallback` 补成 7 项（末项 1.0）。
+  （`PixelWorld.rebuild()` 里 `dens[m.id] = m.density`，所以材料自己的 density 才是权威值。）
+- 密度口径：一个材质一个密度，所以隐形墨水按 **1.0 基准**注册；用它的物体用
+  `shape_density_scale`（新加在 `actor/player/src/player_physics.gd` 上的导出）把密度拉回自己的值。
+
+### 2. 美术层（新增 1 个文件）
+- `Ink/src/pixel_art_layer.gd`：Sprite2D；`image`（R=材质 id）+ `palette`（留空取世界调色板）；
+  **每次重建都新建 `ImageTexture`**（不调 `update()`，所以换图时尺寸随便不一样）。
+- 挂法：刚体的渲染节点 `Visual` 下面。位姿自动跟着刚体（父节点每帧被 `pbody_visual` 摆位），
+  美术层**零追踪代码**；它不实现 `build_shape()`，`collect_shapes()` 永远看不到它 → 进不了物理。
+- 控制器不管美术：`player_input.gd` 一行没动（用户点名"控制器控制物理即可"）。
+
+### 3. 手部改造（旧的那套已删）
+- 物理：`Shape0.paint` → `player_hand_phys_0.tres`（材质 6 的 unfold 剪影）+ 刚体
+  `shape_density_scale = 0.1344`；`Visual.palette` 补到 index 6 = 透明（否则材质 6 被夹成暗灰）。
+- 美术：`Visual/ArtUnfold`、`Visual/ArtGrab` 两个美术层；`hand.gd` 按下左键切 `visible`（3 行）。
+- **删掉**上一版给 `pbody_visual.gd` 加的"可见美术形状优先"+`refresh()`（15 行），该文件回到原始内容。
+- `tools/bake_art.gd` 的 `SOURCES` 加 `player_hand_unfold.png -> player_hand_phys`（材质 6）；
+  产物 `actor/player/asset/player_hand_phys_0.tres`（36x31、354 格）。
+
+### 4. 物理零影响（A/B 实测，不是推理）
+- 手部实测：`mass = 47.5776`、`inertia = 9234.094`、`local_com` 与换材质前**逐位相同**；
+  形状 `density_scale = 0.1344`。
+- **A/B**：把 `Shape0.paint` 在"材质 3"与"材质 6 + density_scale"之间来回切，`test_hand_physics`
+  的三条红项数字**逐字一致**（`pushup rise=-13.105`、`box pushup rise=-14.265`、
+  `box pushup/late jitter=3.693117`）→ 隐形墨水对物理零影响。
+
+### 5. 一个必须先说清的坑：`ImageTexture.update()`（实测 Godot 4.7.2）
+```
+4x4 RGBA8 → 新图 5x4/4x5 → ERROR: The new image dimensions must match the texture size.  纹理仍是 4x4
+4x4 RGBA8 → 同尺寸 R8   → ERROR: The new image format must match the texture's image format.
+```
+即**宽高必须逐格相同、格式也必须相同**，差 1 格就失败（不崩，只是纹理保持旧内容 = "贴图没换"）。
+上一轮手部的 36x31 vs 35x31 就是踩这条；新架构每次新建纹理，天然绕开。
+
+### 6. 回归（headless 实跑）
+| 测试 | 结果 |
+| --- | --- |
+| `test_hand_physics` | 51 passed / 3 failed，**新增 `pose/*` 四条全绿**（grab=332px、unfold=354px、换图不动物理） |
+| `test_live_input -- --grip` | 3 checks / 0 failures |
+| `test_canvas` | PASS |
+| 主场景 `--quit-after 150` | exit 0，无 ERROR |
+- 那 3 条红**不是本轮引入**：先量到 `player_hand_unfold.png` 被用户在 **14:42:30 换过**（730 字节），
+  手部质心随之改变（`local_com y: 16.38 -> 14.62`），pushup 那三条数字才变；隐形墨水那侧的 A/B 已证明无关。
+
+### 7. 文档
+- **新增** `Ink/doc/美术层与隐形墨水.md`：两条轨的分工、隐形墨水用法、palette 下标陷阱、
+  "美术层不受物理裁剪"的边界、加一张新美术贴图的 4 步流程。
+- 改 `actor/player/doc/手.md`（改写成两条轨）、`tools/doc/烘焙.md`（产物清单 + 材质 6 说明）、
+  `test/doc/验收.md`（`pose/*` 覆盖项）。
+
+### 8. 需要你知道的两件事
+- **重烘焙又洗了一次 `.tres` 的 `uid=`**：`player_body_0/1`、`player_hand_unfold_0` 三行已按 HEAD 值补回
+  （`dmtnlqhdr1fnx` / `kc1hsgysjkpi` / `b2ujffw5kko43`）。根因仍在 `bake_art.gd` 的 `write()`
+  用 `ResourceSaver.save` + 头里不写 uid —— 本轮没改工具（不在范围）。
+- **我强制结束过 Godot 进程**：一个探针脚本报错后没退出（脚本里调了不存在的 `shape_pixel_count()`），
+  连带清了 4 个 `Godot_v4.7.2-stable_win64*` 进程，其中 14:38:05 启动的那个非 console 实例
+  **可能是我自己的残留、也可能是你开着的东西** —— 如果是你的编辑器，抱歉，请重开。
+
+
+## 2026-10-07 16:50 — 健身房 gym/：旋钮倍率 ×0.25~×5 即时调角色控制器
+
+需求：把角色控制器的可调数值摆成旋钮（倍率制）、连自己的质量一起调，自成模块、编辑器可见。
+
+### 1. 先查 export（结论：已经很全，没改一行）
+- `actor/player/src/player_input.gd`：7 个 `@export`（`max_force`/`max_power`/`move_speed`/`jump_impulse`/
+  `upright_stiffness`/`upright_damping`/`max_upright_torque`）。
+- `actor/player/src/hand.gd`：10 个 `@export`（`position_stiffness`/`position_damping`/`max_force`/`max_power`/
+  `rest_offset`/`min_target_radius`/`max_reach`/`reach_solver_margin`/`rotate_grip`/`conserve_angular_momentum`）。
+- **没进 gym**：`FINGERTIP`、`GRAB_RADIUS` 是 `const` 几何标定值 —— 做成旋钮只会被人调坏，故意不 export。
+
+### 2. 新增（3 个文件，全在 gym/）
+- `gym/gym.tscn`：根节点 + `map/main.tscn` 的**实例**（真地图真角色，所以手感是真手感）。
+- `gym/src/gym.gd`（`@tool`）：`_ready` 里生成面板（Label + HSlider + 读数），不往场景里塞节点；
+  旋钮表是它的 `knobs: Array[Dictionary]` 导出（Inspector 可改）；`set_knob(i, mult)` 是程序入口。
+- `gym/doc/健身房.md`：倍率模型、现有旋钮表、两个坑。
+
+### 3. 倍率模型
+`_ready` 记下每个目标的当前值当基准，滑块写 `基准 × 倍率` → 拉回 `1.00` 就是原值、不累积；
+编辑器里拖滑块写的是 **gym.tscn 的实例覆盖**，`player.tscn` / `map/main.tscn` 不动。
+
+### 4. 两个实测踩到的坑（已修）
+- **质量旋钮不能每帧刷**：`refresh_mass` = 逐像素扫质量 + 贪心分解 + 重推密度（玩家 ≈2~3ms），
+  所以它接 `drag_ended`，别的旋钮接 `value_changed`。
+- **密度回调必须用世界节点的 `_density_of`**：第一次用 `world.world.density_callable()` 时质量从 2798.34
+  变成 4108.34（= 白标签 1310 格被按密度 1.0 算）；换成 `Callable(world, "_density_of")` 后精确。
+  这正是 `actor/player/doc/墨水.md` 里记过的那条老坑。
+- 另外：`shape_density_scale` 只在**烘焙时**读一次，运行中改属性不会自己生效 —— gym 里直接写进
+  `body.shapes[*].density_scale` 再 `refresh_mass`。
+
+### 5. 实测数字（headless 脚本逐档验，脚本跑完已删）
+```
+质量   基准 2798.33972 -> ×0.50 1399.16986 | ×2.00 5596.67944 | ×5.00 13991.69860 | ×0.25 699.58493 | ×1.00 2798.33972
+脚力   基准 6000000    -> ×2.00 12000000
+手力   基准 16000000   -> ×0.50 8000000
+质心不变 (34.0, 43.24022)；惯量随倍率等比（3321506 -> 1660753 / 6643012）
+gym 场景 headless 空跑 --quit-after 150：exit 0，无 ERROR
+```
+
+### 6. 没做 / 没验
+- 没在真实窗口里目视面板外观与滑块拖拽（headless 验的是数值通路）；要目视我可以开窗跑。
+- 没给 gym 专门摆器材（箱子/斜坡/可抓墙）—— 现在用的是 main.tscn 的真地图；要独立器材说一声。
+- 没 commit。
+
+
+## 2026-10-07 17:05 — 手臂曲线（只画不物理）：Arm 下挂 Line2D + 三次贝塞尔
+
+- **新增** `actor/player/src/arm_curve.gd`（~45 行）：起点 = 身体质心（Hinge 锚点）、终点 = 手质心，
+  控制点取臂方向 1/3、2/3 处 + 弓高；弓高 = `min_bow 12 + 0.35 × 弦长 × 松弛度`，松弛度 = `1 - 弦长/max_reach`
+  → 手伸近时垂弧、拉满时绷直；法线翻到世界下侧，所以永远往下垂。
+- **hand.tscn** 加 `Arm/Curve`（Line2D）：`width = 4.0`（= 4px 格稿的 1 格描边，和手/身体的线宽一致）、
+  纯黑、圆头圆关节、`z_index = -1`（画在身体和手后面，肩/腕接头自然被挡）；`top_level = true`
+  让 `points` 直接用世界坐标（父节点 `Arm` 的节点变换是静态的）。
+- 实测（headless）：点数 17、起点 = 身体质心、终点 ≈ 手质心、弦长 39.95 / 弧长 54.49（确实弓）；
+  物理一个数没动：玩家 2798.33972 / 手 47.57760 / 臂 2.15040 / Rapier 刚体数 5。
+- 文档：`actor/player/doc/手.md` 加「手臂曲线（只画不物理）」一节。
+
+
+## 2026-10-07 17:56 — 画布回收墨水：有钉子就崩（钉子不再回收）
+
+- **根因**：`CanvasSolid.rasterize()` 靠 `child.get("body")` 认刚体，而固化后的钉子
+  `Nail`（Sprite2D）自带 `body` 属性 → 被当成刚体收走：
+  `SCRIPT ERROR: Invalid type in function 'remove_body_node' ... The Object-derived class of argument 1
+  (Sprite2D (nail.gd)) is not a subclass of the expected argument class.`（`actor/canvas/src/canvas_solid.gd`）。
+- **改法**（`actor/canvas/src/canvas_solid.gd`）：① 只认 `PixelBody2D` 节点类型，不靠"有没有 body 属性"；
+  ② `_canvas_color` 不再把材质 4 映射回画布（钉子不回收）；③ 新增 `_free_nails(world, body)`，
+  刚体回画布时把挂在它上面的钉子外观一起丢掉（Nail 是世界的子节点，不随刚体一起死）。
+- **实测**（headless）：画 449px + 2 钉 → 固化 → 回到画布，旧代码报类型错并中断；
+  修复后 `RESTORE bodies=1 pixels=447`（449 − 2 个钉子像素），世界子节点 13 → 10，无 SCRIPT ERROR。
+- **回归**：`test/test_canvas.gd` 加「带钉子实体回到画布」用例 —— `SOLID bodies=1 pixels=152` → `RESTORE bodies=1 pixels=151`，
+  `[Canvas] resize, save/load, nail solidify/break: PASS`。重绘 / 缩放 / 固化三条带钉子路径也各跑一遍，stderr 为空。
+- **文档**：`actor/canvas/doc/画布.md`「反向：实体重采样回画布」注明钉子不回收及原因。
+- **顺带**：`canvas_solid.gd` 里 `InkItem` 的 preload 旧路径（`res://map/src/ink_item.gd`）会让你整个 CanvasSolid 编译不过，
+  你 17:46 已自己改到 `res://actor/ink_item/src/ink_item.gd`。
+- **没做**：`rasterize` 移除运行时 ink_item 后，Godot 退出时报 `ObjectDB instances were leaked`（对照组：不带钉子也报 15 个）
+  —— 与本次改动无关，属于既有"移除刚体"路径，要查另开一轮。
+- 没 commit。
+
+
+## 2026-10-07 18:12 — 把 map.tscn 并进 main.tscn（只增不改）
+
+- **先判清"合的是哪个 map"**：`origin/map` 分支是 main 的祖先（`git rev-list --left-right --count main...origin/map` = `2 0`，
+  fetch 后仍然如此），git 层面没得合；真正要合的是场景 `map/asset/map.tscn` → `map/main.tscn`。
+- **"多了什么"（两边同时实例化后逐项对比，headless）**：
+
+| 项 | main.tscn | map/asset/map.tscn |
+|---|---|---|
+| Hud / Esc | 无 | 有（`ui/hud/hud.tscn`、`ui/esc/esc.tscn`）|
+| 墨水物品 | 0 个 | 1 个：`Ink12`，**29279 px**，AABB 910×468，pos(-597.81,-35.95)、rot -0.232、`is_static=false` |
+| Player 组 | `player` | 无 |
+| debugHUD | `debug/hud/debug_hud.tscn` 实例（带 `debug_hud` 组）| 内联 CanvasLayer，无组 |
+| 材质表 | 6 个（含 `invisible.tres`）| 5 个 |
+
+- **改法**：**不走 `PackedScene` 重存**。实测两个坑：① 存盘会丢 `[gd_scene ... uid]`，
+  而 `project.godot:14` 的 `run/main_scene="uid://vqdlx81yhmw3"` 是按 uid 引用的 → 主场景直接起不来；
+  ② 入树跑过帧再 pack 会把运行时状态烧进场景（相机跟随后的 position、`debugHUD visible=false`）。
+  改成"只增不改"的文本拼接：`Hud / Esc / Ink12`（连同子节点）、它们用到的 3 条外链、
+  `Ink12` 那张 `Image` 子资源原样拼进去；`ExtResource("12_eghok")` 按路径重映射成 main 已有的 `3_shape`。
+  Hud/Esc 插在 `debugHUD` 之前，保持 map.tscn 里 CanvasLayer 的叠放次序。
+- **结果**：`map/main.tscn` **30 增 0 删**（3.6 KB → 291.6 KB，那坨 `PackedByteArray` 是整整一行）。
+  节点顺序：… Player, Hud, Esc, debugHUD, CollisionDamage, Creative, Ink12。
+- **实测**：合并后 main 里的 `Ink12` 与地图里逐位一致（29279 px / 同一 pos+rot）；
+  `godot --headless --quit-after 180 res://map/main.tscn` 正常退出、stderr 为空。
+- **顺手修**：`test/test_canvas.gd:13` 还在 `get_node("Canvas")`，节点改名为 `SmallCanvas` 后找不到 →
+  协程中断、测试进程挂死。改对之后 `[Canvas] resize, save/load, nail solidify/break: PASS`。
+- **还没做**：没 commit。F5 现在仍存到 `res://map/asset/map.tscn`，要不要改成存 main.tscn 另说。
+
+
+## 2026-10-07 18:16 — 撤销"把 UI 并进关卡"，改按 `doc/文件组织.md` 的装配层验证
+
+- **撤掉**上一轮并进 `map/main.tscn` 的 `Hud / Esc / Ink12`（连同 3 条外链和 `Image` 子资源）：
+  用户口径是"合并 UI 即可"，且 `doc/文件组织.md` 写明关卡只放"世界 + 道具 + 玩家 + 相机 +
+  CollisionDamage + Creative"，UI 归 `root/root.tscn` 的 `UI`。
+- **实测装配层已经接得上**（`root/root.tscn`：`Level ← map/main.tscn`、`UI ← ui/game_ui.tscn`）：
+  `Level` 子节点 = Main、`UI` 子节点 = GameUI(Hud+Esc)；Hud 的显式 `../../Player/InkHealth`
+  路径解析不到（UI 与关卡不同子树，符合预期），但**按组兜底成功**：`_health = InkHealth`、
+  `debug_hud = debugHUD`；`--quit-after 180` 无 stderr。
+- **`Ink/asset/invisible.tres` 不是合并产物**：是用户 `0e66ec9` 的"美术层与隐形墨水"，
+  `PixelMaterial` id=6 / `color=(0,0,0,0)` / `density=1.0` / `compress_strength=200`，
+  被 `map/main.tscn` 的 materials 数组第 6 项引用。
+- **待用户拍板**：① `project.godot` 的 `run/main_scene` 要不要从 `map/main.tscn` 切到
+  `res://root/root.tscn`；② `creative.gd:153` 用 `get_tree().current_scene` 存图，主场景一换
+  就会把 Root(Level+UI) 整棵存进 `map/asset/map.tscn`；③ `map/asset/map.tscn` 里残留的
+  loose `Hud`/`Esc` 清不清。
+
+
+## 2026-10-07 18:35 — 手的失能/使能接口 + 画布非"手"工具时自动失能
+
+- **接口**（`actor/player/src/hand.gd`）：`set_enabled(on: bool)`（第 315 行）。
+  失能 = **藏起整只手 + 松开抓握 + 目标钉死在当前质心**：
+  - 藏：手的所有可见内容（物理像素层 `Visual` + `ArtUnfold/ArtGrab` + `ArmCurve`）都挂在
+    `Hand/Visual` 下，`visual.visible = enabled` 一处搞定（第 324 行）。
+  - ⚠️ **不是把马达关掉**：手与臂的 `gravity_scale` 都是 0，撤了力它会带着残余速度一路飘，
+    所以改成复用 `set_target_world(body.com_world())` 把目标钉住，姿势原地定住。
+  - ⚠️ 不能用 `@onready` 缓存来判断 ready：场景顺序里 `SmallCanvas` 排在 `Player` 前面，
+    画布的 `_ready` 会比手的 `_ready` 先调到这里，所以 `set_enabled` 用 `is_node_ready()` 挡一道，
+    真正生效交给 `_ready()` 末尾的 `_apply_enabled_state()`（第 53 行）。
+- **胶水**（`actor/canvas/src/canvas.gd`）：`hand_path = ^"Arm/Hand/HandControl"`（相对 `../Player`）
+  + `_sync_hand_enabled(tool)`（第 88 行），在 `_apply_tool()` 末尾调用（第 194 行）；
+  并且只有 `active` 的画布说了算，`active` 变 true 时重新 `_apply_tool`，
+  这样 F2 创造模式在小画布/大地图之间来回切时，手的状态跟着当前那块画布。
+- **实测**（headless，真开 `map/main.tscn` 走真实工具切换）：
+  - 进游戏默认 `tool=1`（画笔）→ `enabled=false visual.visible=false`
+  - 选"手" → `enabled=true visual.visible=true override=<null>`（重新跟鼠标）
+  - 选画笔 → `enabled=false visible=false 目标钉死=true`；连续 6 帧目标没漂
+  - 失能时按住左键（走 `set_grip` override）→ `art_grab.visible=false grabbed=<null>`（抓不住）
+  - 切回"手" → `enabled=true visible=true override=<null>`
+- **回归**：`test_canvas.gd` PASS；`test_hand_physics.gd` 50 passed / 4 failed —— 我复制一份把手
+  强制使能作对照，**同样是 50/4 且失败项完全相同**，所以那 4 个（pushup/ground acquired through
+  query、pushup/body supported under gravity、box pushup/grabbed、box pushup/body climbs）是既有问题。
+- **没动、要你定**：`actor/canvas/canvas.tscn:96` 是 `tool = 1`（画笔），所以**进游戏手就是失能隐身的**；
+  要默认能抓手就把默认工具改成 `0`（手）。
+
+
+## 2026-10-07 18:52 — 创造模式工具栏随身携带 + 隐藏/显示按钮
+
+- **场景**（`actor/canvas/canvas.tscn:127`）：`WorkbenchUI` 下加了一个 `Toggle` 按钮，
+  与 `Buttons` / `BrushPanel` 平级 —— 这样"手动隐藏"只藏工具栏本体，隐藏按钮自己留着，
+  不然藏起来就再也点不回来。位置在按钮列正上方（offset -222..-86 / 56..112），
+  复用现成的 `IconNormal/IconSelected/IconHover` 样式盒。
+- **跟随**（`actor/canvas/src/canvas.gd`）：
+  - `follow_offset`（默认 `(246, -106)`，导出，Inspector 可调）+ `set_follow_player(on)`（132 行）；
+    开启后 `_physics_process` 里把 `WorkbenchUI.position` 设成 `to_local(角色质心 + follow_offset)`（142 行）。
+  - `_refresh_workbench_visibility()` 在跟随模式下直接算"可见"，跳过原来的"离画布远近"迟滞判断。
+  - `_set_workbench_visible(nearby)`：工具栏本体 = `active and nearby and not 手动隐藏`，
+    隐藏按钮 = `active and nearby`。
+  - ⚠️ 加了 `process_physics_priority = 18`（37 行）：世界步进是 10、相机是 20，默认优先级 0 的话
+    `_physics_process` 跑在世界步进**之前**，跟随会读到上一帧的位姿。实测瞬移 300px 时偏移会飘
+    (262.8, -114.5)、加了优先级之后逐位精确回 `(246, -106)`。
+- **开关**（`debug/creative/src/creative.gd:89 / 112`）：`_enter()` 开跟随、`_exit()` 关掉回到原位置。
+- **实测**（headless，真开 `map/main.tscn`）：
+  - 平时 `follow=false`、工具栏在场景里的 `(61,-120)`；进创造 `follow=true`，小画布隐藏、大地图可见；
+    跟随时偏移恒为 `(246,-106)`。
+  - 瞬移角色 (300,-120) 后：工具栏位移 = 角色位移 = `(265.211, -104.4342)`（完全相同），偏移不变。
+  - 点隐藏 → `工具栏=false 隐藏按钮=true 文字=显示`；再点 → `工具栏=true 文字=隐藏`。
+  - 退出创造 → 位置回到 `(61,-120)`、`follow=false`、工具栏隐藏。
+- **回归**：`test_canvas.gd` PASS；`test_game_control.gd` 29 checks / 2 failed
+  （`actual partial foot contact acquired`、`jump pushes support down`）—— 把那行 `process_physics_priority`
+  临时注释掉再跑，**失败项完全相同**，所以是既有问题（脚/跳跃那套），与本次改动无关。
+
+
+## 2026-10-07 20:10 — 创造模式存档坏了（314 字节空壳）+ 爬坡练习.tscn 缺 PNG
+
+- **创造模式 F5 确实是坏的**：主场景搬成 `root/root.tscn` 之后，`export_map()` 还在 pack
+  `get_tree().current_scene`（= Root 容器），而关卡与 UI 是 `root.gd` 运行时 `add_child` 上去的、
+  owner 为空 —— `PackedScene.pack()` 一个都不收。
+  实测（导出到 `user://probe_map.tscn`，没碰仓库里的 map.tscn）：
+  文件 **314 字节**，内容只有 `[node name="Root"]` + 空的 `Level` / `UI`。打开什么都没有。
+- **修法**（`debug/creative/src/creative.gd`）：新增 `_level_root()` = **装着画布的那个节点**
+  （`_map_canvas.get_parent()`）；F6 直接跑关卡场景时画布的父节点正好也是关卡根，两种情况都对。
+  修完实测：**4240 字节**，根节点 `Main`，SmallCanvas / MapCanvas / Player / debugHUD 都作为实例保留。
+- **`map/asset/爬坡练习.tscn` 是另一回事**（就是同学发的"爬山"）：266 字节的 BakedMap 壳，
+  只有 `BakedMap` + 一个**没有贴图**的 `Preview`；真图在 `res://map/asset/baked_map.png`，
+  由 `baked_map.gd` 在 `_ready()` 里 load。**这个 PNG 仓库里根本不存在**（`map/asset/` 只有两个 tscn，
+  git 历史里也从没提交过）。
+  → 只发 tscn 不发图，打开就是空的。这张图是游戏里 F5 生成的：
+  `canvas.gd:253 baked_map_path = "res://map/asset/baked_map.png"` → `surface.save_png(...)`。
+- **分享 .tscn 的通用结论**：导出的关卡按 `res://` 引用整个工程（实测 19 条外链：
+  addons 脚本、`Ink/asset/*.tres`、`actor/canvas/canvas.tscn`、`actor/player/player.tscn`、
+  `debug/hud/debug_hud.tscn`、`map/src/collision_damage.gd` …）。对方没有同一份工程就用不了，
+  要分享得发整个工程或打 PCK。
+
+
+## 2026-10-07 20:25 — 创造模式存档加保底 PNG（顺带把"修好没"验了）
+
+- **保底 PNG**：`creative.gd:15` 加 `baked_map_path`（默认 `res://map/asset/baked_map.png`，正是
+  `BakedMap`/`爬坡练习.tscn` 读的那条路径），`export_map()` 里 `generate()` 之后调
+  `_map_canvas.bake_png(baked_map_path)`（166 行）。
+- **为什么不能直接存画布**：`generate()` 会把画布清空，固化过的关卡画布本来就是空的 ——
+  直接 `save_png` 只会得到一张空图。所以 `canvas.gd:86 bake_png()` 走的是
+  `solid.rasterize(surface, world, true)`：把世界里的实心像素**采样**进画布（新加的 `keep_bodies`
+  开关，`canvas_solid.gd:162`，只采样不删刚体），存图，再把画布还原成空的。
+  ⚠️ 采样是临时的、存完就清画布，调用前画布上的墨必须已经固化过（F5 里就是先 generate 再 bake）。
+- **实测**（真启动链 root.tscn → 创造模式 → 大画布画一道 → F5，只写 user://）：
+  - `SOLID bodies=1 pixels=2749`（那道笔划固化成 1 个刚体）
+  - `RESTORE bodies=3 pixels=35773 kept=true`（采样了 3 个刚体：笔划 + Ground + Box，一个都没删）
+  - 保底 PNG：2048x1024，有内容区域 `[P: (96,96), S: (1083,431)]`（笔划 + 地形都在）
+  - 关卡 tscn：**8554 字节**，根 `[gd_scene ...]`，含 SmallCanvas / MapCanvas / Player / ink_item
+  → 对比修之前那个 **314 字节空壳**，现在是完整关卡。
+- **回归**：`test_canvas.gd` PASS（`RESTORE ... kept=false` 说明只采样那条没影响原路径）。
+- **已知取舍**：PNG 是覆盖图（非透明=实心），**钉子（材质 4）不进图** —— 沿用"钉子不回收"那条映射，
+  所以保底图上钉子位置是 1px 的空洞。要连钉子一起烘进图，说一声。
+
+
+## 2026-10-07 20:40 — 固化出来的实体到底存哪了（实测）
+
+- **就在关卡 tscn 里**：每个连通分量一个 `InkItem` 节点 + 一个**内嵌 `Image` 子资源**
+  （`PixelShape2D(source = PAINT)`，R8，R 通道 = 材质 id，见 `canvas_solid.gd:117-127` / `_material_image`）。
+  `body_node.owner = world`、`shape_node.owner = world` 是能被 pack 的关键（`owner` 为空就漏掉）。
+- **实测**（真启动链 → 创造模式 → 画一笔 + 放一枚钉子 → F5 → 读回来）：
+  `[tscn] 字节=8572 实体节点=1 内嵌 Image=1`；
+  `[读回来] Ink10 is_static=true 像素=2749 材质={1:2748, 4:1}` —— 连钉子那 1 个材质 4 像素都在，
+  位置/旋转/`is_static`/`ink_item` 组都在（钉子外观由 `InkItem._restore_nails()` 读盘时重建）。
+- **在"工程目录良好"的前提下**：tscn 里存的是"像素 + 节点属性"；脚本、材质资源（`Ink/asset/*.tres`）、
+  `canvas.tscn` / `player.tscn` / `debug_hud.tscn` / `collision_damage.gd` 全按 `res://` 路径引用，
+  同版本工程就能完整还原。物理刚体不存 —— 读盘时由像素现烘。
+- **⚠️ 运行时破坏不落盘**（实测）：打掉 200 像素（2749 → 2549）后再存一次，
+  tscn 里 `"data"` 那一行**逐字节没变**，读回来还是 2749。
+  原因：`creative.gd:_sync_node_transforms()` 只写回 `position` / `rotation`，
+  没有任何地方把破坏后的形状写回 `PixelShape2D.paint`；fracture 出来的碎片刚体也没有对应节点。
+  副作用：保底 PNG 采样的是**当前** PBody（含破坏），tscn 里是**固化那一刻** —— 两者会不一致。
+  要修：导出前把每个 PBody 的形状重烘回源节点的 `paint`（`_material_image` 的逆操作）+ 给碎片补节点。
+
+
+## 2026-10-07 21:05 — 穿模/挤出速度的诊断（只分析，没改代码）
+
+- **"弹出速度"300 不是谁调快的**：引擎 `physics/pworld.gd:434-439` 写明，Rapier 的参数是按**米**调的，
+  本引擎逐参数 ×100 换算到像素尺度 —— `max_corrective_velocity` 默认 3.0 → **300 px/s**（`pworld.gd:457`）。
+  同一段注释还写了不换算的后果："3 px/s，穿透挤出慢得离谱（卡进墙里要好几秒才挤出来）" ——
+  也就是 `collision_damage.gd:_start()` 里新加的 `rp_max_corrective_velocity = 3.0` 正在踩的那条。
+- **"弹一下爆大力"的来源不是挤出快，是伤害预算拿接触冲量算**：
+  `calculate()` 里 `budget = damage_scale * impact.impulse * attacker / strength`（272 行），
+  而挤出是靠 corrective velocity 冲量做到的 —— 陷得越深那份越大，于是"陷得越深、爆得越狠"。
+  正确切法：预算改用 **pre-step 接近速度**（`contact.approach`，`_contacts()` 用 `pre_vx/pre_vy` 算的，426 行，
+  已在 238 行当门槛用），乘一个质量项保住"重的更疼"；代价是要按 32×32 下砸基准重新标 `damage_scale`。
+- **穿模是自己关出来的**：`_compute_substeps()` 第一句 `if not ccd_enabled: return 1`（`pworld.gd:852-853`），
+  而 `collision_damage._start()` 里那三行 `ccd_enabled = false` / `rp_ccd_substeps = 0` 是"允许穿模换帧时间"，
+  等于同时关掉引擎那条"每步位移 < 最薄障碍厚度"的几何保证（引擎注释实测 4 px 薄墙对 200~3000 px/s 全挡住）。
+- **`PIERCE_MIN_DEPTH = 4.0` 为什么误伤**：用户自己量的正常残留重叠是 3.33~3.89 px，阈值 4.0 就在噪声上沿；
+  而且 `calculate()` 是**每子步**跑一次（`_step()` 175 行的 `for i in count`），一帧 N 个子步能连削 N 条带 →
+  "太多了"。单帧绝对深度当判据 = 把求解器正常沉降当穿模。
+- **建议顺序**：① 恢复 ccd/自适应子步（穿模变罕见）② 预算改接近速度（挤出不再进伤害，300 可以留着）
+  ③ 真要兜底就按**持续性**升级：连续 ≥6 帧深度不下降且 ≥8 px 才算卡住 ④ 先"弹出"（沿法向限速位移/给速度），
+  弹出无效才降级到抹像素。一帧的宽限太短（挤出 3 px/s 时 3 px 要 ~1.1 s）。
+
+
+## 2026-10-07 18:20 — 大整理第一批：root/UI 装配 + debug/ 模块归位 + gym/ink_item 归位
+
+（本轮与用户的编辑并行进行；以下是我做的部分。）
+
+### 1. root + UI 装配
+- **新增** `root/root.tscn` + `root/src/root.gd`：`Level` / `UI` 两个容器 + `load_level(scene)`；`ui_scene` 默认
+  `preload("res://ui/game_ui.tscn")`。
+- **新增** `ui/game_ui.tscn`：装配 `ui/hud/hud.tscn` + `ui/esc/esc.tscn`（各自仍是独立场景，能单独 F6）。
+- `map/main.tscn` 剪掉 `Hud` / `Esc` / 内联 `debugHUD`（+`Stats`+`ForceDebug`）四块，只剩关卡内容；
+  `ui/menu/src/menu.gd` 的入口从 `map/main.tscn` 改成 `root/root.tscn`。
+
+### 2. debug/ 模块归位（**调试 HUD 由关卡实例，不放 ui/**）
+- `map/src/debug_hud.gd` + `force_debug.gd` → `debug/hud/src/`；新增 `debug/hud/debug_hud.tscn`
+  （CanvasLayer + Stats + ForceDebug），由关卡的 `debugHUD` 节点实例化。
+  → 这样 `hud.gd` 的 Tab 切换、`collision_damage.gd` 的 `../debugHUD/ForceDebug`、三个测试的
+  `debugHUD/*` 路径**全都不用改**；它要读 `../Player/...` 也要在世界坐标画力箭头，本质是关卡覆盖层。
+- `mode/creative/` → `debug/creative/`（只有两种模式、创造本质是 debug，不该有独立 `mode/` 模块）。
+- 新增 `debug/hud/doc/调试HUD.md`；`doc/文件组织.md` 重写（顶层表 + **debug(人用/在线) vs test(AI用/离线)** 分工 + 装配图）。
+
+### 3. actor 归位与改名
+- `gym/` → `actor/gym/`（与 canvas/nail 并列）；`map/src/ink_item.gd` → `actor/ink_item/`（+ 新 doc `墨水道具.md`）。
+- `Canvas` → **`SmallCanvas`**（`map/main.tscn`）；引用一并修：`debug/creative/src/creative.gd` 的 `canvas_path`、
+  `test/test_collision_damage.gd`、`test/tools/profile_collision_damage.gd`（`Canvas/CanvasSurface` 等）。
+- `actor/canvas/src/canvas_solid.gd` 的 `preload("res://map/src/ink_item.gd")` → `res://actor/ink_item/src/ink_item.gd`。
+- `test/calibrate_collision_damage.gd` / `profile_collision_damage.gd` → `test/tools/`（顶层只留验收脚本）。
+
+### 4. UI 跨子树查找（这次搬迁真正的坑）
+HUD 与关卡不再同树后，`hud.gd` 的 `health_path = ../Player/InkHealth`、`debug_hud_path = ../debugHUD` 都断了。
+改成**组兜底**：`map/main.tscn` 的 `Player` 加 `groups=["player"]`，`debug/hud/debug_hud.tscn` 根加
+`groups=["debug_hud"]`，`hud.gd` 先试显式路径、失败再按组找（`_switch_debug_hud` 加 null 守卫）。
+
+### 5. 实测（本轮的验收）
+- **root 冒烟**：`LEVEL=[Main]`、`UI=[Hud, Esc]`、`SmallCanvas/MapCanvas/Creative` 都在、
+  `debugHUD/Stats/ForceDebug` 可达、`hud.debug_hud` 与 `hud._health` 都非 null、Tab 能翻 `debugHUD.visible`。
+- **main.tscn 冒烟**：`--quit-after 150` exit 0、无 ERROR。
+- `test_collision_damage` **41/0**、`test_canvas` **PASS**（改名后）、`test_upright` 18/1（历史红）。
+- `test_hand_physics` 48/6、`test_live_input` 6/3：**归因是并行的用户编辑/新资产**，不是搬迁 ——
+  ① 把调试 HUD 临时摘掉重跑，"红"更多（说明它参与的是运行环境而非本搬迁）；
+  ② live_input 报的红项名字（`automatic input moves...`、`jump input branch 0/1`）在**当前**文件里根本不存在，
+  说明测试文件在我跑的同时被改；③ 这些测试的数字在搬迁前后就随重烤资产漂移过。
+  **未触碰用户正在改的 `project.godot` / `actor/canvas/src/canvas_solid.gd` / `test/*`。**
+
+### 6. 遗留（等你决定）
+- `test/` 下有 4 组临时探针（`_tmp_packtest` / `_tmp_scenediff` / `_tmp_scenemerge` / `_tmp_scenesplice`
+  各带 `.gd`+`.out.txt`+`.err.txt`）——看着像你的场景工具实验，**没删**。
+
+
+## 2026-10-07 19:05 — 上一条的归因**是错的**，已查清并修好（闭环）
+
+### 更正
+我在上一条里说"`test_live_input` 报的红项名字在当前文件里不存在 → 是你在改测试"。**错**：
+我用 `rg` 搜那个文件没匹配（rg 把它当二进制，静默无输出），换 `Select-String` 一搜就在。
+那两个测试文件当时并没有被你改（`test_live_input.gd` mtime 还是 02:46）。**红是真红，是我造成的。**
+
+### 真因与修复（两处，都是我抽 UI 的后遗症）
+1. `test/test_ink.gd:156` `_scene.get_node("Hud")` —— 关卡里已经没有 Hud（抽到 `ui/game_ui.tscn`）→ 取空 →
+   **协程中断、`quit()` 到不了 → 测试进程挂死**（这就是我看到的"test_ink 跑 9 分钟"）。
+   修：测试里补挂一份 `ui/game_ui.tscn`，走 `GameUI/Hud`。
+2. `test/test_game_control.gd:76` 同上（`get_node("Hud")`）→ 那条 `game HUD owns the screen until Tab` 红。
+   同样修法。
+3. 顺带：`test_ink` 的 `empty bottle draws nothing` 在补挂 UI 后变红 —— 涂层的显隐在它自己的
+   `_physics_process` 里同步，一帧不保证早于协程恢复点；改成等 2 帧（本文件后面"空瓶回到基准质量"
+   也是等 2 帧的既有写法）。
+
+### 期间的错判与排除法（留证据给下次）
+- 先把 `Hud`/`Esc` 临时放回关卡 → 数字**一字不差**（48/6、6/3）→ 不是 UI 抽取本身。
+- 再把 `SmallCanvas` 临时摘掉 → 手测精确回到 **51/3**（`-13.105 / -14.265 / 3.693117`）。
+- 最后把 `canvas_solid.gd` 换成 `HEAD~1` 版本（+我的路径修复）、画布在位 → 仍然 **51/3** →
+  **画布改动也不是原因**；48/6 是**抖动**（同一份代码在不同时刻跑出 51/3 与 48/6）。
+  教训：这套测试对"关卡节点组成/处理器顺序"敏感，48/6 那种多出来的 3 条别急着归因，先重跑。
+- 诊断期间我**临时改过你的文件**，已全部还原：`actor/canvas/src/canvas_solid.gd`（用 `$env:TEMP` 备份还原，
+  `git status` 与 HEAD 一致）、`map/main.tscn`（bisect 节点与 ext_resource 已清干净）。
+
+### 最终验收（当前树，逐套串行真跑）
+| 测试 | 结果 | 说明 |
+| --- | --- | --- |
+| `test_hand_physics` | **51 / 3** | 3 条＝重烤资产引起的历史红，数字与搬迁前基线一字不差 |
+| `test_live_input` | **6 / 0** | ✓ |
+| `test_canvas` | **PASS** | ✓ |
+| `test_collision_damage` | **41 / 0** | ✓ |
+| `test_game_control` | **29 / 3** | 3 条＝历史红；我那条 HUD 检查已修 |
+| `test_ink` | **32 / 1** | 唯一红＝`ratio tracks ink`（你 `player.tscn` 的 `max_ink`），且不再挂死 |
+| `test_upright` | 18 / 1 | 历史红（无控制器时 3 rad/s 打不倒） |
+| `test_hand_jitter` | exit 0 | 无 FAIL |
+| `root.tscn` 冒烟 | `Level=[Main]`、`UI=[Hud, Esc]`、`hud.debug_hud/_health` 非 null | ✓ |
+| `map/main.tscn` 冒烟 | `--quit-after 150` exit 0、无 ERROR | 关卡节点＝Camera2D/SmallCanvas/MapCanvas/Ground/Box/Player/debugHUD/CollisionDamage/Creative/PixelRenderer |
+
+**结论：搬迁没有留下任何新红，也没有挂死；两处由我引入的测试破坏已修。**

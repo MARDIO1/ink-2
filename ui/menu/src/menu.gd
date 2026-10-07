@@ -1,9 +1,9 @@
 extends Control
 ## 主菜单：开始进入主场景，退出关闭程序；ESC 等同退出。
 
-const GAME_SCENE := "res://map/main.tscn"
+const GAME_SCENE := "res://root/root.tscn"
 
-@onready var start_button: Button = $StartButton
+@onready var start_button: Button = $ButtonCenter/Buttons/StartButton
 
 
 func _ready() -> void:

@@ -8,8 +8,12 @@ const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 @onready var player_body = $"../../..".body
 @onready var physics_world = $"../../../..".world
 ## 抓握态的美术贴图挂在渲染节点下（只画不物理），按下左键换成它。
-@onready var visual = $"../Visual"
-@onready var pose_grab: Node2D = $"../Visual/PoseGrab"
+@onready var art_unfold: Node2D = $"../Visual/ArtUnfold"
+@onready var art_grab: Node2D = $"../Visual/ArtGrab"
+## 手的所有可见内容（物理像素层 + 美术层 + 手臂曲线）都挂在 `Hand/Visual` 下，藏它一个就够。
+@onready var visual: Node2D = $"../Visual"
+## 失能状态：不跟鼠标、不抓握、看不见。画布切到非"手"工具时由 Canvas 调 set_enabled。
+var enabled := true
 var arm_joint = null
 var pivot_joint = null
 var grip_joint = null
@@ -44,6 +48,9 @@ func _ready() -> void:
 	body.refresh_com()
 	body.update_aabb()
 	_ensure_arm_joint()
+	#画布可能比手先 _ready（场景顺序里 SmallCanvas 排在 Player 前面），那时 set_enabled
+	#只能记下状态；真正落到可视与物理上放在这里。
+	_apply_enabled_state()
 
 
 func _exit_tree() -> void:
@@ -61,7 +68,9 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("change_mode"):
 		set_rotation_mode(not rotate_grip)
 	_ensure_arm_joint()
-	_update_grip(delta)
+	#失能时只保持姿势：不跟鼠标、不抓握（见 set_enabled）。
+	if enabled:
+		_update_grip(delta)
 	var hand_position: Vector2 = body.com_world()
 	var target := _calculate_target_position(player_body.com_world(), delta)
 	var force := _calculate_motor(target, hand_position, delta)
@@ -247,9 +256,9 @@ const GRAB_RADIUS := 0.72
 
 func _update_grip(_delta: float) -> void:
 	var requested: bool = _grip_override if _grip_override != null else Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	if pose_grab.visible != requested:
-		pose_grab.visible = requested
-		visual.refresh()
+	if art_grab.visible != requested:
+		art_grab.visible = requested
+		art_unfold.visible = not requested
 	if not requested:
 		_release_grab()
 		return
@@ -300,6 +309,27 @@ func _remove_joint(joint) -> void:
 
 
 #region 外部输入
+## 失能 / 使能。失能后：不跟鼠标、不抓握、看不见。
+## ⚠️ 失能**不是**把马达关掉：手和臂的 gravity_scale 都是 0，撤了力它会带着残余速度一路飘，
+##    所以改成把目标钉死在当前质心（复用 set_target_world），姿势原地定住。
+func set_enabled(on: bool) -> void:
+	if enabled == on:
+		return
+	enabled = on
+	if is_node_ready():
+		_apply_enabled_state()
+
+
+## 把 enabled 落到可视与物理上：失能 = 藏起整只手 + 松开抓握 + 目标钉死在当前质心。
+func _apply_enabled_state() -> void:
+	visual.visible = enabled
+	if enabled:
+		clear_target_override()      # 恢复跟鼠标
+		return
+	set_target_world(body.com_world())
+	_release_grab()                  # 失能瞬间必须把手里的东西放掉
+
+
 ## 设置后覆盖鼠标输入；清除后恢复鼠标控制。
 func set_target_world(world_position: Vector2) -> void:
 	_target_override = world_position

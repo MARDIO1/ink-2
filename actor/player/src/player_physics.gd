@@ -5,6 +5,9 @@ const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_
 
 ## 所属 PixelWorld 的相对路径，初始化时用于注册该节点的物理体。
 @export var world_path := NodePath("..")
+## 形状级密度倍率（质量 = Σ 材质密度 × 它）。物理剪影用"隐形墨水"这类基准密度 1.0 的
+## 材质时，靠它把密度拉回本物体本来该有的值（手 = 0.1344），质量/质心/惯量逐位不变。
+@export var shape_density_scale := 1.0
 ## 生物实体标记；反向栅格化（回到画布）时跳过。与 CanvasSolid 的同名标签对应。
 const LIVING_TAG := "living"
 
@@ -28,7 +31,11 @@ func collect_shapes() -> Array:
 		# 只烘焙直接形状；嵌套的 Arm/Hand 各自持有独立 PBody。
 		if child.get_script() == PixelShape2D:
 			shapes.append(child.get_shape())
-	return shapes if not shapes.is_empty() else [get_shape()]
+	if shapes.is_empty():
+		shapes = [get_shape()]
+	for shape in shapes:
+		shape.density_scale = shape_density_scale
+	return shapes
 
 
 func bake():

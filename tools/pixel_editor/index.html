@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ink Attack · 逻辑像素拼装台</title>
+  <link rel="stylesheet" href="style.css?v=20261007-4">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">INK ATTACK TOOLKIT</p>
+      <h1>逻辑像素拼装台</h1>
+    </div>
+    <div class="top-actions">
+      <button id="openMonoPixelButton" class="mono-launch">打开 MONO PIXEL</button>
+      <label class="button primary">导入图片<input id="fileInput" type="file" accept="image/png,image/webp" multiple hidden></label>
+      <button id="exportPartButton">导出全部部件</button>
+      <button id="exportCompositeButton">导出拼接图</button>
+    </div>
+  </header>
+
+  <main class="app-grid">
+    <aside class="panel library-panel">
+      <div class="panel-title">
+        <div><span>01</span><h2>素材与参考</h2></div>
+        <button id="clearButton" class="quiet">清空</button>
+      </div>
+      <div id="dropZone" class="drop-zone">
+        <strong>拖入 PNG 部件</strong>
+        <small>第一张图自动成为核心参考图</small>
+      </div>
+      <div class="reference-card">
+        <span class="status-dot"></span>
+        <div><small>当前核心参考</small><strong id="referenceName">尚未选择</strong></div>
+      </div>
+      <div id="assetList" class="asset-list"></div>
+    </aside>
+
+    <section class="workspace-panel">
+      <div class="workspace-toolbar">
+        <div class="tool-group">
+          <button id="composeButton" title="把所有部件中心对齐">拼接预览</button>
+          <button id="separateButton" title="把部件平铺拆开">拆开排列</button>
+          <button id="centerButton">选中居中</button>
+        </div>
+        <div class="tool-group compact">
+          <label>画布 <input id="stageWidth" type="number" min="16" max="2048" value="160"> × <input id="stageHeight" type="number" min="16" max="2048" value="120"> 逻辑格</label>
+          <label>查看缩放 <input id="viewZoom" type="range" min="3" max="16" value="8"><output id="viewZoomValue">8×</output></label>
+        </div>
+      </div>
+      <div id="stageScroller" class="stage-scroller">
+        <canvas id="stage" width="1280" height="960"></canvas>
+        <div id="emptyHint" class="empty-hint">
+          <div class="pixel-mark">+</div>
+          <strong>导入一张核心参考图</strong>
+          <span>再加入瓶身、表情、手部等部件进行统一与拼装</span>
+        </div>
+      </div>
+      <footer class="statusbar">
+        <span id="statusText">等待导入素材</span>
+        <span><b id="cacheState">正在读取本地缓存…</b> · 滚轮上下 · Shift+滚轮左右 · 中键拖动画布 · 左键拖部件</span>
+      </footer>
+    </section>
+
+    <aside class="panel inspector-panel">
+      <div class="panel-title"><div><span>02</span><h2>逻辑像素校准</h2></div></div>
+      <div id="noSelection" class="no-selection">选择一个部件后在这里校准。</div>
+      <div id="inspector" class="inspector" hidden>
+        <div class="selected-heading">
+          <img id="selectedThumb" alt="">
+          <div><small id="selectedRole">普通部件</small><strong id="selectedName"></strong></div>
+        </div>
+
+        <section class="control-section reference-only" id="referenceHelp">
+          <h3>核心标准</h3>
+          <p>参考图的短边逻辑像素数量是统一标准。后续图片会按相同数量自动重新采样并生成新像素图。</p>
+        </section>
+
+        <section class="control-section">
+          <div class="control-heading"><h3>源像素格</h3><output id="sourceCellValue">1 px</output></div>
+          <input id="sourceCell" type="range" min="0.25" max="128" step="0.125" value="1">
+          <p id="sourceCellHelp">参考图中一个方块像素占多少真实像素。修改后，自动跟随的部件会立即重新生成。</p>
+          <label class="check" id="autoReferenceRow"><input id="autoReferenceToggle" type="checkbox" checked><span>自动按核心参考图的逻辑密度重新像素化</span></label>
+        </section>
+
+        <section class="control-section">
+          <div class="control-heading"><h3>相对参考缩放</h3><output id="scaleValue">100%</output></div>
+          <input id="partScale" type="range" min="10" max="400" step="5" value="100">
+          <div class="button-row"><button id="resetScaleButton" class="quiet">恢复 100%</button><button id="matchReferenceButton" class="quiet">匹配参考单位</button></div>
+          <p>缩放的是逻辑画布；导出时仍会落回整数格，不产生平滑边缘。</p>
+        </section>
+
+        <section class="control-section two-columns">
+          <label>X（逻辑格）<input id="partX" type="number"></label>
+          <label>Y（逻辑格）<input id="partY" type="number"></label>
+        </section>
+
+        <section class="control-section">
+          <h3>像素处理</h3>
+          <label class="palette-mode-label">颜色规范
+            <select id="paletteMode">
+              <option value="mono4" selected>MONO 四阶</option>
+              <option value="binary">纯黑白二阶</option>
+              <option value="original">保留原色</option>
+            </select>
+          </label>
+          <div class="mono-palette" title="MONO PIXEL 通用灰阶"><i style="--tone:#000"></i><i style="--tone:#555"></i><i style="--tone:#aaa"></i><i style="--tone:#fff"></i><span>0 · 85 · 170 · 255</span></div>
+          <label class="check"><input id="whiteTransparentToggle" type="checkbox"><span>白色自动透明（表情不要勾选）</span></label>
+          <label class="check"><input id="visibilityToggle" type="checkbox" checked><span>在拼接画布中显示</span></label>
+        </section>
+
+        <section class="control-section summary">
+          <h3>换算结果</h3>
+          <dl>
+            <div><dt>原始尺寸</dt><dd id="sourceSize">—</dd></div>
+            <div><dt>逻辑尺寸</dt><dd id="logicalSize">—</dd></div>
+            <div><dt>规范化输出</dt><dd id="outputSize">—</dd></div>
+          </dl>
+        </section>
+
+        <div class="inspector-actions">
+          <button id="editInMonoButton">在 MONO PIXEL 中编辑</button>
+          <button id="setReferenceButton" class="primary">设为核心参考图</button>
+          <button id="removeButton" class="danger">移除部件</button>
+        </div>
+      </div>
+
+      <section class="global-output">
+        <h3>统一导出规则</h3>
+        <label>每逻辑像素输出
+          <select id="targetCell">
+            <option value="1">1 × 1 px</option>
+            <option value="2">2 × 2 px</option>
+            <option value="4" selected>4 × 4 px</option>
+            <option value="8">8 × 8 px</option>
+            <option value="16">16 × 16 px</option>
+          </select>
+        </label>
+        <p>此值只控制最终 PNG 的粗细，不改变部件之间的逻辑比例。</p>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="monoPixelDialog" class="mono-dialog" aria-labelledby="monoPixelDialogTitle">
+    <div class="mono-dialog-shell">
+      <header class="mono-dialog-header">
+        <div>
+          <p class="eyebrow">BUILT-IN PIXEL EDITOR</p>
+          <h2 id="monoPixelDialogTitle">MONO PIXEL · 部件编辑窗口</h2>
+        </div>
+        <div class="mono-dialog-note">编辑完成后，点击窗口右上角“导入拼装台”</div>
+        <button id="closeMonoPixelButton" class="mono-dialog-close" type="button" aria-label="关闭 MONO PIXEL">×</button>
+      </header>
+      <iframe id="monoPixelFrame" title="MONO PIXEL 像素编辑器" src="mono_pixel/index.html?embedded=1&amp;v=20261007-4"></iframe>
+    </div>
+  </dialog>
+
+  <script src="app.js?v=20261007-9"></script>
+</body>
+</html>

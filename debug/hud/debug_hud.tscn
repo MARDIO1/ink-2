@@ -1,0 +1,24 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://debug/hud/src/debug_hud.gd" id="1_hud"]
+[ext_resource type="Script" path="res://debug/hud/src/force_debug.gd" id="2_forces"]
+
+[node name="debugHUD" type="CanvasLayer" groups=["debug_hud"]]
+visible = false
+script = ExtResource("1_hud")
+
+[node name="Stats" type="Label" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -470.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = 80.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(0.1, 0.1, 0.1, 1)
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 2
+
+[node name="ForceDebug" type="Node2D" parent="."]
+script = ExtResource("2_forces")

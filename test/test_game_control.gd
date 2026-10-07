@@ -73,7 +73,12 @@ func _run() -> void:
 	_check("game removes internal hand and arm renderers", not scene.renderer._nodes.has(hand.body.id) and not scene.renderer._nodes.has(hand.arm_body.id))
 	await process_frame
 	var hud = scene.get_node("debugHUD")
-	var ui = scene.get_node("Hud")
+	# UI 已抽到 `ui/game_ui.tscn`（真实游戏里由 `root/root.tscn` 挂在 `UI` 容器下）；
+	# 本测试只实例化关卡，所以这里补挂一份，并走它的 Hud 子节点。
+	var game_ui: Node = preload("res://ui/game_ui.tscn").instantiate()
+	scene.add_child(game_ui)
+	await process_frame
+	var ui: Node = game_ui.get_node("Hud")
 	_check("debug HUD is a screen-space layer", hud is CanvasLayer and not hud.follow_viewport_enabled)
 	_check("game HUD owns the screen until Tab", ui.visible and not hud.visible)
 	var event: InputEventKey = InputEventKey.new()

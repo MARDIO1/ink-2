@@ -11,13 +11,11 @@
 [ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="9_player_mat"]
 [ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="10_hand_mat"]
 [ext_resource type="Script" uid="uid://dujchjtyhoikf" path="res://map/src/collision_damage.gd" id="11_damage"]
-[ext_resource type="Script" uid="uid://c6qq6cj82333o" path="res://map/src/debug_hud.gd" id="12_hud"]
-[ext_resource type="Script" uid="uid://drdj5ctwnkrob" path="res://map/src/force_debug.gd" id="13_forces"]
 [ext_resource type="Resource" path="res://Ink/asset/grey1.tres" id="14_grey1"]
-[ext_resource type="PackedScene" path="res://ui/hud/hud.tscn" id="15_hud_ui"]
-[ext_resource type="PackedScene" path="res://ui/esc/esc.tscn" id="16_esc"]
-[ext_resource type="Script" uid="uid://dvtycwuj0keul" path="res://mode/creative/src/creative.gd" id="17_creative"]
+[ext_resource type="Resource" path="res://Ink/asset/invisible.tres" id="19_invisible"]
 [ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="18_highlight"]
+[ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="17_creative"]
+[ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="20_debughud"]
 
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10
@@ -28,19 +26,19 @@ ccd_ignore_mass = 100.0
 min_fragment_pixels = 5
 debris_max_mass = 20.0
 debris_min_speed = 20.0
-materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_black"), ExtResource("9_player_mat"), ExtResource("10_hand_mat"), ExtResource("14_grey1"), ExtResource("18_highlight")])
-densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0, 0.0])
-voxel_size = 4.0
+materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_black"), ExtResource("9_player_mat"), ExtResource("10_hand_mat"), ExtResource("14_grey1"), ExtResource("18_highlight"), ExtResource("19_invisible")])
+densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0, 0.0, 1.0])
+voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
-position = Vector2(-22, 170)
+position = Vector2(-116, 212)
 process_callback = 0
 script = ExtResource("8_camera")
 
-[node name="Canvas" parent="." unique_id=1726580571 instance=ExtResource("7_fxpqp")]
-position = Vector2(90, -44)
+[node name="SmallCanvas" parent="." unique_id=1726580571 instance=ExtResource("7_fxpqp")]
+position = Vector2(41, -42)
 
-[node name="MapCanvas" parent="." unique_id=704256513 instance=ExtResource("7_fxpqp")]
+[node name="MapCanvas" parent="." instance=ExtResource("7_fxpqp")]
 visible = false
 position = Vector2(-512, -256)
 canvas_size = Vector2i(2048, 1024)
@@ -65,35 +63,13 @@ visible = false
 script = ExtResource("3_shape")
 rect_size = Vector2i(32, 32)
 
-[node name="Player" parent="." unique_id=1427605215 instance=ExtResource("6_vthes")]
+[node name="Player" parent="." groups=["player"] unique_id=1427605215 instance=ExtResource("6_vthes")]
 position = Vector2(-128, 90)
 
-[node name="Hud" parent="." unique_id=33912569 instance=ExtResource("15_hud_ui")]
-
-[node name="Esc" parent="." unique_id=2034166087 instance=ExtResource("16_esc")]
-
-[node name="debugHUD" type="CanvasLayer" parent="." unique_id=1228885047]
-visible = false
-script = ExtResource("12_hud")
-
-[node name="Stats" type="Label" parent="debugHUD" unique_id=931896447]
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -470.0
-offset_top = 12.0
-offset_right = -12.0
-offset_bottom = 80.0
-grow_horizontal = 0
-theme_override_colors/font_color = Color(0.1, 0.1, 0.1, 1)
-theme_override_font_sizes/font_size = 16
-horizontal_alignment = 2
-
-[node name="ForceDebug" type="Node2D" parent="debugHUD" unique_id=62922403]
-script = ExtResource("13_forces")
+[node name="debugHUD" parent="." instance=ExtResource("20_debughud")]
 
 [node name="CollisionDamage" type="Node" parent="." unique_id=1398976209]
 script = ExtResource("11_damage")
 
-[node name="Creative" type="Node" parent="." unique_id=2059876876]
+[node name="Creative" type="Node" parent="."]
 script = ExtResource("17_creative")

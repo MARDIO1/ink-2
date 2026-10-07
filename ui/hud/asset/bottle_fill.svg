@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="132" height="156" viewBox="0 0 132 156">
+  <!-- HUD 瓶身内腔遮罩：由 TextureProgressBar 自下向上裁切。 -->
+  <path fill="#ffffff" shape-rendering="crispEdges"
+        d="M36 40h60v4h8v4h8v4h8v8h4v8h4v64h-4v8h-8v4h-12v4H28v-4H16v-4H8v-8H4V68h4v-8h4v-8h8v-4h8v-4h8z"/>
+</svg>

@@ -1,14 +1,17 @@
 # HUD
 
-游戏内 HUD，作为 `map/main.tscn` 的 `Hud` 节点实例（CanvasLayer，layer=1）。
-墨水瓶是血条位（图标仍是静态贴图）、横条是蓝条数值位。
-右上角退出按钮回主菜单。
+游戏内 HUD，作为 `ui/game_ui.tscn` 的 `Hud` 节点实例（CanvasLayer，layer=1，根控件挂共享 Theme）。
+`game_ui.tscn` 由 `root/root.tscn` 挂在 `UI` 容器下，所以 HUD 与关卡不在同一棵子树。
+**瓶内液面 = 墨水量**（`Root/BottleFill`，`TextureProgressBar` + `fill_mode=3` 自下而上 +
+`ui/hud/asset/bottle_fill.svg` 当瓶形遮罩），瓶身线稿 `Root/HealthArt`
+（`ui/hud/asset/health_hud.tres`）盖在液面之上；顶部横条已取消，不再表示任何数值。
+右上角 `Root/ExitButton`（`ui/esc/asset/exit.tres`）回主菜单。
 
 ## 横条数据源
 
-`hud.gd` 的 `health_path`（默认 `^"../Player/InkHealth"`）指向玩家墨水生命值节点
+`hud.gd` 的 `health_path`（默认 `^"../Player/InkHealth"`，找不到就按 `player` 组找）指向玩家墨水生命值节点
 `actor/player/src/ink_health.gd`。`_ready()` 里连 `changed` 并读一次 `ratio()`，
-以后每次 `add()` / `reduce()` 都把 `StatusBar.value` 设成 `ratio() * 100`。
+以后每次 `add()` / `reduce()` 都把 `BottleFill.value` 设成 `ratio() * 100`。
 接不到节点（单独预览 `hud.tscn`）时才退回 `bar_ratio` 占位。
 墨水值本身的接口见 `actor/player/doc/生命值.md`。
 
@@ -25,24 +28,17 @@ Tab 在两套之间切换：`hud.gd` 读 `debug` 动作，把 `debug_hud_path`�
 `map/main.tscn` 里那个改名后的旧调试 HUD）显隐取反，自己取反、`force_debug` 采样同步开关。
 默认成品 HUD 开、debugHUD 关。调试 HUD 的脚本是 `map/src/debug_hud.gd`，它自己不再处理 Tab。
 
-⚠️ Tab 必须走 `_input`，不能走 `_unhandled_input`：画布工具按钮（`Canvas/Buttons/Brush` 等 6 个
-`Button`，默认 `focus_mode=FOCUS_ALL`）点过之后会占住键盘焦点，此时 Godot 的 GUI 会把 Tab 当内置
-`ui_focus_next` 吃掉并标记已处理，`_unhandled_input` 永远收不到 —— 表现就是「Tab 调试 UI 没了」。
-`hud.gd` 现在在 `_input` 里处理并 `set_input_as_handled()`，焦点在谁身上都不影响。
-（若以后想让 Tab 恢复焦点导航，替代做法是给那 6 个工具按钮设 `focus_mode = 0`。）
+⚠️ Tab 走 `_input` 而不是 `_unhandled_input`：画布工具按钮一旦占住键盘焦点，Godot 的 GUI 会把 Tab
+当内置 `ui_focus_next` 吃掉并标记已处理，`_unhandled_input` 永远收不到 —— 表现就是「Tab 调试 UI 没了」。
+现在两头都堵住了：`hud.gd` 在 `_input` 里处理并 `set_input_as_handled()`；新工具面板的 8 个按钮
+（`actor/canvas/canvas.tscn` 的 `WorkbenchUI/Buttons/Grid/*`）全部 `focus_mode = 0`。
+Tab 不再参与焦点导航。
 
-## 尺寸与横条位置
+## 尺寸
 
-同主菜单的 s≈0.2344 等比缩放（退出按钮图标宽 170→40、边框 10→2、圆角 4→1、焦点外扩 10→2）。
-
-横条锚点取 0.2245..0.7055 是**按 `HealthFrame` 的实际绘制框算的**，不是照抄参考的 0.185..0.741：
-frame 源图 1710×260（比例 6.577），锚点框 0.16..0.77 × 0.04..0.17（逻辑 585.6×70.2），
-`stretch_mode=5` 等比装填后绘制框只有 70.2×6.577≈461.8 宽、左右各内缩 (585.6-461.8)/2≈61.9，
-即绘制框左边界 = 0.16×960+61.9 = 215.5 = 0.2245×960。本工程 16:9 与参考 16:10 不同，
-不改的话黑填充会从 frame 左侧冒出来。
-
-实测（真实 `map/main.tscn`，960×540 逻辑）：`StatusBar.get_global_rect()` = (215.52, 32.94, 461.76, 39.96)，
-与上式逐位相同。
+瓶子按固定像素摆（`BottleFill` 24,16→156,172；`HealthArt` 24,16→596,172），来源是分支那套
+`ui/hud/hud.tscn` 的绝对布局，不再用等比锚点；`texture_filter = 1`（最近邻）写在节点上
+（项目没有开全局 nearest）。
 
 ## 热键
 

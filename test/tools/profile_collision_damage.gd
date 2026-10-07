@@ -21,7 +21,7 @@ class ProfileRenderer:
 				" ms=", elapsed / 1000.0, " tiles=", last_tiles_rebuilt, "/", last_tiles_total,
 				" bounds=", body.shapes[0].local_aabb())
 class ProfileForces:
-	extends "res://map/src/force_debug.gd"
+	extends "res://debug/hud/src/force_debug.gd"
 	var sample_us: int = 0
 	var finish_us: int = 0
 	var draw_us: int = 0
@@ -159,8 +159,8 @@ func _run() -> void:
 		scene.set(key, settings[key])
 	scene.auto_step = false
 	# 初始摆放一次：底边在地面上方，最左实体像素中心为抓点，不计入帧耗时。
-	scene.get_node("Canvas").position = Vector2((200 if args.has("--bottom") else 0) - anchor.x - 0.5, 229 - bottom)
-	var point: Vector2 = scene.get_node("Canvas").position + Vector2(anchor) + Vector2(0.5, 0.5)
+	scene.get_node("SmallCanvas").position = Vector2((200 if args.has("--bottom") else 0) - anchor.x - 0.5, 229 - bottom)
+	var point: Vector2 = scene.get_node("SmallCanvas").position + Vector2(anchor) + Vector2(0.5, 0.5)
 	scene.get_node("Player").position = point - Vector2(104, 40 if args.has("--bottom") else 16)
 	var controller = scene.get_node("CollisionDamage")
 	controller.set_script(Profile)
@@ -184,13 +184,13 @@ func _run() -> void:
 			scene.world.set(key, world_state[key])
 		# 消融仅用于归因，禁止作为生产修复：会留下过期的游戏侧包围盒。
 		scene.world.transport_skip_aabb = args.has("--probe-no-aabb")
-	var surface = scene.get_node("Canvas/CanvasSurface")
+	var surface = scene.get_node("SmallCanvas/CanvasSurface")
 	if surface.load_ink(path) != OK:
 		quit(2)
 		return
 	var before: int = scene.world.bodies.size()
 	var bake: int = Time.get_ticks_usec()
-	scene.get_node("Canvas/CanvasSolid").solidify(surface, scene)
+	scene.get_node("SmallCanvas/CanvasSolid").solidify(surface, scene)
 	print("BAKE ms=", (Time.get_ticks_usec() - bake) / 1000.0)
 	if scene.world.bodies.size() == before:
 		print("BLOCKED: 固化没有生成物体")
