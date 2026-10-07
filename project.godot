@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="ink2"
-run/main_scene="uid://vqdlx81yhmw3"
+run/main_scene="res://map/asset/爬坡练习.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]

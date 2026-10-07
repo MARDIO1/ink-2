@@ -1017,3 +1017,140 @@ gym 场景 headless 空跑 --quit-after 150：exit 0，无 ERROR
 - **没做**：`rasterize` 移除运行时 ink_item 后，Godot 退出时报 `ObjectDB instances were leaked`（对照组：不带钉子也报 15 个）
   —— 与本次改动无关，属于既有"移除刚体"路径，要查另开一轮。
 - 没 commit。
+
+
+## 2026-10-07 18:12 — 把 map.tscn 并进 main.tscn（只增不改）
+
+- **先判清"合的是哪个 map"**：`origin/map` 分支是 main 的祖先（`git rev-list --left-right --count main...origin/map` = `2 0`，
+  fetch 后仍然如此），git 层面没得合；真正要合的是场景 `map/asset/map.tscn` → `map/main.tscn`。
+- **"多了什么"（两边同时实例化后逐项对比，headless）**：
+
+| 项 | main.tscn | map/asset/map.tscn |
+|---|---|---|
+| Hud / Esc | 无 | 有（`ui/hud/hud.tscn`、`ui/esc/esc.tscn`）|
+| 墨水物品 | 0 个 | 1 个：`Ink12`，**29279 px**，AABB 910×468，pos(-597.81,-35.95)、rot -0.232、`is_static=false` |
+| Player 组 | `player` | 无 |
+| debugHUD | `debug/hud/debug_hud.tscn` 实例（带 `debug_hud` 组）| 内联 CanvasLayer，无组 |
+| 材质表 | 6 个（含 `invisible.tres`）| 5 个 |
+
+- **改法**：**不走 `PackedScene` 重存**。实测两个坑：① 存盘会丢 `[gd_scene ... uid]`，
+  而 `project.godot:14` 的 `run/main_scene="uid://vqdlx81yhmw3"` 是按 uid 引用的 → 主场景直接起不来；
+  ② 入树跑过帧再 pack 会把运行时状态烧进场景（相机跟随后的 position、`debugHUD visible=false`）。
+  改成"只增不改"的文本拼接：`Hud / Esc / Ink12`（连同子节点）、它们用到的 3 条外链、
+  `Ink12` 那张 `Image` 子资源原样拼进去；`ExtResource("12_eghok")` 按路径重映射成 main 已有的 `3_shape`。
+  Hud/Esc 插在 `debugHUD` 之前，保持 map.tscn 里 CanvasLayer 的叠放次序。
+- **结果**：`map/main.tscn` **30 增 0 删**（3.6 KB → 291.6 KB，那坨 `PackedByteArray` 是整整一行）。
+  节点顺序：… Player, Hud, Esc, debugHUD, CollisionDamage, Creative, Ink12。
+- **实测**：合并后 main 里的 `Ink12` 与地图里逐位一致（29279 px / 同一 pos+rot）；
+  `godot --headless --quit-after 180 res://map/main.tscn` 正常退出、stderr 为空。
+- **顺手修**：`test/test_canvas.gd:13` 还在 `get_node("Canvas")`，节点改名为 `SmallCanvas` 后找不到 →
+  协程中断、测试进程挂死。改对之后 `[Canvas] resize, save/load, nail solidify/break: PASS`。
+- **还没做**：没 commit。F5 现在仍存到 `res://map/asset/map.tscn`，要不要改成存 main.tscn 另说。
+
+
+## 2026-10-07 18:16 — 撤销"把 UI 并进关卡"，改按 `doc/文件组织.md` 的装配层验证
+
+- **撤掉**上一轮并进 `map/main.tscn` 的 `Hud / Esc / Ink12`（连同 3 条外链和 `Image` 子资源）：
+  用户口径是"合并 UI 即可"，且 `doc/文件组织.md` 写明关卡只放"世界 + 道具 + 玩家 + 相机 +
+  CollisionDamage + Creative"，UI 归 `root/root.tscn` 的 `UI`。
+- **实测装配层已经接得上**（`root/root.tscn`：`Level ← map/main.tscn`、`UI ← ui/game_ui.tscn`）：
+  `Level` 子节点 = Main、`UI` 子节点 = GameUI(Hud+Esc)；Hud 的显式 `../../Player/InkHealth`
+  路径解析不到（UI 与关卡不同子树，符合预期），但**按组兜底成功**：`_health = InkHealth`、
+  `debug_hud = debugHUD`；`--quit-after 180` 无 stderr。
+- **`Ink/asset/invisible.tres` 不是合并产物**：是用户 `0e66ec9` 的"美术层与隐形墨水"，
+  `PixelMaterial` id=6 / `color=(0,0,0,0)` / `density=1.0` / `compress_strength=200`，
+  被 `map/main.tscn` 的 materials 数组第 6 项引用。
+- **待用户拍板**：① `project.godot` 的 `run/main_scene` 要不要从 `map/main.tscn` 切到
+  `res://root/root.tscn`；② `creative.gd:153` 用 `get_tree().current_scene` 存图，主场景一换
+  就会把 Root(Level+UI) 整棵存进 `map/asset/map.tscn`；③ `map/asset/map.tscn` 里残留的
+  loose `Hud`/`Esc` 清不清。
+
+
+## 2026-10-07 18:20 — 大整理第一批：root/UI 装配 + debug/ 模块归位 + gym/ink_item 归位
+
+（本轮与用户的编辑并行进行；以下是我做的部分。）
+
+### 1. root + UI 装配
+- **新增** `root/root.tscn` + `root/src/root.gd`：`Level` / `UI` 两个容器 + `load_level(scene)`；`ui_scene` 默认
+  `preload("res://ui/game_ui.tscn")`。
+- **新增** `ui/game_ui.tscn`：装配 `ui/hud/hud.tscn` + `ui/esc/esc.tscn`（各自仍是独立场景，能单独 F6）。
+- `map/main.tscn` 剪掉 `Hud` / `Esc` / 内联 `debugHUD`（+`Stats`+`ForceDebug`）四块，只剩关卡内容；
+  `ui/menu/src/menu.gd` 的入口从 `map/main.tscn` 改成 `root/root.tscn`。
+
+### 2. debug/ 模块归位（**调试 HUD 由关卡实例，不放 ui/**）
+- `map/src/debug_hud.gd` + `force_debug.gd` → `debug/hud/src/`；新增 `debug/hud/debug_hud.tscn`
+  （CanvasLayer + Stats + ForceDebug），由关卡的 `debugHUD` 节点实例化。
+  → 这样 `hud.gd` 的 Tab 切换、`collision_damage.gd` 的 `../debugHUD/ForceDebug`、三个测试的
+  `debugHUD/*` 路径**全都不用改**；它要读 `../Player/...` 也要在世界坐标画力箭头，本质是关卡覆盖层。
+- `mode/creative/` → `debug/creative/`（只有两种模式、创造本质是 debug，不该有独立 `mode/` 模块）。
+- 新增 `debug/hud/doc/调试HUD.md`；`doc/文件组织.md` 重写（顶层表 + **debug(人用/在线) vs test(AI用/离线)** 分工 + 装配图）。
+
+### 3. actor 归位与改名
+- `gym/` → `actor/gym/`（与 canvas/nail 并列）；`map/src/ink_item.gd` → `actor/ink_item/`（+ 新 doc `墨水道具.md`）。
+- `Canvas` → **`SmallCanvas`**（`map/main.tscn`）；引用一并修：`debug/creative/src/creative.gd` 的 `canvas_path`、
+  `test/test_collision_damage.gd`、`test/tools/profile_collision_damage.gd`（`Canvas/CanvasSurface` 等）。
+- `actor/canvas/src/canvas_solid.gd` 的 `preload("res://map/src/ink_item.gd")` → `res://actor/ink_item/src/ink_item.gd`。
+- `test/calibrate_collision_damage.gd` / `profile_collision_damage.gd` → `test/tools/`（顶层只留验收脚本）。
+
+### 4. UI 跨子树查找（这次搬迁真正的坑）
+HUD 与关卡不再同树后，`hud.gd` 的 `health_path = ../Player/InkHealth`、`debug_hud_path = ../debugHUD` 都断了。
+改成**组兜底**：`map/main.tscn` 的 `Player` 加 `groups=["player"]`，`debug/hud/debug_hud.tscn` 根加
+`groups=["debug_hud"]`，`hud.gd` 先试显式路径、失败再按组找（`_switch_debug_hud` 加 null 守卫）。
+
+### 5. 实测（本轮的验收）
+- **root 冒烟**：`LEVEL=[Main]`、`UI=[Hud, Esc]`、`SmallCanvas/MapCanvas/Creative` 都在、
+  `debugHUD/Stats/ForceDebug` 可达、`hud.debug_hud` 与 `hud._health` 都非 null、Tab 能翻 `debugHUD.visible`。
+- **main.tscn 冒烟**：`--quit-after 150` exit 0、无 ERROR。
+- `test_collision_damage` **41/0**、`test_canvas` **PASS**（改名后）、`test_upright` 18/1（历史红）。
+- `test_hand_physics` 48/6、`test_live_input` 6/3：**归因是并行的用户编辑/新资产**，不是搬迁 ——
+  ① 把调试 HUD 临时摘掉重跑，"红"更多（说明它参与的是运行环境而非本搬迁）；
+  ② live_input 报的红项名字（`automatic input moves...`、`jump input branch 0/1`）在**当前**文件里根本不存在，
+  说明测试文件在我跑的同时被改；③ 这些测试的数字在搬迁前后就随重烤资产漂移过。
+  **未触碰用户正在改的 `project.godot` / `actor/canvas/src/canvas_solid.gd` / `test/*`。**
+
+### 6. 遗留（等你决定）
+- `test/` 下有 4 组临时探针（`_tmp_packtest` / `_tmp_scenediff` / `_tmp_scenemerge` / `_tmp_scenesplice`
+  各带 `.gd`+`.out.txt`+`.err.txt`）——看着像你的场景工具实验，**没删**。
+
+
+## 2026-10-07 19:05 — 上一条的归因**是错的**，已查清并修好（闭环）
+
+### 更正
+我在上一条里说"`test_live_input` 报的红项名字在当前文件里不存在 → 是你在改测试"。**错**：
+我用 `rg` 搜那个文件没匹配（rg 把它当二进制，静默无输出），换 `Select-String` 一搜就在。
+那两个测试文件当时并没有被你改（`test_live_input.gd` mtime 还是 02:46）。**红是真红，是我造成的。**
+
+### 真因与修复（两处，都是我抽 UI 的后遗症）
+1. `test/test_ink.gd:156` `_scene.get_node("Hud")` —— 关卡里已经没有 Hud（抽到 `ui/game_ui.tscn`）→ 取空 →
+   **协程中断、`quit()` 到不了 → 测试进程挂死**（这就是我看到的"test_ink 跑 9 分钟"）。
+   修：测试里补挂一份 `ui/game_ui.tscn`，走 `GameUI/Hud`。
+2. `test/test_game_control.gd:76` 同上（`get_node("Hud")`）→ 那条 `game HUD owns the screen until Tab` 红。
+   同样修法。
+3. 顺带：`test_ink` 的 `empty bottle draws nothing` 在补挂 UI 后变红 —— 涂层的显隐在它自己的
+   `_physics_process` 里同步，一帧不保证早于协程恢复点；改成等 2 帧（本文件后面"空瓶回到基准质量"
+   也是等 2 帧的既有写法）。
+
+### 期间的错判与排除法（留证据给下次）
+- 先把 `Hud`/`Esc` 临时放回关卡 → 数字**一字不差**（48/6、6/3）→ 不是 UI 抽取本身。
+- 再把 `SmallCanvas` 临时摘掉 → 手测精确回到 **51/3**（`-13.105 / -14.265 / 3.693117`）。
+- 最后把 `canvas_solid.gd` 换成 `HEAD~1` 版本（+我的路径修复）、画布在位 → 仍然 **51/3** →
+  **画布改动也不是原因**；48/6 是**抖动**（同一份代码在不同时刻跑出 51/3 与 48/6）。
+  教训：这套测试对"关卡节点组成/处理器顺序"敏感，48/6 那种多出来的 3 条别急着归因，先重跑。
+- 诊断期间我**临时改过你的文件**，已全部还原：`actor/canvas/src/canvas_solid.gd`（用 `$env:TEMP` 备份还原，
+  `git status` 与 HEAD 一致）、`map/main.tscn`（bisect 节点与 ext_resource 已清干净）。
+
+### 最终验收（当前树，逐套串行真跑）
+| 测试 | 结果 | 说明 |
+| --- | --- | --- |
+| `test_hand_physics` | **51 / 3** | 3 条＝重烤资产引起的历史红，数字与搬迁前基线一字不差 |
+| `test_live_input` | **6 / 0** | ✓ |
+| `test_canvas` | **PASS** | ✓ |
+| `test_collision_damage` | **41 / 0** | ✓ |
+| `test_game_control` | **29 / 3** | 3 条＝历史红；我那条 HUD 检查已修 |
+| `test_ink` | **32 / 1** | 唯一红＝`ratio tracks ink`（你 `player.tscn` 的 `max_ink`），且不再挂死 |
+| `test_upright` | 18 / 1 | 历史红（无控制器时 3 rad/s 打不倒） |
+| `test_hand_jitter` | exit 0 | 无 FAIL |
+| `root.tscn` 冒烟 | `Level=[Main]`、`UI=[Hud, Esc]`、`hud.debug_hud/_health` 非 null | ✓ |
+| `map/main.tscn` 冒烟 | `--quit-after 150` exit 0、无 ERROR | 关卡节点＝Camera2D/SmallCanvas/MapCanvas/Ground/Box/Player/debugHUD/CollisionDamage/Creative/PixelRenderer |
+
+**结论：搬迁没有留下任何新红，也没有挂死；两处由我引入的测试破坏已修。**

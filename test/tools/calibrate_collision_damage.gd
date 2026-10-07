@@ -21,8 +21,10 @@ class Probe:
 		for contact in _contacts(world):
 			if (contact.a == hand and contact.b == target) or (contact.b == hand and contact.a == target):
 				approach = maxf(approach, contact.approach)
-				for lane in _lanes(contact.points):
-					impulse = maxf(impulse, lane.impulse)
+				# ⚠️ 现行 API：_lanes() 已并入 _impact()（返回的 impulse 就是每条 lane 的冲量）。
+				var lane: Dictionary = _impact(contact.points)
+				if not lane.is_empty():
+					impulse = maxf(impulse, lane["impulse"])
 		for scale in scales:
 			damage_scale = scale
 			var result: Dictionary = super.calculate(world, player_body, protected_bodies)

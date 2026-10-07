@@ -10,7 +10,7 @@ func _run() -> void:
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame
-	var canvas: Node = scene.get_node("Canvas")
+	var canvas: Node = scene.get_node("SmallCanvas")
 	var surface: Area2D = canvas.get_node("CanvasSurface")
 	canvas.canvas_size = Vector2i(320, 180)
 	var bounds: CollisionShape2D = surface.get_node("Bounds")

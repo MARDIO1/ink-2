@@ -1,6 +1,7 @@
 # ESC 菜单
 
-游戏内 ESC 覆盖层，作为 `map/main.tscn` 的 `Esc` 节点实例（CanvasLayer，layer=2）。
+游戏内 ESC 覆盖层，作为 `ui/game_ui.tscn` 的 `Esc` 节点实例（CanvasLayer，layer=2）；
+`game_ui.tscn` 由 `root/root.tscn` 挂在 `UI` 容器下。
 
 - `process_mode = 3`（ALWAYS）：暂停后仍要收 ESC 与按钮输入。
 - 打开即 `get_tree().paused = true`；「继续」「回主菜单」「退出」都先解除暂停再动作，

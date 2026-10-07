@@ -153,7 +153,12 @@ func _run() -> void:
 	_check("ink never rises above max", _health.ink == _health.max_ink and _health.ratio() == 1.0)
 	_check("every real change is broadcast exactly once", _changes == 4)
 	# 0b. HUD 横条跟着同一个墨水值走
-	_hud = _scene.get_node("Hud")
+	# UI 已抽到 `ui/game_ui.tscn`（真实游戏里由 `root/root.tscn` 挂在 `UI` 容器下）；
+	# 本测试只实例化关卡，所以这里补挂一份，并走它的 Hud 子节点。
+	var game_ui: Node = preload("res://ui/game_ui.tscn").instantiate()
+	_scene.add_child(game_ui)
+	await process_frame
+	_hud = game_ui.get_node("Hud")
 	_check("hud bar shows the full ink", is_equal_approx(_hud.status_bar.value, 100.0))
 	_health.reduce(_health.max_ink * 0.75)
 	_check("hud bar follows the ink source", is_equal_approx(_hud.status_bar.value, 25.0))
@@ -167,7 +172,10 @@ func _run() -> void:
 
 	# 空瓶：不画
 	_set_fill(0.0)
-	await physics_frame
+	# 涂层的显隐在它自己的 `_physics_process` 里同步，一帧不保证早于本协程的恢复点
+	#（本文件后面"空瓶回到基准质量"那条也是等 2 帧）。
+	for i in 2:
+		await physics_frame
 	_check("empty bottle draws nothing", not _ink.visible)
 	_check("empty bottle costs no extra mass", is_equal_approx(_body.mass, _base_mass))
 

@@ -1,12 +1,13 @@
 # HUD
 
-游戏内 HUD，作为 `map/main.tscn` 的 `Hud` 节点实例（CanvasLayer，layer=1）。
+游戏内 HUD，作为 `ui/game_ui.tscn` 的 `Hud` 节点实例（CanvasLayer，layer=1）。
+`game_ui.tscn` 由 `root/root.tscn` 挂在 `UI` 容器下，所以 HUD 与关卡不在同一棵子树。
 墨水瓶是血条位（图标仍是静态贴图）、横条是蓝条数值位。
 右上角退出按钮回主菜单。
 
 ## 横条数据源
 
-`hud.gd` 的 `health_path`（默认 `^"../Player/InkHealth"`）指向玩家墨水生命值节点
+`hud.gd` 的 `health_path`（默认 `^"../Player/InkHealth"`，找不到就按 `player` 组找）指向玩家墨水生命值节点
 `actor/player/src/ink_health.gd`。`_ready()` 里连 `changed` 并读一次 `ratio()`，
 以后每次 `add()` / `reduce()` 都把 `StatusBar.value` 设成 `ratio() * 100`。
 接不到节点（单独预览 `hud.tscn`）时才退回 `bar_ratio` 占位。
