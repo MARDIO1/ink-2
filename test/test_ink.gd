@@ -137,7 +137,7 @@ func _run() -> void:
 	_check("the liquid square is not a shape node either",
 		not _liquid.has_method("build_shape") and not _liquid.has_method("get_shape"))
 	_check("player keeps its two shape children", _player.collect_shapes().size() == 2 and _body.shapes.size() == 2)
-	_check("player baseline pixels unchanged", baseline == 3486)
+	_check("player baseline pixels unchanged", baseline == 3304)
 	# 0. 生命值接口：查询 / 加 / 减 / 夹取 / 只在真变化时广播
 	_health.changed.connect(_on_health_changed)
 	_health.ink = _health.max_ink

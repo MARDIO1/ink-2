@@ -21,6 +21,8 @@ signal changed
 @export var max_ink: float = 100.0
 ## 当前墨水量，0..max_ink。查询直接读；改走 `add()` / `reduce()`。
 @export var ink: float = 100.0
+## 伤害闸门。创造模式关掉它 —— 画布的记账走 `reduce()`，不经过这里。
+@export var damage_enabled := true
 
 
 #region 接口
@@ -39,6 +41,13 @@ func add(amount: float) -> void:
 ## 减墨水（受伤、施墨）。减到 0 就停。
 func reduce(amount: float) -> void:
 	_write(ink - amount)
+
+
+## 伤害统一入口（碰撞伤害接过来时走这里）。闸门关掉时什么伤害都进不来。
+func damage(amount: float) -> void:
+	if not damage_enabled:
+		return
+	reduce(amount)
 
 
 ## 唯一的写入口：夹取到 0..max_ink，只在真的变了时才广播。

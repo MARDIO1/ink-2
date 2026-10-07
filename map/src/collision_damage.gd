@@ -68,6 +68,9 @@ func _start() -> void:
 	_protected = [_player.get_node("Arm").body, _player.get_node("Arm/Hand").body]
 	_main.set_physics_process(false)
 	_main.world.contact_events_enabled = false
+	# 临时关闭 CCD：全局子步（ccd_enabled）+ Rapier 世界 CCD 子步一起关，允许穿模换帧时间；恢复=删这 3 行。
+	_main.world.ccd_enabled = false
+	_main.world.rp_ccd_substeps = 0
 	process_physics_priority = _main.process_physics_priority + 1
 
 
@@ -140,6 +143,13 @@ func _step(delta: float) -> Dictionary:
 	physics.cull_freeze(Rect2(_camera.get_screen_center_position() - size * 0.5, size), [_player.body])
 	for body in physics.bodies:
 		body.refresh_com()
+	# 灰尘闸门：引擎的 PWorld.step() 在算子步之前先清掉又轻又快的灰尘（pworld.gd:1678）。
+	# 本节点接手步进后必须补上这一句，否则 debris_max_mass / debris_min_speed 在游戏里是死旋钮，
+	# 而子步数取的是全世界最快的那个刚体 —— 一个灰尘就能把全世界的子步顶满。
+	var culled: int = physics.cull_fast_debris()
+	physics.last_debris_removed = culled
+	if culled > 0:
+		_drop_culled_nodes()
 	var count: int = physics._compute_substeps(delta)
 	physics.last_substeps = count
 	if profile_enabled:
@@ -166,6 +176,28 @@ func _step(delta: float) -> Dictionary:
 	if profile_enabled:
 		_profile.step_us = _profile.get("step_us", 0) + Time.get_ticks_usec() - profile_start
 	return result
+
+
+## cull_fast_debris() 绕过节点层删刚体，而 _body_nodes 与 world.bodies 是按下标一一对应的
+## （引擎在 pixel_world.gd:717 realign_body_nodes() 的注释里写明这条不变量与静默错配的后果）。
+## 所以删完必须重新对齐，并把已经不在世界里的刚体节点回收掉。
+## 被清的灰尘一定不带关节：cull_fast_debris 用 _interactive_bodies() 放过了抓着的和挂关节的
+## （pworld.gd:2831），所以这里不用碰关节表。
+## 渲染不在这里全量同步 —— _physics_process 末尾已经 prune 过一次。
+func _drop_culled_nodes() -> void:
+	var live: Dictionary = {}
+	for body in _main.world.bodies:
+		live[body] = true
+	var nodes: Array = _main._body_nodes.duplicate()
+	_main.realign_body_nodes()
+	for node in nodes:
+		if not is_instance_valid(node):
+			continue
+		var body = node.get("body")
+		if body != null and not live.has(body):
+			node.queue_free()
+
+
 #endregion
 
 
@@ -184,8 +216,13 @@ func calculate(world, player_body: PBody = null, protected_bodies: Array = []) -
 		_forces.sample_contacts(contacts, _main.fixed_dt / world.last_substeps)
 	if is_instance_valid(_feet):
 		_feet.update_support(contacts)
+	# 轻碎片豁免：一个子步只建一次集合，别在每对接触上重建（见 _dust_bodies）。
+	var dust: Dictionary = _dust_bodies(world, player_body, protected_bodies)
 	for contact in contacts:
 		if contact.approach <= min_approach:
+			continue
+		# 两头都是灰尘：两侧都被豁免，连冲量合成都不必算。
+		if dust.has(contact.a) and dust.has(contact.b):
 			continue
 		var impact: Dictionary = _impact(contact.points)
 		if impact.is_empty():
@@ -201,7 +238,7 @@ func calculate(world, player_body: PBody = null, protected_bodies: Array = []) -
 		for side in [[contact.a, a_origin, -normal, a_material, b_material, -1.0],
 				[contact.b, b_origin, normal, b_material, a_material, 1.0]]:
 			var body: PBody = side[0]
-			if protected_bodies.has(body):
+			if protected_bodies.has(body) or dust.has(body):
 				continue
 			var strength: float = world.material_strength(side[3]).x
 			if strength <= 0.0 and body != player_body:
@@ -219,6 +256,29 @@ func calculate(world, player_body: PBody = null, protected_bodies: Array = []) -
 	if profile_enabled:
 		_profile.damage_us = _profile.get("damage_us", 0) + Time.get_ticks_usec() - profile_start
 	return result
+
+
+## 轻碎片豁免：阈值直接用世界的 ccd_ignore_mass（0 = 关，引擎默认），与引擎
+## _exempt_bodies()（pworld.gd:1488）是同一个「灰尘」定义 —— 引擎既然不为「质量 <= 它」
+## 的刚体做防穿（一个 2x2 碎片就能逼全世界跑 334 子步，pworld.gd:93-103），也就不必为
+## 它们跑 _trace()/_damage_side() 那趟逐层厚度扫描；calculate() 是每个子步跑一次的
+## （_step 的子步循环里），碎块一多这趟扫描就是纯开销。
+## 豁免只针对「被撞的一方」；玩家、手臂/手、抓着的、挂关节的一律不在集合里
+## （与引擎 _exempt_bodies() 末尾 erase(_interactive_bodies()) 同义）。
+func _dust_bodies(world, player_body: PBody, protected_bodies: Array) -> Dictionary:
+	var out: Dictionary = {}
+	var limit: float = world.ccd_ignore_mass
+	if limit <= 0.0:
+		return out
+	var interactive: Dictionary = world._interactive_bodies()
+	for body: PBody in world.bodies:
+		if body == player_body or protected_bodies.has(body):
+			continue
+		if body.is_static or body.frozen:
+			continue
+		if body.mass <= limit and not interactive.has(body):
+			out[body] = true
+	return out
 
 
 func _damage_side(world, body: PBody, path: Array, attacker_material: int,

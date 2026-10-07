@@ -12,6 +12,7 @@ const MENU_SCENE := "res://ui/menu/menu.tscn"
 @export var debug_hud_path: NodePath = ^"../debugHUD"
 
 @onready var status_bar: ProgressBar = $Root/StatusBar
+@onready var ink_meter: Label = $Root/InkMeter
 @onready var debug_hud = get_node(debug_hud_path)
 
 var _health = null
@@ -27,7 +28,13 @@ func _ready() -> void:
 
 ## 横条 = 墨水量。只有接不到生命值节点时才退回 bar_ratio 占位。
 func _refresh_bar() -> void:
-	status_bar.value = (_health.ratio() if _health != null else bar_ratio) * 100.0
+	if _health == null:
+		status_bar.value = bar_ratio * 100.0
+		ink_meter.text = "墨水 -- px"
+		return
+	status_bar.value = _health.ratio() * 100.0
+	#只读瓶子自己的余量。画布各有各的账，屏幕上不该出现"全局已消耗"这种和画布绑在一起的概念。
+	ink_meter.text = "墨水 %d px" % int(round(_health.ink))
 
 
 ## 走 `_input` 不走 `_unhandled_input`：画布工具按钮（`Canvas/Buttons/*`）点过之后会占住焦点，

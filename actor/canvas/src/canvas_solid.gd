@@ -61,7 +61,7 @@ func solidify(surface, world) -> void:
 
 	#固化成功后清空画布上的蓝图墨水
 	if spawned > 0:
-		surface.clear()
+		surface.clear(false)      # 这些墨水已经变成刚体带走了，不能还回瓶子
 	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
 #endregion
 

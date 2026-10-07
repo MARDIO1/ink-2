@@ -23,6 +23,7 @@ const DIR := "res://actor/player/asset/"
 const SOURCES := [
 	["player_body.png", "player_body", 2, false, 5, 4],
 	["player_hand_unfold.png", "player_hand_unfold", 3, true, 0, 4],
+	["player_hand_grab.png", "player_hand_grab", 3, true, 0, 4],
 ]
 #endregion
 

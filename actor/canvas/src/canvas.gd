@@ -8,6 +8,7 @@ const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 @onready var solid = $CanvasSolid
 @onready var world = $".."
 @onready var buttons = $Buttons
+@onready var brush_panel = $BrushPanel
 #endregion
 
 
@@ -18,13 +19,17 @@ const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 		canvas_size = Vector2i(maxi(value.x, 1), maxi(value.y, 1))
 		if is_node_ready():
 			surface.canvas_size = canvas_size
+			_place_brush_panel()
 
 
 func _ready() -> void:
 	surface.canvas_size = canvas_size
+	_place_brush_panel()
+	set_brush_size(int(brush_panel.get_node("PenSlider").value))
 	surface.set_process_input(active)
 	set_process_input(active)
 	buttons.visible = active
+	brush_panel.visible = active
 	if not Engine.is_editor_hint():
 		_bind_buttons()
 #endregion
@@ -39,6 +44,7 @@ func _ready() -> void:
 			surface.set_process_input(value)
 			set_process_input(value)
 			buttons.visible = value
+			brush_panel.visible = value
 
 
 ## 清空画布墨水。
@@ -59,17 +65,44 @@ func return_to_canvas() -> void:
 ## 切换画笔/橡皮擦/普通手。
 func set_tool(tool: int) -> void:
 	surface.tool = tool
+
+
+## 直接按 px 设定笔触直径。
+func set_brush_size(px: int) -> void:
+	surface.brush_size = px
+	brush_panel.get_node("PenValue").text = "%d px" % px
+
+
+## 免墨水：创造模式里画图不该花瓶子里的墨（"重绘"也就不会再凭空生墨）。
+func set_ink_free(on: bool) -> void:
+	surface.ink_free = on
+#endregion
+
+
+#region 笔触面板
+#面板贴在画布右侧，画布尺寸变了就跟着挪。
+func _place_brush_panel() -> void:
+	brush_panel.position = Vector2(canvas_size.x + 12, 0)
 #endregion
 
 
 #region 按钮
 func _bind_buttons() -> void:
-	buttons.get_node("Brush").pressed.connect(set_tool.bind(SurfaceScript.Tool.BRUSH))
-	buttons.get_node("Eraser").pressed.connect(set_tool.bind(SurfaceScript.Tool.ERASER))
 	buttons.get_node("Hand").pressed.connect(set_tool.bind(SurfaceScript.Tool.HAND))
+	buttons.get_node("Brush").pressed.connect(set_tool.bind(SurfaceScript.Tool.BRUSH))
+	buttons.get_node("Rect").pressed.connect(set_tool.bind(SurfaceScript.Tool.RECT))
+	buttons.get_node("Circle").pressed.connect(set_tool.bind(SurfaceScript.Tool.CIRCLE))
+	buttons.get_node("Eraser").pressed.connect(set_tool.bind(SurfaceScript.Tool.ERASER))
+	buttons.get_node("Nail").pressed.connect(set_tool.bind(SurfaceScript.Tool.NAIL))
 	buttons.get_node("Redraw").pressed.connect(clear_canvas)
 	buttons.get_node("Generate").pressed.connect(generate)
 	buttons.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
+	brush_panel.get_node("PenSlider").value_changed.connect(_on_pen_slider_changed)
+
+
+#滑块带格子（step = 2），值域就是奇数直径 1..17。
+func _on_pen_slider_changed(value: float) -> void:
+	set_brush_size(int(round(value)))
 #endregion
 
 
@@ -95,6 +128,10 @@ func _input(event: InputEvent) -> void:
 				set_tool(SurfaceScript.Tool.ERASER)
 			KEY_4:
 				set_tool(SurfaceScript.Tool.NAIL)
+			KEY_5:
+				set_tool(SurfaceScript.Tool.RECT)
+			KEY_6:
+				set_tool(SurfaceScript.Tool.CIRCLE)
 			KEY_E:
 				generate()
 	#保存/读取走输入动作，别和上面的裸键 match 串成一个分支。

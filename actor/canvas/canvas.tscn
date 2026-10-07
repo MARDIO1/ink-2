@@ -38,37 +38,80 @@ script = ExtResource("3_solid")
 position = Vector2(-160, 0)
 z_index = 100
 
-[node name="Brush" type="Button" parent="Buttons"]
+[node name="Hand" type="Button" parent="Buttons"]
 offset_right = 148.0
 offset_bottom = 36.0
-text = "画笔"
+text = "普通手"
 
-[node name="Eraser" type="Button" parent="Buttons"]
+[node name="Brush" type="Button" parent="Buttons"]
 offset_top = 44.0
 offset_right = 148.0
 offset_bottom = 80.0
-text = "橡皮擦"
+text = "画笔"
 
-[node name="Hand" type="Button" parent="Buttons"]
+[node name="Rect" type="Button" parent="Buttons"]
 offset_top = 88.0
 offset_right = 148.0
 offset_bottom = 124.0
-text = "普通手"
+text = "矩形"
 
-[node name="Redraw" type="Button" parent="Buttons"]
+[node name="Circle" type="Button" parent="Buttons"]
 offset_top = 132.0
 offset_right = 148.0
 offset_bottom = 168.0
-text = "重绘"
+text = "圆形"
 
-[node name="Generate" type="Button" parent="Buttons"]
+[node name="Eraser" type="Button" parent="Buttons"]
 offset_top = 176.0
 offset_right = 148.0
 offset_bottom = 212.0
-text = "生成"
+text = "橡皮擦"
 
-[node name="ReturnToCanvas" type="Button" parent="Buttons"]
+[node name="Nail" type="Button" parent="Buttons"]
 offset_top = 220.0
 offset_right = 148.0
 offset_bottom = 256.0
+text = "钉子"
+
+[node name="Redraw" type="Button" parent="Buttons"]
+offset_top = 264.0
+offset_right = 148.0
+offset_bottom = 300.0
+text = "重绘"
+
+[node name="Generate" type="Button" parent="Buttons"]
+offset_top = 308.0
+offset_right = 148.0
+offset_bottom = 344.0
+text = "生成"
+
+[node name="ReturnToCanvas" type="Button" parent="Buttons"]
+offset_top = 352.0
+offset_right = 148.0
+offset_bottom = 388.0
 text = "重新回到画布"
+
+[node name="BrushPanel" type="Node2D" parent="."]
+z_index = 100
+
+[node name="Title" type="Label" parent="BrushPanel"]
+offset_right = 96.0
+offset_bottom = 24.0
+text = "笔触 px"
+
+[node name="PenSlider" type="HSlider" parent="BrushPanel"]
+offset_top = 30.0
+offset_right = 156.0
+offset_bottom = 50.0
+min_value = 1.0
+max_value = 17.0
+step = 2.0
+value = 7.0
+tick_count = 9
+ticks_on_borders = true
+
+[node name="PenValue" type="Label" parent="BrushPanel"]
+offset_top = 54.0
+offset_right = 156.0
+offset_bottom = 78.0
+text = "7 px"

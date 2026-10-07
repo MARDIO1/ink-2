@@ -75,6 +75,8 @@ centered = false
 
 [node name="InkHealth" type="Node" parent="." unique_id=2077019024]
 script = ExtResource("13_health")
+max_ink = 20000.0
+ink = 20000.0
 
 [node name="PlayerInput" type="Node" parent="." unique_id=452559037]
 script = ExtResource("2_input")

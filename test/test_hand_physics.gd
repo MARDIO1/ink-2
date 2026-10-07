@@ -31,6 +31,8 @@ func _run() -> void:
 	_test_box_pushup(rig)
 	_reset_rig(rig)
 	_test_free_box_reaction(rig)
+	_reset_rig(rig)
+	_test_hand_pose(rig)
 
 	print("[HandPhysics] %d passed, %d failed" % [_passed, _failed])
 	var scene: Node = rig["scene"]
@@ -481,6 +483,49 @@ func _test_free_box_reaction(rig: Dictionary) -> void:
 		"error=%.6f relative=%.8f" % [momentum_error, momentum_error / maxf(impulse_scale, 1.0)])
 	_check("free box/energy", _kinetic_energy([player, hand, box]) <= control.debug_active_power * DT * 1.001)
 	control._release_grab()
+
+
+## 抓握态是**美术贴图**（挂在渲染节点下的形状，只画不物理）：
+## 换图只许换画，质量 / 惯量 / 质心 / 位置与 Rapier 侧刚体数一个都不许动。
+func _test_hand_pose(rig: Dictionary) -> void:
+	print("[GameLoop] grip pose is art-only")
+	var control: Node = rig["control"]
+	var hand = rig["hand"]
+	var visual: Node2D = rig["scene"].get_node("Player/Arm/Hand/Visual")
+	var pose: Node2D = visual.get_node("PoseGrab")
+	var mass: float = hand.mass
+	var inertia: float = hand.inertia
+	var com: Vector2 = hand.local_com
+	var position: Vector2 = hand.position
+	var bodies: int = rig["world"].rp_body_count()
+
+	control.set_grip(true)
+	control._update_grip(DT)
+	_check("pose/grab art drawn", pose.visible and _drawn_pixels(visual) == 332,
+		"visible=%s pixels=%d" % [pose.visible, _drawn_pixels(visual)])
+	_check("pose/switch touches no physics",
+		hand.mass == mass and hand.inertia == inertia and hand.local_com == com
+			and hand.position == position and rig["world"].rp_body_count() == bodies)
+
+	control.set_grip(false)
+	control._update_grip(DT)
+	_check("pose/unfold art restored", not pose.visible and _drawn_pixels(visual) == 354,
+		"visible=%s pixels=%d" % [pose.visible, _drawn_pixels(visual)])
+	_check("pose/release touches no physics",
+		hand.mass == mass and rig["world"].rp_body_count() == bodies)
+
+
+## 渲染贴图里的非空像素数 —— 直接证明"手上画的是哪一张图"。
+func _drawn_pixels(visual: Node2D) -> int:
+	if visual.texture == null:
+		return -1
+	var image: Image = visual.texture.get_image()
+	var n := 0
+	for y in image.get_height():
+		for x in image.get_width():
+			if image.get_pixel(x, y).a > 0.0:
+				n += 1
+	return n
 
 
 func _linear_momentum(bodies: Array) -> Vector2:

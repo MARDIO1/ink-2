@@ -12,6 +12,13 @@
 接不到节点（单独预览 `hud.tscn`）时才退回 `bar_ratio` 占位。
 墨水值本身的接口见 `actor/player/doc/生命值.md`。
 
+左上角（瓶子图标正下方）的 `InkMeter`（`ui/hud/hud.tscn` 的 `Root/InkMeter`）读同一份
+`InkHealth`，显示**当前剩余**墨水「墨水 N px」= `ink`。接不到墨水源时显示「墨水 -- px」。
+
+⚠️ 这里只显示瓶子自己的余量，**不显示"已消耗"**：画布以后会有多张，各张画布自己记
+「我身上有多少墨」，全局的"消耗量"在屏幕上没有意义（详见 `actor/canvas/doc/画布.md`
+的「墨水账」）。
+
 
 ## 与调试 HUD 的关系
 Tab 在两套之间切换：`hud.gd` 读 `debug` 动作，把 `debug_hud_path`（默认 `../debugHUD`，即

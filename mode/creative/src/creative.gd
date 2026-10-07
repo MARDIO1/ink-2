@@ -86,6 +86,11 @@ func _enter() -> void:
 	var canvas := get_node_or_null(canvas_path)
 	_show_canvas(_canvas, false)
 	_show_canvas(_map_canvas, true)
+	_set_ink_free(true)
+	if _player != null:
+		var health = _player.get_node_or_null("InkHealth")
+		if health != null:
+			health.damage_enabled = false   # 创造模式不许掉血
 	set_physics_process(true)
 	print("CREATIVE on")
 
@@ -102,6 +107,11 @@ func _exit() -> void:
 		_body.sleep_timer = 0.0
 	_show_canvas(_map_canvas, false)
 	_show_canvas(_canvas, true)
+	_set_ink_free(false)
+	if _player != null:
+		var health = _player.get_node_or_null("InkHealth")
+		if health != null:
+			health.damage_enabled = true
 	print("CREATIVE off")
 
 
@@ -111,6 +121,13 @@ func _show_canvas(canvas, on: bool) -> void:
 		return
 	canvas.visible = on
 	canvas.active = on
+
+
+#创造模式画图不花墨水：两张画布都免账，免得切回去时账目错位。
+func _set_ink_free(free: bool) -> void:
+	for canvas in [_canvas, _map_canvas]:
+		if canvas != null:
+			canvas.set_ink_free(free)
 #endregion
 
 

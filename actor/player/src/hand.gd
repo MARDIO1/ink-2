@@ -7,6 +7,9 @@ const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 @onready var arm_body = $"../..".body
 @onready var player_body = $"../../..".body
 @onready var physics_world = $"../../../..".world
+## 抓握态的美术贴图挂在渲染节点下（只画不物理），按下左键换成它。
+@onready var visual = $"../Visual"
+@onready var pose_grab: Node2D = $"../Visual/PoseGrab"
 var arm_joint = null
 var pivot_joint = null
 var grip_joint = null
@@ -232,11 +235,21 @@ func _limit_power(force: Vector2, torque: float, hand_position: Vector2, delta: 
 
 #region 抓握
 @export_group("抓握")
-const FINGERTIP := Vector2(16.545, 2.121)
+## 指尖抓点：相对**手本质心**的局部偏移，单位 px。
+## 推导（换手、改图后照这个重算，别手调）：拿烘焙出来的 `player_hand_unfold_0.tres` 图，
+##   x = 图的宽度（最右列的右边缘）
+##   y = 最右那一列实心像素的**中位**
+##   再减去所有实心像素的质心。
+## 当前图 36x31：最右列 x=35 覆盖 y=10..14（中位 12.5），质心 (19.4548, 14.6215)
+##   → (36 - 19.4548, 12.5 - 14.6215) = (16.545, -2.121)
+const FINGERTIP := Vector2(16.545, -2.121)
 const GRAB_RADIUS := 0.72
 
 func _update_grip(_delta: float) -> void:
 	var requested: bool = _grip_override if _grip_override != null else Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	if pose_grab.visible != requested:
+		pose_grab.visible = requested
+		visual.refresh()
 	if not requested:
 		_release_grab()
 		return

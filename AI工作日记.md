@@ -574,3 +574,300 @@
 - 文档纠偏（本轮唯一写盘）：`actor/player/doc/脚.md:11` 还写着「手抓住世界时也不允许回复力矩 + grabbed_body 判据」，与代码/验收相反（`player_input.gd` 里 0 处 grab 引用），改成「抓住世界照样出力，判据只有 support != null」；同文件 :8 的 m·g·h 还是旧稿数字（≈2.7e8 @74 格），换成实测 m=3067.8、g=600、质心到接触 59 格 -> ≈1.1e8。`readme.md` 目录补 4 条（身体/脚/墨水/生命值）。
 - 未做：没 commit、没 checkout/reset；没动并行会话的 `actor/canvas/**`、`actor/nail/**`、`ui/hud/**`、`map/src/**`、`mode/**`、`project.godot`；`map/**`/`mode/**`/`actor/nail/**` 还没有模块 doc（不在本轮范围）。
 - 未删：`actor/player/asset/player_hand_grab.png`（抓握切换贴图还没做、无消费方）、用户录制 `test/low_frames_2026-10-07T03-05-31_11417500.jsonl`。
+## 2026-10-07 05:20 — 子步接管的收尾：ink-2 侧补回引擎 step() 的灰尘闸门
+
+- 用户转述引擎判词「子步被你接管了，得在你那边修」。核实成立：`map/src/collision_damage.gd:69` 关掉 `PixelWorld._physics_process`，`:74-99` 自己重写累加器，`:135-175 _step()` 复刻了 `addons/pixel_destruction/physics/pworld.gd:1664-1683 step()` 的**全部**步骤 —— 只差 `:1678 last_debris_removed = cull_fast_debris()` 这一句。
+- 缺口：`cull_fast_debris()`（`pworld.gd:2816`）是引擎用来在**算子步之前**清掉「又轻又快」灰尘的闸门（判据 `|v| + |ω|·r`，与子步估计同一个度量）；少了它，`debris_max_mass` / `debris_min_speed` 在 ink-2 是死旋钮（上一轮 `AI工作日记.md:352 / :370` 已记），而子步数取的是全世界最快的那个刚体。
+- 改法（只动 ink-2 两处，31 行；未碰引擎仓库、未 commit）：
+  - `map/src/collision_damage.gd:143-149`：在 `_compute_substeps()` **之前**调 `physics.cull_fast_debris()`（顺序与引擎 `step()` 一致），并存 `last_debris_removed`。
+  - `map/src/collision_damage.gd:184-195` 新增 `_drop_culled_nodes()`：`cull_fast_debris()` 走 `remove_body()` 绕过节点层，会破坏 `_body_nodes` ↔ `world.bodies` 的按下标一一对应（引擎在 `nodes/pixel_world.gd:717 realign_body_nodes()` 的注释里写明这条不变量与静默错配的后果）-> 先快照 `_body_nodes`，再 `realign_body_nodes()`，把 body 已不在世界里的节点 `queue_free()`。不碰关节表：`cull_fast_debris` 用 `_interactive_bodies()` 放过了抓着的/挂关节的（`pworld.gd:2831`）。渲染不在这里全量同步 —— `_physics_process:106` 末尾本来就 `renderer.prune(_live_ids())`。
+  - `map/main.tscn:28-29`：启用引擎 demo 自己的推荐值 `debris_max_mass = 16.0` / `debris_min_speed = 2000.0`（`src/demo/game.gd:107-108`），与场景里已有的 `ccd_ignore_mass = 16.0` 是同一个「灰尘」定义。⚠️ 这条**会删掉又轻又快的灰尘**（引擎明写「破坏体素守恒」），不想要就删掉这两行。
+- 验收（真实 `res://map/main.tscn`，headless 探针 `test/_probe_dust_gate.gd`，跑完即删）：8/8 PASS，exit 0 —— ①`auto_step` 为真且 `is_physics_processing()==false`（确认是游戏在步进）；②`debris_max_mass/min_speed` 真的是 16/2000（死旋钮变活）；③干净场景 `last_debris_removed==0`（不误删）；④注入「又轻又快」(4x3, mass 12, 5000px/s) 被清掉、⑤「又轻但慢」(12, 100px/s) 留着、⑥「重而快」(16x16, mass 256, 5000px/s) 留着；⑦清完之后 `_body_nodes` 与 `world.bodies` 长度相等且逐下标身份一致；⑧`last_substeps>=1`。附带确认子步公式：注入 5000 px/s 后 `last_substeps==42`，与 `ceil(5000/60/2)=42` 逐位吻合。
+- 未做/未查明：⑨**没有验证**这条能消掉 03:05 那份 F1 日志里的 12 个尖峰 —— 那份日志里除一个 frozen 的 id 23 外，动态体最大速度只有 776 px/s，**够不到 2000 的闸门**，按现有证据它当时不会触发；「谁把子步顶到 301」仍未定位，`_substeps_held` 的「抓取时只涨不落」迟滞（`pworld.gd:1659`）是下一个该查的地方，那在引擎侧。⑩没在真实玩法里量过闸门会不会误吃可见碎片 —— 需要用户自己 F1 录一段我再来分析；`last_debris_removed` 目前没进 HUD/日志（按「不要额外加东西」没加）。⑪引擎早先那条「质量小于某阈值的碎片不计算撞击伤害」不是性能杠杆：既有剖析里伤害余项≈0，大头是 `_contacts()` 构造与 ForceDebug 采样，所以本轮没做。⑫没 commit、没 checkout/reset。
+- 自测回归（`T:\GODOT\tool\Godot_v4.7.2-stable_win64_console.exe --headless --path T:\GODOT\ink-2`）：`test_collision_damage` 41/0 exit 0、`test_canvas` exit 0、`test_ink` 32/0 exit 0、`test_hand_jitter` exit 0；`test_game_control` 29 checks / **3 failures**（`actual partial foot contact acquired`、`walking pushes body and support oppositely`、`jump pushes support down`）—— **与本轮改动无关，改动前就是红的**：把 `map/main.tscn` 的 `debris_max_mass/debris_min_speed` 临时改回 0（闸门关 = 等价改动前行为）重跑，同 3 条 FAIL、逐字相同，随后已按原值还原（`restored-ok=True`）。这 3 条没修（不在本轮范围）。
+## 2026-10-07 13:00 — 查证：「上动画」（2a574c0）那次对 map/src/collision_damage.gd 改了什么、为什么
+
+- 只读查证，未改任何代码（只追加本日记）。
+- `git diff 2098869 2a574c0 -- map/src/collision_damage.gd` = 3 处，全在 `T:\GODOT\ink-2\map\src\collision_damage.gd`：
+  - `:7-8` 新增 `const NAIL_MATERIAL_ID := 4`、`const ANCHOR_TAG := "static_anchor_points"`。
+  - `:54-62` 新增 `_exit_tree()`：场景退出时把 body/shape 引用环解开、`remove_body()`、`world._rp = null`。
+  - `:477-492` `commit()` 改为「带锚点提交」：`body.tags.get(ANCHOR_TAG, {})` 经 `_anchor_map()` 作第 5 参传进 `fracture_pixels`；`result.removed > 0` 时对本体 + 每个碎块 `_update_anchors()`。新增 `:501 _anchor_map()`、`:512 _update_anchors()`。
+- 为什么：该提交自己的日记条目已经写明 —— `## 2026-10-06 20:51 - 实装可破坏钉子`（中键放单像素 grey1 钉子；含钉子的固化连通块成为静态体；破坏时把存活钉子传给引擎，未连接碎块转为动态）与 `## 2026-10-06 21:07 - 编辑器启动与退出闭环修复`（= `_exit_tree`）。配套引擎提交是 `864db8d feat: add anchored fracture and local solver controls`（2026-10-06 20:38:59，属 v0.3.9）；引擎侧签名在 `T:\GODOT\ink-2\addons\pixel_destruction\physics\pworld.gd:3012-3013`。所以这是**引擎新 API 的客户端接线**，不是顺手改玩法。
+- 「玻璃碎裂时还是好的」不能归因到这次改动（已核实）：引擎 `pworld.gd:3019` `anchor_mode = not static_anchors.is_empty()`；空字典时 `:3100 if anchor_mode:` 整段跳过（不动 `body.is_static`），`:3117` 走 `original_static and not dynamic_fragments` —— 没放钉子的刚体 `body.tags.get(ANCHOR_TAG, {})` 为空，`_anchor_map()` 返回 `{}`，与旧的四参调用等价。且与碎裂外观直接相关的 5 个参数（`:24-32` `crack_max_count=4` / `crack_pixels_per_branch=6.0` / `crack_spread_degrees=35.0` / `crack_turn_degrees=10.0` / `crack_turn_pixels=4`）在 `git diff 2098869 d1cf7ea`（= 2098869..HEAD）里一次都没出现。
+- 该文件之后只有一次实质改动：`d1cf7ea`（2026-10-07 02:55:57）删掉 `ccd_enabled` 导出及其 `world.ccd_enabled` / `rp_ccd_substeps` 两行、`_forces` 路径 `../HUD/ForceDebug` -> `../debugHUD/ForceDebug`、渲染同步重写为 `uses_internal_render` / `forget`。
+- 时间线（已核实）：2098869 玻璃碎裂效果 10-06 20:07:34 -> 864db8d 引擎锚定断裂 20:38:59 -> 2a574c0 上动画 21:48:47 -> d1cf7ea 10-07 02:55:57。
+- 真正的变量在引擎侧：`.gitignore:6` 忽略 `/addons/`，引擎代码在 ink-2 git 里没有记录；但 `T:\GODOT\bag` 留有当时构建 —— 玻璃碎裂前那版 `ink2_pre_v038_20261006\runtime\physics\pworld.gd`（hash `77C7F43A`，`fracture_pixels(body, removals, burst_speed, dynamic_fragments)` 四参，`Destruction.split` 两参）对比 上动画那版 `_addon_build\physics\pworld.gd`（mtime 2026-10-06 20:39:28＝紧跟 864db8d，hash `655E0E3F`，五参带锚点）。两版在**无钉子**路径只差两点：① `Destruction.split(s, min_fragment_pixels)` -> `Destruction.split(s, min_fragment_pixels, true)`（新 `adopt` 标志，引擎 `09362dd` 引入）；② `rebuild` 脏区由「单块合并 rect，分片时传空＝保守全量」改为 per-shape 脏区字典（+1 余量）。`local_connectivity` 快路径、`frag.is_static = ... and not dynamic_fragments`、碎块继承 `collision_layer/mask/gravity_scale`、`pixel_count()<=0` 跳过 —— 这两版**已经一样**；另外新版在求解阶段新增 op42 子迭代下发、并把 `control_force/control_torque` 并入合力。
+- 纠正一条记忆：`T:\GODOT\ink-2\addons\pixel_destruction` 现在是**真实目录**（不是指向 `T:\GODOT\bag\_addon_runtime` 的 junction；`_addon_runtime\physics\pworld.gd` 里连 `fracture_pixels` 都没有，是更老的弃用副本）。当前 `addons/pixel_destruction/physics/pworld.gd` mtime 2026-10-07 00:10、hash `EEC83ADA`、含 `PixelRaster`/`debris_max_mass` -> 是 v0.3.9 全量。
+- 未查明：备份命名与时间戳互相矛盾（`ink2_opt_before_20261006` / `ink2_opt_after_20261006` 与 `ink2_pre_v038_20261006` 里有两份同 hash `77C7F43A`），所以「玻璃碎裂那一刻装的到底是不是这份四参版」无法从 git 定论。
+## 2026-10-07 13:14 — 小碎片豁免撞击伤害（接到世界已有的 ccd_ignore_mass）+ 子步接管补记
+
+- 用户指令：「让gpt针对小型碎片进行优化，world里面ccdignore也打开」。
+- 「world 里 ccdignore 打开」——**已核实本来就开着，本轮没动**：`map/main.tscn:26` `ccd_ignore_mass = 16.0`，探针读回 `node=16.0 / world=16.0`（`addons/pixel_destruction/nodes/pixel_world.gd:248-261 push_physics_settings` 已经把它推进世界）。引擎默认是 `0.0`（`physics/pworld.gd:103`），是场景把它打开的；`ccd_enabled=true`、`rp_ccd_substeps=1`、`ccd_max_motion=2.0` 也一并读回。
+- 实装的优化（只动 `T:\GODOT\ink-2\map\src\collision_damage.gd`，+30 行；未碰引擎仓库、未 commit）：阈值**直接用世界已有的 `ccd_ignore_mass`**，没有新增任何旋钮/导出。
+  - `:216-217`：每个子步在接触循环之前建一次豁免集合（`calculate()` 是**每子步**跑一次的，见 `:156-172`）。
+  - `:238`：被撞的一方在豁免集合里就 `continue` —— 卡在 `_trace()` **之前**，省掉逐层厚度扫描 + `_damage_side()`。
+  - `:221-223`：两头都是灰尘时连 `_impact()` 的冲量合成也跳过。
+  - `:265-278 _dust_bodies()`：`0 = 关`（不开这个旋钮就零行为变化）；判据逐条对齐引擎 `_exempt_bodies()`（`physics/pworld.gd:1488-1497`）—— 非 static、非 frozen、`mass <= 阈值`，再去掉 `_interactive_bodies()`（抓着的 / 挂关节的）；额外排除玩家本体与 `protected_bodies`（手臂/手）。
+  - 为什么物理上说得通：引擎把「质量 <= ccd_ignore_mass」的刚体当作**不值得防穿**的灰尘（`pworld.gd:93-103`：一个 2x2 碎片能逼全世界跑 334 子步）；既然不为它防穿，也就不值得为它跑伤害管线。只豁免「被撞的一方」；灰尘当**攻击者**照旧算（那条在重的一侧，且本来就被 `:247 budget < strength` 挡住）。
+- 验收（真实 `res://map/main.tscn` + 真 Rapier/真材质，headless；临时探针 `test/_probe_dust_damage.gd` 跑完即删）：**13/13 PASS，exit 0**。
+  - 真场景世界：`ccd_ignore_mass=16.0`、`material_strength(1)=200`、`damage_scale=0.012`、`min_approach=300`（都是场景/脚本真值，没覆盖）；注入 2x2（mass 4）**在**豁免集合、6x6（mass 36）**不在**、玩家本体（mass 3067.789）**不在**。
+  - 真场景 + 合成接触 A/B：阈值 16 时 2x2 计划删 **0** 像素而 6x6 照删（总 4 像素）；把阈值改 0 后**同一个** 2x2 删 **2** 像素（总 6）。灰尘对灰尘：16 时 0、0 时 >0。
+  - 探针自造接触 dict 少了 `tangent_impulse` 会在 ForceDebug 采样处打 `SCRIPT ERROR`，那是探针的问题（真 Rapier 的接触点有 9 个字段，`test/test_collision_damage.gd:159-161` 就是在查它），不是游戏 bug。
+- 回归（headless）：`test_collision_damage` 41/0、`test_canvas` PASS、`test_ink` 32/0、`test_live_input` 6/0、`test_hand_jitter` exit 0。
+- 既有红项（**逐条 A/B 证明与本轮无关**：把 `_dust_bodies()` 首行插一句 `return out`（=功能屏蔽）重跑，数字逐位不变，随后已还原 `restored-ok=True`）：
+  - `test_upright` 18/2：`a full tumble ends upright` tail_rot=0.072>0.05、`a full tumble does not jitter` tail_w=0.0540>0.02。04:54 记的是 18/1 / tail_w=0.0392，所以轨迹在 04:54 之后变过；把场景 `debris_max_mass/min_speed` 临时改 0 重跑，同样是 0.072/0.0540 -> **也不是** 05:20 的灰尘闸门。而且这条测试本来就把伤害整条关掉（`test/test_upright.gd:77/:163` `min_approach = 1.0e12`），构造上不可能被本轮影响。
+  - `test_hand_physics` 47 passed / 3 failed（rise 19.416 / 19.344 / 8.311）；`test_game_control` 29 checks / 3 failed（3 条与 05:20 记录逐字相同）。
+- 未做 / 未查明：①**没有**在真窗口/真玩法里量过这条优化的收益 —— 上一轮剖析里伤害余项≈0（大头是 `_contacts()` 构造与 ForceDebug 采样，见本文件 `:586 ⑪`），所以它按「不该为灰尘算」的语义优化交付，**不声称帧率收益**；②没在真实玩法里确认「灰尘不再被撞碎」观感可接受（等用户 F1 录一段再分析）；③`test_upright` 从 18/1 变 18/2 的真正原因仍未定位（只证明了不是本轮、也不是灰尘闸门）；④没 commit、没 checkout/reset；⑤探针与 `.uid` 已删，`test/` 下无残留。
+- 补记（上一轮只在对话里答过，用户要求维护文档）：「引擎说子步被你接管了」指的是 `map/src/collision_damage.gd` 里的**两段** ——
+  - **段A** `:69` 关掉引擎的 `PixelWorld._physics_process`（`nodes/pixel_world.gd:510-553`，`_main` 就是根节点 `Main`），改成 `:74-120` 自己写累加器（`:78-97`）与渲染同步（`:102-117`）。
+  - **段B（真正的「子步」）** `:135-175 _step()` 复刻了 `physics/pworld.gd:1664-1683 step()`：`:140-142 refresh_com`、`:146-147 cull_fast_debris`、`:150-151 _compute_substeps`、`:156-159 for i in count: physics._substep_rapier(delta/count)`。子步**数量**仍然由引擎算（`pworld.gd:1622`）；被接管的只是「每个子步之后立刻结算一次伤害」这个循环 —— 因为接触只在原生子步里刷新（`pworld.gd:1233`），而 `world.step()` 会把 N 个子步一口气跑完。
+  - 顺带：`:70 contact_events_enabled = false`（引擎在 `pworld.gd:1398-1399` 早退），ink-2 改成自己查接触（`:343 _contacts()`），并在 `:157` 每个子步前清 `physics.contacts`；`:71` 把优先级抬到世界之后。
+## 2026-10-07 13:40 — 复核：小碎片豁免已就位 + 安装版确为 v0.3.9（逐字节）
+
+- 本轮只读复核（未改任何代码；唯一写盘 = 本日记）。
+- 「world 里 ccdignore 打开」再确认：`map/main.tscn:26 ccd_ignore_mass = 16.0` 在 `git diff` 里是**上下文行**（HEAD 本来就有，不是本轮加的）；`addons/pixel_destruction/nodes/pixel_world.gd:258 world.ccd_ignore_mass = ccd_ignore_mass` 把它推进世界，引擎默认 `0.0`（`physics/pworld.gd:103`）。`:28-29 debris_max_mass=16.0 / debris_min_speed=2000.0` 才是上一轮（05:20）新增的 +2 行。
+- 小碎片豁免仍在位（`map/src/collision_damage.gd`，+58/-1，未 commit）：`:216-217` 每子步建一次豁免集合、`:221-223` 灰尘对灰尘跳过 `_impact()`、`:238` 被撞一侧在集合里就在 `_trace()` 之前 `continue`、`:265-278 _dust_bodies()`（判据对齐 `physics/pworld.gd:1488-1497 _exempt_bodies()`，再排除玩家/臂/手；`0 = 关` -> 零行为变化）。
+- 回归（本轮刚重跑，非转述）：`test_collision_damage` **41 checks / 0 failures / exit 0**（`T:\GODOT\tool\Godot_v4.7.2-stable_win64_console.exe --headless --path T:\GODOT\ink-2 --script res://test/test_collision_damage.gd`）。
+- 安装版版本钉死（本轮新增证据）：`T:\GODOT\ink-2\addons\pixel_destruction` 是**真实目录**（非 junction）；`physics\pworld.gd` mtime `2026-10-07 00:10:17`（tag v0.3.9 提交时间 2026-10-06 23:59:40 之后 11 分钟）；与引擎源码 `Godot_2DVoxel_Addons\src\physics\pworld.gd` 逐字对比**只差 9 行**，全部是安装时的 `res://src/...` -> `res://addons/pixel_destruction/...` preload 路径重写（`git diff --no-index --numstat` = 9/9）-> 安装版 = v0.3.9，逐字节可信。md5（installed）= `63099C85F97739BBFC741F3C6301717F`、md5（v0.3.9 src）= `4DBAD441...`。
+- 纠正 13:00 条目笔误：installed `pworld.gd` 里 **没有** `PixelRaster`（0 处；栅格化原生在 gdext 侧，不在这个 gd 文件里）；v0.3.9 判据用 `debris_max_mass`（installed 7 处、`_addon_build`/`_addon_runtime` 均 0 处）更可靠。
+- 工作区：`git status --short` 仅 `AI工作日记.md` / `map/main.tscn` / `map/src/collision_damage.gd` 三个 M；`test/` 下**无** `_probe*/_shot*` 残留；`test/low_frames_2026-10-07T03-05-31_11417500.jsonl` 是**已跟踪**文件（所以不显示为 untracked），不是散落文件。
+- 引擎仓库 `T:\GODOT\bag\Godot_2DVoxel_Addons`：`stable @ 85b79f7` = tag `v0.3.9`，`git status` 干净 -> 本轮与上一轮都没碰引擎。
+- 未做/未验证（同 13:14）：13/13 灰尘探针是**上一轮**证据（探针已删），本轮**没重跑**；没在真玩法里量收益（伤害余项≈0，不声称帧率）、没做「灰尘不再被撞碎」观感的真实验收；`test_upright` 18/2 仍未查清；没 commit / 没 checkout/reset。
+- 工具坑（值得记）：PS 5.1 `Get-Content` 默认按 GBK 读 UTF-8-no-BOM 中文文件，既出乱码、又会**吞掉换行**（本次把 `map/src/collision_damage.gd` 少算 33 行）-> 数行号用 `rg`、读中文加 `-Encoding UTF8`；纯 LF 有效 UTF-8 已用 Python 复核（0 个 U+FFFD）。
+## 2026-10-07 13:34 — 只关 CCD（最小改动），碎片优化一行未动
+
+- 用户指令：「最小改动，只把ccd关一下，然后碎片优化保持昨天的原样」。理解 = 只关 CCD；小碎片豁免 / 灰尘闸门一行不动（未提交代码保持现状）。
+- 落点：`T:\GODOT\ink-2\map\src\collision_damage.gd:71-73`（`_start()` 里，紧挨 `:70 contact_events_enabled = false`）新增 3 行：注释 + `_main.world.ccd_enabled = false` + `_main.world.rp_ccd_substeps = 0`。
+  - 为什么是这两行：引擎 `addons/pixel_destruction/physics/pworld.gd:86 ccd_enabled := true` 是总闸 —— 关掉后 `_compute_substeps:1627` 直接早退（子步塌回 1），且 `:1008-1011` 会给每个刚体推 Rapier CCD=0；`:712 rp_ccd_substeps := 1` 是 Rapier 世界 CCD 子步（`:949-952` op23）。两条一起关才等于 2026-10-06 16:50「游戏层关闭CCD对照」的口径。
+  - 为什么放游戏侧：`nodes/pixel_world.gd:61` 只导出了 `ccd_ignore_mass`，`ccd_enabled` 没暴露到场景；引擎层不动 -> 只剩游戏侧这一行。这与 2026-10-07 01:43「CCD 交回世界层统一管理」相反，属本轮用户明确要求；**恢复 = 删这 3 行**。
+- 验收（真 `res://map/main.tscn` + 真 Rapier，headless 探针 `test/_probe_ccd_off.gd`，跑完即删）：`ccd_enabled=false`、`rp_ccd_substeps=0`、`ccd_max_motion=2.0`；空场景 `_compute_substeps(1/60)=1`。A/B：注入 32x32 刚体、v=5000 px/s -> CCD 关时子步 **1**；把开关打回打开、同一个刚体 -> **42**（= ceil(5000/60/2)）—— 确认真的关掉了。
+- 回归（headless 全量重跑）：`test_collision_damage` **41/0**、`test_canvas` 0、`test_ink` 32/0、`test_hand_jitter` 0、`test_live_input` 6/0 —— 与关 CCD 前一致。
+- 变化项（关 CCD 的真实副作用，如实记，没当 bug 修）：`test_upright` 由 **18/2 变 18/1**，红的换了人（现在红 `without the controller the same knock tips the player over`；原来是 `a full tumble ends upright` + `...does not jitter`）；`test_hand_physics` 由 **47 passed / 3 failed 变 46 / 4**（多红一条，`rise=8.311` 现在报 ERROR: FAIL）。`test_game_control` 仍 29 checks / 3 failures（与关 CCD 前逐字相同）。都是既有红项，只是条数/项变了 —— 说明关 CCD 确实改了物理，不是无副作用开关。
+- 风险提醒：关 CCD = 允许穿模。2026-10-06 16:50 关掉后 17:07 出现过「爆卡」诊断（最差 6.28 FPS、1907 接触对，判定为穿透 + 高速密集接触叠加的追帧正反馈），当时还加了看门狗。本轮用户明确要「暂时」关，故照做；不好就删 `:71-73` 三行。
+- 未做：小碎片豁免（`:216-217 / :238 / :265-278`）与 05:20 灰尘闸门（`_step` +7 / `_drop_culled_nodes` +22 / `main.tscn` debris 两行）**一行未改**；引擎仓库未碰；没 commit / 没 checkout/reset。
+- 备份：动手前把当时未提交改动整份存成 `C:\Users\29115\AppData\Local\Temp\ink2_uncommitted_20261007.patch`（该补丁不含本次 CCD 3 行）。
+
+## 2026-10-07 13:57 — 倒回官方 v0.3.8 实测：安装版逐字节钉死 + 游戏侧兼容补丁 + 一条关键结论
+
+- 用户指令：「倒回到3.8的版本测试一下」。下面凡是"已核实"都带本轮可复现命令；引用的 3.9 数字明确标成引自日记、非本轮同树 A/B。
+
+### 1. 版本来源与钉死（已核实，逐字节）
+- 来源：引擎仓库 `T:\GODOT\bag\Godot_2DVoxel_Addons`（**只读**，`stable @ 85b79f7` = tag `v0.3.9`，`git status` 干净）-> `git archive v0.3.8` 取官方 tag 树 -> 跑树自带 `tools/build_addon.py` 生成 addon -> 覆盖安装。引擎仓库本轮一行未改。
+- 安装版 native 与 tag **逐字节相同**（`git archive` + `tar -x` 二进制安全提取后比对 md5）：
+  - `fastphys.dll` 526459 B md5 `BB198115242CDF0E0439EE8B3857E4EF`
+  - `rapier_bridge.dll` 1965056 B md5 `AFE02D20441CBF4C5ACC97985FAA5FF8`
+- GDScript 侧：安装版 `addons\pixel_destruction\physics\pworld.gd` vs tag `v0.3.8:src/physics/pworld.gd` 的 `git diff --no-index --numstat` = **9/9**，逐行看全是 `res://src/...` -> `res://addons/pixel_destruction/...` 的 preload 重写（与 13:40 核验 v0.3.9 时同一口径）-> 安装版 = 官方 v0.3.8。
+- 安装版 `fracture_pixels` 落在 `physics\pworld.gd:2858`，签名 `(body, removals, burst_speed := 0.0)` 三参 —— 与 tag 同行号同签名。
+- **测量坑（值得记）**：`git show v0.3.8:gdext/fastphys.dll > file` 在 PowerShell 里是**文本重定向**，把二进制变宽成 1049616 B（约 2 倍），得到假 md5 `9572A1A4...`。取 tag 内二进制只能用 `git archive` + `tar -x`（或字节安全写）。差点据此误判"安装版不是官方 3.8"。
+
+### 2. 备份 / 回滚（已核实存在）
+- `T:\GODOT\bag\ink2_addon_v039_backup_20261007_134434\`：`pixel_destruction\` 全量 83 文件 + `gamesrc\{main.tscn, collision_damage.gd, AI工作日记.md}`。这是"回 3.9"的唯一必要备份。
+- ⚠️ 备份里的 `fastphys.dll` = 621476 B md5 `F46FEF1FE6E0212D6840513F037178B3`，**不等于**官方 tag v0.3.9 的 `gdext/fastphys.dll`（528804 B md5 `AA35275F60C5A3B566D3A41A8199F934`）-> 之前跑着的 3.9 fastphys 是**本地 cargo 构建版**，不是 tag 预编译件；`rapier_bridge.dll` 则与官方一致（1924608 B `54FA8ECC...`）。记录在案：以后说"3.9"要区分"官方 tag 件"和"本地构建件"。
+- 换装时 Windows 在安装目录留下两个隐藏残留：`native\~fastphys.dll`、`native\~fastphys.dll~RFca2ad2.TMP`，两者都是 621476 B md5 `F46FEF1F...`（就是上面那个旧 3.9 本地构建版，覆盖时被留下的）。**本轮未删** —— 用户说过"遗留垃圾肯定删掉"，但这两个正好是回滚证据，且与备份同 hash，等用户定夺 3.8/3.9 后再删更稳。
+
+### 3. 关键结论：官方 v0.3.8 比"玻璃碎裂那版"还老
+- `git grep -c <符号> <tag> -- src` 逐 tag 实测（已核实）：以下符号在 **v0.3.5 / v0.3.6 / v0.3.7 / v0.3.8 全部 = 0 处，只在 v0.3.9 出现**：`ccd_ignore_mass`、`cull_fast_debris`、`debris_max_mass`、`debris_min_speed`、`realign_body_nodes`、`static_anchors`、`dynamic_fragments`、`control_force`、`control_torque`、`additional_solver_iterations`。
+- 所以"倒回官方 3.8"一次同时失去 5 件事：① 灰尘闸门 `cull_fast_debris`（`debris_max_mass/min_speed` 变死旋钮）；② CCD 质量豁免 `ccd_ignore_mass`（轻碎片不再被免防穿）；③ 钉子锚点 `static_anchors`；④ 碎块动态化 `dynamic_fragments`；⑤ 手部 `control_force/control_torque` + 子迭代 `additional_solver_iterations`。**用户要"保持原样"的碎片优化在 3.8 上是死代码**（这正是 3.9 为性能问题加的）。
+- 用户记忆里的"玻璃碎裂那版"≠官方 3.8（已核实）：`T:\GODOT\bag\ink2_pre_v038_20261006\runtime\physics\pworld.gd:2456` 的签名是**四参** `fracture_pixels(body, removals, burst_speed, dynamic_fragments)`，而官方 tag v0.3.8 是**三参**。同目录 `fastphys.dll` = 618727 B md5 `9AF53CE85DE18259FC3C1A44B835DECA`，既非官方 3.8 也非官方 3.9 -> 那是介于 3.8 与 3.9 之间的本地开发版。要"回到玻璃碎裂那会儿"，官方 tag 3.8 并不等于那个状态。
+- 3.8 的碎块语义（已核实，行号）：`addons\pixel_destruction\physics\pworld.gd:2944` 硬编码 `frag.is_static = body.is_static`（碎块**继承**母体 static，也从不去改母体 `is_static`）；`:2940-2953` 建碎块只拷位姿/`is_static`/`awake`/速度，**不拷** `collision_layer/mask/gravity_scale/friction/restitution`；全文没有锚点模式。
+
+### 4. 游戏侧兼容补丁（本仓库，全部未 commit）
+- `map/main.tscn`：删 5 行 3.9 独有属性（`max_angular_velocity`/`ccd_ignore_mass`/`min_fragment_pixels`/`debris_max_mass`/`debris_min_speed`），否则 3.8 加载场景报未知属性。现存 `git diff` = **-3 行**（`debris_*` 两条本来就是 05:20 的未提交新增，删掉后与 HEAD 等值）-> **回 3.9 必须把这 5 行全部加回**，否则灰尘闸门是关的。已核实当前文件对这 6 个属性 0 残留。
+- `map/src/collision_damage.gd`：`_engine_v39` 开关（`:38` 声明、`:73` 由 `world.has_method("cull_fast_debris")` 判定）+ 守卫 `cull_fast_debris`/`last_debris_removed`(`:153-155`)、`realign_body_nodes`(`:197`)、`ccd_ignore_mass`(`:276`)、`fracture_pixels` 5 参/3 参(`:522-526`)。
+  - **本轮修掉一个真 bug（已核实）**：`_engine_v39` 默认值是 `true`，而 `_ready` 只做 `call_deferred("_start")`（`:50-52`）；`test/test_collision_damage.gd:43` 用 `Damage.new()` 建对象，`_ready/_start` **根本不跑** -> `:276`/`:522` 走 3.9 分支 -> 每个子步刷 `Invalid access to property or key ccd_ignore_mass on RefCounted (pworld)`。改成**对传入的 world 直接探测** `world.has_method("cull_fast_debris")`（`:276`、`:522`），不再依赖 `_start` 时序 -> 该测试 SCRIPT ERROR 归零。
+- `actor/player/src/hand.gd`：`_engine_v39`（`:21` 声明、`:36` 判定）+ `additional_solver_iterations`(`:38-39`) + `_exit_tree` 归零(`:51-57`) + `_apply_internal_wrench`(`:171-181`) 在 3.8 走**冲量回退**（`apply_central_impulse`/`apply_torque_impulse`，取自 `2bc508a~1`）。这就是 3.8 上"手"的真实行为，与 3.9 的 `control_force` 模型不同，属已知差异不是 bug。
+- `map/src/debug_hud.gd`：`:58` `has_control_force` + `:62-63` 守卫 `control_force/control_torque`。
+
+### 5. 3.8 全量回归（本轮真跑，两个快照）
+- 运行方式：`T:\GODOT\tool\Godot_v4.7.2-stable_win64_console.exe --headless --path T:\GODOT\ink-2 --script res://test/<name>.gd`。
+- 3.9 一列**全部引自日记 `:644`/`:645`（13:34 口径）**，不是本轮同树 A/B —— 原因见下条。
+- ⚠️ **无法在 3.9 上重测基线**：`addons\pixel_destruction\native\{fastphys,rapier_bridge}.dll` 正被运行中的 Godot 编辑器独占锁（`[System.IO.File]::Open(path,Open,ReadWrite,None)` 报"正由另一进程使用"）-> 换 DLL 会失败。要重测必须先关编辑器。
+- 快照 A = 13:48，快照 B = 13:56:10。`test_collision_damage` / `test_canvas` / `test_hand_physics` / `test_game_control` / `test_upright` / `test_live_input` / `test_hand_jitter` 两次逐字一致；**只有 `test_ink` 从 32/0 变 32/1**（红 `ratio tracks ink`）—— addon 两次相同，用户当时正在并行改 `ui/hud/*`、`map/asset/map.tscn`、`actor/player/player.tscn` 等（`git status` 13:55 已多出 9 个 M）-> 这条回归**归因于用户手上的改动，不是 3.8**。
+
+| 测试 | 3.9（日记 :644/:645，13:34 口径） | 3.8 快照 A/B（本轮） |
+|---|---|---|
+| test_ink | 32/0 exit 0 | 32/0 -> **32/1** exit 1（红 ratio tracks ink，用户改动） |
+| test_live_input | 6/0 exit 0 | 6/0 exit 0 |
+| test_hand_jitter | exit 0 | exit 0 |
+| test_collision_damage | 41/0 exit 0 | **41/1** exit 1（红 fracture preserves material and collision properties） |
+| test_game_control | 29/3 | **29/2** exit 1（红 actual partial foot contact acquired / jump pushes support down） |
+| test_upright | 18/1 | 18/1（红 without the controller the same knock tips the player over） |
+| test_hand_physics | 46 passed / 4 failed | 46 条 / **42 passed 4 failed** + **2 SCRIPT ERROR** |
+| test_canvas | exit 0 | **exit 1**（[Canvas] resize, save/load, nail solidify/break: FAIL） |
+
+- 失败项根因（逐条已核实到行）：
+  - `test_canvas`：`test/test_canvas.gd:47` 要求切开后的碎块 `not is_static`、`:51` 要求钉子被删掉后 `not nailed.is_static`。3.8 `pworld.gd:2944` 让碎块继承 `is_static` 且从不改母体 -> 两条都不成立。钉子/锚点语义（`static_anchors`）是 3.9 才有，**这是 3.8 的硬缺口，不是补丁没打全**。合成断言只打一行 FAIL，未逐项插桩定位到具体是 :47 还是 :51（避免动测试文件）。
+  - `test_collision_damage` 唯一红项 `test/test_collision_damage.gd:213-217`：3.8 建碎块不拷 `friction/restitution/collision_layer/collision_mask/gravity_scale`（`pworld.gd:2940-2953`），所以 `properties` 为假。
+  - `test_hand_physics` 2 条 SCRIPT ERROR = 测试自己直接读 `player.control_torque` / `hand.control_torque`（`test/test_hand_physics.gd:108-110, 114-115`），3.8 的 PBody 没这两个属性。**没改测试** —— 那几条正是为 3.9 力模型写的，改成跳过等于静默丢覆盖，宁可留 ERROR。
+  - `test_game_control` 3.8 少一条红（`walking pushes body and support oppositely` 在 3.9 记录里是红的、3.8 转绿），差异可归因手部力模型回退（`hand.gd:171-181`）；`test_upright` 红项名与 3.9 记录相同。
+
+### 6. 生效条件与未做
+- **必须重启 Godot 编辑器才生效**（用户编辑器当时在跑，PID 178332，`menu.tscn - ink2`）：`.dll` 已被编辑器加载并锁住，磁盘上换版本不会热生效。
+- 未做：① 没在真玩法里玩（用户说自己录）；② 没重测 3.9 基线（DLL 被锁，见 5）；③ 没 commit / 没 checkout / 没 reset；④ 没动任何测试文件；⑤ 没删 `native\~fastphys.dll*` 两个隐藏残留（见 2）；⑥ 没碰引擎仓库。
+- 待用户定夺：**3.8 是否继续**（钉子已废、碎片优化变死代码，见 3）还是**回 3.9**（回滚 = 还原备份 + 把 `main.tscn` 5 行加回）。
+
+## 2026-10-07 14:03 — 从 v0.3.8 回退到 v0.3.9（保留"无 CCD"口径）+ 首次量到同树 3.9 真基线
+
+- 用户指令：「效果没有想象中的好，返回3.9无CCD版本」。目标状态 = HEAD(`c2b78bd`) + 未提交件{灰尘闸门 / 小碎片豁免 / CCD 关闭}，且不含任何 3.8 兼容开关。
+- 回退基准校验（已核实）：备份 `T:\GODOT\bag\ink2_addon_v039_backup_20261007_134434\gamesrc\` 里的 `collision_damage.gd` / `main.tscn` 就是"13:34 只关 CCD 之后、换装之前"的状态 -> 直接当基准用，比重新拼补丁可靠。
+
+### 1. addon 还原（已核实）
+- 把备份 `pixel_destruction\` 全量覆盖回 `T:\GODOT\ink-2\addons\pixel_destruction\`（含隐藏文件共 80 个）。逐文件 md5 比对：**80/80 与备份一致，0 条不一致**。
+- DLL：`fastphys.dll` 621476 B md5 `F46FEF1FE6E0212D6840513F037178B3`、`rapier_bridge.dll` 1924608 B md5 `54FA8ECCFF212D5B47D02AF5819F018D`。运行期自证：测试日志出现 `[PixelRaster] 类已注册`（3.8 原生没有 PixelRaster）-> 3.9 原生确实在跑。
+- 文件清单双向比对（含隐藏）：仅备份有 = 0、仅安装版有 = 0 -> 没有 3.8 独有文件残留。
+- ⚠️ 备份里的 `fastphys.dll` **不是**官方 tag v0.3.9 的 `gdext/fastphys.dll`（528804 B `AA35275F60C5A3B566D3A41A8199F934`），是**本地 cargo 构建版**；用户先前跑的就是它，故按备份还原。要换官方 tag 件只需替换这两个 dll（本轮未做）。
+
+### 2. 游戏侧回退（已核实）
+- `map/main.tscn`：补回 5 行（`max_angular_velocity`/`ccd_ignore_mass`/`min_fragment_pixels`/`debris_max_mass`/`debris_min_speed`），落点 `:25-29`；与备份 `gamesrc\main.tscn` 的 `git diff --no-index` **无差异**。
+- `map/src/collision_damage.gd`：直接用备份 `gamesrc\collision_damage.gd` 覆盖，md5 `609606D801757516D61C45F1472AA6D9`（与备份逐字节一致）。实测 `_engine_v39` 残留 **0 处**；保留项 `ccd_enabled = false`(`:72`)、`rp_ccd_substeps = 0`(`:73`)、`cull_fast_debris`(`:149`)、`realign_body_nodes`(`:192`)、`ccd_ignore_mass`(`:270`)、五参 `fracture_pixels`(`:515`)。
+- `actor/player/src/hand.gd`、`map/src/debug_hud.gd`：动手前先逐行看 `git diff`，确认"除兼容开关外没有任何其他改动"（hand.gd 34 行、debug_hud.gd 8 行，全部是开关），再用 `git checkout --` 还原到 HEAD -> 还原后 `git diff --numstat` 为空，`control_force`/`control_torque`/`additional_solver_iterations` 全部回来。还原前的 3.8 兼容版先另存 `T:\GODOT\bag\_eng_v038_build\ink2_gameside_v38compat\{hand.gd,debug_hud.gd}` 备查。
+- 清理：删掉 `native\~fastphys.dll~RFca2ad2.TMP`；**`native\~fastphys.dll` 删不掉**（`[System.IO.File]::Delete` 报"访问被拒绝"）—— 它是编辑器映射中的旧 3.9 原生库（换装时被改名、句柄仍在），**关闭编辑器后才能删**。
+
+### 3. 同工作树 3.9 真基线（本轮首次量到，快照 14:01:07）
+- `test_canvas` 现在 **exit 0 / PASS**（`[Canvas] resize, save/load, nail solidify/break: PASS`）—— 与 3.8 的 FAIL 对照，钉子/锚点确实只有 3.9 才成立。
+
+| 测试 | 3.9（本轮 14:01，同树） | 3.8（13:56 快照） |
+|---|---|---|
+| test_canvas | **exit 0 PASS** | exit 1 FAIL（钉子） |
+| test_collision_damage | 41/1（红 `player and hand retain all pixels`） | 41/1（红 `fracture preserves material and collision properties`） |
+| test_game_control | 29/3 | 29/2 |
+| test_hand_jitter | exit 0 | exit 0 |
+| test_hand_physics | **47 passed / 3 failed** | 46 条、42 passed / 4 failed |
+| test_ink | 32/1 | 32/1 |
+| test_live_input | 6/0 exit 0 | 6/0 exit 0 |
+| test_upright | 18/1 | 18/1 |
+
+- 两个版本的 `test_collision_damage` 红项**不是同一件事**，别混：3.8 红的是"碎块不继承 `friction/restitution/collision_layer/collision_mask/gravity_scale`"（3.8 原生缺口，见 13:57 条目 §5）；3.9 红的是 `test/test_collision_damage.gd:274` 的**硬编码** `player_px == 3486 and hand_px == 354`。
+- 3.9 这条红的归因**已核实为用户正在重烤的角色资产、不是 addon**：① `test/test_collision_damage.gd` 未被改（`git diff --numstat` 为空）；② 同一次运行里 `:275 ordinary landing does not damage player` 是**绿的**（玩家没受伤）-> 像素数变化不可能来自破坏，只能来自资产本身；③ `actor/player/asset/player_body_0.tres` 写盘 `13:59:51`、`player_hand_unfold_0.tres` 也在改、`actor/player/player.tscn` `13:54:38`，都晚于 13:48 那次该条为绿的运行。要转绿只需按新资产更新 `:274` 两个字面量（**本代理未改用户测试文件**）。
+- 对照日记 `:644`/`:645`（13:34 口径 41/0、47/3、29/3）：`test_hand_physics` 47/3 与 `test_game_control` 29/3 逐项对上；只有 `test_collision_damage` 由 41/0 变 41/1，原因同上。
+- 未做：没在真玩法里玩；没 commit；除 `hand.gd`/`debug_hud.gd` 两个纯兼容开关外没 checkout 其他文件；没动用户测试文件；没关编辑器（所以 `~fastphys.dll` 还在）；没碰引擎仓库。
+- 生效条件：**必须重启 Godot 编辑器**才会加载还原后的 3.9 GDScript / 原生库。
+## 2026-10-07 14:10 — 主角换脸（face_angry）+ 删腿重烘焙：新资产、uid 回归修复、文档同步
+
+- 用户指令：「修改主角的烘焙，使用另一个面部；同时，删掉脚。直接忽视两条腿」。只改烘焙产物与随之而来的文档/测试常量，**没有**碰 `player.tscn`、没改烘焙脚本逻辑、没加任何新节点/脚本。
+
+### 1. 新源图 `player_body.png` = `bottle.png` + `face_angry`（逐像素 0 差异）
+- 配方：`T:\GODOT\bag\player\Player\actor\player\asset\inkman\textures\bottle.png` 裁掉透明边 -> 272x348；再把同目录 `face_angry.png` 贴到偏移 `(16, 116)`，输出 `T:\GODOT\ink-2\actor\player\asset\player_body.png`（272x348）。
+- 逐像素核验（本轮复跑）：透明 `(0,0,0,0)` 41792、纯黑 `(0,0,0,255)` 31904、纯白 `(255,255,255,255)` 20960；alpha bbox `(0,0,272,348)`，最后一个不透明行 `347`（旧图是 427，因为多出两条腿）。
+- 换别的脸 = 把源换成同目录另一张脸、重贴、重烘焙。可选：`face_common / face_angry / face_sad / face_surprised / face_speechless` 都是 240x200 纯黑白两色、贴法一致；`face_furious` 是 272x228 且带灰 `(170,170,170)`/`(85,85,85)`，会被高光层判据当非纯黑吃掉（发白），**别选**。
+- 约束：脸必须落在瓶身剪影内部，否则会多出连通块、改烘焙块数。
+
+### 2. 重烘焙（`tools/bake_cli.gd`，exit 0）
+- `player_body.png` -> `player_body_*`：整图 `68x87`、实心 3304 格（高光/白 1310）、连通块 2。
+  - `player_body_0.tres`：`position = Vector2(5, 37)`、58x34、1816 格。
+  - `player_body_1.tres`：`position = Vector2(0, 0)`、68x87、1488 格。
+- `player_hand_unfold.png` -> `player_hand_unfold_*`：`36x31`、实心 354、高光 0、连通块 1（与旧一致）。
+- 旧基线 `68x107 / 3486 / 高光 1300`；**两个块的 `position` 都没变 -> `actor/player/player.tscn` 一行都不用改**（已核实该文件 diff 只有并行会话加的 `max_ink`/`ink` 两行）。
+- 黑格 1994（瓶身 1488 + 脸 506）、白格 1310。
+
+### 3. 本轮抓到的一个回归：重烘焙会丢掉 `.tres` 头部的 `uid=`
+- 现象：`bake_art.gd` 的 `write()` 用 `ResourceSaver.save()` 生成新资源，写出的头是 `[gd_resource type="Image" format=4]`，比原来**少了 `uid="uid://..."`**。三个文件都被波及（连本来逐位不变的 `player_hand_unfold_0.tres` 也变成一条"只丢 uid"的噪声 diff）。
+- 已手工补回（值取自 `actor/player/player.tscn:6,7` 的 ext_resource 与 HEAD 版本，非臆造）：`player_body_0` = `uid://dmtnlqhdr1fnx`、`player_body_1` = `uid://kc1hsgysjkpi`、`player_hand_unfold_0` = `uid://cx87lxikt8a42`。
+- 补回后 `load("res://actor/player/player.tscn")` / `load(...player_body_0.tres)` 均正常。uid 实测无功能影响：`.godot/uid_cache.bin` 里根本没有这三个 uid，起作用的始终是 tscn 的 `path=`。
+- ⚠️ **根因未修**：`tools/bake_art.gd:135-156 write()` 里 `ResourceSaver.save(out, DIR+name)` 生成的新资源无 uid，以后再烘焙还会再丢一次。要么每次烘完手工补，要么改 `write()` 保留既有 uid —— 本轮**没擅自改烘焙脚本**，等用户定。
+
+### 4. 测试常量同步（绑旧像素的两处）
+- `test/test_ink.gd:140`：`baseline == 3486` -> `baseline == 3304`。
+- `test/test_collision_damage.gd:274`：`player_px == 3486` -> `player_px == 3304`（`hand_px == 354` 不变）。
+- `test/test_ink.gd:16` 的 `INTERIOR_PX := 1810` **不用改**（腿在瓶外，不改瓶内封闭空腔），实测该条 PASS。
+
+### 5. 新旧资产硬实验对照（用「旧图 + 旧烘焙」重跑，跑完已还原）
+- 结论：所有红项都是**既存**，与本次换脸/删腿无关；`test_hand_physics` 本次反而更好。
+
+| 测试 | 旧资产 | 新资产 | 判定 |
+|---|---|---|---|
+| test_collision_damage | 41/1 | **41/0 全绿** | 本轮修常量后转绿 |
+| test_hand_physics | 46 passed / 4 failed | 47 passed / 3 failed | 本次更好 |
+| test_ink | 32/2 | 32/1 | 基线常量已同步 |
+| test_upright | 18/1（红项逐字相同） | 18/1 | 既存 |
+| test_game_control | 29/3（红项逐字相同） | 29/3 | 既存 |
+| test_canvas / test_live_input / test_hand_jitter | exit 0 | exit 0 | 绿 |
+
+- `test_ink` 剩下的 `ratio tracks ink`、以及 `test_upright` / `test_game_control` 的红项均已用旧资产 A/B 证明与本轮无关。其中 `ratio tracks ink` 的根因是并行会话在 `actor/player/player.tscn:78` 设的 `max_ink = 20000.0` / `ink = 20000.0`（那是并行会话的未提交改动，**不是我改的，也没动**）。
+
+### 6. 新实测物理量
+- 质量 `2798.33972`（旧 3067.78868）= 1994 x 1.40338；2 形状 / 3304 格。
+- 质心 `com_world = (-91.89903, 187.2404)`；瓶身局部 y=0..87 映射到世界 144.0..231.0。
+- 质心离瓶底 h ≈ 43.76 格（旧文档写 59）-> `m·g·h ≈ 7.3e7`（旧 1.1e8）。
+- `upright_stiffness = 1e9`（`player.tscn:83`）/ `upright_damping = 3e8` / `max_upright_torque = 6e8`（`player_input.gd:34,37,40`）仍 ≥ `m·g·h`，回复力矩结论不变。
+
+### 7. 文档更新（只改数字/配方，无新增顶层 .md）
+- `tools/doc/烘焙.md`：输出样例 `98x138` -> `68x87`、`3486` -> `3304`、`1300` -> `1310`。
+- `actor/player/doc/身体.md`：`272x428=68x107` -> `272x348=68x87`；材质表 `2186` -> `1994`、`1300` -> `1310`；质量 `3067.78868` -> `2798.33972`；并新增「源图怎么来的」小节记录 face_angry 配方（便于以后反复烘焙换脸）。
+- `actor/player/doc/脚.md`：`m=3067.8 / ≈59 格 -> 1.1e8` -> `m=2798.3、g=600、质心离瓶底 43.8 格 -> ≈7.3e7`。
+- `actor/player/doc/墨水.md`：`3486` -> `3304`、`1300` -> `1310`（两处）。
+- `readme.md` **未改**（总 readme 只当目录用，本轮无新模块）。
+- 全仓 `rg` 复查旧数字：除本文件历史条目外已无残留。
+
+### 8. 未做 / 未验证
+- 没在真实玩法里跑过新角色（只看烘焙产物 + headless 测试）。
+- 没 commit、没 checkout/reset；未碰并行会话的 `actor/canvas/**`、`ui/hud/**`、`map/**`、`actor/player/src/hand.gd`、`actor/player/player.tscn`、`actor/player/doc/生命值.md`。
+- 没改 `tools/bake_art.gd` 的丢 uid 根因；没动并行会话的 `max_ink`/`ink` 两行。
+- 未删未跟踪文件（`test/low_frames_*.jsonl` 用户 F1 录制、`actor/nail/**`、`map/asset/`、`mode/`、`actor/player/asset/player_hand_grab.png`）。
+
+
+## 2026-10-07 14:40 — 手部抓握贴图（美术层）：unfold/grab 两张画，左键切换，物理零改动
+
+需求：按下左键换手的贴图；**不许动质量、质心、位置**；保持代码精简。用户换过一次 `player_hand_grab.png`
+（旧稿 1680x1920 / 16px 格 → 新稿 240x152 / 4px 格），下面全部按新稿。
+
+### 1. 先量后改
+- 新 `player_hand_grab.png`：240x152，内容 124x140，4px/格（格块均匀性 4px 处 0%、8px 处 6.2%），
+  旋转 90°CW 后 **35x31 格、实心 332、连通块 1**。
+- 现 `player_hand_unfold.png`：124x144 → 4px/格 → **36x31 格、实心 354、连通块 1**。
+- 两张不是同一张图（全图 IoU 最高 41.7%，镜像反而更低）；grab 是同一只手的另一姿态。
+
+### 2. 对齐（指尖对齐，用户指定）
+- unfold 指尖点 = `hand.gd` 的 `FINGERTIP` 常量反推到 body 局部 = **(35.5, 18)**，正好是最右列
+  （x=35，y 16..20）的列中心 —— 常量没过期。
+- grab 拳面前缘列（自身 x=34、y 13..18 中点 15.5）对到它 → 节点 `position = Vector2(1, 2)`；
+  (1,2) 同时是两张图全图最优重合偏移。
+
+### 3. 架构：挂在哪就是什么
+- **刚体的直接子形状 = 物理；挂在渲染节点 `Visual` 下的形状 = 只画不物理**。
+  `pbody_visual._collect()` 里"可见的那张优先"，所以 `player_physics.collect_shapes()` 一行没改。
+- 改动（4 个文件，均游戏层）：
+  - `tools/bake_art.gd`：`SOURCES` 加 `["player_hand_grab.png", "player_hand_grab", 3, true, 0, 4]`；
+  - `actor/player/hand.tscn`：加 `Hand/Visual/PoseGrab`（`source=PAINT`、`paint=player_hand_grab_0.tres`、
+    `visible=false`、`position=(1,2)`、`load_steps` 6→7）；
+  - `actor/player/src/pbody_visual.gd`：`_collect()` 只加 3 行（可见美术形状优先）+ 新增 `refresh()`；
+  - `actor/player/src/hand.gd`：`_update_grip()` 里按下/松开切 `PoseGrab.visible` 并 `visual.refresh()`。
+
+### 4. 抓到的引擎缺陷（已绕开，未改引擎）
+- 现象：`visible=true` 了但纹理还是旧图（354 像素）。
+- 根因：`addons/pixel_destruction/nodes/pixel_sprite_2d.gd:120` 的 `rebuild()` 用
+  `ImageTexture.update()` 复用旧贴图，而 **update() 不接受尺寸变化** → 报
+  `new image dimensions must match the texture size` 并静默留旧图。
+- 本工程绕法：`pbody_visual.refresh()` 先丢 `_tex` 再 `rebuild()`。**正式修法在引擎侧一行**：
+  `if _tex == null or _tex.get_width() != w2 or _tex.get_height() != h2: create else: update`
+  —— 属于引擎仓库改动，等用户授权再做（本轮没碰 `addons/**`）。
+
+### 5. 验收（真实跑，headless）
+| 测试 | 结果 |
+| --- | --- |
+| `test_hand_physics` | **51 passed / 3 failed**（含新增 `pose/*` 四条全绿） |
+| `test_live_input -- --grip` | 3 checks / **0 failures** |
+| `test_canvas` | PASS |
+| `test_ink` | 32 / 1（历史红 `ratio tracks ink`，见上一轮 786 行） |
+- 新增的 `pose/*` 四条钉死：换图画出来是 332 像素的 grab；**切换前后 mass / inertia / local_com /
+  position 与 Rapier 侧 body 数一个不变**；松开回到 354。
+- 那 3 条红是**改动前就有的**：把姿态切换临时关掉重跑，三条 FAIL 与数字逐字相同
+  （`grounded/held object lifted height=39.880`、`pushup rise=-8.688`、`box pushup rise=-4.642`），
+  归因于本轮之前用户重烤的身体资产（实测玩家质量 2798.33972，不是 3067.8）。
+
+### 6. 重烘焙副作用（已修回）
+- 跑 `bake_cli.gd` 会重写全部 `.tres` 并**洗掉头部 `uid=`**（老毛病，见上一轮第 3 节）：
+  `player_body_0` / `player_body_1` / `player_hand_unfold_0` 三行 uid 已按跑之前记下的值补回
+  （`dmtnlqhdr1fnx` / `kc1hsgysjkpi` / `cx87lxikt8a42`）；三个文件的数据行与跑之前逐位一致。
+- 新文件 `player_hand_grab_0.tres` 无 uid（与 `player_hand_unfold_0.tres` 在 `hand.tscn` 里
+  同样按 path 引用）。
+
+### 7. 文档
+- `actor/player/doc/手.md` 新增「抓握贴图（美术层）」；`tools/doc/烘焙.md` 输出清单加 grab 两行
+  ＋uid 提醒；`test/doc/验收.md` 补上 `pose/*`。
+
+### 8. 未做 / 未验证
+- 没在真实窗口里目视两张图切换后的观感（只验了纹理尺寸/像素数与对齐数字）；要目视我可以另跑。
+- 没碰引擎仓库 `T:\GODOT\bag\Godot_2DVoxel_Addons`，`addons/pixel_destruction/nodes/pixel_sprite_2d.gd`
+  的尺寸判断缺陷**保持原样**。
+- 没 commit；没动并行会话的 `actor/canvas/**`、`ui/hud/**`、`map/**`、`actor/player/player.tscn`。
