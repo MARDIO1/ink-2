@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://jnamfxlkxjqb" path="res://actor/canvas/src/canvas.gd" id="1_canvas"]
 [ext_resource type="Script" path="res://actor/canvas/src/canvas_surface.gd" id="2_surface"]
 [ext_resource type="Script" path="res://actor/canvas/src/canvas_solid.gd" id="3_solid"]
+[ext_resource type="Script" path="res://actor/nail/src/nail_layer.gd" id="4_nail"]
 
 [sub_resource type="RectangleShape2D" id="CanvasBounds"]
 resource_local_to_scene = true
@@ -27,5 +28,47 @@ shape = SubResource("CanvasBounds")
 [node name="BlackSprite" type="Sprite2D" parent="CanvasSurface"]
 centered = false
 
+[node name="NailLayer" type="Node2D" parent="CanvasSurface"]
+script = ExtResource("4_nail")
+
 [node name="CanvasSolid" type="Node" parent="."]
 script = ExtResource("3_solid")
+
+[node name="Buttons" type="Node2D" parent="."]
+position = Vector2(-160, 0)
+z_index = 100
+
+[node name="Brush" type="Button" parent="Buttons"]
+offset_right = 148.0
+offset_bottom = 36.0
+text = "画笔"
+
+[node name="Eraser" type="Button" parent="Buttons"]
+offset_top = 44.0
+offset_right = 148.0
+offset_bottom = 80.0
+text = "橡皮擦"
+
+[node name="Hand" type="Button" parent="Buttons"]
+offset_top = 88.0
+offset_right = 148.0
+offset_bottom = 124.0
+text = "普通手"
+
+[node name="Redraw" type="Button" parent="Buttons"]
+offset_top = 132.0
+offset_right = 148.0
+offset_bottom = 168.0
+text = "重绘"
+
+[node name="Generate" type="Button" parent="Buttons"]
+offset_top = 176.0
+offset_right = 148.0
+offset_bottom = 212.0
+text = "生成"
+
+[node name="ReturnToCanvas" type="Button" parent="Buttons"]
+offset_top = 220.0
+offset_right = 148.0
+offset_bottom = 256.0
+text = "重新回到画布"

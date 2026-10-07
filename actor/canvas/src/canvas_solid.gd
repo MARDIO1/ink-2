@@ -6,10 +6,15 @@ extends Node
 
 const NAIL_MATERIAL_ID := 4
 const ANCHOR_TAG := "static_anchor_points"
+## 墨水物品所在的组；地图导出按它找（与 map/src/map_export.gd 的同名常量对应）。
+const INK_GROUP := "ink_item"
+## 生物实体标记；玩家、手、NPC 都带它，反向栅格化时跳过。
+const LIVING_TAG := "living"
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const PixelBody2D := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const CanvasShape := preload("res://actor/canvas/src/canvas_shape.gd")
+const Nail := preload("res://actor/nail/src/nail.gd")
 #endregion
 
 
@@ -102,6 +107,7 @@ func _spawn_component(world, pos, part, anchors: Dictionary) -> bool:
 	var body_node = PixelBody2D.new()
 	body_node.position = pos
 	body_node.is_static = not local_anchors.is_empty()
+	body_node.add_to_group(INK_GROUP)
 	var shape_node = CanvasShape.new()
 	shape_node.shape = part
 	body_node.add_child(shape_node)
@@ -111,5 +117,67 @@ func _spawn_component(world, pos, part, anchors: Dictionary) -> bool:
 	var body = world.add_body_node(body_node)
 	if body != null and not local_anchors.is_empty():
 		body.tags[ANCHOR_TAG] = local_anchors
+		_spawn_nails(world, body, local_anchors)
 	return body != null
+#endregion
+
+
+#region 钉子外观
+#给每个钉子像素配一枚可见钉子，贴在刚体上；像素被破坏后它会自毁。
+func _spawn_nails(world, body, anchors: Dictionary) -> void:
+	for point: Vector2i in anchors:
+		var nail := Nail.new()
+		world.add_child(nail)
+		nail.setup(body, point)
+#endregion
+
+
+#region 反向：实体重采样回画布
+## 把画布范围内的实体按材质颜色重采样回墨水，并从世界移除。
+## 跳过带 LIVING_TAG 的生物实体（玩家、手、NPC）。
+func rasterize(surface, world) -> void:
+	if world == null or surface == null:
+		push_error("CanvasSolid.rasterize: 参数无效")
+		return
+	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
+	var targets: Array = []
+	for child in world.get_children():
+		var body = child.get("body")
+		if body == null or body.tags.has(LIVING_TAG):
+			continue
+		if body.aabb.intersects(canvas_rect):
+			targets.append(child)
+	var pixels := 0
+	for node in targets:
+		pixels += _sample_body(surface, node.get("body"))
+		world.remove_body_node(node)
+		node.queue_free()
+	surface.refresh()
+	print("RESTORE bodies=%d pixels=%d" % [targets.size(), pixels])
+
+
+## 把一个刚体的像素按材质颜色写回画布，返回写入的像素数。
+func _sample_body(surface, body) -> int:
+	var written := 0
+	for shape in body.shapes:
+		var rect: Rect2i = shape.local_aabb()
+		for y in range(rect.position.y, rect.end.y):
+			for x in range(rect.position.x, rect.end.x):
+				var color = _canvas_color(surface, shape.get_pixel(x, y))
+				if color == null:
+					continue
+				var world_point: Vector2 = body.to_world(Vector2(x + 0.5, y + 0.5))
+				var local: Vector2 = surface.to_local(world_point)
+				if surface.write_pixel(Vector2i((local - Vector2(0.5, 0.5)).round()), color):
+					written += 1
+	return written
+
+
+## 材质到画布颜色的映射；null 表示该材质不回到画布。
+func _canvas_color(surface, material: int):
+	if material == 1:
+		return surface.black_color
+	if material == NAIL_MATERIAL_ID:
+		return surface.nail_color
+	return null
 #endregion

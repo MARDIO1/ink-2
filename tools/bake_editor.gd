@@ -146,6 +146,7 @@ func _build() -> void:
 func _on_source_selected(index: int) -> void:
 	if index >= 0 and index < BakeArt.SOURCES.size():
 		_turn.button_pressed = bool(BakeArt.SOURCES[index][3])
+		_cell.value = float(BakeArt.SOURCES[index][5])
 	_zoom = 1.0
 	_pan = Vector2.ZERO
 	refresh()
@@ -223,7 +224,7 @@ func refresh() -> void:
 	if _source == null:
 		return
 	var src: Array = BakeArt.SOURCES[_source.selected]
-	_analysis = _art.analyse(str(src[0]), int(_cell.value), _turn.button_pressed)
+	_analysis = _art.analyse(str(src[0]), int(_cell.value), _turn.button_pressed, int(src[2]), int(src[4]))
 	if _analysis.is_empty():
 		_texture = null
 		_parts = []
@@ -238,9 +239,10 @@ func refresh() -> void:
 	var scale := int(_scale.value)
 	var origin: Vector2i = _analysis["origin"]
 	var lines := PackedStringArray()
-	lines.append("[b]%s[/b]   裁切原点 (%d, %d)   网格 [b]%d×%d[/b]   实心 %d 格   连通块 %d" % [
+	lines.append("[b]%s[/b]   裁切原点 (%d, %d)   网格 [b]%d×%d[/b]   实心 %d 格（高光 %d）   连通块 %d" % [
 		str(src[0]), origin.x, origin.y,
-		_analysis["w"], _analysis["h"], _analysis["count"], _parts.size()])
+		_analysis["w"], _analysis["h"], _analysis["count"],
+		_analysis["highlights"], _parts.size()])
 	for i: int in _bounds.size():
 		var bound: Rect2i = _bounds[i]
 		var color: Color = BLOCK_COLORS[i % BLOCK_COLORS.size()]
@@ -266,7 +268,7 @@ func _write() -> void:
 		return
 	var src: Array = BakeArt.SOURCES[_source.selected]
 	var keep: Dictionary = {}
-	for item: Dictionary in _art.write(str(src[1]), int(src[2]), _analysis["w"], _parts, _bounds, int(_scale.value)):
+	for item: Dictionary in _art.write(str(src[1]), _analysis["mat"], _analysis["w"], _parts, _bounds, int(_scale.value)):
 		keep[item["name"]] = true
 		print("  ", item["name"], " save=", item["save"])
 	_art.prune(str(src[1]), keep)

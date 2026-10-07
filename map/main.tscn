@@ -14,8 +14,10 @@
 [ext_resource type="Script" uid="uid://c6qq6cj82333o" path="res://map/src/debug_hud.gd" id="12_hud"]
 [ext_resource type="Script" uid="uid://drdj5ctwnkrob" path="res://map/src/force_debug.gd" id="13_forces"]
 [ext_resource type="Resource" path="res://Ink/asset/grey1.tres" id="14_grey1"]
+[ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="18_highlight"]
 [ext_resource type="PackedScene" path="res://ui/hud/hud.tscn" id="15_hud_ui"]
 [ext_resource type="PackedScene" path="res://ui/esc/esc.tscn" id="16_esc"]
+[ext_resource type="Script" path="res://mode/creative/src/creative.gd" id="17_creative"]
 
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10
@@ -23,8 +25,8 @@ script = ExtResource("1_world")
 max_angular_velocity = 50.0
 ccd_ignore_mass = 16.0
 min_fragment_pixels = 9
-materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_black"), ExtResource("9_player_mat"), ExtResource("10_hand_mat"), ExtResource("14_grey1")])
-densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0])
+materials = Array[ExtResource("2_kdw7h")]([ExtResource("4_black"), ExtResource("9_player_mat"), ExtResource("10_hand_mat"), ExtResource("14_grey1"), ExtResource("18_highlight")])
+densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0, 0.0])
 voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
@@ -34,6 +36,12 @@ script = ExtResource("8_camera")
 
 [node name="Canvas" parent="." unique_id=1726580571 instance=ExtResource("7_fxpqp")]
 position = Vector2(41, -42)
+
+[node name="MapCanvas" parent="." instance=ExtResource("7_fxpqp")]
+visible = false
+position = Vector2(-512, -256)
+canvas_size = Vector2i(2048, 1024)
+active = false
 
 [node name="Ground" type="Node2D" parent="." unique_id=696036291]
 position = Vector2(-133, 231)
@@ -83,3 +91,6 @@ script = ExtResource("13_forces")
 
 [node name="CollisionDamage" type="Node" parent="." unique_id=1398976209]
 script = ExtResource("11_damage")
+
+[node name="Creative" type="Node" parent="."]
+script = ExtResource("17_creative")

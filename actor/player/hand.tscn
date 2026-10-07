@@ -1,11 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://b78lla71aiabs"]
+[gd_scene load_steps=6 format=3 uid="uid://b78lla71aiabs"]
 
 [ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="1_body"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="2_shape"]
 [ext_resource type="Script" uid="uid://b38aey7p3jly0" path="res://actor/player/src/hand.gd" id="3_hand"]
 [ext_resource type="Image" path="res://actor/player/asset/player_hand_unfold_0.tres" id="4_hand0"]
-[ext_resource type="Image" path="res://actor/player/asset/player_hand_unfold_1.tres" id="5_hand1"]
-[ext_resource type="Image" path="res://actor/player/asset/player_hand_unfold_2.tres" id="6_hand2"]
 [ext_resource type="Script" path="res://actor/player/src/pbody_visual.gd" id="7_visual"]
 
 [node name="Arm" type="Node2D"]
@@ -30,18 +28,6 @@ can_sleep = false
 script = ExtResource("2_shape")
 source = 3
 paint = ExtResource("4_hand0")
-
-[node name="Shape1" type="Node2D" parent="Hand"]
-position = Vector2(31, 25)
-script = ExtResource("2_shape")
-source = 3
-paint = ExtResource("5_hand1")
-
-[node name="Shape2" type="Node2D" parent="Hand"]
-position = Vector2(31, 18)
-script = ExtResource("2_shape")
-source = 3
-paint = ExtResource("6_hand2")
 
 [node name="Visual" type="Sprite2D" parent="Hand"]
 process_physics_priority = 20

@@ -9,6 +9,7 @@ extends Area2D
 #region 初始化
 var black_texture: ImageTexture
 @onready var black_sprite: Sprite2D = $BlackSprite
+@onready var nail_layer: Node2D = $NailLayer
 @onready var bounds: CollisionShape2D = $Bounds
 func _ready() -> void:
 	black_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -58,36 +59,69 @@ func _process(_delta: float) -> void:
 	if not Engine.is_editor_hint() and _painting:
 		_continue_stroke()
 
+## 工具：普通手不参与画布绘制，画笔写黑墨，橡皮擦擦除，钉子写静态锚点。
+enum Tool { HAND, BRUSH, ERASER, NAIL }
+
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
 var _last_point := Vector2.ZERO
+## 当前工具；切换时中断正在进行的笔画。
+@export var tool: Tool = Tool.HAND:
+	set(value):
+		tool = value
+		_painting = false
 ## 左键绘制的墨水颜色；固化材料由 CanvasSolid 决定。
 @export var black_color := Color(0.04, 0.08, 0.05, 1.0)
-## 中键放置的单像素钉子颜色；固化后使用 grey1 材料并固定所在连通块。
+## 钉子像素颜色；固化后使用 grey1 材料并固定所在连通块（材质 4）。
 @export var nail_color := Color(0.12, 0.12, 0.12, 1.0)
-## 中键放置的钉子场景；大贴图，只有中心像素起固定作用。
-const NAIL_SCENE := preload("res://actor/nail/nail.tscn")
-#左键落笔时写入的黑色墨水颜色
+## 钉子对应的材料 id；与 CanvasSolid / CollisionDamage 里的 grey1 一致。
+const NAIL_MATERIAL_ID := 4
+
+
 func _on_mouse_button(button: InputEventMouseButton) -> void:
 	if button.button_index == MOUSE_BUTTON_MIDDLE:
 		_painting = false
 		if button.pressed:
-			_spawn_nail()
+			_place_nail(_mouse_point())
 		return
 	if button.button_index != MOUSE_BUTTON_LEFT and button.button_index != MOUSE_BUTTON_RIGHT:
 		return
-	if button.pressed:
-		var point := _mouse_point()
-		if _inside(point):
-			_painting = true
-			_paint_color = black_color if button.button_index == MOUSE_BUTTON_LEFT else Color.TRANSPARENT
-			_last_point = point
-			_stroke(point, point, _paint_color)
-	else:
+	if not button.pressed:
 		_painting = false
+		return
+	var color = _stroke_color(button.button_index)
+	if color == null:
+		return
+	var point := _mouse_point()
+	if not _inside(point):
+		return
+	_painting = true
+	_paint_color = color
+	_last_point = point
+	_stroke(point, point, color)
+
+
+## 当前工具下该鼠标键的落笔颜色；null 表示不绘制。
+func _stroke_color(button_index: int):
+	if tool == Tool.BRUSH:
+		if button_index == MOUSE_BUTTON_LEFT:
+			return black_color
+		if button_index == MOUSE_BUTTON_RIGHT:
+			return Color.TRANSPARENT
+	elif tool == Tool.NAIL:
+		if button_index == MOUSE_BUTTON_LEFT:
+			return nail_color
+		if button_index == MOUSE_BUTTON_RIGHT:
+			return Color.TRANSPARENT
+	elif tool == Tool.ERASER and button_index == MOUSE_BUTTON_LEFT:
+		return Color.TRANSPARENT
+	return null
 
 
 func _continue_stroke() -> void:
+	if tool == Tool.HAND:
+		_painting = false
+		return
 	var point := _mouse_point()
 	#移出画布时停笔，避免从外侧拖回时突然补一条线
 	if not _inside(point):
@@ -128,13 +162,28 @@ func _reset() -> void:
 	black_image = Image.create_empty(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8)
 	black_image.fill(Color.TRANSPARENT)
 	black_texture = ImageTexture.create_from_image(black_image)
+	nail_layer.clear()
 
 
 #清空画布上的黑色墨水（固化后调用）
 func clear() -> void:
 	black_image.fill(Color.TRANSPARENT)
 	black_texture.update(black_image)
+	nail_layer.clear()
 	queue_redraw()
+
+
+## 直接写入一个画布像素；越界返回 false。批量写入后调 refresh()。
+func write_pixel(pixel: Vector2i, color: Color) -> bool:
+	if pixel.x < 0 or pixel.y < 0 or pixel.x >= canvas_size.x or pixel.y >= canvas_size.y:
+		return false
+	black_image.set_pixelv(pixel, color)
+	return true
+
+
+## 把 CPU 像素缓冲刷到贴图；批量写入后调用一次。
+func refresh() -> void:
+	black_texture.update(black_image)
 
 
 #两点之间插值补点，避免鼠标移动过快断线
@@ -147,8 +196,11 @@ func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 
 ## 圆形笔刷半径，单位 px；绘制和擦除使用相同范围。
 @export var brush_radius := 3.0
-#落一个圆形笔刷，只有落在半径内的像素才写
+#落一个圆形笔刷；钉子不铺笔刷，只落单像素。
 func _stamp(center: Vector2, color: Color) -> void:
+	if color == nail_color:
+		_write_pixel(Vector2i(center.floor()), color)
+		return
 	var r := ceili(brush_radius)
 	var r2 := brush_radius * brush_radius
 	var cx := roundi(center.x)
@@ -160,26 +212,27 @@ func _stamp(center: Vector2, color: Color) -> void:
 			var dx := float(x) + 0.5 - center.x
 			var dy := float(y) + 0.5 - center.y
 			if dx * dx + dy * dy <= r2:
-				black_image.set_pixelv(Vector2i(x, y), color)
+				_write_pixel(Vector2i(x, y), color)
 
 
+#写一个像素并同步钉子外观层：写钉色就记上，写别的就摘掉。
+func _write_pixel(pixel: Vector2i, color: Color) -> void:
+	if pixel.x < 0 or pixel.y < 0 or pixel.x >= canvas_size.x or pixel.y >= canvas_size.y:
+		return
+	black_image.set_pixelv(pixel, color)
+	if color == nail_color:
+		nail_layer.add(pixel)
+	else:
+		nail_layer.remove(pixel)
+
+
+## 在画布上放一枚钉子：写一个材质 4 的像素，外观由 NailLayer 画。
 func _place_nail(point: Vector2) -> void:
 	if not _inside(point):
 		return
-	black_image.set_pixelv(Vector2i(point.floor()), nail_color)
+	var pixel := Vector2i(point.floor())
+	_write_pixel(pixel, nail_color)
 	black_texture.update(black_image)
-
-
-# 中键在鼠标世界位置放一枚钉子（大贴图）。钉子自包含：直接把中心点所在的
-# 已有刚体钉成静态，不再往画布写钉像素。_place_nail 仍保留给图纸预埋钉点用。
-func _spawn_nail() -> void:
-	var nail := NAIL_SCENE.instantiate()
-	# 挂到世界上层（与 Canvas 同级），保证 global_position 即世界坐标。
-	var host: Node = get_parent().get_parent()
-	if host == null:
-		host = get_tree().current_scene
-	host.add_child(nail)
-	nail.global_position = get_global_mouse_position()
 
 
 #该像素是否为黑色墨水，供固化时采样
@@ -194,7 +247,7 @@ func material_at(x: int, y: int) -> int:
 		return 0
 	var nail_delta: Vector3 = Vector3(color.r, color.g, color.b) - Vector3(nail_color.r, nail_color.g, nail_color.b)
 	var ink_delta: Vector3 = Vector3(color.r, color.g, color.b) - Vector3(black_color.r, black_color.g, black_color.b)
-	return 4 if nail_delta.length_squared() < ink_delta.length_squared() else 1
+	return NAIL_MATERIAL_ID if nail_delta.length_squared() < ink_delta.length_squared() else 1
 #endregion
 
 
@@ -232,6 +285,16 @@ func load_ink(path: String) -> Error:
 	black_image = image
 	black_image.convert(Image.FORMAT_RGBA8)
 	black_texture.update(black_image)
+	_rebuild_nails()
 	print("CANVAS loaded: ", ProjectSettings.globalize_path(path))
 	return OK
+
+
+#按像素颜色重建钉子外观层；只在读盘时走一次。
+func _rebuild_nails() -> void:
+	nail_layer.clear()
+	for y in range(canvas_size.y):
+		for x in range(canvas_size.x):
+			if material_at(x, y) == NAIL_MATERIAL_ID:
+				nail_layer.add(Vector2i(x, y))
 #endregion

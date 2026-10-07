@@ -3,7 +3,6 @@ extends Node
 
 @onready var player = $".."
 @onready var world = $"../.."
-@onready var hand = get_node_or_null("../Arm/Hand/HandControl")
 var support = null
 var contact_point: Vector2 = Vector2.ZERO
 var support_normal: Vector2 = Vector2.UP
@@ -102,10 +101,6 @@ func apply_input(axis: float, jump: bool, delta: float) -> void:
 ## 世界竖直回复力矩的**角冲量**。腾空（support == null）时调用方已经早退，所以这里不处理腾空。
 func _upright_angular_impulse(delta: float) -> float:
 	if upright_stiffness == 0.0 and upright_damping == 0.0:
-		return 0.0
-	# 手抓住世界时姿态归手臂管：此时脚部平衡会和抓握摆动对拧（实测侧移 >20 → 8.3）。
-	# 和「腾空不允许」同一条原则 —— 支撑不是自己的脚时，不替它站正。
-	if hand != null and hand.grabbed_body != null:
 		return 0.0
 	var body = player.body
 	var err: float = wrapf(-body.rotation, -PI, PI)

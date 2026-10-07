@@ -438,3 +438,139 @@
   - 临时探针 `test/_probe_ghost.gd`、`test/_verify_ghost.gd`（含 .uid）用完已删。
 - 未做/未查明：真窗口里把演示 `Box` 抬高 180px 以 2600 px/s 砸地面**没有触发破碎**（`world.bodies` 始终 5）；帧级采样看到 `contact_pair_count()=1`、`approach≈0`、`impulse≈103`（静止量级），撞击子步在帧内、采样抓不到峰值，也可能是冲量预算低于材质强度 200。这是既有问题，本轮没改，需要时另开。
 - 编辑器同步：`map/src/collision_damage.gd`、`actor/player/hand.tscn`、`map/main.tscn` 的 mtime 已刷成当前时间并把 Godot 编辑器（PID 63084，当前开着 `baked_map.tscn`）置前；若编辑器没自动重载，手动 Scene → Reload Saved Scene。
+
+## 2026-10-07 03:05 — F1/F5/F9 热键归属（用户提问）+ 文档补齐
+
+- 用户问「f1 f5 f9 的按钮控制在哪个脚本」，答案（动作定义在 `project.godot`，处理在各自脚本）：
+  - **F1** = 动作 `record_low_frames`（`project.godot:83-86`，physical_keycode 4194332）→ `T:\GODOT\ink-2\map\src\debug_hud.gd:113-115` 的 `_unhandled_input` 调 `_toggle_log()`（`:28-48`）。开始/停止低帧录制；只写帧耗时 > 1000000/24 µs 的帧（`:55-56`），每轮一个 `res://test/low_frames_<时间戳>_<usec>.jsonl`（`:37`）；录制期间同步开 `damage.set_profile_enabled(true)` / `forces.set_profile_enabled(true)`（`:43-44`），调试 HUD 标签第二行追加「F1 录制中 | 已记录 N 个低帧」（`:156-157`）。
+  - **F5** = 动作 `canvas_save`（`project.godot:73-76`，4194336）→ `T:\GODOT\ink-2\actor\canvas\src\canvas.gd:36-38`：`surface.save_ink(capture_path)` + `surface.save_png(baked_map_path)`。
+  - **F9** = 动作 `canvas_load`（`project.godot:78-81`，4194340）→ 同文件 `:39-40` 的 `surface.load_ink(capture_path)`。
+  - 顺带：`E` 固化走裸键码不是动作（`canvas.gd:34-35`）；`Tab` 在 `ui/hud/src/hud.gd:22-30` 读 `debug` 动作切换成品/调试 HUD。`capture_path` 默认 `res://test/canvas_capture.tres`（`canvas.gd:27`，当前磁盘上不存在，第一次 F5 才生成），`baked_map_path` 默认 `res://map/asset/baked_map.png`（`canvas.gd:29`）。
+- 文档补齐（本轮只改文档，不碰逻辑）：`ui/hud/doc/HUD.md` 加「热键」段（F1/Tab + 自动存现场）；`actor/canvas/doc/画布.md` 加「热键」段（E/F5/F9 + 两个导出路径）。
+- 引擎仓库只读，本轮再核一次（不是凭记忆）：`git -C T:\GODOT\bag\Godot_2DVoxel_Addons` → 分支 `stable`、HEAD `85b79f7` = tag `v0.3.9`、`git status --porcelain` 与 `git diff HEAD --stat` 都为空 → 本会话没有改过引擎。
+- 未做：本轮没有跑游戏、没有新增性能探针（用户自己用 F1 录制）。性能证据仍只有先前那次真场景 A/B（渲染块 2.36 → 4.93 µs/帧，约 +0.0026 ms；`_step` 0.955 ms/帧，整帧 process 均值 12.78 ms、p99 18.60 ms），本轮未复测，按「先前取证」看待。
+- 旁注：工作区有未跟踪文件 `test/_shot.gd`、`test/_shot.gd.uid`，不是本会话产出，未经允许没删。
+
+## 2026-10-07 03:08 — 查用户 F1 录制（第一份低帧日志）
+
+- 文件：`T:\GODOT\ink-2\test\low_frames_2026-10-07T03-05-31_11417500.jsonl`，12 条低帧。由 `tick_us` 反推游戏进程启动于 03:05:19.6（对应 `user://logs/godot.log` 里那次 windowed 运行），F1 03:05:31 开、03:05:35 停，覆盖引擎时间 11.717→15.490 s（3.772 s，帧 1589→1863 = 274 帧，均 73 fps）。⚠️ 同一份 godot.log 里还并行混着探针 `_probe_grab.gd` 的输出（两个进程写同一个文件），那段不是单一进程的干净输出。
+- 形状：尖峰成簇（1589 / 1617-1619 / 1719-1722 / 1861-1863），单帧 43.5→343.7 ms、fps 2.9→23；非尖峰帧约 128 fps（274 帧里 12 帧慢帧吃掉 1.72 s）。
+- 耗时结构（按行号核实）：`step_us ≈ frame_ms`（尖峰整帧都在物理里）；`step_us = Σ(native_us + damage_us)`，`damage_us` 覆盖整个 `calculate()`（`collision_damage.gd:176-220`）= contacts_us + force 采样 + 撞击扫描。逐帧核对：1863 帧 native 159.3 + damage 150.4 = 309.7 ≈ step 313.7；damage 内部 contacts 70.9 + force 采样 76.2 = 147.1 ≈ 150.4。
+- 两笔「每对成本」是常数：`_contacts`（`collision_damage.gd:286`）7.40-8.13 µs/对；`force_debug.sample_contacts`（`force_debug.gd:39-58`）7.37-8.43 µs/对。12 帧合计 38005 对，两笔合计 596 ms / step 合计 1592 ms（37%）；native Rapier 959 ms（60%）。
+- 唯一的乘数是子步：引擎 `pworld.gd:1622 _compute_substeps`（`ccd_enabled`、`ccd_max_motion=2.0`、`ccd_substep_budget=600`），本场 17→301 子步；`对数 = 子步 × 每子步对数(15.7-54.5)`。
+- 场景规模：刚体 22→28、矩形 780→865；玩家本体 302 矩形/质量 6144，手 82 矩形/质量 84。跑在速度钳位附近的小碎片 id 23（质量 14、4 矩形）在 1719 帧还醒着、24964 px/s + ω49.3，1720 起 frozen（飞出视野被 cull_freeze 冻住、速度留着）。
+- 发现（可动、但本轮未动）：`map/main.tscn:81-82` 的 ForceDebug 没覆盖 `enabled` → 用脚本默认 `true`（`force_debug.gd:5`），而 `ui/hud/src/hud.gd:16-18` 的 `_ready` 只关 `visible` 不关 `enabled`，所以力采样在成品 HUD 下也每帧在跑，尖峰帧占 24%（76.2 / 321.9 ms）。这是调试可视化成本，不是物理必需。
+- 录制自身开销可忽略：写 JSON 合计 4.9 ms，单帧最多 2.08 ms（`previous_log_ms`）。
+- 未查明：谁把子步顶到 301。日志只存数字（`debug_hud.gd:76` 存 `last_substeps`，`physics_profile.substeps` 是 `count` 累加），不存驱动刚体；用这 12 帧里所有刚体的 `|v| + |ω|·bounding_radius()`（`pbody.gd:191`）都反推不出 301（需要 motion≈602 px/步 → fastest≈36000 px/s，而日志里动态体最大 776 px/s，唯一 24528 px/s 的 id 23 已 frozen、且 mass 14 ≤ `ccd_ignore_mass` 16 已被豁免）。要定位得让引擎把「最快刚体」暴露出来 —— 属于改引擎，没动。
+- 只读：没改引擎、没改游戏逻辑；本轮只新增文档（`ui/hud/doc/HUD.md` 加一条录制注意事项）与本记录。
+
+## 2026-10-07 03:13 — BottledInk 修「看不见」+ 用户三问取证
+
+- 三问：①主角变色 / ②player.tscn 一大堆 shape / ③墨水图层看不见。
+- ①**不是状态机、不是调色板**。取证：`rg -i "state_machine|enum State"` 在 `actor` / `map` / `ui` 里 **0 命中**；`rg "modulate|flash|tint"` 在 `actor/player/src` 只有 `bottled_ink.gd:47` 的 `ink_color` 一处。真因是 HEAD 版 shader（`git show HEAD:actor/player/src/bottled_ink.gdshader`）只丢弃 `TEXTURE.a <= 0`，然后把**整个剪影**染成 `ink_color` → 整只瓶子变墨蓝。该图层由 `d1cf7ea`（用户 02:55 自己提交，信息里就写着「新增墨水」）引入。
+- ②6 个 `Shape` 是烘焙规定，不是本轮加的：`tools/doc/烘焙.md:15`「每个 4 邻接连通块必须单独出一个 `.tres`」，理由是 `addons/pixel_destruction/physics/pworld.gd:493-516 ensure_connected()` 会把多岛 shape 就地拆成独立刚体（角色会散架）。逐版点数：`2098869` = 1 个、`2a574c0`（10-06 21:48「上动画」）= 6 个、`d1cf7ea` = 6 个。`烘焙.md:33-39` 的报告与 tscn 里的 `position`（0,0 / 23,66 / 58,66 / 40,76 / 60,59 / 24,59）逐项对得上。
+- ③根因：**上轮改的 shader 是坏的** —— `interior` 判据和 `TEXTURE.a` 判据互斥。瓶内按定义就是剪影上的空像素，两条同时为真不可能 → 每一帧整层 `discard`，所以什么都看不见。已删掉 `TEXTURE.a` 那条。
+- 本轮改动（3 个文件，均未 commit）：
+  - `actor/player/src/bottled_ink.gd`：新增 `_ensure_interior()` / `_build_interior()` / `_push_empty()`，四边界泛洪出瓶内遮罩，缓存键 = 贴图 id + 尺寸 + offset + `_mask.get("_sig")`。
+  - `actor/player/src/bottled_ink.gdshader`：只剩「不在瓶内 → discard」「液面以上 → discard」两条。
+  - `test/test_ink.gd`：断言改到新语义（`INTERIOR_PX = 6241`、四角不画、描边不画、半瓶按液面上下分开），23 检查。
+  - `actor/player/doc/墨水.md`：遮罩一节重写。
+- 实测：`interior` = 6241 像素、bbox (6,4)-(91,116)；四角与描边都不在遮罩里；玩家仍是 6 形状 / 4378 格（`test_ink.gd` 断言）。
+- 真窗口截图（不带 `--headless`）：`user://ink_full.png`（整瓶墨色）、`ink_half.png`（半瓶，标准墨水瓶观感）、`ink_empty.png`（只剩黑线稿）。
+- 回归：`test_ink.gd` 23/23、`test_upright.gd` 17/17、`test_live_input.gd` 四组合 6/3/8/8 全 0 失败。
+- ②的「抓握时仍然有回复力矩」：**当前 HEAD 未复现**。新探针 `test/_probe_grip2.gd` 把「有支撑的帧」单独统计 `debug_upright_torque`：A 复现 `test_upright._test_grip`（悬吊抓地）support 59/60、tau 0.000 MN；B 站地上抓地（脚 120/120 帧都有支撑）tau 0.000 MN；C 只按住左键、指尖 0.72 px 内没有东西（`grabbed_body == null`）tau **346.9 MN**。→ `player_input.gd:103-118` 的门语义正确，用户观察到的力矩只可能来自「其实没抓上」（`hand.gd:236 GRAB_RADIUS = 0.72`，指尖要贴到目标才 weld）。
+- 未做：没改抓握半径、没改 `fill` 默认值（仍 1.0 = 整瓶）、没动 `res://` 以外的任何东西、没 commit、没删用户 F1 录制 `test/low_frames_2026-10-07T03-05-31_11417500.jsonl`。
+- 临时探针已删：`test/_probe_grab.gd(.uid)`、`test/_shot.gd(.uid)`、`test/_inkprobe.gd(.uid)`、`test/_probe_grip2.gd(.uid)`。
+
+## 2026-10-07 03:24 — 删抓握门控 + InkHealth/HUD 墨水生命值链
+
+- 任务 1（用户明确：「我就是要抓我的时候仍然有回复力矩」）：删掉 `actor/player/src/player_input.gd` 里上一轮我自己加的
+  抓握门控（原 106-109 行），并删掉因此变成孤儿的 `@onready var hand`（原 6 行）。现在只剩一条门：腾空
+  （`support == null`）不出力。`_upright_angular_impulse()` 的 doc 不再提抓握。
+- 任务 1 验收（`test/test_upright.gd`，真场景 + 真 Rapier，18/18）：`_test_grip` 断言反向 —— 手抓住世界、脚也踩在地上时，力矩必须非 0。
+  实测 `GRIP frames=60 support=59 torque=600000000.0000`（即 600 MN，恰好顶在 `max_upright_torque` 上）。其余全未变：`KICK 3` / `KICK 12` / 关控制器 /
+  腾空 `AIRBORNE frames=87 torque=0.0000` 与改前逐位相同。
+- 任务 2（新增）：`actor/player/src/ink_health.gd` —— 玩家墨水生命值的单一真源。
+  接口：查询 `ink` / `max_ink` / `ratio()`；改走 `add()` / `reduce()`（自动夹 0..max_ink）；`signal changed` 只在真变化时发。
+  接线：`actor/player/player.tscn` 新增 Player 子节点 `InkHealth`（`load_steps` 13->14）；`bottled_ink.gd` 删掉 `@export fill`，
+  改成每帧读兄弟节点的 `health_path`(`../InkHealth`).`ratio()`（接不到按满瓶画），液面与质量共用 `_fill`；
+  `ui/hud/src/hud.gd` 新增 `health_path`（默认 `^"../Player/InkHealth"`），连 `changed` 并把 `StatusBar.value` 设成 `ratio()*100`，
+  接不到才退回 `bar_ratio` 占位。
+- 任务 2 验收：`test/test_ink.gd` 23 -> **31 checks / 0 failures**（新增 6 条生命值接口 + 2 条 HUD 横条；
+  `_ink.fill = x` 10 处改成 `_set_fill(ratio)`）。HUD 断言走 `reduce()` 真信号：100 -> 25。
+- 文档：新增 `actor/player/doc/生命值.md`；`actor/player/doc/墨水.md` 改掉 `fill` 说法；`ui/hud/doc/HUD.md` 新增「横条数据源」一节。
+- 回归（headless，真 `map/main.tscn`）：`test_ink` 31/0；`test_upright` 18/0；`test_live_input` 6/0；`test_collision_damage` 41/0；
+  `test_canvas` PASS；`test_hand_jitter` 无失败；`test_game_control` 29 checks / 4 failures、`test_hand_physics` 47 passed / 3 failed —— 两者
+  与日记 03:0x 记录的基线逐字相同（失败项也相同），不是本轮引入；`test_game_control` 里手从未抓住
+  东西（`grabbed_body == null`），门本来就没生效。
+- 未做：任务 3（烘焙工具链）只给结论不改代码；没接碰撞伤害 -> `reduce()`（保留在 `player_physics.gd:apply_collision_damage`）；
+  没动 `InkJar` 静态图标；没 commit、没 checkout/reset、没删用户`test/low_frames_*.jsonl`。
+
+## 2026-10-07 04:11 修「Tab 调试 UI 没了」+ 核对血条↔ink_health
+
+- 现象①（用户报告）：按 Tab 唤不出调试 HUD。**根因不是 WIP 的 HUD 脚本，是画布工具面板抢焦点**：`actor/canvas/canvas.tscn` 的 `Buttons/Brush`(41) `Eraser`(46) `Hand`(52) `Redraw`(58) `Generate`(64) `ReturnToCanvas`(70) 是 6 个 `Button`，默认 `focus_mode=FOCUS_ALL`；点过任一个之后焦点留在它身上，此时 Godot 的 GUI 把 Tab 当内置 `ui_focus_next` 处理并**标记事件已处理**，`_unhandled_input` 根本收不到。
+- 复现实测（真实 `map/main.tscn`，临时探针用完即删）：`grab_focus` 到 `Main/Canvas/Buttons/Brush` 后发一个真实 `KEY_TAB`，状态 `hud=true debug=false` → 按后仍 `hud=true debug=false`，焦点仍是 `Brush:<Button#...>`；同一个探针不给焦点时 Tab 正常切到 `hud=false debug=true`。所以「有时候 Tab 好使、有时候没了」= 有没有点过工具按钮。
+- 修法（只改我自己的文件，1 处）：`ui/hud/src/hud.gd` 的 Tab 处理从 `_unhandled_input` 挪到 `_input`，并 `get_viewport().set_input_as_handled()`。`_input` 在 GUI 之前跑，焦点在谁身上都不影响。修后同一复现路径实测 `hud=true debug=false` → `hud=false debug=true` ✓（无焦点场景同样 ✓）。备选根因修法是给那 6 个按钮设 `focus_mode = 0`（那是并行会话的文件，本轮没动，已写进 `ui/hud/doc/HUD.md`）。
+- 现象②（用户要求）：顶部血条关联玩家 `ink_health`。核对结果：这条**当前代码已经是通的**（并行会话 03:22 已接）：`hud.gd:9-13,20-30` 用 `health_path = ^"../Player/InkHealth"`，`_ready()` 连 `changed` 并读一次 `ratio()`；`InkHealth` 是 `player.tscn:69-70` 的节点，脚本 `actor/player/src/ink_health.gd`（单一真源，`add()/reduce()` 才广播 `changed`）。实测：`bar=100.0 ink=100.0 ratio=1.0` → `health.reduce(30)` → `bar=70.0 ink=70.0 ratio=0.7`，同一帧同步 ✓。本轮没改这条链路。
+- 回归（headless）：`test_game_control` 29 checks / 4 failures（与改前逐条相同，还是那 4 条既有物理项）；`test_live_input` 6/0。
+- 未做：没给 6 个工具按钮设 `focus_mode=0`（避免与并行会话的 `canvas.tscn` 抢同一文件，改法已记在 doc）；没动并行会话的 `InkJar` 静态图标；没 commit。
+
+## 2026-10-07 04:20 墨水图层改成引擎裁剪，删掉整个 shader（用户在追的「效果很烂 / 往左躺全消失」）
+
+- 根因（上一版 shader，已在 04:0x 取证）：`bottled_ink.gdshader` 的液面判据是 `dot(VERTEX, down_local) - level`。`VERTEX` 是**帧缓冲像素**（本项目 2560x1600 窗口、渲染目标 6827x3840、还带画布原点偏移 (430.45, 206.44)），而 `level` 是**节点局部像素**（范围只有 -166..+166）。两个坐标系混用 -> ①液面从来不生效（满 / 半 / 四分之一画出来一模一样）；②`down_local.x <= 0`（往左躺）时整层 `discard`。这不是参数没调好，是实现从根上错了。
+- 新实现（**总代码更少，且删掉一个文件**）：`BottledInk` 自己不画像素 —— 它的贴图是「瓶内遮罩」(alpha 1 = 瓶内)，`clip_children = 1`（仅裁剪）让它只当模板；唯一子节点 `Liquid` 是一个**世界轴对齐**的大方块：局部 X 轴 = 世界水平、局部 Y 轴 = 世界向下、左上角压在液面上。引擎把方块按遮罩 alpha 裁一遍，屏幕上剩下的就是「方块 ∩ 瓶内」。泛洪的瓶内遮罩保留（这是「只填瓶身内部 + 剪影被破坏后仍正确」的要求所必需）。
+- 为什么确定引擎能做这件事：临时工程实测 `clip_children` 是**按父节点 alpha 逐像素**裁（不是矩形裁），且 Forward+ 与 `gl_compatibility`（本项目用的渲染器）结果一致，父节点旋转 + 子节点世界轴对齐的组合也正确。本地 `actor/player/doc/墨水.md` 记了这条旧坑。
+- 实测（真实 `map/main.tscn` + 真 Rapier，2560x1440 帧缓冲，开关 `BottledInk.visible` 做差分像素；探针用完即删）：
+  `满 0°=33177`、`满 -90°=33358`、`满 180°=33227`（**躺下 / 倒立不再消失**）、`半 0°=16674`（正好是满的一半）、`半 -90°=16799`、`1/4 0°=3986`。抽查截图：半瓶液面世界水平、墨水只在瓶身内部（描边与内部高光线都不上墨）。
+- 改动文件：删 `actor/player/src/bottled_ink.gdshader` 与其 `.uid`；重写 `actor/player/src/bottled_ink.gd`；`actor/player/player.tscn` 加 `BottledInk/Liquid` 子节点并给 `BottledInk` 设 `clip_children = 1`；同步 `test/test_ink.gd`（19 -> 32 检查）、`actor/player/doc/墨水.md`、`test/doc/验收.md`。
+- 回归（headless）：`test_ink` 32/0、`test_upright` 18/0、`test_live_input` 6/0、`test_collision_damage` 41/0、`test_canvas` PASS。
+- 未做：没动 6 个 `Shape`（用户明确「先别动 shape，多就多吧」）；没动并行会话的 `actor/canvas/**`、`actor/nail`、`ui/hud`、`map/**`；没 commit、没 checkout/reset、没删用户 `test/low_frames_*.jsonl`。
+- 取证但**未动手**（等用户定）：`actor/player/asset/player_body.png` 只有 3 种不透明色 —— 黑 916480 px（描边）+ 深灰 (85,85,85) 132096 px + 浅白 (170,170,170) 72192 px（后面两种是瓶身内部的**高光线**）。`tools/bake_art.gd:50` 只按 `alpha > 0` 判实心，`SOURCES`（`tools/bake_art.gd:20-23`）给 body 的材质 id 只有一个 2，而 `player.tscn:59` 的 palette[2] 是黑 —— 所以白色高光层现在①进物理、②被画成黑色。用户说这层「只有视觉效果」，与现状不符，怎么处理待定。
+
+## 2026-10-07 04:19 高光层：非纯黑像素烘成「只显示、不改物理」的材质 5
+
+- 用户澄清：「那个白色应该也烘焙了，是一个图层来着，不过只有视觉效果」。取证：`actor/player/asset/player_body.png`
+  （1632x2304）只有 3 种不透明色 —— 纯黑 3580 格（描边）+ (85,85,85) 516 格 + (170,170,170) 282 格；
+  后两者是**瓶身玻璃高光线**（瓶颈竖线 / 肩部弧 / 瓶底弧），且完美 16px 对齐（每种色的像素数都是 256 的整数倍，
+  逐格抽样计数与全图像素数除以 256 完全相等）。旧烘焙把它们一律按材质 2 烘 -> 既全画成黑、又带上描边的物理。
+- 改法（**逐格材质**：节点数、形状数、类型数都不变）：
+  - `tools/bake_art.gd`：`SOURCES` 加第 5 项「高光材质 id」；`analyse()` 逐格判纯黑/非纯黑写 `mat`（顺带返回 `highlights`）；`write()` 从「整图一个材质」改成读逐格 `mat`；`run_all()/bake()` 透传。手第 5 项 = 0（不拆）。
+  - `actor/player/asset/highlight.tres`（新，`PixelMaterial`：id 5、color (0.667,0.667,0.667)、density 1.40338）。
+  - `map/main.tscn`：`materials` 加 `highlight`；`densities_fallback` 补第 6 项 `1.40338` —— `pixel_world.gd:504` 的 `_density_of()` 读的正是这张表，不补就按 2.0 算质量。
+  - `actor/player/player.tscn`：`Visual.palette` 补第 6 项高光灰。
+- 验收（真场景 + 真 Rapier，临时探针用完即删）：
+  - 烘焙：`player_body.png -> player_body_*  98x138  实心 4378（高光 798）  连通块 6`；产物材质分布 `player_body_0.tres {0:9573, 2:3153, 5:798}`，`player_hand_unfold_*` 全是 3。
+  - 物理**逐位不变**：`MASS=6143.9976 DENSITY=1.403380 SHAPES=6 PIXELS=4378`（改前改后同一组数字）。
+  - 显示：`Visual.texture` 里 `(170,170,170,255) = 798` 像素（正好等于烘焙的高光格数），黑 3596，无 push_warning。
+  - 真窗口 2560x1440 截图：瓶颈/肩/瓶底的高光线出来了，而且**墨水层给它让位**（瓶内遮罩只泛洪空像素，所以高光不上墨）。
+- 回归：`test_ink` 32/0、`test_upright` 18/0、`test_live_input` 6/0、`test_collision_damage` 41/0、`test_canvas` PASS。
+- 撞到并绕过的一个坑：`prune()` 删所有 `<前缀>_*.tres`，我起名 `player_body_hi.tres` 被同一次烘焙当场删掉 -> 改名 `highlight.tres`，并把这条写进 `tools/doc/烘焙.md`。
+- 顺带发现（**未改**，不是本轮引入）：`Visual.texture` 比身体像素多 16 格黑。`player.tscn` 的 `Arm`（`PixelBody2D`、`rect_size=4x4`）是 Player 的**直接子节点**，而 `addons/pixel_destruction/nodes/pixel_sprite_2d.gd:_collect()` 只认「有 `build_shape()` 的兄弟、不查类型」（`pixel_body_2d.gd:407` 正好有），于是 Arm 被当形状画了 —— 实测截图瓶身左上一个 4x4 黑点，并且这 16 格还会进墨水层遮罩（被当成不透明）。修法：`_collect()` 加类型判断，或把 Arm 挪出 Player 的直接子节点。`addons/` 没动。
+- 未做：没改 6 个 Shape（用户「先别动 shape，多就多吧」）；没动并行会话的 `actor/canvas/**`、`actor/nail/**`、`ui/hud/**`、`map/src/**`；没 commit、没 checkout/reset、没删用户 `test/low_frames_2026-10-07T03-05-31_11417500.jsonl`。
+
+## 2026-10-07 04:41 bag 原生美术收尾：墨水质量回调、末端贴图、临时文件清理
+
+- 源图换成 bag 原生稿（4px/格，不再重采样/放大）：`actor/player/asset/player_body.png` 272x428（68x107 格）、`player_hand_unfold.png` 124x144（31x36 格）。旧稿是被人为放大的（旧联合 bbox 98x138 实心 4378）。
+- 烘焙产品（`tools/bake_cli.gd` 重跑，3 个 .tres 的 SHA256 逐位不变）：`player_body.png -> player_body_* 68x107 实心 3486（高光 1300）连通块 2` —— `player_body_0.tres` position (5,37) 58x34 1816 格、`player_body_1.tres` position (0,0) 68x107 1670 格；`player_hand_unfold.png -> player_hand_unfold_* 36x31 实心 354 连通块 1` —— `_0.tres` position (0,0)。
+- **烘焙正确性取证**（不靠目视）：把 `player_body_1` @(0,0) 与 `player_body_0` @(5,37) 按 tscn 的 position 叠回去，与源图 4px 逐格抽样比 —— 实心差 0 格、材质差 0 格（纯黑=2、非纯黑=5）。`player_body.tres`/`hand.tres` 是 `map/main.tscn` 里的 `PixelMaterial`（密度表），不是烘焙产物，没删。
+- 修 `actor/player/src/bottled_ink.gd:170`：`pw.world.refresh_mass(_body)` -> `refresh_mass(_body, Callable(pw, "_density_of"))`。原写法回退到引擎 `density_of_material()`（`pworld.gd:462` 把密度 0 兜底成 1.0），材质 5 那 1300 格被按 1.0 算。临时探针实测（已删）：满瓶多 1808.51、半瓶多 1554.25、空瓶多 1300.0。
+- 重标 `actor/player/src/hand.gd:235` 的 `FINGERTIP`：24.201,3.122 -> **16.545,2.121**。旧值反推验证：`git show HEAD:` 的 3 张手图按 tscn 的 position 拼回，重心（格心坐标）=(29.7992,24.8776)，旧 `FINGERTIP + 重心` = (54.0002,27.9996) = 最右列外沿 (54.0,28.0)。新稿最右列 x=35 的格心均值 18.5、重心 (19.4548,16.37853)（引擎 `local_com` 实测同值）-> (36.0-19.4548, 18.5-16.37853)。
+- 删临时文件：`test/_tmp_inkdbg.gd`、`test/_tmp_handcom.gd`、`test/_tmp_tumble.gd`、`_tmp_preview/`（9 张）、`_tmp_hand_rot.png`。**没删**用户的 `test/low_frames_2026-10-07T03-05-31_11417500.jsonl` 和用户原图 `player_hand_grab.png`。
+- 回归（headless，真 `map/main.tscn` + 真 Rapier）：`test_ink` 32/0（修前 3 条 FAIL）、`test_live_input` 6/0、`test_collision_damage` 41/0、`test_canvas` PASS、`test_upright` 18/1。
+- `test_upright` 那 1 条 FAIL = `a full tumble does not jitter`（`hard.tail_w=0.0392 > 0.02`、`tail_jerk=0.0356 > 0.02`）。**已证明与本轮改动无关**：把 `refresh_mass` 那行改回旧写法重跑，数字逐位相同（0.0392 / 0.0356）—— 现场 `capacity_mass = 0`，`_sync_mass()` 一直早退，墨水质量压根没参与。临时探针 420 帧轨迹：kick=12 后 i=105 时 rot=-0.0028，随后反向漂到 -0.033 并长期停在 -0.033±0.0014 rad、ω±0.041，回复力矩一直挂 3.5e7~4.5e7 N·m 顶着。即「翻滚后落在单条腿上、靠回复力矩硬撑在 -1.9°」的接触限幅极限环，幅值 0.08°（≈0.15 px 尖端位移），肉眼不可见但过了测试阈值。**没改** `player_input.gd` 的 k/d/cap（上一轮定的值，本轮没授权调）。
+- 发现待定（未改）：`player.tscn` 没设 `BottledInk.capacity_mass`（默认 0）-> 「墨水按当前液面进质量」实现好了但现场是断的，墨水目前对物理零影响。要不要给个值（比如 1200）等用户定。
+- 未做：没 commit、没 checkout/reset；没动并行会话的 `actor/canvas/**`、`actor/nail/**`、`ui/hud/**`、`map/src/**`、`mode/**`、`project.godot`。
+
+## 2026-10-07 04:54 复核 bag 原生稿烘焙 + 查清 test_upright 那条 FAIL + 模块文档纠偏
+
+- 复核（真实跑，非目视）：`tools/bake_cli.gd` 重跑 3 个 .tres 逐位不变（save=0）；`test_ink` 32/0、`test_live_input` 6/0、`test_collision_damage` 41/0、`test_canvas` PASS、`test_hand_jitter` exit 0、`test_upright` 18/1。
+- 白色高光层量化（第 4 条「只有视觉效果」的证据）：`player_body.png` 68x107 格里 黑 2186 / 高光 1300，逐格 4px 判纯黑 -> **1300 个高光格有 0 格落在黑色剪影的内部填充之外**，所以既不扩碰撞体积也不出质量（`actor/player/asset/highlight.tres` density 0 + `map/main.tscn:29` `densities_fallback[5]=0`）。实测质量 3067.78868 = 2186 x 1.40338 吻合。
+- `test_upright` 的 `a full tumble does not jitter` 定性（3 个受控实验 + 轨迹探针，探针已删）：
+  1. 高光密度回 1.40338：0.0392 -> 0.0310 仍 FAIL，还多坏一条 airborne 落地 -> 高光密度不是根因；
+  2. 黑描边密度 x3.7（惯量回到旧稿 1.51e7）：ω 只到 0.0365，残余倾角反涨到 0.240 rad -> ω 与质量/惯量无关；
+  3. 轨迹（kick=12 后 540 帧）：质心 y 只动 0.03 px、接触点恒 cpy=231.0，倾角长期停在 -0.0335 rad（-1.9°）、ω≈0.04；把身体复位到初始位姿再 kick=12 -> tail_rot=0.0、tail_w=0.0013（15 倍余量 PASS）。
+  -> 控制器没坏；是「第二次 kick 从漂移后的落点起跳、落在某条腿尖上，靠接触台阶锁住 1.9° 残余倾角」的位姿相关残余（ω 0.04 rad/s ≈ 尖端 0.07 px，肉眼不可见；兄弟判据 <0.05 rad 已通过）。换 bag 原生稿改变了落地姿态。**没动** k/d/cap。
+- 墨水质量管线在**现场是断的**：`actor/player/player.tscn` 没设 `BottledInk.capacity_mass`（默认 0）-> `bottled_ink.gd:160` 一直早退，墨水对物理零影响；`test/test_ink.gd:216` 自己设 1200 才验到这条线。数值待用户定。
+- 文档纠偏（本轮唯一写盘）：`actor/player/doc/脚.md:11` 还写着「手抓住世界时也不允许回复力矩 + grabbed_body 判据」，与代码/验收相反（`player_input.gd` 里 0 处 grab 引用），改成「抓住世界照样出力，判据只有 support != null」；同文件 :8 的 m·g·h 还是旧稿数字（≈2.7e8 @74 格），换成实测 m=3067.8、g=600、质心到接触 59 格 -> ≈1.1e8。`readme.md` 目录补 4 条（身体/脚/墨水/生命值）。
+- 未做：没 commit、没 checkout/reset；没动并行会话的 `actor/canvas/**`、`actor/nail/**`、`ui/hud/**`、`map/src/**`、`mode/**`、`project.godot`；`map/**`/`mode/**`/`actor/nail/**` 还没有模块 doc（不在本轮范围）。
+- 未删：`actor/player/asset/player_hand_grab.png`（抓握切换贴图还没做、无消费方）、用户录制 `test/low_frames_2026-10-07T03-05-31_11417500.jsonl`。

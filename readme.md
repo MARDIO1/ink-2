@@ -12,7 +12,11 @@
 ## 目录
 
 - [文件组织](doc/文件组织.md)
+- [身体](actor/player/doc/身体.md)
+- [脚](actor/player/doc/脚.md)
 - [手](actor/player/doc/手.md)
+- [墨水](actor/player/doc/墨水.md)
+- [生命值](actor/player/doc/生命值.md)
 - [画布](actor/canvas/doc/画布.md)
 - [烘焙](tools/doc/烘焙.md)
 - [验收](test/doc/验收.md)

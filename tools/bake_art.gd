@@ -1,7 +1,7 @@
 extends RefCounted
 ## 把像素画源图烘成运行时读的「材质图」.tres。
 ##
-## 源图 16px 一格，一格 = 一个游戏像素，不做额外缩放。输出是 FORMAT_R8 的
+## 源图按 SOURCES 第 6 项「格宽」抽样，一格 = 一个游戏像素。输出是 FORMAT_R8 的
 ## Image，**R 通道 = 材质 id**，见 addons/pixel_destruction/nodes/pixel_shape_2d.gd
 ## 的 source=PAINT。
 ##
@@ -13,21 +13,25 @@ extends RefCounted
 ## GUI: 编辑器里打开 res://tools/bake_editor.tscn
 
 #region 配置
-## 源图是 16px 一格的像素画：一格 = 一个游戏像素，不做额外缩放。
+## 默认格宽；每张源图实际用多少看 SOURCES 第 6 项（bag 原生稿是 4px/格）。
 const CELL := 16
 const DIR := "res://actor/player/asset/"
-## [源图, 输出前缀, 材质 id, 顺时针转90]
+## [源图, 输出前缀, 材质 id, 顺时针转90, 视觉材质 id（0 = 不拆）, 格宽]
+##
+## 非纯黑的不透明像素 = 视觉层（材质 5）：密度 0，只画不进质量。
+## 手没拆 —— 它只有 9 格灰，不值得为它多走一个材质。
 const SOURCES := [
-	["player_body.png", "player_body", 2, false],
-	["player_hand_unfold.png", "player_hand_unfold", 3, true],
+	["player_body.png", "player_body", 2, false, 5, 4],
+	["player_hand_unfold.png", "player_hand_unfold", 3, true, 0, 4],
 ]
 #endregion
 
 
 #region 取样
 ## 每格取左上角 1 点。返回 {} 表示失败（已 push_error）。
-## { image, origin, w, h, solid, count }
-func analyse(file_name: String, cell: int, turn: bool) -> Dictionary:
+## { image, origin, w, h, solid, mat, count, highlights }
+## mat 是逐格材质 id；highlight = 0 表示不拆视觉层，所有不透明格都用 material。
+func analyse(file_name: String, cell: int, turn: bool, material: int, highlight: int) -> Dictionary:
 	var path := DIR + file_name
 	var sheet: Image = Image.load_from_file(ProjectSettings.globalize_path(path))
 	if sheet == null or sheet.is_empty():
@@ -43,14 +47,26 @@ func analyse(file_name: String, cell: int, turn: bool) -> Dictionary:
 	var w: int = box.size.x / cell
 	var h: int = box.size.y / cell
 	var solid := PackedByteArray()
+	var mat := PackedByteArray()
 	solid.resize(w * h)
+	mat.resize(w * h)
 	var count := 0
+	var highlights := 0
 	for cy: int in h:
 		for cx: int in w:
-			if sheet.get_pixel(box.position.x + cx * cell, box.position.y + cy * cell).a > 0.0:
-				solid[cy * w + cx] = 1
-				count += 1
-	return {"image": sheet, "origin": box.position, "w": w, "h": h, "solid": solid, "count": count}
+			var col := sheet.get_pixel(box.position.x + cx * cell, box.position.y + cy * cell)
+			if col.a <= 0.0:
+				continue
+			solid[cy * w + cx] = 1
+			count += 1
+			var is_black := col.r == 0.0 and col.g == 0.0 and col.b == 0.0
+			if highlight > 0 and not is_black:
+				mat[cy * w + cx] = highlight
+				highlights += 1
+			else:
+				mat[cy * w + cx] = material
+	return {"image": sheet, "origin": box.position, "w": w, "h": h,
+		"solid": solid, "mat": mat, "count": count, "highlights": highlights}
 #endregion
 
 
@@ -115,8 +131,8 @@ func boxes(parts: Array, w: int) -> Array:
 ## 每块一张 .tres，返回每块信息 {name, cell, size, pixels, save}。
 ## scale 把 1 格放大成 scale×scale 格：无损，但质量 ×scale²，
 ## 且 tscn 里的 position 必须同步 ×scale。
-func write(prefix: String, material: int, w: int, parts: Array, bounds: Array, scale: int) -> Array:
-	var value := float(material) / 255.0
+## mat 是 analyse() 的逐格材质 id —— 高光层是逐格的，不是整图一个值。
+func write(prefix: String, mat: PackedByteArray, w: int, parts: Array, bounds: Array, scale: int) -> Array:
 	var info: Array = []
 	for i: int in parts.size():
 		var cells: PackedInt32Array = parts[i]
@@ -127,7 +143,7 @@ func write(prefix: String, material: int, w: int, parts: Array, bounds: Array, s
 			var by := (c / w - bound.position.y) * scale
 			for dy: int in scale:
 				for dx: int in scale:
-					out.set_pixel(bx + dx, by + dy, Color(value, 0.0, 0.0, 1.0))
+					out.set_pixel(bx + dx, by + dy, Color(float(mat[c]) / 255.0, 0.0, 0.0, 1.0))
 		var name := "%s_%d.tres" % [prefix, i]
 		var err := ResourceSaver.save(out, DIR + name)
 		info.append({
@@ -155,19 +171,20 @@ func prune(prefix: String, keep: Dictionary) -> void:
 #region 运行
 func run_all() -> void:
 	for src: Array in SOURCES:
-		bake(str(src[0]), str(src[1]), int(src[2]), bool(src[3]), CELL, 1)
+		bake(str(src[0]), str(src[1]), int(src[2]), bool(src[3]), int(src[5]), 1, int(src[4]))
 
 
-func bake(file_name: String, prefix: String, material: int, turn: bool, cell: int, scale: int) -> void:
-	var result: Dictionary = analyse(file_name, cell, turn)
+func bake(file_name: String, prefix: String, material: int, turn: bool, cell: int, scale: int, highlight: int = 0) -> void:
+	var result: Dictionary = analyse(file_name, cell, turn, material, highlight)
 	if result.is_empty():
 		return
 	var parts: Array = components(result["solid"], result["w"], result["h"])
 	var bounds: Array = boxes(parts, result["w"])
-	print("%s -> %s_*  %dx%d  实心 %d  连通块 %d" % [
-		file_name, prefix, result["w"], result["h"], result["count"], parts.size()])
+	print("%s -> %s_*  %dx%d  实心 %d（高光 %d）  连通块 %d" % [
+		file_name, prefix, result["w"], result["h"], result["count"],
+		result["highlights"], parts.size()])
 	var keep: Dictionary = {}
-	for item: Dictionary in write(prefix, material, result["w"], parts, bounds, scale):
+	for item: Dictionary in write(prefix, result["mat"], result["w"], parts, bounds, scale):
 		keep[item["name"]] = true
 		print("  %s  position = Vector2(%d, %d)  %dx%d  %d 格  save=%d" % [
 			item["name"], item["cell"].x, item["cell"].y,

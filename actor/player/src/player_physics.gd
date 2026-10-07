@@ -5,6 +5,8 @@ const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_
 
 ## 所属 PixelWorld 的相对路径，初始化时用于注册该节点的物理体。
 @export var world_path := NodePath("..")
+## 生物实体标记；反向栅格化（回到画布）时跳过。与 CanvasSolid 的同名标签对应。
+const LIVING_TAG := "living"
 
 #region 碰撞伤害
 ## 只累计世界结算器给出的伤害；身体像素保持完整，生命和死亡以后接入。
@@ -33,4 +35,5 @@ func bake():
 	var result = super.bake()
 	result.position = get_node(world_path).to_local(global_position)
 	result.rotation = global_rotation - get_node(world_path).global_rotation
+	result.tags[LIVING_TAG] = true
 	return result

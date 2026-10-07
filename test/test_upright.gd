@@ -7,7 +7,7 @@ extends SceneTree
 ##   3. 极限翻滚（kick=12 rad/s）也能收住；
 ##   4. 关掉控制器（k=d=0）后同样的撞法必须摔倒 —— 证明回正不是别的东西做的；
 ##   5. 腾空（连续 support == null）时力矩恒为 0；
-##   6. 手抓住世界时力矩恒为 0，否则会把抓握摆动压回去；
+##   6. 手抓住世界、脚仍踩在地上时力矩照常出力（抓握不吞回复力矩）；
 ##   另外每条路径都要求 |力矩| <= max_upright_torque。
 
 const MAIN = preload("res://map/main.tscn")
@@ -148,7 +148,7 @@ func _test_airborne() -> void:
 	await _teardown()
 
 
-## 手抓住世界：姿态归手臂管，脚部平衡必须让位。
+## 手抓住世界、脚也踩在地上：抓握不许把回复力矩吞掉 —— 脚有支撑就照常出力。
 func _test_grip() -> void:
 	_scene = MAIN.instantiate()
 	_scene.auto_step = false
@@ -167,16 +167,20 @@ func _test_grip() -> void:
 	_scene.auto_step = true
 	await _settle(30)
 	_body.angular_velocity = 3.0
+	var supported := 0
 	var gripped := 0
 	var torque := 0.0
 	for i in 60:
 		await physics_frame
+		if _feet.support != null:
+			supported += 1
 		if hand.grabbed_body != null:
 			gripped += 1
 			torque = maxf(torque, absf(_feet.debug_upright_torque))
-	print("GRIP frames=%d torque=%.4f" % [gripped, torque])
+	print("GRIP frames=%d support=%d torque=%.4f" % [gripped, supported, torque])
 	_check("the hand really holds the world", welded and gripped >= 55)
-	_check("no upright torque while the hand holds the world", torque == 0.0)
+	_check("the grabbing player still stands on the ground", supported >= 30)
+	_check("holding the world does not suppress the upright torque", torque > 1.0e6)
 	await _teardown()
 
 
