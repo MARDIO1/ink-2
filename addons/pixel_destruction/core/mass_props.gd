@@ -28,8 +28,17 @@ class Props:
 
 
 ## density_of: Callable(material:int) -> float，默认全部为 1.0
+## `changed_keys`：调用方**声明**"这一步只改了这些块"（键 = PixelShape.make_key）。
+## 传了就复用其余块的几何缓存（见 PixelShape._mp_cache），没传就全量重算并清缓存。
+##
+## ⚠️ 为什么这样设计（实测）：本函数逐块扫描，32000 像素的形状**删 1 个像素也要 2.95 ms**，
+##    而 fracture_pixels 每次破坏都要调它 —— 于是"擦一下大刚体"就是几毫秒。
+##    逐块缓存后，删 1 个像素只重算 1 块（其余 500 块直接复用）。
+## ⚠️ 逐位精确：每块的加法**顺序与原来完全一致**（整块同材质那一路的 5 项加法原样保留），
+##    所以结果与全量重算逐位相同（tests/validation_mass_cache.gd 钉这条）。
 static func compute(shape: PixelShape, density_of: Callable = Callable(),
-		friction_of: Callable = Callable(), restitution_of: Callable = Callable()) -> Props:
+		friction_of: Callable = Callable(), restitution_of: Callable = Callable(),
+		changed_keys: Variant = null) -> Props:
 	## 单趟扫描：同时累加质量、一阶矩与"绕原点的极惯性矩"，
 	## 再用平行轴定理换算到质心：I_com = I_origin - m * |com|^2。
 	## （逐像素循环是 GDScript 里最贵的部分，能少扫一趟就少一趟。）
@@ -57,6 +66,12 @@ static func compute(shape: PixelShape, density_of: Callable = Callable(),
 	var f_sum := 0.0
 	var r_sum := 0.0
 	var dscale := shape.density_scale
+	# 逐块几何缓存：传了 changed_keys 才复用；没传 = "不知道改了哪些块" -> 清掉（sound）。
+	var cache: Dictionary = shape._mp_cache
+	var hinted: bool = changed_keys != null
+	if not hinted:
+		cache.clear()
+	var changed: Dictionary = changed_keys if hinted else {}
 	for k: int in shape.chunks:
 		var c: PixelChunk = shape.chunks[k]
 		var bx := PixelShape.key_x(k) << 3
@@ -65,6 +80,43 @@ static func compute(shape: PixelShape, density_of: Callable = Callable(),
 		if occ == 0:
 			continue
 		var n_c := Bits.popcount(occ)
+		# ---- 复用：本块没被改过，直接拿缓存的几何量（只可能是"整块同材质"那一路）----
+		if hinted and not changed.has(k):
+			var e: Variant = cache.get(k)
+			if e != null:
+				var v0: int = e["v"]
+				var n0: int = e["n"]
+				var d0r := 1.0
+				if has_density:
+					var cd0 = dens.get(v0)
+					if cd0 == null:
+						cd0 = density_of.call(v0)
+						dens[v0] = cd0
+					d0r = cd0
+				d0r *= dscale
+				var fv0r := 0.0
+				if has_fric:
+					var cf0 = fric.get(v0)
+					if cf0 == null:
+						cf0 = friction_of.call(v0)
+						fric[v0] = cf0
+					fv0r = cf0
+				var rv0r := 0.0
+				if has_rest:
+					var cr0 = rest.get(v0)
+					if cr0 == null:
+						cr0 = restitution_of.call(v0)
+						rest[v0] = cr0
+					rv0r = cr0
+				# ⚠️ 这 5 行与下面快路径的加法**逐字对应**（顺序、括号都一样）-> 逐位精确
+				m += d0r * float(n0)
+				sx += d0r * e["sx"]
+				sy += d0r * e["sy"]
+				i_origin += d0r * e["ii"]
+				f_sum += fv0r * float(n0)
+				r_sum += rv0r * float(n0)
+				n += n0
+				continue
 		# ⚠️⚠️ **整块同材质时的边际量快路径**。逐像素要付位扫描 + 三次查表 + 12 次浮点，
 		#    实测 **0.61 us/像素**：768x100 一刀切开后两片共 6.6 万像素 = **40 ms**，
 		#    是"生成新实体"里最大的一项（比 apply_damage 9.4 + split 17.3 加起来还大）。
@@ -119,14 +171,18 @@ static func compute(shape: PixelShape, density_of: Callable = Callable(),
 				sxx += fx * fx * float(cj)
 				sy_c += fy * float(rj)
 				syy += fy * fy * float(rj)
+			var ii_c := sxx + syy + float(n_c) / 6.0
+			# 存几何量（与密度无关，所以密度表改了不用失效）
+			cache[k] = {"n": n_c, "sx": sx_c, "sy": sy_c, "ii": ii_c, "v": v}
 			m += d0 * float(n_c)
 			sx += d0 * sx_c
 			sy += d0 * sy_c
-			i_origin += d0 * (sxx + syy + float(n_c) / 6.0)
+			i_origin += d0 * ii_c
 			f_sum += fv0 * float(n_c)
 			r_sum += rv0 * float(n_c)
 			n += n_c
 			continue
+		cache.erase(k)          # 混合材质的块不进缓存（复用分支只认快路径的条目）
 		var bits := occ
 		while bits != 0:
 			var i := Bits.first_bit_index(bits)

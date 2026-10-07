@@ -174,12 +174,14 @@ func sync(body) -> void:
 		forget(body.id)
 		return
 	var holder: Node2D = _nodes.get(body.id)
+	var fresh := false
 	if holder == null:
 		holder = Node2D.new()
 		holder.name = "Body%d" % body.id
 		add_child(holder)
 		_nodes[body.id] = holder
 		_bounds[body.id] = Rect2i()
+		fresh = true
 	# 🔥 只在**内容真的变了**时才重建贴图。
 	#
 	# ⚠️⚠️ 这里以前是无条件 node.texture = _build_texture(body, aabb)，
@@ -381,6 +383,12 @@ func sync(body) -> void:
 	var cs := cos(body.rotation)
 	var sn := sin(body.rotation)
 	holder.transform = Transform2D(Vector2(cs, sn), Vector2(-sn, cs), body.position)
+	# ⚠️⚠️ 新建的 holder 必须重置物理插值状态。上面是"先 add_child 入树、后设 transform"，
+	#    而 project 开着 physics/common/physics_interpolation 时，新节点这一帧会从**入树时
+	#    的变换（原点）**插值过来 —— 症状就是新碎片诞生那一帧被画在错位置（实测最小复现：
+	#    质心偏 593 px，reset 后 0.4 px）。只对**新建**那一帧 reset：每帧 reset 等于关掉插值。
+	if fresh:
+		holder.reset_physics_interpolation()
 
 static func _local_bounds(body) -> Rect2i:
 	var box := Rect2i()

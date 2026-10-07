@@ -178,7 +178,7 @@ func _physics_process(delta: float) -> void:
 ##   max_angular_velocity: float 角速度上限 rad/s（0 = 不钳），默认 1000
 ##   min_fragment_pixels: int 碎片小于这么多像素就丢掉，默认 4
 ##   ccd_ignore_mass: float 轻碎片豁免子步估计的质量阈值（0 = 关），默认 0
-##   debris_max_mass / debris_min_speed: 灰尘清理阈值（两个都 > 0 才生效），默认关
+##   debris_max_mass / debris_min_speed: 灰尘清理阈值（前者 > 0 才生效；后者 0 = 不限速度），默认关
 ##   native: bool          是否启用扩展加速（没有扩展会自动回退），默认 true
 ##   auto_render: bool     默认 true
 func configure(opts: Dictionary) -> void:

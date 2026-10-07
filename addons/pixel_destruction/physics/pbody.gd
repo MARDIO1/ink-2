@@ -380,7 +380,7 @@ static func _first_material(shape_list: Array) -> int:
 func rebuild(shape_list: Array, density_of: Callable = Callable(),
 		max_rects: int = 64, dirty_rect: Rect2i = Rect2i(),
 		friction_of: Callable = Callable(), restitution_of: Callable = Callable(),
-		dirty_rects: Dictionary = {}) -> void:
+		dirty_rects: Dictionary = {}, changed_chunks: Variant = null) -> void:
 	# 几何变了 —— Rapier 后端据此决定要不要重建碰撞体（见 _rp_rects_rev）。
 	# 放在 rebuild() 里是**源头修**：破坏 / 擦除 / 绘制 / 分裂全都走这里。
 	rects_rev += 1
@@ -454,7 +454,8 @@ func rebuild(shape_list: Array, density_of: Callable = Callable(),
 	var r_sum := 0.0
 	var props: Array = []
 	for s in shape_list:
-		var p: MassProps.Props = MassProps.compute(s, density_of, friction_of, restitution_of)
+		# changed_chunks：调用方声明"只改了这些块"-> 质量属性只重算它们（见 MassProps.compute）
+		var p: MassProps.Props = MassProps.compute(s, density_of, friction_of, restitution_of, changed_chunks)
 		props.append(p)
 		m_total += p.mass
 		com += p.com * p.mass

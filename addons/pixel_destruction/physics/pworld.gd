@@ -18,6 +18,17 @@ const Sweep := preload("res://addons/pixel_destruction/physics/sweep.gd")
 const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 
 var bodies: Array = []
+## 刚体**增删**的版本号（add_body / remove_body 各 +1）。
+##
+## ⚠️ 存在的理由：节点层的 `_body_nodes` 与 `bodies` 有一条**硬不变量**（按下标一一对应），
+##    而任何绕过节点层增删刚体的路径都会破坏它 —— 直接调 `fracture_pixels`、门面 `spawn_*`、
+##    灰尘策略里的 `remove_body`、调试脚本里的 `add_body`。
+##    症状**不是报错**：数组变长时静默错位（节点层的渲染归属会去问**别人的节点**）；
+##    数组变短时会让"按下标取节点"的消费方（游戏层的同步循环）**越界中断** ——
+##    那之后的刚体（通常正是新碎片）这一帧不再被 sync，贴图停在旧位姿，
+##    看起来就是"碎片有位置偏差"。
+##    `PixelWorld` 现在按这个版本号自动调 `realign_body_nodes()`，所以**消费者不用再记这条规矩**。
+var bodies_rev := 0
 var shapes_needing_coarse_proxy := 0
 ## 重力要按**可见尺度**定，不是按世界坐标的绝对值。
 ## 缩放 3 倍时可见高度只有 180 世界单位，900 的重力意味着物体 1 秒后
@@ -97,12 +108,26 @@ var ccd_substep_budget := 600
 ##    一个 2x2 碎片以 40000 px/s 飞行：子步 3 -> **334**，那一帧 **3.2 ms -> 346 ms**。
 ##    而防穿的意义是"别让**看得见的东西**穿墙"：2x2 的灰尘穿过去没人看得出来。
 ##
-## ⚠️ 豁免 = **放松防穿**：这些碎片真的会穿墙（然后掉出世界、被 cull_outside 收走）。
+## ⚠️ 豁免 = **放松防穿**：这些碎片会穿墙（然后掉出世界、被 cull_outside 收走）。
+##    ⚠️ 但实测（tests/diag_ccd_tunnel.gd）代价比这句话小得多：防穿有**两层** ——
+##    ① 本引擎的子步（豁免掉的就是这一层）；② **Rapier 自己的 CCD**（rp_ccd_substeps，
+##    默认 1）。第 ② 层还在时，豁免体照样被 swept 挡住：10x10 以 30000 px/s 撞 4 像素
+##    薄墙、子步只有 1，结果**挡住**；只有把 rp_ccd_substeps 也设成 0 才真的穿过去。
+##    所以"会穿墙"是**第 ② 层也关掉时**的后果，不是必然。
 ## ⚠️ 抓着的 / 挂着关节的**永不豁免** —— 那些是要交互的，穿墙会被玩家看见。
 ## ⚠️ 它只治"拖慢"，不治"灰尘还在飞"（那个见 debris_max_mass）。
 var ccd_ignore_mass := 0.0
-## 又轻又快的灰尘**直接删掉**（两个都 > 0 才生效，**默认关**）。
-## 判据：mass <= debris_max_mass **且** 速度 >= debris_min_speed。
+## 灰尘**直接删掉**（默认关：debris_max_mass = 0）。
+## 判据：mass <= debris_max_mass **且**（若 debris_min_speed > 0）运动 >= debris_min_speed。
+##
+## ⚠️ **debris_min_speed = 0 表示"不限速度"**（只按质量清，静止的也清）。这不是笔误 ——
+##    甲方把 speed 设成 1 期望"清掉小碎片"，结果一个都没清：**静止的碎片 motion 恒为 0**，
+##    任何正阈值都拦得住躺在地上的碎块（实测 speed = 1 / 0.5 / 0.1 / 0.01 / 0.001
+##    全都没清，见 tests/diag_debris_port.gd）。两种需求用这一个旋钮表达：
+##      · speed > 0 = 只清"**正在高速飞的**灰尘"（挡子步尖峰，demo 用的就是这种）；
+##      · speed = 0 = 清掉所有够轻的（"扫地"，不管它动不动）。
+## ⚠️ 质量要按**密度**算：mass = 像素数 x 该材质密度。4x4 的碎片在密度 2.5 下是
+##    **质量 40**、密度 7.8 下是 124.8 —— 别拿像素数当质量。
 ##
 ## ⚠️ 为什么是**两个阈值**、而不是"质量/速度的比值"：它们回答两个不同的问题 ——
 ##    速度 = "它要全世界陪它跑多少子步"（每步位移 > ccd_max_motion 才有影响）；
@@ -559,6 +584,7 @@ func add_body(body: PBody, shape_list: Array, density_of: Callable = Callable(),
 	body.rebuild(shape_list, density_of if density_of.is_valid() else density_callable(),
 		max_rects_per_shape, Rect2i(), friction_callable(), restitution_callable())
 	bodies.append(body)
+	bodies_rev += 1
 	if not connected_known:
 		ensure_connected(body)
 	return body
@@ -580,6 +606,7 @@ func remove_body(body: PBody) -> void:
 		for j in joints_of(body).duplicate():
 			_joint_drop_silent(j)
 	bodies.erase(body)
+	bodies_rev += 1
 
 
 ## ---------- 标签查询 ----------
@@ -710,7 +737,11 @@ var rp_soft_ccd_prediction := 0.0
 ## ⚠️ 它同时是**全局 CCD 开关**：0 = 整个世界关掉 CCD（含"快动态体 vs 固定碰撞体"
 ##    的自动 CCD）。默认 1 太小 —— 大步长下一次子步撑不住。
 var rp_ccd_substeps := 1
-var _rp_ccd_substeps_pushed := 0
+## ⚠️ 初值必须是 **-1**，不能是 0：这是"值变了才推"的镜像，而 `rp_ccd_substeps = 0`
+##    是**合法且有意义的设置**（= 整个世界关掉 CCD）。镜像初值取 0 的话，
+##    "在第一步之前设成 0"会被守卫吃掉 —— 用户以为关了，Rapier 那边还是默认 1，
+##    而且**不报任何错**（我调这个旋钮做对照实验时正是这么被骗了一次）。
+var _rp_ccd_substeps_pushed := -1
 
 var rp_prediction_distance := 0.02
 var rp_max_corrective_velocity := 300.0
@@ -1661,11 +1692,35 @@ func _compute_substeps(dt: float) -> int:
 	return _substeps_held
 
 
-func step(dt: float) -> void:
+## 固定步的**前段**：清接触事件、刷新质心、灰尘清理、子步估计。返回该步要切几个子步。
+##
+## ⚠️⚠️ 为什么要有这个**公开钩子**（甲方实测踩到）：
+##    "**自己驱动子步**"是合法用法 —— 要逐子步结算接触伤害就必须自己写那个循环
+##    （甲方项目就是这么做的：只调 `_compute_substeps` + `_substep_rapier`）。
+##    而灰尘清理原本只挂在 `step()` 里，于是那些项目里**清理一次都没跑过** ——
+##    `debris_max_mass` 设多少都没用（他设到 1000 也没清掉一个碎片），
+##    而且**不报任何错**。静默失效是最坏的失败方式，所以把前段抽成公开方法：
+##    自己写循环的人调这一个，就不会再漏。
+##
+## 用法：
+##     var n := world.pre_step(dt)
+##     for i in n:
+##         world._substep_rapier(dt / float(n))
+##
+## ⚠️ 顺序是契约：清理必须在子步估计**之前**（见 cull_fast_debris 的说明），
+##    否则就是"先卡一帧、下一帧才清掉"。
+func pre_step(dt: float) -> int:
 	if contact_events_enabled:
 		contacts.clear()          # 按**步**清空；子步会往同一个列表里追加
 	for b in bodies:
 		b.refresh_com()
+	last_debris_removed = cull_fast_debris()
+	var n := _compute_substeps(dt)
+	last_substeps = n
+	return n
+
+
+func step(dt: float) -> void:
 	# 物理交给 Rapier（宽相 / 窄相 / 求解 / 休眠都是它的），但**子步要自己切**。
 	#
 	# ⚠️ 这里曾经不切，理由是"Rapier 自带 CCD" —— 那是错的，代价是 demo 穿模。
@@ -1674,10 +1729,7 @@ func step(dt: float) -> void:
 	#
 	# 切子步在物理上是**正确**的：每个子步 dt/N，力/重力/抓取都按 dt/N 积分，
 	#    一帧的总冲量不变（早期担心的"力被重复施加"不成立 —— 那要每子步都用完整 dt）。
-	# ⚠️ 必须在子步估计**之前**（见 cull_fast_debris 的说明）：否则就是"先卡一帧再清掉"。
-	last_debris_removed = cull_fast_debris()
-	var n := _compute_substeps(dt)
-	last_substeps = n
+	var n := pre_step(dt)
 	var sub := dt / float(n)
 	for i in n:
 		_substep_rapier(sub)
@@ -2814,7 +2866,14 @@ func _break_joints_over_threshold(cands: Array) -> void:
 ##
 ## ⚠️ 两个阈值都必须 > 0 才生效（默认 0 = 关 -> 8 条逐位基准不动）。
 func cull_fast_debris() -> int:
-	if debris_max_mass <= 0.0 or debris_min_speed <= 0.0:
+	# ⚠️ 只有**质量**阈值是总开关；debris_min_speed <= 0 = **不限速度**（只按质量清）。
+	#
+	#    为什么这样定（甲方实测踩到）：他把 speed 设成 1 期望"清掉小碎片"，结果一个都没清 ——
+	#    因为**静止的碎片 motion 恒为 0**（实测 speed = 1 / 0.5 / 0.1 / 0.01 / 0.001
+	#    全都没清，见 tests/diag_debris_port.gd），**任何正阈值都拦得住躺在地上的碎块**。
+	#    这个旋钮原本的语义是"清正在高速飞的灰尘"（挡子步尖峰），而"清躺着的碎块"
+	#    是另一个需求 —— 用 0 表示"不看速度"就能表达它，且默认（质量也是 0）仍然全关。
+	if debris_max_mass <= 0.0:
 		return 0
 	var keep := _interactive_bodies()
 	var removed := 0
@@ -2826,7 +2885,7 @@ func cull_fast_debris() -> int:
 		#    只看线速度会漏掉质量放大的那个通道：Δω = J·r/I，而 **I ∝ m** ——
 		#    同一个力矩，轻 100 倍的碎片角速度大 100 倍，而子步估计里有一项
 		#    |ω| x 半径。既然闸门的目标是"别让它拖慢世界"，判据就得和那个度量对齐。
-		if _motion_of(b) < debris_min_speed:
+		if debris_min_speed > 0.0 and _motion_of(b) < debris_min_speed:
 			continue
 		if keep.has(b):
 			continue
@@ -3026,6 +3085,9 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 	#    而删除掩码本来就带着范围信息（clear_pixel 也已经逐块记过脏）。
 	var removed := 0
 	var dirty := {}
+	# ⚠️ 同时收集**被改到的块键** —— 交给 rebuild -> MassProps 只重算这些块。
+	#    没有它的话，删 1 个像素也要把整个形状重扫一遍（实测 800x40 = 2.95 ms）。
+	var changed_chunks := {}
 	for s in body.shapes:
 		var mask: Dictionary = removals.get(s, {})
 		if mask.is_empty():
@@ -3039,12 +3101,14 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 			if s.get_pixel(p.x, p.y) != 0:
 				s.clear_pixel(p.x, p.y)
 				removed += 1
+			changed_chunks[PixelShape.make_key(p.x >> 3, p.y >> 3)] = true
 			x0 = mini(x0, p.x)
 			y0 = mini(y0, p.y)
 			x1 = maxi(x1, p.x)
 			y1 = maxi(y1, p.y)
 		if x1 >= x0:
 			dirty[s] = Rect2i(x0, y0, x1 - x0 + 2, y1 - y0 + 2)
+
 	if removed == 0:
 		return {"removed": 0, "body_alive": true, "fragments": []}
 
@@ -3099,8 +3163,12 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 	# ⚠️ 三个 Callable 都要传：不传 -> 母体质量按"像素数"算错、摩擦/恢复被清成 0。
 	if anchor_mode:
 		body.is_static = kept_anchored
+	# ⚠️⚠️ 断出碎片时**不能**传 changed_chunks：split(adopt=true) 会把 PixelChunk **对象**
+	#    搬到新 shape 上 —— 块键还是那些键，但内容已经不是缓存里记的那份了 ✗
+	#    （闸门"甜甜圈：质量属性仍然逐位正确"当场抓到）。这时退回全量重算。
+	var hint: Variant = changed_chunks if loose.is_empty() else null
 	body.rebuild(kept, density_callable(), max_rects_per_shape, Rect2i(),
-		friction_callable(), restitution_callable(), dirty)
+		friction_callable(), restitution_callable(), dirty, hint)
 	var r_keep := body.com_world() - old_com
 	body.linear_velocity = v_old + w_old * Vector2(-r_keep.y, r_keep.x)
 	body.angular_velocity = w_old
