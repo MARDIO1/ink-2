@@ -447,9 +447,6 @@ func _build_container(src_tex: Texture2D) -> void:
 	_pixels.resize(_gw * _gh * 4)
 	_tex = ImageTexture.create_from_image(_img)
 	texture = _tex
-	print("[BottledInk] 容器 %dx%d @ %s，可通行 %d 格，粒子 %d（满量 %d，max_fill %.2f）" % [
-		_gw, _gh, str(_grid_origin), _count_nonzero(_container),
-		_fluid.particle_count(), full, max_fill])
 
 
 func _push_out(reached: PackedByteArray, stack: PackedInt32Array,
@@ -570,13 +567,9 @@ func _carve_face(lo: Vector2i) -> void:
 	var y0 := clampi(floori(float(face_rect.position.y - lo.y) / float(cell_px)), 0, _gh)
 	var x1 := clampi(ceili(float(face_rect.position.x + face_rect.size.x - lo.x) / float(cell_px)), 0, _gw)
 	var y1 := clampi(ceili(float(face_rect.position.y + face_rect.size.y - lo.y) / float(cell_px)), 0, _gh)
-	var cut := 0
 	for gy in range(y0, y1):
 		for gx in range(x0, x1):
 			_draw[gy * _gw + gx] = 0
-			cut += 1
-	print("[BottledInk] 脸部留空 %s -> 格 (%d,%d)..(%d,%d)，共 %d 格" % [
-		str(face_rect), x0, y0, x1 - 1, y1 - 1, cut])
 
 
 func _count_nonzero(a: PackedByteArray) -> int:

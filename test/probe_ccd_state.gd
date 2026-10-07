@@ -24,5 +24,5 @@ func _run() -> void:
 	print("  ccd_enabled=%s  ccd_auto=%s  rp_ccd_substeps=%d  ccd_max_motion=%.1f" % [
 		str(w.ccd_enabled), str(w.ccd_auto), w.rp_ccd_substeps, w.ccd_max_motion])
 	print("  判定：%s" % ("CCD 开着（两层都开）" if (w.ccd_enabled and w.rp_ccd_substeps > 0)
-		else "**CCD 有关着的层**"))
+		else "CCD 关着（两层都关）—— **ink-2 现在要的就是这个**，见 collision_damage.gd 里那 3 行"))
 	quit()
