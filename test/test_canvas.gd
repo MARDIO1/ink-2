@@ -1,5 +1,7 @@
 extends "res://test/test_collision_damage.gd"
 
+const InkPalette := preload("res://Ink/src/ink_palette.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -38,6 +40,43 @@ func _run() -> void:
 	valid = valid and surface.is_solid(20, 20) and not surface.is_solid(30, 20)
 	await process_frame
 	canvas.position = home
+	#只回收画布内的部分：刚体跨在画布边上时，画布外的那半边留在世界里。
+	var brush: int = surface.brush_size
+	surface.clear()
+	surface.brush_size = 1
+	canvas.position = Vector2(5000, 5000)
+	surface._stroke(Vector2(10, 10), Vector2(60, 10), Color.BLACK)
+	canvas.solid.solidify(surface, scene)
+	var bodies_before: int = scene.world.bodies.size()
+	var ink = scene.world.bodies[-1]
+	canvas.position = Vector2(5025, 5000)   # 往右挪 25px：笔划 10..60 里只有 25..60 落在画布里
+	canvas.return_to_canvas()
+	valid = valid and surface.is_solid(0, 10) and surface.is_solid(35, 10)
+	valid = valid and not surface.is_solid(36, 10)
+	valid = valid and scene.world.bodies.size() == bodies_before
+	valid = valid and ink.shapes[0].pixel_count() == 15
+	valid = valid and ink.shapes[0].get_pixel(10, 10) != 0 and ink.shapes[0].get_pixel(25, 10) == 0
+	canvas.position = home
+	#画布从中间切一刀：断成两截的残留都要留在世界里（分片走引擎分裂，节点下标不许错位）。
+	surface.clear()
+	canvas.position = Vector2(5000, 5000)
+	canvas.canvas_size = Vector2i(64, 64)
+	surface._stroke(Vector2(40, 10), Vector2(40, 40), Color.BLACK)
+	canvas.solid.solidify(surface, scene)
+	var split_before: int = scene.world.bodies.size()
+	canvas.canvas_size = Vector2i(20, 6)
+	canvas.position = Vector2(5040, 5020)   # 笔划 x=40 正好落在画布左缘，只有 y 20..25 这 6 行进画布
+	canvas.return_to_canvas()
+	var recycled: int = 0
+	for y in range(6):
+		if surface.is_solid(0, y):
+			recycled += 1
+	valid = valid and recycled == 6
+	valid = valid and scene.world.bodies.size() == split_before + 1
+	valid = valid and scene._body_nodes.size() == scene.world.bodies.size()
+	canvas.canvas_size = Vector2i(320, 180)
+	canvas.position = home
+	surface.brush_size = brush
 	surface.clear()
 	surface._stroke(Vector2(20, 20), Vector2(40, 20), Color.BLACK)
 	surface._place_nail(Vector2(30, 20))
@@ -47,7 +86,7 @@ func _run() -> void:
 	var nailed = scene.world.bodies[-1]
 	valid = valid and nailed.is_static and nailed.tags.has("static_anchor_points")
 	var nail_shape = nailed.shapes[0]
-	valid = valid and nail_shape.get_pixel(30, 20) == 4
+	valid = valid and nail_shape.get_pixel(30, 20) == InkPalette.nail_material_id()
 	var cut: Dictionary = {}
 	for y in range(180):
 		if nail_shape.get_pixel(35, y) != 0:

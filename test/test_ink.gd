@@ -12,6 +12,7 @@ extends SceneTree
 ## shader 判据的浮点容差：液面正好压在角上时 dot 会有 1e-13 级误差。
 const EPS := 1e-6
 const MAIN = preload("res://map/main.tscn")
+const InkPalette := preload("res://Ink/src/ink_palette.gd")
 ## 瓶内像素数（泛洪出来的封闭空腔）。跟着 asset 走：改了剪影贴图就要跟着改。
 const INTERIOR_PX := 1810
 
@@ -51,7 +52,9 @@ func _pixels() -> int:
 
 ## 外部改墨水量：生命值是真源，图层只读 ratio()。
 func _set_fill(ratio: float) -> void:
-	_health.ink = ratio * _health.max_ink
+	for i in InkPalette.ink_count():
+		var material_id: int = InkPalette.material_id_of(InkPalette.ink_at(i))
+		_health.add(material_id, ratio * _health.max_of(material_id) - _health.ink_of(material_id))
 
 
 func _on_health_changed() -> void:
@@ -140,17 +143,20 @@ func _run() -> void:
 	_check("player baseline pixels unchanged", baseline == 3304)
 	# 0. 生命值接口：查询 / 加 / 减 / 夹取 / 只在真变化时广播
 	_health.changed.connect(_on_health_changed)
-	_health.ink = _health.max_ink
+	var ink_a: int = InkPalette.material_id_of(InkPalette.ink_at(0))
+	var ink_b: int = InkPalette.material_id_of(InkPalette.ink_at(1))
 	_changes = 0
-	_health.reduce(30.0)
-	_check("reduce takes ink away", is_equal_approx(_health.ink, _health.max_ink - 30.0))
-	_check("ratio tracks ink", is_equal_approx(_health.ratio(), 0.7))
-	_health.add(10.0)
-	_check("add puts ink back", is_equal_approx(_health.ink, _health.max_ink - 20.0))
-	_health.reduce(1.0e9)
-	_check("ink never drops below zero", _health.ink == 0.0 and _health.ratio() == 0.0)
-	_health.add(1.0e9)
-	_check("ink never rises above max", _health.ink == _health.max_ink and _health.ratio() == 1.0)
+	_health.reduce(ink_a, _health.max_of(ink_a) * 0.3)
+	_check("reduce takes ink away", is_equal_approx(_health.ink_of(ink_a), _health.max_of(ink_a) * 0.7))
+	_check("the other ink is untouched", is_equal_approx(_health.ink_of(ink_b), _health.max_of(ink_b)))
+	_check("ratio_of tracks that ink", is_equal_approx(_health.ratio_of(ink_a), 0.7))
+	_health.add(ink_a, _health.max_of(ink_a) * 0.1)
+	_check("add puts ink back", is_equal_approx(_health.ink_of(ink_a), _health.max_of(ink_a) * 0.8))
+	_health.reduce(ink_a, 1.0e9)
+	_check("ink never drops below zero", _health.ink_of(ink_a) == 0.0 and _health.ratio_of(ink_a) == 0.0)
+	_health.add(ink_a, 1.0e9)
+	_check("ink never rises above max",
+		_health.ink_of(ink_a) == _health.max_of(ink_a) and _health.ratio_of(ink_a) == 1.0)
 	_check("every real change is broadcast exactly once", _changes == 4)
 	# 0b. HUD 横条跟着同一个墨水值走
 	# UI 已抽到 `ui/game_ui.tscn`（真实游戏里由 `root/root.tscn` 挂在 `UI` 容器下）；
@@ -159,10 +165,13 @@ func _run() -> void:
 	_scene.add_child(game_ui)
 	await process_frame
 	_hud = game_ui.get_node("Hud")
-	_check("hud bar shows the full ink", is_equal_approx(_hud.status_bar.value, 100.0))
-	_health.reduce(_health.max_ink * 0.75)
-	_check("hud bar follows the ink source", is_equal_approx(_hud.status_bar.value, 25.0))
-	_health.ink = _health.max_ink
+	_check("hud bar shows the full ink", is_equal_approx(_hud.bottle_fill.value, 100.0))
+	_health.reduce(ink_a, _health.max_of(ink_a) * 0.75)
+	_health.reduce(ink_b, _health.max_of(ink_b) * 0.75)
+	_check("hud bar follows the ink source", is_equal_approx(_hud.bottle_fill.value, 25.0))
+	for i in InkPalette.ink_count():
+		var material_id: int = InkPalette.material_id_of(InkPalette.ink_at(i))
+		_health.add(material_id, _health.max_of(material_id))
 
 
 	# 2. 液面世界水平：液面方块自己的 Y 轴就是世界向下

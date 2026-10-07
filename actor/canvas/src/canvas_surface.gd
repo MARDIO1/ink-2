@@ -4,6 +4,8 @@
 #region 依赖
 @tool
 extends Area2D
+
+const InkPalette := preload("res://Ink/src/ink_palette.gd")
 #endregion
 
 #region 初始化
@@ -82,12 +84,27 @@ var _shape_delta := 0
 		tool = value
 		_painting = false
 		_shaping = false
-## 左键绘制的墨水颜色；固化材料由 CanvasSolid 决定。
-@export var black_color := Color(0.04, 0.08, 0.05, 1.0)
-## 钉子像素颜色；固化后使用 grey1 材料并固定所在连通块（材质 4）。
-@export var nail_color := Color(0.12, 0.12, 0.12, 1.0)
-## 钉子对应的材料 id；与 CanvasSolid / CollisionDamage 里的 grey1 一致。
-const NAIL_MATERIAL_ID := 4
+## 当前选中的墨水（`Ink/src/ink_palette.gd` 的 INKS 下标）；右侧面板改它。
+@export var selected_ink: int = 0
+
+
+## 当前墨水的画布颜色。
+func ink_color() -> Color:
+	return InkPalette.color_at(selected_ink)
+
+
+## 当前墨水的材质 id。
+func ink_material_id() -> int:
+	return InkPalette.material_id_of(InkPalette.ink_at(selected_ink))
+
+
+## 钉子像素颜色。钉子不是墨水，只有这一种。
+func nail_color() -> Color:
+	return InkPalette.nail_color()
+
+
+func _is_nail(color: Color) -> bool:
+	return color == nail_color()
 
 
 func _on_mouse_button(button: InputEventMouseButton) -> void:
@@ -129,11 +146,11 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 func _stroke_color():
 	match tool:
 		Tool.BRUSH:
-			return black_color
+			return ink_color()
 		Tool.ERASER:
 			return Color.TRANSPARENT
 		Tool.NAIL:
-			return nail_color
+			return nail_color()
 	return null
 
 
@@ -178,7 +195,7 @@ func _resize() -> void:
 
 #重建透明画布，透明像素在 BlackSprite 下露出纸底
 func _reset() -> void:
-	_apply_ink_delta(-ink_px)          # 画布被重建：把还挂在画布上的墨水还给瓶子
+	_refund_all_ink()                  # 画布被重建：把还挂在画布上的墨水还给瓶子
 	black_image = Image.create_empty(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8)
 	black_image.fill(Color.TRANSPARENT)
 	black_texture = ImageTexture.create_from_image(black_image)
@@ -190,9 +207,10 @@ func _reset() -> void:
 #refund = false：这些墨水已经随固化变成刚体带走了，不能再还。
 func clear(refund := true) -> void:
 	if refund:
-		_apply_ink_delta(-ink_px)
+		_refund_all_ink()
 	else:
-		ink_px = 0
+		_flush_ink()                   # 这些墨已经随固化带走了，不能再还
+		ink_px_by_material = {}
 	black_image.fill(Color.TRANSPARENT)
 	black_texture.update(black_image)
 	nail_layer.clear()
@@ -202,35 +220,36 @@ func clear(refund := true) -> void:
 ## 直接写入一个画布像素（"重新回到画布"用）；越界返回 false，批量写入后调 refresh()。
 ##
 ## ⚠️ 这里**不碰瓶子**：这些墨水在固化那一刻就已经从瓶里扣过了，再扣一次就是重复记账。
-##    但它必须把**画布自己的** `ink_px` 补上 —— 否则这些像素对账本是隐形的，
+##    但它必须把**画布自己的**账补上 —— 否则这些像素对账本是隐形的，
 ##    "重绘"就退不回它们（这正是之前的 bug：抓回来的物品，墨水永远回不来）。
 func write_pixel(pixel: Vector2i, color: Color) -> bool:
 	if pixel.x < 0 or pixel.y < 0 or pixel.x >= canvas_size.x or pixel.y >= canvas_size.y:
 		return false
-	var had: bool = black_image.get_pixelv(pixel).a > 0.5
+	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
-	if color.a > 0.5 and not had and not ink_free:
-		ink_px += 1
+	_bump_ink(before, -1, false)
+	_bump_ink(InkPalette.material_id_at_color(color), 1, false)
 	return true
 
 
 ## 把 CPU 像素缓冲刷到贴图；批量写入后调用一次。
 func refresh() -> void:
 	black_texture.update(black_image)
+	_flush_ink()
 
 
 #两点之间插值补点，避免鼠标移动过快断线
 func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
-	#画之前先看瓶里还剩多少 px；擦除不设上限。
+	#画之前先看瓶里还剩多少 px；擦除不设上限，钉子不花墨水。
 	var room := 1 << 30
-	if color.a > 0.5:
-		room = _ink_room()
+	if color.a > 0.5 and not _is_nail(color):
+		room = _ink_room(ink_material_id())
 	var delta := 0
 	var steps := maxi(1, int(ceil(from.distance_to(to))))
 	for i in range(steps + 1):
 		delta += _stamp(from.lerp(to, float(i) / float(steps)), color, room - delta)
 	black_texture.update(black_image)
-	_apply_ink_delta(delta)
+	_flush_ink()
 
 
 ## 笔触直径，单位 px；圆形笔刷，绘制和擦除使用同一尺寸。
@@ -241,7 +260,7 @@ func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 #落一个圆形笔刷；钉子不铺笔刷，只落单像素。
 func _stamp(center: Vector2, color: Color, allowance: int) -> int:
 	var pixels := {}
-	if color == nail_color:
+	if _is_nail(color):
 		pixels[Vector2i(center.floor())] = true
 	else:
 		_collect_stamp(pixels, center)
@@ -282,11 +301,14 @@ func _collect_stamp(out: Dictionary, center: Vector2) -> void:
 
 #只改像素 + 同步钉子外观层，不碰任何账本。
 func _set_pixel_raw(pixel: Vector2i, color: Color) -> void:
+	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
-	if color == nail_color:
+	if _is_nail(color):
 		nail_layer.add(pixel)
 	else:
 		nail_layer.remove(pixel)
+	_bump_ink(before, -1)
+	_bump_ink(InkPalette.material_id_at_color(color), 1)
 
 
 #写一个像素并记账，返回**墨水净变化**：+1 新画、-1 擦掉、0 没变或墨水不够。
@@ -310,11 +332,12 @@ func _write_pixel(pixel: Vector2i, color: Color, allowance: int) -> int:
 func _place_nail(point: Vector2) -> void:
 	if not _inside(point):
 		return
-	var delta := _write_pixel(Vector2i(point.floor()), nail_color, _ink_room())
+	#钉子不是墨水，不花瓶子里的墨。
+	var delta := _write_pixel(Vector2i(point.floor()), nail_color(), 1 << 30)
 	if delta == 0:
 		return
 	black_texture.update(black_image)
-	_apply_ink_delta(delta)
+	_flush_ink()
 
 
 #该像素是否为黑色墨水，供固化时采样
@@ -322,14 +345,9 @@ func is_solid(x: int, y: int) -> bool:
 	return black_image.get_pixel(x, y).a > 0.5
 
 
-## 透明=空，普通墨水=1，灰色钉子=4。
+## 透明=空；其余按色表认（认不出来返回 0）。
 func material_at(x: int, y: int) -> int:
-	var color: Color = black_image.get_pixel(x, y)
-	if color.a <= 0.5:
-		return 0
-	var nail_delta: Vector3 = Vector3(color.r, color.g, color.b) - Vector3(nail_color.r, nail_color.g, nail_color.b)
-	var ink_delta: Vector3 = Vector3(color.r, color.g, color.b) - Vector3(black_color.r, black_color.g, black_color.b)
-	return NAIL_MATERIAL_ID if nail_delta.length_squared() < ink_delta.length_squared() else 1
+	return InkPalette.material_id_at_color(black_image.get_pixel(x, y))
 #endregion
 
 
@@ -340,18 +358,19 @@ func _update_shape() -> void:
 	_revert_shape()
 	var to: Vector2 = _mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size))
 	var pixels := _shape_pixels(_shape_origin, to)
-	var room := (1 << 30) if ink_free else _ink_room()
+	var room := _ink_room(ink_material_id())
 	var delta := 0
 	for pixel: Vector2i in pixels:
 		var had: bool = black_image.get_pixelv(pixel).a > 0.5
 		if not had and delta >= room:
 			continue                      # 墨水不够：剩下的格子不落笔
 		_shape_saved[pixel] = black_image.get_pixelv(pixel)
-		_set_pixel_raw(pixel, black_color)
+		_set_pixel_raw(pixel, ink_color())
 		if not had:
 			delta += 1
 	_shape_delta = delta
 	black_texture.update(black_image)
+	_flush_ink()
 
 
 #把上一帧的预览还原成原样并清空记录。
@@ -371,7 +390,7 @@ func _end_shape() -> void:
 	_shaping = false
 	_update_shape()
 	_shape_saved.clear()
-	_apply_ink_delta(_shape_delta)
+	_flush_ink()
 	_shape_delta = 0
 
 
@@ -437,7 +456,7 @@ func _bucket_fill(point: Vector2) -> void:
 	seen.resize(w * h)
 	var stack := PackedInt32Array()
 	var targets := PackedInt32Array()
-	var room := (1 << 30) if ink_free else _ink_room()
+	var room := _ink_room(ink_material_id())
 
 	var first := start.y * w + start.x
 	if data[first * 4 + 3] > 127:
@@ -471,8 +490,8 @@ func _bucket_fill(point: Vector2) -> void:
 			stack.append(idx + w)
 
 	var pixel := PackedByteArray([
-		int(black_color.r * 255.0), int(black_color.g * 255.0),
-		int(black_color.b * 255.0), 255])
+		int(ink_color().r * 255.0), int(ink_color().g * 255.0),
+		int(ink_color().b * 255.0), 255])
 	for idx: int in targets:
 		var at := idx * 4
 		data[at] = pixel[0]
@@ -481,7 +500,8 @@ func _bucket_fill(point: Vector2) -> void:
 		data[at + 3] = pixel[3]
 	black_image.set_data(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8, data)
 	black_texture.update(black_image)
-	_apply_ink_delta(targets.size())
+	_bump_ink(ink_material_id(), targets.size())
+	_flush_ink()
 #endregion
 
 
@@ -490,9 +510,11 @@ func _bucket_fill(point: Vector2) -> void:
 @export var health_path := NodePath("../../Player/InkHealth")
 
 var _health = null
-## 画布上现在有多少个实心像素。**这是画布自己的账**，和瓶子无关：
-## 画布上写着多少墨，"重绘"就还多少。
-var ink_px := 0
+## 画布上各墨水的实心像素数：材质 id -> 数量。**这是画布自己的账**，和瓶子无关：
+## 画布上写着多少墨，"重绘"就还多少。钉子不算墨水，不进这本账。
+var ink_px_by_material := {}
+## 本笔还没记到瓶子上的净变化：材质 id -> ±像素数。一笔只和瓶子对一次账。
+var _pending_ink := {}
 ## 免墨水模式（创造模式）：整张画布不和瓶子对账 —— 画、擦、重绘都不动墨水。
 ## ⚠️ 关掉时画布上的墨算"免费"，所以进入时要把已经欠的账先结清（见 setter）。
 @export var ink_free := false:
@@ -500,16 +522,29 @@ var ink_px := 0
 		if value == ink_free:
 			return
 		if value:
-			_apply_ink_delta(-ink_px)   # 先把账结清，再把画布上的墨算成免费
+			_refund_all_ink()           # 先把画布上的墨还给瓶子，之后画布上的墨算免费
 		ink_free = value
 
 
-#本笔还能新增多少像素。
-func _ink_room() -> int:
+## 画布上还挂着多少墨水（所有墨水加起来）。
+func total_ink_px() -> int:
+	var total := 0
+	for count in ink_px_by_material.values():
+		total += count
+	return total
+
+
+## 某墨水在画布上有多少像素。
+func ink_px_of(material_id: int) -> int:
+	return ink_px_by_material.get(material_id, 0)
+
+
+#本笔还能新增多少像素（按当前墨水的余量）。
+func _ink_room(material_id: int) -> int:
 	var health = _health_node()
 	if health == null:
 		return 1 << 30
-	return maxi(0, int(health.ink))
+	return maxi(0, int(health.ink_of(material_id)))
 
 
 #惰性解析墨水源：Player 可能比画布晚就绪。
@@ -519,20 +554,50 @@ func _health_node():
 	return _health
 
 
-#把一笔的净变化记到瓶子上；一次笔画只发一次信号。
-func _apply_ink_delta(delta: int) -> void:
-	if delta == 0:
+#画布自己的账：某墨水的像素数变化。钉子不是墨水，不进账。
+#charge = false 只改画布自己的账、不记到瓶子上（"重新回到画布"那条路）。
+func _bump_ink(material_id: int, delta: int, charge := true) -> void:
+	if delta == 0 or ink_free:
 		return
-	if ink_free:
+	if not InkPalette.is_ink(material_id):
 		return
-	ink_px += delta
+	ink_px_by_material[material_id] = ink_px_of(material_id) + delta
+	if not charge:
+		return
+	_pending_ink[material_id] = _pending_ink.get(material_id, 0) + delta
+
+
+#把本笔的净变化记到瓶子上；一次笔画只发一次信号。
+func _flush_ink() -> void:
+	var pending := _pending_ink
+	_pending_ink = {}
+	if ink_free or pending.is_empty():
+		return
 	var health = _health_node()
 	if health == null:
 		return
-	if delta > 0:
-		health.reduce(float(delta))
-	else:
-		health.add(float(-delta))
+	for material_id in pending:
+		var delta: int = pending[material_id]
+		if delta > 0:
+			health.reduce(material_id, float(delta))
+		elif delta < 0:
+			health.add(material_id, float(-delta))
+
+
+#把画布上现有各墨水的库存全部还给瓶子（重建画布 / 重绘 / 进创造模式前）。
+func _refund_all_ink() -> void:
+	_flush_ink()
+	var book := ink_px_by_material
+	ink_px_by_material = {}
+	if ink_free:
+		return
+	var health = _health_node()
+	if health == null:
+		return
+	for material_id in book:
+		var count: int = book[material_id]
+		if count > 0:
+			health.add(material_id, float(count))
 #endregion
 
 
@@ -547,7 +612,7 @@ func save_ink(path: String) -> Error:
 	return error
 
 
-## 保存供 BakedMap 同时用于编辑器预览和物理烘焙的透明 PNG。
+## 保存整张透明 PNG：黑=空、颜色=材质 id。
 func save_png(path: String) -> Error:
 	var error: Error = black_image.save_png(ProjectSettings.globalize_path(path))
 	if error == OK:
@@ -579,11 +644,14 @@ func load_ink(path: String) -> Error:
 #按像素重新数一遍画布自己的账 —— 读盘、以及怀疑账本漂了的时候用。
 #⚠️ 会全图扫一遍，只走一次性路径，别塞进热循环。
 func recount_ink_px() -> void:
-	ink_px = 0
+	ink_px_by_material = {}
+	_pending_ink = {}
 	for y in range(canvas_size.y):
 		for x in range(canvas_size.x):
 			if black_image.get_pixel(x, y).a > 0.5:
-				ink_px += 1
+				var material_id := material_at(x, y)
+				if InkPalette.is_ink(material_id):
+					ink_px_by_material[material_id] = ink_px_of(material_id) + 1
 
 
 #按像素颜色重建钉子外观层；只在读盘时走一次。
@@ -591,6 +659,6 @@ func _rebuild_nails() -> void:
 	nail_layer.clear()
 	for y in range(canvas_size.y):
 		for x in range(canvas_size.x):
-			if material_at(x, y) == NAIL_MATERIAL_ID:
+			if material_at(x, y) == InkPalette.nail_material_id():
 				nail_layer.add(Vector2i(x, y))
 #endregion

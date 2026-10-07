@@ -249,7 +249,7 @@ expand_icon = true
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
 tooltip_text = "返回画布
-回收仍与画布相交的墨水实体"
+只回收画布内的部分，画布外的一半留在世界里"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52

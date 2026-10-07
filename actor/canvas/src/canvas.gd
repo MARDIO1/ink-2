@@ -3,6 +3,7 @@
 extends Node2D
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
+const InkPalette := preload("res://Ink/src/ink_palette.gd")
 
 @onready var surface = $CanvasSurface
 @onready var solid = $CanvasSolid
@@ -44,6 +45,7 @@ func _ready() -> void:
 	set_physics_process(active and not Engine.is_editor_hint())
 	_refresh_workbench_visibility()
 	if not Engine.is_editor_hint():
+		_build_side_panel()
 		_bind_buttons()
 		_apply_tool(surface.tool)
 #endregion
@@ -137,6 +139,91 @@ var _follow_player := false
 func _place_controls() -> void:
 	canvas_frame.position = Vector2(-14, -14)
 	canvas_frame.size = Vector2(canvas_size) + Vector2(28, 28)
+	_place_side_panel()
+
+
+#region 右侧面板：墨水选择 + 笔刷粗细
+## 右侧面板离画布右边缘多远。
+@export var side_panel_gap := 24.0
+## 笔刷粗细条最大直径（步长 1；偶数直径会落到下一档奇数，见 canvas_surface）。
+@export_range(1, 65, 1) var brush_size_max := 33
+
+var _side_panel: Control = null
+var _ink_buttons: Array[Button] = []
+
+
+#右侧面板由色表生成：加一种墨水这里不用改。
+func _build_side_panel() -> void:
+	var panel := VBoxContainer.new()
+	panel.name = "SidePanel"
+	panel.z_index = 100
+	panel.theme = buttons.theme
+	panel.add_theme_constant_override("separation", 8)
+	add_child(panel)
+	_side_panel = panel
+	#笔刷粗细：把左边那条搬过来，顺便把档位分细（原来是 step 2、只有奇数档）。
+	brush_panel.reparent(panel)
+	brush_panel.custom_minimum_size = Vector2(140.0, 28.0)
+	var pen: HSlider = brush_panel.get_node("PenSlider")
+	pen.min_value = 1.0
+	pen.max_value = float(brush_size_max)
+	pen.step = 1.0
+	pen.tick_count = brush_size_max
+	pen.value = clampf(pen.value, 1.0, float(brush_size_max))
+	set_brush_size(int(round(pen.value)))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	panel.add_child(grid)
+	for i in InkPalette.ink_count():
+		var color: Color = InkPalette.color_at(i)
+		var style := StyleBoxFlat.new()
+		style.bg_color = color
+		style.border_width_left = 3
+		style.border_width_top = 3
+		style.border_width_right = 3
+		style.border_width_bottom = 3
+		style.border_color = Color(0.035, 0.031, 0.024, 1.0)
+		var button := Button.new()
+		button.toggle_mode = true
+		button.focus_mode = Control.FOCUS_NONE
+		button.custom_minimum_size = Vector2(66.0, 42.0)
+		button.text = InkPalette.ink_name(i)
+		button.tooltip_text = "%s（材质 %d）" % [
+			InkPalette.ink_name(i), InkPalette.material_id_of(InkPalette.ink_at(i))]
+		button.add_theme_color_override(
+			"font_color", Color.WHITE if color.get_luminance() < 0.5 else Color.BLACK)
+		button.add_theme_stylebox_override("normal", style)
+		button.add_theme_stylebox_override("hover", style)
+		button.add_theme_stylebox_override("pressed", style)
+		button.add_theme_stylebox_override("focus", style)
+		button.pressed.connect(select_ink.bind(i))
+		grid.add_child(button)
+		_ink_buttons.append(button)
+	select_ink(surface.selected_ink)
+	_place_side_panel()
+	_refresh_workbench_visibility()
+
+
+## 选中一种墨水（色表下标）；画笔用它，账也记到它头上。
+func select_ink(index: int) -> void:
+	if index < 0 or index >= InkPalette.ink_count():
+		return
+	surface.selected_ink = index
+	for i in _ink_buttons.size():
+		_ink_buttons[i].set_pressed_no_signal(i == index)
+
+
+func _place_side_panel() -> void:
+	if _side_panel == null:
+		return
+	if _follow_player:
+		#创造模式工具栏跟着人飞：面板贴在工具栏右边。
+		_side_panel.position = workbench.position + Vector2(160.0, 56.0)
+	else:
+		_side_panel.position = Vector2(float(canvas_size.x) + side_panel_gap, 0.0)
+#endregion
 
 
 ## 把工具栏挂到玩家身上（创造模式全图飞行时够得着）；关掉就回到场景里摆的位置。
@@ -156,6 +243,7 @@ func _update_follow_position() -> void:
 	var body = player.get("body")
 	var center: Vector2 = body.com_world() if body != null else player.global_position
 	workbench.position = to_local(center + follow_offset)
+	_place_side_panel()
 
 
 func _physics_process(_delta: float) -> void:
@@ -186,6 +274,9 @@ func _set_workbench_visible(nearby: bool) -> void:
 	toggle_button.visible = active and nearby
 	buttons.visible = active and nearby and not _workbench_hidden
 	brush_panel.visible = active and nearby and not _workbench_hidden
+	#右侧面板是另一套布局，不跟着左边那个"隐藏"按钮走。
+	if _side_panel != null:
+		_side_panel.visible = active and nearby
 
 
 func _distance_from_player_to_canvas() -> float:
@@ -260,7 +351,7 @@ func _on_pen_slider_changed(value: float) -> void:
 #region 复现文件与调试输入
 ## 开发复现文件留在 test，保存内容仍是未固化墨水。
 @export var capture_path: String = "res://test/canvas_capture.tres"
-## 大地图预览图；保存后可由 BakedMap 在编辑器中加载和拖动。
+## 大地图整图；存下来当参考图（没有节点读它）。
 @export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
 ## 开发用的 F5/F9 存读；创造模式接管 F5 时会被关掉，避免两套保存同时跑。
 var dev_save_enabled := true

@@ -50,7 +50,7 @@ foreach ($file in $textFiles) {
 $required = @(
     'addons\pixel_destruction\native\fastphys.dll',
     'addons\pixel_destruction\native\rapier_bridge.dll',
-    'addons\pixel_destruction\fastphys.gdextension',
+    'addons\pixel_destruction\native\fastphys.gdextension',
     'ui\menu\menu.tscn',
     'ui\hud\hud.tscn',
     'ui\esc\esc.tscn',

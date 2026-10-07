@@ -5,7 +5,9 @@ extends Node
 
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const DebrisDust = preload("res://map/src/debris_dust.gd")
-const NAIL_MATERIAL_ID := 4
+## ⚠️ 钉子的材质 id 上游已改成走 InkPalette（单一真源），本地那份
+##    NAIL_MATERIAL_ID := 4 已随之删除 —— 合并时不要把它带回来。
+const InkPalette := preload("res://Ink/src/ink_palette.gd")
 const ANCHOR_TAG := "static_anchor_points"
 
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
@@ -828,7 +830,7 @@ func _anchor_map(body: PBody, points: Dictionary) -> Dictionary:
 	var anchors: Dictionary = {}
 	for shape in body.shapes:
 		for point: Vector2i in points:
-			if shape.get_pixel(point.x, point.y) == NAIL_MATERIAL_ID:
+			if shape.get_pixel(point.x, point.y) == InkPalette.nail_material_id():
 				if not anchors.has(shape):
 					anchors[shape] = {}
 				anchors[shape][point] = true
@@ -839,7 +841,7 @@ func _update_anchors(body: PBody, points: Dictionary) -> void:
 	var live: Dictionary = {}
 	for shape in body.shapes:
 		for point: Vector2i in points:
-			if shape.get_pixel(point.x, point.y) == NAIL_MATERIAL_ID:
+			if shape.get_pixel(point.x, point.y) == InkPalette.nail_material_id():
 				live[point] = true
 	if live.is_empty():
 		body.tags.erase(ANCHOR_TAG)

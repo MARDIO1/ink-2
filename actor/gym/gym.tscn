@@ -1,9 +1,375 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://actor/gym/src/gym.gd" id="1_gym"]
-[ext_resource type="PackedScene" path="res://map/main.tscn" id="2_main"]
+[ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="2_theme"]
 
 [node name="Gym" type="Node2D"]
 script = ExtResource("1_gym")
 
-[node name="Main" parent="." instance=ExtResource("2_main")]
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 435.0
+offset_bottom = 330.0
+theme = ExtResource("2_theme")
+theme_type_variation = &"CardPanel"
+
+[node name="Rows" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Header" type="HBoxContainer" parent="Panel/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Panel/Rows/Header"]
+layout_mode = 2
+text = "健身房  ×0.25 ~ ×5，1.00 = 原值"
+vertical_alignment = 1
+
+[node name="Toggle" type="Button" parent="Panel/Rows/Header"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+tooltip_text = "隐藏 / 显示旋钮"
+text = "隐藏"
+
+[node name="Knobs" type="VBoxContainer" parent="Panel/Rows"]
+layout_mode = 2
+
+[node name="FootMaxForce" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/PlayerInput"
+metadata/target_prop = "max_force"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/FootMaxForce"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "脚·最大力"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/FootMaxForce"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootMaxForce"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="FootMaxPower" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/PlayerInput"
+metadata/target_prop = "max_power"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/FootMaxPower"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "脚·最大功率"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/FootMaxPower"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootMaxPower"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="FootMoveSpeed" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/PlayerInput"
+metadata/target_prop = "move_speed"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/FootMoveSpeed"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "脚·移动速度"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/FootMoveSpeed"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootMoveSpeed"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="FootJumpImpulse" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/PlayerInput"
+metadata/target_prop = "jump_impulse"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/FootJumpImpulse"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "脚·跳跃冲量"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/FootJumpImpulse"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootJumpImpulse"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="FootUprightStiffness" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/PlayerInput"
+metadata/target_prop = "upright_stiffness"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/FootUprightStiffness"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "脚·回正刚度"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/FootUprightStiffness"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootUprightStiffness"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="FootUprightDamping" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/PlayerInput"
+metadata/target_prop = "upright_damping"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/FootUprightDamping"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "脚·回正阻尼"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/FootUprightDamping"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootUprightDamping"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="FootMaxUprightTorque" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/PlayerInput"
+metadata/target_prop = "max_upright_torque"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/FootMaxUprightTorque"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "脚·回正力矩"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/FootMaxUprightTorque"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootMaxUprightTorque"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="HandMaxForce" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/Arm/Hand/HandControl"
+metadata/target_prop = "max_force"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/HandMaxForce"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "手·最大力"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/HandMaxForce"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/HandMaxForce"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="HandMaxPower" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/Arm/Hand/HandControl"
+metadata/target_prop = "max_power"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/HandMaxPower"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "手·最大功率"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/HandMaxPower"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/HandMaxPower"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="HandPositionStiffness" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/Arm/Hand/HandControl"
+metadata/target_prop = "position_stiffness"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/HandPositionStiffness"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "手·位置刚度"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/HandPositionStiffness"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/HandPositionStiffness"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="HandPositionDamping" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player/Arm/Hand/HandControl"
+metadata/target_prop = "position_damping"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/HandPositionDamping"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "手·位置阻尼"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/HandPositionDamping"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/HandPositionDamping"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
+
+[node name="BodyMass" type="HBoxContainer" parent="Panel/Rows/Knobs"]
+metadata/target_path = "../Player"
+metadata/target_prop = "shape_density_scale"
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Panel/Rows/Knobs/BodyMass"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "自身·质量"
+vertical_alignment = 1
+
+[node name="Slider" type="HSlider" parent="Panel/Rows/Knobs/BodyMass"]
+custom_minimum_size = Vector2(125, 20)
+layout_mode = 2
+min_value = 0.25
+max_value = 5.0
+step = 0.05
+value = 1.0
+
+[node name="Read" type="Label" parent="Panel/Rows/Knobs/BodyMass"]
+custom_minimum_size = Vector2(125, 0)
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "×1.00 = --"
+vertical_alignment = 1
