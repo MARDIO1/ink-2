@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://kii2g5ypg18g"
-path="res://.godot/imported/small_house_door.svg-cb345c90a573d3ad381b2aacbf15c616.ctex"
+uid="uid://b7gkjbw4i1f7h"
+path="res://.godot/imported/tool_eraser.png-53fa33573e3eab9c250131c4edae2815.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://ui/menu/asset/small_house_door.svg"
-dest_files=["res://.godot/imported/small_house_door.svg-cb345c90a573d3ad381b2aacbf15c616.ctex"]
+source_file="res://ui/hud/asset/tool_eraser.png"
+dest_files=["res://.godot/imported/tool_eraser.png-53fa33573e3eab9c250131c4edae2815.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d3ussaa58uj6j"
-path="res://.godot/imported/icon_resource_jar.svg-69de712ca8d2948c5f33e6eb14738cf1.ctex"
+uid="uid://bcg8h8x4lxms8"
+path="res://.godot/imported/icon_nail.png-5bfe93384752c19763323db8b7fa2642.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://ui/hud/asset/icon_resource_jar.svg"
-dest_files=["res://.godot/imported/icon_resource_jar.svg-69de712ca8d2948c5f33e6eb14738cf1.ctex"]
+source_file="res://ui/hud/asset/icon_nail.png"
+dest_files=["res://.godot/imported/icon_nail.png-5bfe93384752c19763323db8b7fa2642.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

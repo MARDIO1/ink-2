@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cgasjflb8ri65"
-path="res://.godot/imported/icon_ink_bottle.svg-730bb543beee5e67a54b15819eb5e493.ctex"
+uid="uid://nmwpfwebjsp6"
+path="res://.godot/imported/canvas_frame.png-71300a91ba8c093e2c45ac5a1dc16998.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://ui/hud/asset/icon_ink_bottle.svg"
-dest_files=["res://.godot/imported/icon_ink_bottle.svg-730bb543beee5e67a54b15819eb5e493.ctex"]
+source_file="res://ui/hud/asset/canvas_frame.png"
+dest_files=["res://.godot/imported/canvas_frame.png-71300a91ba8c093e2c45ac5a1dc16998.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false
