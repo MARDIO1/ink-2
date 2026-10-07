@@ -5,8 +5,6 @@
 #region 依赖
 extends Node
 
-const MapExport := preload("res://map/src/map_export.gd")
-
 @export var player_path: NodePath = ^"../Player"
 ## 普通模式的小画布；创造模式里让位给大地图。
 @export var canvas_path: NodePath = ^"../Canvas"
@@ -149,15 +147,36 @@ func _physics_process(delta: float) -> void:
 
 
 #region 导出地图
-## 先把画布上剩的墨水固化掉，再把世界里所有墨水物品打包成地图场景。
+## 把**整个关卡**存成一个场景：PixelWorld + 玩家 + 画布 + 全部墨水 + 地形/HUD 都在里面。
+## 存出来的是和 main.tscn **平级**的关卡 —— 能单独打开、也能当主场景跑。
 func export_map() -> void:
-	if _map_canvas == null:
-		push_error("Creative: 找不到 MapCanvas")
+	var scene := get_tree().current_scene
+	if scene == null:
+		push_error("Creative: 拿不到 current_scene")
 		return
-	_map_canvas.generate()
-	var result: Dictionary = MapExport.build(get_tree(), map_path)
-	if result["saved"]:
-		print("MAP saved: %s  ink=%d" % [ProjectSettings.globalize_path(map_path), result["count"]])
+	if _map_canvas != null:
+		_map_canvas.generate()       # 先把画布上剩的墨水固化，一个像素都不丢
+	_sync_node_transforms(scene)
+	var packed := PackedScene.new()
+	var error: Error = packed.pack(scene)
+	if error == OK:
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(map_path).get_base_dir())
+		error = ResourceSaver.save(packed, map_path)
+	if error == OK:
+		print("MAP saved: %s" % ProjectSettings.globalize_path(map_path))
 	else:
-		push_error("Map save failed: %s (%d)" % [map_path, result["error"]])
+		push_error("Map save failed: %s (%d)" % [map_path, error])
+
+
+## 把每个像素刚体的 PBody 位形写回它的节点。
+## ⚠️ 节点自己不跟物理走（每帧跟的是视觉精灵），不写回去就会把玩家存回出生点。
+func _sync_node_transforms(root: Node) -> void:
+	for node in root.find_children("*", "", true, false):
+		if not node.has_method("bake"):
+			continue
+		var body = node.get("body")
+		if body == null:
+			continue
+		node.position = body.position
+		node.rotation = body.rotation
 #endregion

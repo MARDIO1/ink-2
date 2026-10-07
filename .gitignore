@@ -3,7 +3,7 @@
 .import/
 
 # External engine dependency (kept in its own repository)
-/addons/
+
 
 # Local editor and IDE state
 /.vscode/

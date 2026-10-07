@@ -11,16 +11,20 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 #endregion
 
 
-#region 烘焙
-func _bake_lazily():
-	var body = super._bake_lazily()
-	if body != null and body.is_static:
-		_restore_nails(body)
-	return body
+#region 装载
+#⚠️ 不能挂在 _bake_lazily 上：PixelWorld.rebuild() 走的是 bake_node() → bake()，
+#   不经过"按需烘焙"那个钩子。所以延迟一帧，等世界把刚体和形状都装好再补锚点。
+func _ready() -> void:
+	_restore_nails.call_deferred()
 
 
 #把材质 4 的像素认成锚点：打标签给破坏管线，并补上可见的钉子外观。
-func _restore_nails(body) -> void:
+func _restore_nails() -> void:
+	if not is_inside_tree():
+		return
+	var body = self.body          # 读 body 会幂等触发烘焙
+	if body == null or not body.is_static:
+		return
 	var points: Dictionary = {}
 	for shape in body.shapes:
 		var rect: Rect2i = shape.local_aabb()

@@ -1,0 +1,19 @@
+[package]
+name = "rapier_bridge"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rapier_bridge"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "smoke"
+path = "src/smoke.rs"
+
+[dependencies]
+rapier2d = "0.36"
+
+[profile.release]
+opt-level = 3
+lto = true

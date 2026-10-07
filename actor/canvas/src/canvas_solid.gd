@@ -6,14 +6,14 @@ extends Node
 
 const NAIL_MATERIAL_ID := 4
 const ANCHOR_TAG := "static_anchor_points"
-## 墨水物品所在的组；地图导出按它找（与 map/src/map_export.gd 的同名常量对应）。
+## 墨水物品所在的组；存关卡时用它区分"画出来的东西"和地形/生物。
 const INK_GROUP := "ink_item"
 ## 生物实体标记；玩家、手、NPC 都带它，反向栅格化时跳过。
 const LIVING_TAG := "living"
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
-const PixelBody2D := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
-const CanvasShape := preload("res://actor/canvas/src/canvas_shape.gd")
+const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
+const InkItem := preload("res://map/src/ink_item.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
 #endregion
 
@@ -98,27 +98,47 @@ func _remove_overlaps(shape, surface, bodies: Array) -> int:
 
 
 #region 生成
-#把一个连通分量做成 PixelBody2D 节点并加进世界
+#把一个连通分量做成墨水物品节点并加进世界。
+#⚠️ 形状用 `PixelShape2D(source = PAINT)` + 内嵌 Image，而**不是**自造的 CanvasShape：
+#   后者装的是 RefCounted 的 PixelShape，PackedScene 存不下来 ——
+#   而 F5 是直接 pack 整个关卡，所以运行时就必须是"能存"的形态。
 func _spawn_component(world, pos, part, anchors: Dictionary) -> bool:
 	var local_anchors: Dictionary = {}
 	for point: Vector2i in anchors:
 		if part.get_pixel(point.x, point.y) == NAIL_MATERIAL_ID:
 			local_anchors[point] = true
-	var body_node = PixelBody2D.new()
-	body_node.position = pos
+	var body_node := InkItem.new()
+	body_node.name = "Ink%d" % world.get_child_count()
 	body_node.is_static = not local_anchors.is_empty()
-	body_node.add_to_group(INK_GROUP)
-	var shape_node = CanvasShape.new()
-	shape_node.shape = part
+	body_node.add_to_group(INK_GROUP, true)
+	var rect: Rect2i = part.local_aabb()
+	var shape_node := PixelShape2D.new()
+	shape_node.position = Vector2(rect.position)
+	shape_node.source = PixelShape2D.Source.PAINT
+	shape_node.paint = _material_image(part, rect)
 	body_node.add_child(shape_node)
 	# add_body_node 只烘焙物理体；节点仍需由场景管理生命周期。
 	world.add_child(body_node)
-	body_node.global_position = pos
+	body_node.position = pos
+	# owner 决定 pack 整个关卡时谁会被带上；运行时新建的节点默认是 null，会**被漏掉**。
+	body_node.owner = world
+	shape_node.owner = world
 	var body = world.add_body_node(body_node)
 	if body != null and not local_anchors.is_empty():
 		body.tags[ANCHOR_TAG] = local_anchors
 		_spawn_nails(world, body, local_anchors)
 	return body != null
+
+
+#把形状抽成 R8 材质图（R 通道 = 材质 id，0 = 空）；存关卡时靠它把像素写进 .tscn。
+func _material_image(shape, rect: Rect2i) -> Image:
+	var image := Image.create_empty(rect.size.x, rect.size.y, false, Image.FORMAT_R8)
+	for y in range(rect.size.y):
+		for x in range(rect.size.x):
+			var material: int = shape.get_pixel(rect.position.x + x, rect.position.y + y)
+			if material != 0:
+				image.set_pixel(x, y, Color8(material, 0, 0, 255))
+	return image
 #endregion
 
 

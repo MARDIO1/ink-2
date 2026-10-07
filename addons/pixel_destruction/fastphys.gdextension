@@ -1,0 +1,12 @@
+[configuration]
+
+entry_symbol = "gdextension_init"
+compatibility_minimum = "4.2"
+reloadable = false
+
+[libraries]
+
+windows.debug.x86_64 = "res://addons/pixel_destruction/native/fastphys.dll"
+windows.release.x86_64 = "res://addons/pixel_destruction/native/fastphys.dll"
+linux.debug.x86_64 = "res://addons/pixel_destruction/native/fastphys.so"
+linux.release.x86_64 = "res://addons/pixel_destruction/native/fastphys.so"
