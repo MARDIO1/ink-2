@@ -158,7 +158,8 @@ func _spawn_nails(world, body, anchors: Dictionary) -> void:
 ## 把画布范围内的实体按材质颜色重采样回墨水，并从世界移除。
 ## 跳过带 LIVING_TAG 的生物实体（玩家、手、NPC）。
 ## ⚠️ 钉子不回收：材质 4 的像素不回画布，挂在上面的钉子外观也一起丢掉。
-func rasterize(surface, world) -> void:
+## `keep_bodies = true` 只采样、不把刚体从世界摘掉 —— 存保底 PNG 用（存图不能顺手删关卡）。
+func rasterize(surface, world, keep_bodies := false) -> void:
 	if world == null or surface == null:
 		push_error("CanvasSolid.rasterize: 参数无效")
 		return
@@ -178,11 +179,13 @@ func rasterize(surface, world) -> void:
 	for node in targets:
 		var body = node.get("body")
 		pixels += _sample_body(surface, body)
+		if keep_bodies:
+			continue
 		_free_nails(world, body)
 		world.remove_body_node(node)
 		node.queue_free()
 	surface.refresh()
-	print("RESTORE bodies=%d pixels=%d" % [targets.size(), pixels])
+	print("RESTORE bodies=%d pixels=%d kept=%s" % [targets.size(), pixels, str(keep_bodies)])
 
 
 ## 删掉挂在这个刚体上的钉子外观。

@@ -1121,6 +1121,91 @@ gym 场景 headless 空跑 --quit-after 150：exit 0，无 ERROR
   临时注释掉再跑，**失败项完全相同**，所以是既有问题（脚/跳跃那套），与本次改动无关。
 
 
+## 2026-10-07 20:10 — 创造模式存档坏了（314 字节空壳）+ 爬坡练习.tscn 缺 PNG
+
+- **创造模式 F5 确实是坏的**：主场景搬成 `root/root.tscn` 之后，`export_map()` 还在 pack
+  `get_tree().current_scene`（= Root 容器），而关卡与 UI 是 `root.gd` 运行时 `add_child` 上去的、
+  owner 为空 —— `PackedScene.pack()` 一个都不收。
+  实测（导出到 `user://probe_map.tscn`，没碰仓库里的 map.tscn）：
+  文件 **314 字节**，内容只有 `[node name="Root"]` + 空的 `Level` / `UI`。打开什么都没有。
+- **修法**（`debug/creative/src/creative.gd`）：新增 `_level_root()` = **装着画布的那个节点**
+  （`_map_canvas.get_parent()`）；F6 直接跑关卡场景时画布的父节点正好也是关卡根，两种情况都对。
+  修完实测：**4240 字节**，根节点 `Main`，SmallCanvas / MapCanvas / Player / debugHUD 都作为实例保留。
+- **`map/asset/爬坡练习.tscn` 是另一回事**（就是同学发的"爬山"）：266 字节的 BakedMap 壳，
+  只有 `BakedMap` + 一个**没有贴图**的 `Preview`；真图在 `res://map/asset/baked_map.png`，
+  由 `baked_map.gd` 在 `_ready()` 里 load。**这个 PNG 仓库里根本不存在**（`map/asset/` 只有两个 tscn，
+  git 历史里也从没提交过）。
+  → 只发 tscn 不发图，打开就是空的。这张图是游戏里 F5 生成的：
+  `canvas.gd:253 baked_map_path = "res://map/asset/baked_map.png"` → `surface.save_png(...)`。
+- **分享 .tscn 的通用结论**：导出的关卡按 `res://` 引用整个工程（实测 19 条外链：
+  addons 脚本、`Ink/asset/*.tres`、`actor/canvas/canvas.tscn`、`actor/player/player.tscn`、
+  `debug/hud/debug_hud.tscn`、`map/src/collision_damage.gd` …）。对方没有同一份工程就用不了，
+  要分享得发整个工程或打 PCK。
+
+
+## 2026-10-07 20:25 — 创造模式存档加保底 PNG（顺带把"修好没"验了）
+
+- **保底 PNG**：`creative.gd:15` 加 `baked_map_path`（默认 `res://map/asset/baked_map.png`，正是
+  `BakedMap`/`爬坡练习.tscn` 读的那条路径），`export_map()` 里 `generate()` 之后调
+  `_map_canvas.bake_png(baked_map_path)`（166 行）。
+- **为什么不能直接存画布**：`generate()` 会把画布清空，固化过的关卡画布本来就是空的 ——
+  直接 `save_png` 只会得到一张空图。所以 `canvas.gd:86 bake_png()` 走的是
+  `solid.rasterize(surface, world, true)`：把世界里的实心像素**采样**进画布（新加的 `keep_bodies`
+  开关，`canvas_solid.gd:162`，只采样不删刚体），存图，再把画布还原成空的。
+  ⚠️ 采样是临时的、存完就清画布，调用前画布上的墨必须已经固化过（F5 里就是先 generate 再 bake）。
+- **实测**（真启动链 root.tscn → 创造模式 → 大画布画一道 → F5，只写 user://）：
+  - `SOLID bodies=1 pixels=2749`（那道笔划固化成 1 个刚体）
+  - `RESTORE bodies=3 pixels=35773 kept=true`（采样了 3 个刚体：笔划 + Ground + Box，一个都没删）
+  - 保底 PNG：2048x1024，有内容区域 `[P: (96,96), S: (1083,431)]`（笔划 + 地形都在）
+  - 关卡 tscn：**8554 字节**，根 `[gd_scene ...]`，含 SmallCanvas / MapCanvas / Player / ink_item
+  → 对比修之前那个 **314 字节空壳**，现在是完整关卡。
+- **回归**：`test_canvas.gd` PASS（`RESTORE ... kept=false` 说明只采样那条没影响原路径）。
+- **已知取舍**：PNG 是覆盖图（非透明=实心），**钉子（材质 4）不进图** —— 沿用"钉子不回收"那条映射，
+  所以保底图上钉子位置是 1px 的空洞。要连钉子一起烘进图，说一声。
+
+
+## 2026-10-07 20:40 — 固化出来的实体到底存哪了（实测）
+
+- **就在关卡 tscn 里**：每个连通分量一个 `InkItem` 节点 + 一个**内嵌 `Image` 子资源**
+  （`PixelShape2D(source = PAINT)`，R8，R 通道 = 材质 id，见 `canvas_solid.gd:117-127` / `_material_image`）。
+  `body_node.owner = world`、`shape_node.owner = world` 是能被 pack 的关键（`owner` 为空就漏掉）。
+- **实测**（真启动链 → 创造模式 → 画一笔 + 放一枚钉子 → F5 → 读回来）：
+  `[tscn] 字节=8572 实体节点=1 内嵌 Image=1`；
+  `[读回来] Ink10 is_static=true 像素=2749 材质={1:2748, 4:1}` —— 连钉子那 1 个材质 4 像素都在，
+  位置/旋转/`is_static`/`ink_item` 组都在（钉子外观由 `InkItem._restore_nails()` 读盘时重建）。
+- **在"工程目录良好"的前提下**：tscn 里存的是"像素 + 节点属性"；脚本、材质资源（`Ink/asset/*.tres`）、
+  `canvas.tscn` / `player.tscn` / `debug_hud.tscn` / `collision_damage.gd` 全按 `res://` 路径引用，
+  同版本工程就能完整还原。物理刚体不存 —— 读盘时由像素现烘。
+- **⚠️ 运行时破坏不落盘**（实测）：打掉 200 像素（2749 → 2549）后再存一次，
+  tscn 里 `"data"` 那一行**逐字节没变**，读回来还是 2749。
+  原因：`creative.gd:_sync_node_transforms()` 只写回 `position` / `rotation`，
+  没有任何地方把破坏后的形状写回 `PixelShape2D.paint`；fracture 出来的碎片刚体也没有对应节点。
+  副作用：保底 PNG 采样的是**当前** PBody（含破坏），tscn 里是**固化那一刻** —— 两者会不一致。
+  要修：导出前把每个 PBody 的形状重烘回源节点的 `paint`（`_material_image` 的逆操作）+ 给碎片补节点。
+
+
+## 2026-10-07 21:05 — 穿模/挤出速度的诊断（只分析，没改代码）
+
+- **"弹出速度"300 不是谁调快的**：引擎 `physics/pworld.gd:434-439` 写明，Rapier 的参数是按**米**调的，
+  本引擎逐参数 ×100 换算到像素尺度 —— `max_corrective_velocity` 默认 3.0 → **300 px/s**（`pworld.gd:457`）。
+  同一段注释还写了不换算的后果："3 px/s，穿透挤出慢得离谱（卡进墙里要好几秒才挤出来）" ——
+  也就是 `collision_damage.gd:_start()` 里新加的 `rp_max_corrective_velocity = 3.0` 正在踩的那条。
+- **"弹一下爆大力"的来源不是挤出快，是伤害预算拿接触冲量算**：
+  `calculate()` 里 `budget = damage_scale * impact.impulse * attacker / strength`（272 行），
+  而挤出是靠 corrective velocity 冲量做到的 —— 陷得越深那份越大，于是"陷得越深、爆得越狠"。
+  正确切法：预算改用 **pre-step 接近速度**（`contact.approach`，`_contacts()` 用 `pre_vx/pre_vy` 算的，426 行，
+  已在 238 行当门槛用），乘一个质量项保住"重的更疼"；代价是要按 32×32 下砸基准重新标 `damage_scale`。
+- **穿模是自己关出来的**：`_compute_substeps()` 第一句 `if not ccd_enabled: return 1`（`pworld.gd:852-853`），
+  而 `collision_damage._start()` 里那三行 `ccd_enabled = false` / `rp_ccd_substeps = 0` 是"允许穿模换帧时间"，
+  等于同时关掉引擎那条"每步位移 < 最薄障碍厚度"的几何保证（引擎注释实测 4 px 薄墙对 200~3000 px/s 全挡住）。
+- **`PIERCE_MIN_DEPTH = 4.0` 为什么误伤**：用户自己量的正常残留重叠是 3.33~3.89 px，阈值 4.0 就在噪声上沿；
+  而且 `calculate()` 是**每子步**跑一次（`_step()` 175 行的 `for i in count`），一帧 N 个子步能连削 N 条带 →
+  "太多了"。单帧绝对深度当判据 = 把求解器正常沉降当穿模。
+- **建议顺序**：① 恢复 ccd/自适应子步（穿模变罕见）② 预算改接近速度（挤出不再进伤害，300 可以留着）
+  ③ 真要兜底就按**持续性**升级：连续 ≥6 帧深度不下降且 ≥8 px 才算卡住 ④ 先"弹出"（沿法向限速位移/给速度），
+  弹出无效才降级到抹像素。一帧的宽限太短（挤出 3 px/s 时 3 px 要 ~1.1 s）。
+
+
 ## 2026-10-07 18:20 — 大整理第一批：root/UI 装配 + debug/ 模块归位 + gym/ink_item 归位
 
 （本轮与用户的编辑并行进行；以下是我做的部分。）

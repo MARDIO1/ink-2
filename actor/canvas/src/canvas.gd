@@ -79,6 +79,17 @@ func return_to_canvas() -> void:
 	solid.rasterize(surface, world)
 
 
+## 保底 PNG：把世界里所有实心像素采样进画布 → 存一张透明 PNG → 把画布还原成空的。
+## 不删刚体（`keep_bodies`）——存图不能顺手把关卡拆了。
+## ⚠️ 固化过的关卡画布是空的，所以图必须从世界采样，直接存画布只会得到一张空图。
+## ⚠️ 采样是临时的、存完就清画布：调用前画布上的墨必须已经固化过（F5 里就是先 generate 再 bake）。
+func bake_png(path: String) -> Error:
+	solid.rasterize(surface, world, true)
+	var error: Error = surface.save_png(path)
+	surface.clear(false)          # 采样是临时的：存完把画布还给"空的"，别让存档里多一层图
+	return error
+
+
 ## 切换画笔/橡皮擦/普通手。
 func set_tool(tool: int) -> void:
 	_temporary_eraser = false
