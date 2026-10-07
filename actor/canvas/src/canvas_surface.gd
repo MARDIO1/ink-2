@@ -167,13 +167,59 @@ func _inside(point: Vector2) -> bool:
 
 #region 绘制
 var black_image: Image
+var _preserve_next_resize := false
+
+
 func _resize() -> void:
 	# Area 只表达可编辑的画布范围，不参与游戏刚体碰撞。
 	bounds.shape.size = Vector2(canvas_size)
 	bounds.position = Vector2(canvas_size) * 0.5
-	_reset()
+	if not _preserve_next_resize:
+		_reset()
 	black_sprite.texture = black_texture
 	queue_redraw()
+
+
+## 扩大画布时保留已有像素、墨水账本和钉子。
+## content_offset 表示旧内容在新画布中的左上角；扩左/扩上时分别传入正的 x/y 偏移。
+func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZERO) -> bool:
+	new_size = Vector2i(maxi(new_size.x, 1), maxi(new_size.y, 1))
+	if content_offset.x < 0 or content_offset.y < 0:
+		push_error("CanvasSurface: content_offset 不能为负数")
+		return false
+	if content_offset.x + canvas_size.x > new_size.x \
+	or content_offset.y + canvas_size.y > new_size.y:
+		push_error("CanvasSurface: 新画布装不下旧内容")
+		return false
+	if new_size == canvas_size and content_offset == Vector2i.ZERO:
+		return true
+
+	# 先结束未完成的预览，避免扩容后仍引用旧坐标。
+	if _shaping:
+		_revert_shape()
+	_painting = false
+	_shaping = false
+	var old_image := black_image
+	var old_size := canvas_size
+	var old_nails: Array = nail_layer.nails.keys()
+
+	# 属性 setter 仍负责更新碰撞范围，但这一次不能清空像素或退还墨水。
+	_preserve_next_resize = true
+	canvas_size = new_size
+	_preserve_next_resize = false
+
+	var expanded := Image.create_empty(new_size.x, new_size.y, false, Image.FORMAT_RGBA8)
+	expanded.fill(Color.TRANSPARENT)
+	expanded.blit_rect(old_image, Rect2i(Vector2i.ZERO, old_size), content_offset)
+	black_image = expanded
+	black_texture = ImageTexture.create_from_image(black_image)
+	black_sprite.texture = black_texture
+
+	nail_layer.clear()
+	for nail in old_nails:
+		nail_layer.add(Vector2i(nail) + content_offset)
+	queue_redraw()
+	return true
 
 
 #重建透明画布，透明像素在 BlackSprite 下露出纸底

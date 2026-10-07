@@ -1,0 +1,82 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://ui/dialogue/src/dialogue_box.gd" id="1_script"]
+[ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="2_theme"]
+[ext_resource type="FontFile" path="res://ui/dialogue/asset/ipix_12px.ttf" id="3_ipix"]
+
+[sub_resource type="Shader" id="Shader_pixel_text"]
+code = "shader_type canvas_item;\n\nvoid fragment() {\n\tfloat coverage = texture(TEXTURE, UV).a;\n\tfloat hard_alpha = step(0.35, coverage);\n\tCOLOR = vec4(0.0, 0.0, 0.0, hard_alpha);\n}\n"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_text"]
+shader = SubResource("Shader_pixel_text")
+
+[node name="DialogueBox" type="CanvasLayer"]
+layer = 20
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="DialoguePanel" type="PanelContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 32.0
+offset_top = -168.0
+offset_right = -32.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_default_cursor_shape = 2
+theme_type_variation = &"CardPanel"
+
+[node name="PixelText" type="SubViewportContainer" parent="Root/DialoguePanel"]
+material = SubResource("ShaderMaterial_pixel_text")
+texture_filter = 1
+layout_mode = 2
+mouse_filter = 2
+stretch = true
+stretch_shrink = 2
+
+[node name="TextViewport" type="SubViewport" parent="Root/DialoguePanel/PixelText"]
+transparent_bg = true
+handle_input_locally = false
+size = Vector2i(432, 56)
+render_target_update_mode = 4
+
+[node name="DialogueLabel" type="Label" parent="Root/DialoguePanel/PixelText/TextViewport"]
+offset_left = 4.0
+offset_top = 2.0
+offset_right = 428.0
+offset_bottom = 40.0
+mouse_filter = 2
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_fonts/font = ExtResource("3_ipix")
+theme_override_font_sizes/font_size = 12
+text = "对话文本"
+autowrap_mode = 2
+
+[node name="NextHint" type="Label" parent="Root/DialoguePanel/PixelText/TextViewport"]
+visible = false
+offset_left = 328.0
+offset_top = 40.0
+offset_right = 428.0
+offset_bottom = 56.0
+mouse_filter = 2
+theme = ExtResource("2_theme")
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_fonts/font = ExtResource("3_ipix")
+theme_override_font_sizes/font_size = 12
+text = "单击继续  >"
+horizontal_alignment = 2

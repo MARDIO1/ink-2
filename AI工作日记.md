@@ -1294,3 +1294,13 @@ HUD 与关卡不再同树后，`hud.gd` 的 `health_path = ../Player/InkHealth`�
 | `map/main.tscn` 冒烟 | `--quit-after 150` exit 0、无 ERROR | 关卡节点＝Camera2D/SmallCanvas/MapCanvas/Ground/Box/Player/debugHUD/CollisionDamage/Creative/PixelRenderer |
 
 **结论：搬迁没有留下任何新红，也没有挂死；两处由我引入的测试破坏已修。**
+
+
+## 2026-10-07 — 地图编辑器：隐藏角色、固定工具栏、无损扩图与场景保存
+
+- `Creative` 进入编辑模式后默认隐藏 `Player` 的视觉节点，但保留物理体作为 WASD 飞行与相机锚点；退出时恢复进入前的可见状态。
+- 左侧工具栏用逆视口变换固定到屏幕坐标，不再随相机移动、旋转或缩放；新增 `人`开关，可在编辑时显示/隐藏小人。
+- 新增四向扩大按钮。`CanvasSurface.resize_preserving_content()` 搬运旧像素和钉子，不清空画面、不退款；向左/上扩大时同步移动 Canvas，旧内容世界坐标不变。
+- F5 仍先固化与生成 PNG 预览，再自动保存完整 `.tscn`。打包瞬间临时恢复正常游玩布局，避免把“角色隐藏、MapCanvas 开启”等编辑器状态写入正式关卡。
+- 新增 `test/test_creative_editor.gd`：隐藏开关、固定工具栏、扩图、场景保存全部 PASS；原 `test_canvas.gd` 回归 PASS。
+- 地图编辑工具栏新增 `钉`开关：同步控制画布 `NailLayer` 和实体 `nail_visual` 组；只隐藏外观，不删除材质 4 锚点，后续新生成的钉子继承当前显示状态。

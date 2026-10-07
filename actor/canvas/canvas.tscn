@@ -332,3 +332,105 @@ step = 2.0
 value = 7.0
 tick_count = 9
 ticks_on_borders = true
+
+[node name="ResizePanel" type="Control" parent="WorkbenchUI"]
+visible = false
+z_index = 100
+layout_mode = 3
+anchors_preset = 0
+offset_left = -222.0
+offset_top = 436.0
+offset_right = -6.0
+offset_bottom = 492.0
+theme = ExtResource("5_theme")
+
+[node name="Grid" type="GridContainer" parent="WorkbenchUI/ResizePanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/h_separation = 8
+columns = 6
+
+[node name="Left" type="Button" parent="WorkbenchUI/ResizePanel/Grid"]
+custom_minimum_size = Vector2(28, 56)
+layout_mode = 2
+tooltip_text = "向左扩大画布"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconActionPressed")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+text = "←"
+
+[node name="Up" type="Button" parent="WorkbenchUI/ResizePanel/Grid"]
+custom_minimum_size = Vector2(28, 56)
+layout_mode = 2
+tooltip_text = "向上扩大画布"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconActionPressed")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+text = "↑"
+
+[node name="Down" type="Button" parent="WorkbenchUI/ResizePanel/Grid"]
+custom_minimum_size = Vector2(28, 56)
+layout_mode = 2
+tooltip_text = "向下扩大画布"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconActionPressed")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+text = "↓"
+
+[node name="Right" type="Button" parent="WorkbenchUI/ResizePanel/Grid"]
+custom_minimum_size = Vector2(28, 56)
+layout_mode = 2
+tooltip_text = "向右扩大画布"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconActionPressed")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+text = "→"
+
+[node name="PlayerVisibility" type="Button" parent="WorkbenchUI/ResizePanel/Grid"]
+custom_minimum_size = Vector2(28, 56)
+layout_mode = 2
+tooltip_text = "显示小人"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconSelected")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+toggle_mode = true
+text = "人"
+
+[node name="NailVisibility" type="Button" parent="WorkbenchUI/ResizePanel/Grid"]
+custom_minimum_size = Vector2(28, 56)
+layout_mode = 2
+tooltip_text = "隐藏钉子外观"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconSelected")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+toggle_mode = true
+button_pressed = true
+text = "钉"
