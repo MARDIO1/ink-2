@@ -49,46 +49,52 @@ offset_right = 148.0
 offset_bottom = 80.0
 text = "画笔"
 
-[node name="Rect" type="Button" parent="Buttons"]
+[node name="Bucket" type="Button" parent="Buttons"]
 offset_top = 88.0
 offset_right = 148.0
 offset_bottom = 124.0
-text = "矩形"
+text = "墨水桶"
 
-[node name="Circle" type="Button" parent="Buttons"]
+[node name="Rect" type="Button" parent="Buttons"]
 offset_top = 132.0
 offset_right = 148.0
 offset_bottom = 168.0
-text = "圆形"
+text = "矩形"
 
-[node name="Eraser" type="Button" parent="Buttons"]
+[node name="Circle" type="Button" parent="Buttons"]
 offset_top = 176.0
 offset_right = 148.0
 offset_bottom = 212.0
-text = "橡皮擦"
+text = "圆形"
 
-[node name="Nail" type="Button" parent="Buttons"]
+[node name="Eraser" type="Button" parent="Buttons"]
 offset_top = 220.0
 offset_right = 148.0
 offset_bottom = 256.0
-text = "钉子"
+text = "橡皮擦"
 
-[node name="Redraw" type="Button" parent="Buttons"]
+[node name="Nail" type="Button" parent="Buttons"]
 offset_top = 264.0
 offset_right = 148.0
 offset_bottom = 300.0
-text = "重绘"
+text = "钉子"
 
-[node name="Generate" type="Button" parent="Buttons"]
+[node name="Redraw" type="Button" parent="Buttons"]
 offset_top = 308.0
 offset_right = 148.0
 offset_bottom = 344.0
-text = "生成"
+text = "重绘"
 
-[node name="ReturnToCanvas" type="Button" parent="Buttons"]
+[node name="Generate" type="Button" parent="Buttons"]
 offset_top = 352.0
 offset_right = 148.0
 offset_bottom = 388.0
+text = "生成"
+
+[node name="ReturnToCanvas" type="Button" parent="Buttons"]
+offset_top = 396.0
+offset_right = 148.0
+offset_bottom = 432.0
 text = "重新回到画布"
 
 [node name="BrushPanel" type="Node2D" parent="."]

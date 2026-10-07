@@ -63,8 +63,8 @@ func _process(_delta: float) -> void:
 	elif _painting:
 		_continue_stroke()
 
-## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**。
-enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE }
+## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；墨水桶灌满封闭空区。
+enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET }
 
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
@@ -105,6 +105,10 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 		return
 	var point := _mouse_point()
 	if not _inside(point):
+		return
+	#墨水桶是点击工具：按下即灌满所在空区。
+	if tool == Tool.BUCKET:
+		_bucket_fill(point)
 		return
 	#矩形/圆形是拖拽工具：按下定起点，拖拽出形状，松手定型。
 	if tool == Tool.RECT or tool == Tool.CIRCLE:
@@ -249,6 +253,13 @@ func _stamp(center: Vector2, color: Color, allowance: int) -> int:
 
 #把笔刷圆盘覆盖到的像素收进 out（只收，不写）。
 func _collect_stamp(out: Dictionary, center: Vector2) -> void:
+	#直径 1 直接取"点所在的那一格"。
+	#⚠️ 不能走下面的距离判定：采样点正好落在**格角**上时（x、y 都是整数），
+	#   半径 0.5 够不到任何格心 —— 1px 的线会随机缺格、1px 的圆环会开口，
+	#   而开了口的封闭区域会被墨水桶灌满整张画布。
+	if brush_size <= 1:
+		out[Vector2i(center.floor())] = true
+		return
 	#⚠️ 半径下限 0.5：直径 1 的笔刷若用半径 0，只有圆心正好压在格心上才落笔，
 	#   而鼠标坐标是小数 —— 实测 1px 笔触会"什么都画不出来"。
 	var radius := maxf(0.5, (brush_size - 1) * 0.5)
@@ -397,6 +408,80 @@ func _brush_circle(out: Dictionary, center: Vector2, radius: float) -> void:
 
 func _brush_step() -> float:
 	return maxf(1.0, brush_size * 0.5)
+#endregion
+
+
+#region 墨水桶
+#把点所在的**连通空区**一次灌满。
+#
+#⚠️ 用 4 邻接，不是 8 邻接：数字拓扑里"8 连通的边界"正好困住"4 连通的填充"。
+#   圆形的 1px 外框是斜着走的（8 连通），4 邻接的填充才不会从斜缝里漏出去。
+#
+#⚠️ 整块区域要么全灌、要么不动：瓶里不够就什么都不画（半灌的封闭区看着像坏了）。
+#   所以先数够不够，再落笔；数的时候一旦超就提前退出。
+#
+#⚠️ 必须**封口**：一旦漫到画布边缘就说明这片区域是敞开的（点在了开阔处），
+#   直接放弃。否则创造模式免墨水、没有余额上限，一下就把整张图灌满 ——
+#   2048x1024 = 200 万格，既没用又会卡死。
+#   顺带这也是最快的退出路径：栈是后进先出，DFS 会顺着一个方向一路走到边，
+#   几步就撞线，不用扫完整张图。
+#
+#⚠️ 入栈和标记必须**内联**：`PackedByteArray` / `PackedInt32Array` 在 GDScript 里是
+#   **值拷贝**，塞进 helper 里改，改的是副本 —— 会变成永远推同一个像素的死循环。
+func _bucket_fill(point: Vector2) -> void:
+	var w := canvas_size.x
+	var h := canvas_size.y
+	var start := Vector2i(point.floor())
+	var data := black_image.get_data()
+	var seen := PackedByteArray()
+	seen.resize(w * h)
+	var stack := PackedInt32Array()
+	var targets := PackedInt32Array()
+	var room := (1 << 30) if ink_free else _ink_room()
+
+	var first := start.y * w + start.x
+	if data[first * 4 + 3] > 127:
+		return                       # 点在实心像素上：什么都不做
+	seen[first] = 1
+	stack.append(first)
+	while not stack.is_empty():
+		var top := stack.size() - 1
+		var idx := stack[top]
+		stack.resize(top)
+		targets.append(idx)
+		var x := idx % w
+		var y := idx / w
+		if x == 0 or y == 0 or x == w - 1 or y == h - 1:
+			print("墨水桶：这片区域没封口（漫到画布边缘），不灌")
+			return
+		if targets.size() > room:
+			print("墨水不足：这一片灌不下（瓶里 %d px）" % room)
+			return
+		if x > 0 and seen[idx - 1] == 0 and data[(idx - 1) * 4 + 3] <= 127:
+			seen[idx - 1] = 1
+			stack.append(idx - 1)
+		if x + 1 < w and seen[idx + 1] == 0 and data[(idx + 1) * 4 + 3] <= 127:
+			seen[idx + 1] = 1
+			stack.append(idx + 1)
+		if y > 0 and seen[idx - w] == 0 and data[(idx - w) * 4 + 3] <= 127:
+			seen[idx - w] = 1
+			stack.append(idx - w)
+		if y + 1 < h and seen[idx + w] == 0 and data[(idx + w) * 4 + 3] <= 127:
+			seen[idx + w] = 1
+			stack.append(idx + w)
+
+	var pixel := PackedByteArray([
+		int(black_color.r * 255.0), int(black_color.g * 255.0),
+		int(black_color.b * 255.0), 255])
+	for idx: int in targets:
+		var at := idx * 4
+		data[at] = pixel[0]
+		data[at + 1] = pixel[1]
+		data[at + 2] = pixel[2]
+		data[at + 3] = pixel[3]
+	black_image.set_data(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8, data)
+	black_texture.update(black_image)
+	_apply_ink_delta(targets.size())
 #endregion
 
 
