@@ -57,21 +57,15 @@ texture_filter = 1
 texture = SubResource("ImageTexture_g32og")
 centered = false
 script = ExtResource("10_visual")
-palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0.12, 0.12, 0.12, 1), Color(1, 1, 1, 1)])
+palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0.12, 0.12, 0.12, 1), Color(1, 1, 1, 0)])
 
 [node name="BottledInk" type="Sprite2D" parent="." unique_id=1298016972]
+z_index = -1
 process_physics_priority = 25
 visible = false
-clip_children = 1
 texture_filter = 1
 centered = false
 script = ExtResource("12_ink")
-
-[node name="Liquid" type="Sprite2D" parent="BottledInk" unique_id=345494734]
-modulate = Color(0.09, 0.11, 0.28, 1)
-texture_filter = 1
-texture = SubResource("ImageTexture_w0ndq")
-centered = false
 
 [node name="InkHealth" type="Node" parent="." unique_id=2077019024]
 script = ExtResource("13_health")
