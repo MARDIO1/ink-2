@@ -871,3 +871,149 @@
 - 没碰引擎仓库 `T:\GODOT\bag\Godot_2DVoxel_Addons`，`addons/pixel_destruction/nodes/pixel_sprite_2d.gd`
   的尺寸判断缺陷**保持原样**。
 - 没 commit；没动并行会话的 `actor/canvas/**`、`ui/hud/**`、`map/**`、`actor/player/player.tscn`。
+
+
+## 2026-10-07 16:20 — 美术层架构落地：隐形墨水（材质 6）+ pixel_art_layer，手部改成"物理/美术两条轨"
+
+用户定的方向：以后会有很多"物理贴图 ≠ 美术贴图"，但**大部分仍是像素物理**，只是兼顾美术。
+于是把上一版的"美术=挂在 Visual 下的形状节点"换成**两条真正分开的轨**。
+
+### 1. 隐形墨水（新增材料 id 6）
+- `Ink/asset/invisible.tres`：`color = (0,0,0,0)`、`density = 1.0`、`compress_strength = 200`。
+- `map/main.tscn`：`materials` 追加它、`densities_fallback` 补成 7 项（末项 1.0）。
+  （`PixelWorld.rebuild()` 里 `dens[m.id] = m.density`，所以材料自己的 density 才是权威值。）
+- 密度口径：一个材质一个密度，所以隐形墨水按 **1.0 基准**注册；用它的物体用
+  `shape_density_scale`（新加在 `actor/player/src/player_physics.gd` 上的导出）把密度拉回自己的值。
+
+### 2. 美术层（新增 1 个文件）
+- `Ink/src/pixel_art_layer.gd`：Sprite2D；`image`（R=材质 id）+ `palette`（留空取世界调色板）；
+  **每次重建都新建 `ImageTexture`**（不调 `update()`，所以换图时尺寸随便不一样）。
+- 挂法：刚体的渲染节点 `Visual` 下面。位姿自动跟着刚体（父节点每帧被 `pbody_visual` 摆位），
+  美术层**零追踪代码**；它不实现 `build_shape()`，`collect_shapes()` 永远看不到它 → 进不了物理。
+- 控制器不管美术：`player_input.gd` 一行没动（用户点名"控制器控制物理即可"）。
+
+### 3. 手部改造（旧的那套已删）
+- 物理：`Shape0.paint` → `player_hand_phys_0.tres`（材质 6 的 unfold 剪影）+ 刚体
+  `shape_density_scale = 0.1344`；`Visual.palette` 补到 index 6 = 透明（否则材质 6 被夹成暗灰）。
+- 美术：`Visual/ArtUnfold`、`Visual/ArtGrab` 两个美术层；`hand.gd` 按下左键切 `visible`（3 行）。
+- **删掉**上一版给 `pbody_visual.gd` 加的"可见美术形状优先"+`refresh()`（15 行），该文件回到原始内容。
+- `tools/bake_art.gd` 的 `SOURCES` 加 `player_hand_unfold.png -> player_hand_phys`（材质 6）；
+  产物 `actor/player/asset/player_hand_phys_0.tres`（36x31、354 格）。
+
+### 4. 物理零影响（A/B 实测，不是推理）
+- 手部实测：`mass = 47.5776`、`inertia = 9234.094`、`local_com` 与换材质前**逐位相同**；
+  形状 `density_scale = 0.1344`。
+- **A/B**：把 `Shape0.paint` 在"材质 3"与"材质 6 + density_scale"之间来回切，`test_hand_physics`
+  的三条红项数字**逐字一致**（`pushup rise=-13.105`、`box pushup rise=-14.265`、
+  `box pushup/late jitter=3.693117`）→ 隐形墨水对物理零影响。
+
+### 5. 一个必须先说清的坑：`ImageTexture.update()`（实测 Godot 4.7.2）
+```
+4x4 RGBA8 → 新图 5x4/4x5 → ERROR: The new image dimensions must match the texture size.  纹理仍是 4x4
+4x4 RGBA8 → 同尺寸 R8   → ERROR: The new image format must match the texture's image format.
+```
+即**宽高必须逐格相同、格式也必须相同**，差 1 格就失败（不崩，只是纹理保持旧内容 = "贴图没换"）。
+上一轮手部的 36x31 vs 35x31 就是踩这条；新架构每次新建纹理，天然绕开。
+
+### 6. 回归（headless 实跑）
+| 测试 | 结果 |
+| --- | --- |
+| `test_hand_physics` | 51 passed / 3 failed，**新增 `pose/*` 四条全绿**（grab=332px、unfold=354px、换图不动物理） |
+| `test_live_input -- --grip` | 3 checks / 0 failures |
+| `test_canvas` | PASS |
+| 主场景 `--quit-after 150` | exit 0，无 ERROR |
+- 那 3 条红**不是本轮引入**：先量到 `player_hand_unfold.png` 被用户在 **14:42:30 换过**（730 字节），
+  手部质心随之改变（`local_com y: 16.38 -> 14.62`），pushup 那三条数字才变；隐形墨水那侧的 A/B 已证明无关。
+
+### 7. 文档
+- **新增** `Ink/doc/美术层与隐形墨水.md`：两条轨的分工、隐形墨水用法、palette 下标陷阱、
+  "美术层不受物理裁剪"的边界、加一张新美术贴图的 4 步流程。
+- 改 `actor/player/doc/手.md`（改写成两条轨）、`tools/doc/烘焙.md`（产物清单 + 材质 6 说明）、
+  `test/doc/验收.md`（`pose/*` 覆盖项）。
+
+### 8. 需要你知道的两件事
+- **重烘焙又洗了一次 `.tres` 的 `uid=`**：`player_body_0/1`、`player_hand_unfold_0` 三行已按 HEAD 值补回
+  （`dmtnlqhdr1fnx` / `kc1hsgysjkpi` / `b2ujffw5kko43`）。根因仍在 `bake_art.gd` 的 `write()`
+  用 `ResourceSaver.save` + 头里不写 uid —— 本轮没改工具（不在范围）。
+- **我强制结束过 Godot 进程**：一个探针脚本报错后没退出（脚本里调了不存在的 `shape_pixel_count()`），
+  连带清了 4 个 `Godot_v4.7.2-stable_win64*` 进程，其中 14:38:05 启动的那个非 console 实例
+  **可能是我自己的残留、也可能是你开着的东西** —— 如果是你的编辑器，抱歉，请重开。
+
+
+## 2026-10-07 16:50 — 健身房 gym/：旋钮倍率 ×0.25~×5 即时调角色控制器
+
+需求：把角色控制器的可调数值摆成旋钮（倍率制）、连自己的质量一起调，自成模块、编辑器可见。
+
+### 1. 先查 export（结论：已经很全，没改一行）
+- `actor/player/src/player_input.gd`：7 个 `@export`（`max_force`/`max_power`/`move_speed`/`jump_impulse`/
+  `upright_stiffness`/`upright_damping`/`max_upright_torque`）。
+- `actor/player/src/hand.gd`：10 个 `@export`（`position_stiffness`/`position_damping`/`max_force`/`max_power`/
+  `rest_offset`/`min_target_radius`/`max_reach`/`reach_solver_margin`/`rotate_grip`/`conserve_angular_momentum`）。
+- **没进 gym**：`FINGERTIP`、`GRAB_RADIUS` 是 `const` 几何标定值 —— 做成旋钮只会被人调坏，故意不 export。
+
+### 2. 新增（3 个文件，全在 gym/）
+- `gym/gym.tscn`：根节点 + `map/main.tscn` 的**实例**（真地图真角色，所以手感是真手感）。
+- `gym/src/gym.gd`（`@tool`）：`_ready` 里生成面板（Label + HSlider + 读数），不往场景里塞节点；
+  旋钮表是它的 `knobs: Array[Dictionary]` 导出（Inspector 可改）；`set_knob(i, mult)` 是程序入口。
+- `gym/doc/健身房.md`：倍率模型、现有旋钮表、两个坑。
+
+### 3. 倍率模型
+`_ready` 记下每个目标的当前值当基准，滑块写 `基准 × 倍率` → 拉回 `1.00` 就是原值、不累积；
+编辑器里拖滑块写的是 **gym.tscn 的实例覆盖**，`player.tscn` / `map/main.tscn` 不动。
+
+### 4. 两个实测踩到的坑（已修）
+- **质量旋钮不能每帧刷**：`refresh_mass` = 逐像素扫质量 + 贪心分解 + 重推密度（玩家 ≈2~3ms），
+  所以它接 `drag_ended`，别的旋钮接 `value_changed`。
+- **密度回调必须用世界节点的 `_density_of`**：第一次用 `world.world.density_callable()` 时质量从 2798.34
+  变成 4108.34（= 白标签 1310 格被按密度 1.0 算）；换成 `Callable(world, "_density_of")` 后精确。
+  这正是 `actor/player/doc/墨水.md` 里记过的那条老坑。
+- 另外：`shape_density_scale` 只在**烘焙时**读一次，运行中改属性不会自己生效 —— gym 里直接写进
+  `body.shapes[*].density_scale` 再 `refresh_mass`。
+
+### 5. 实测数字（headless 脚本逐档验，脚本跑完已删）
+```
+质量   基准 2798.33972 -> ×0.50 1399.16986 | ×2.00 5596.67944 | ×5.00 13991.69860 | ×0.25 699.58493 | ×1.00 2798.33972
+脚力   基准 6000000    -> ×2.00 12000000
+手力   基准 16000000   -> ×0.50 8000000
+质心不变 (34.0, 43.24022)；惯量随倍率等比（3321506 -> 1660753 / 6643012）
+gym 场景 headless 空跑 --quit-after 150：exit 0，无 ERROR
+```
+
+### 6. 没做 / 没验
+- 没在真实窗口里目视面板外观与滑块拖拽（headless 验的是数值通路）；要目视我可以开窗跑。
+- 没给 gym 专门摆器材（箱子/斜坡/可抓墙）—— 现在用的是 main.tscn 的真地图；要独立器材说一声。
+- 没 commit。
+
+
+## 2026-10-07 17:05 — 手臂曲线（只画不物理）：Arm 下挂 Line2D + 三次贝塞尔
+
+- **新增** `actor/player/src/arm_curve.gd`（~45 行）：起点 = 身体质心（Hinge 锚点）、终点 = 手质心，
+  控制点取臂方向 1/3、2/3 处 + 弓高；弓高 = `min_bow 12 + 0.35 × 弦长 × 松弛度`，松弛度 = `1 - 弦长/max_reach`
+  → 手伸近时垂弧、拉满时绷直；法线翻到世界下侧，所以永远往下垂。
+- **hand.tscn** 加 `Arm/Curve`（Line2D）：`width = 4.0`（= 4px 格稿的 1 格描边，和手/身体的线宽一致）、
+  纯黑、圆头圆关节、`z_index = -1`（画在身体和手后面，肩/腕接头自然被挡）；`top_level = true`
+  让 `points` 直接用世界坐标（父节点 `Arm` 的节点变换是静态的）。
+- 实测（headless）：点数 17、起点 = 身体质心、终点 ≈ 手质心、弦长 39.95 / 弧长 54.49（确实弓）；
+  物理一个数没动：玩家 2798.33972 / 手 47.57760 / 臂 2.15040 / Rapier 刚体数 5。
+- 文档：`actor/player/doc/手.md` 加「手臂曲线（只画不物理）」一节。
+
+
+## 2026-10-07 17:56 — 画布回收墨水：有钉子就崩（钉子不再回收）
+
+- **根因**：`CanvasSolid.rasterize()` 靠 `child.get("body")` 认刚体，而固化后的钉子
+  `Nail`（Sprite2D）自带 `body` 属性 → 被当成刚体收走：
+  `SCRIPT ERROR: Invalid type in function 'remove_body_node' ... The Object-derived class of argument 1
+  (Sprite2D (nail.gd)) is not a subclass of the expected argument class.`（`actor/canvas/src/canvas_solid.gd`）。
+- **改法**（`actor/canvas/src/canvas_solid.gd`）：① 只认 `PixelBody2D` 节点类型，不靠"有没有 body 属性"；
+  ② `_canvas_color` 不再把材质 4 映射回画布（钉子不回收）；③ 新增 `_free_nails(world, body)`，
+  刚体回画布时把挂在它上面的钉子外观一起丢掉（Nail 是世界的子节点，不随刚体一起死）。
+- **实测**（headless）：画 449px + 2 钉 → 固化 → 回到画布，旧代码报类型错并中断；
+  修复后 `RESTORE bodies=1 pixels=447`（449 − 2 个钉子像素），世界子节点 13 → 10，无 SCRIPT ERROR。
+- **回归**：`test/test_canvas.gd` 加「带钉子实体回到画布」用例 —— `SOLID bodies=1 pixels=152` → `RESTORE bodies=1 pixels=151`，
+  `[Canvas] resize, save/load, nail solidify/break: PASS`。重绘 / 缩放 / 固化三条带钉子路径也各跑一遍，stderr 为空。
+- **文档**：`actor/canvas/doc/画布.md`「反向：实体重采样回画布」注明钉子不回收及原因。
+- **顺带**：`canvas_solid.gd` 里 `InkItem` 的 preload 旧路径（`res://map/src/ink_item.gd`）会让你整个 CanvasSolid 编译不过，
+  你 17:46 已自己改到 `res://actor/ink_item/src/ink_item.gd`。
+- **没做**：`rasterize` 移除运行时 ink_item 后，Godot 退出时报 `ObjectDB instances were leaked`（对照组：不带钉子也报 15 个）
+  —— 与本次改动无关，属于既有"移除刚体"路径，要查另开一轮。
+- 没 commit。

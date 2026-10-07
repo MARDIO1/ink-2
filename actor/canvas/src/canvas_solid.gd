@@ -13,7 +13,9 @@ const LIVING_TAG := "living"
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
-const InkItem := preload("res://map/src/ink_item.gd")
+## 世界里真正的刚体节点类型；只认它，别靠"有没有 body 属性"认刚体。
+const PixelBody2D := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
+const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
 #endregion
 
@@ -155,6 +157,7 @@ func _spawn_nails(world, body, anchors: Dictionary) -> void:
 #region 反向：实体重采样回画布
 ## 把画布范围内的实体按材质颜色重采样回墨水，并从世界移除。
 ## 跳过带 LIVING_TAG 的生物实体（玩家、手、NPC）。
+## ⚠️ 钉子不回收：材质 4 的像素不回画布，挂在上面的钉子外观也一起丢掉。
 func rasterize(surface, world) -> void:
 	if world == null or surface == null:
 		push_error("CanvasSolid.rasterize: 参数无效")
@@ -162,6 +165,10 @@ func rasterize(surface, world) -> void:
 	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
 	var targets: Array = []
 	for child in world.get_children():
+		#⚠️ 只认刚体节点本身：Nail 这种外观节点也带 body 属性，
+		#   按 body 过滤会把它当刚体收走 —— remove_body_node 参数类型不符，直接报错/崩溃。
+		if not child is PixelBody2D:
+			continue
 		var body = child.get("body")
 		if body == null or body.tags.has(LIVING_TAG):
 			continue
@@ -169,11 +176,21 @@ func rasterize(surface, world) -> void:
 			targets.append(child)
 	var pixels := 0
 	for node in targets:
-		pixels += _sample_body(surface, node.get("body"))
+		var body = node.get("body")
+		pixels += _sample_body(surface, body)
+		_free_nails(world, body)
 		world.remove_body_node(node)
 		node.queue_free()
 	surface.refresh()
 	print("RESTORE bodies=%d pixels=%d" % [targets.size(), pixels])
+
+
+## 删掉挂在这个刚体上的钉子外观。
+## Nail 是世界的子节点而不是刚体的子节点，刚体没了它不会跟着没。
+func _free_nails(world, body) -> void:
+	for child in world.get_children():
+		if child is Nail and child.get("body") == body:
+			child.queue_free()
 
 
 ## 把一个刚体的像素按材质颜色写回画布，返回写入的像素数。
@@ -193,11 +210,9 @@ func _sample_body(surface, body) -> int:
 	return written
 
 
-## 材质到画布颜色的映射；null 表示该材质不回到画布。
+## 材质到画布颜色的映射；null 表示该材质不回到画布（钉子不回收）。
 func _canvas_color(surface, material: int):
 	if material == 1:
 		return surface.black_color
-	if material == NAIL_MATERIAL_ID:
-		return surface.nail_color
 	return null
 #endregion

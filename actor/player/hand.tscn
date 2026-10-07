@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://b78lla71aiabs"]
+[gd_scene load_steps=10 format=3 uid="uid://b78lla71aiabs"]
 
 [ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="1_body"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="2_shape"]
@@ -6,6 +6,9 @@
 [ext_resource type="Image" path="res://actor/player/asset/player_hand_unfold_0.tres" id="4_hand0"]
 [ext_resource type="Image" path="res://actor/player/asset/player_hand_grab_0.tres" id="8_grab"]
 [ext_resource type="Script" path="res://actor/player/src/pbody_visual.gd" id="7_visual"]
+[ext_resource type="Image" path="res://actor/player/asset/player_hand_phys_0.tres" id="9_phys"]
+[ext_resource type="Script" path="res://Ink/src/pixel_art_layer.gd" id="20_art"]
+[ext_resource type="Script" path="res://actor/player/src/arm_curve.gd" id="21_armcurve"]
 
 [node name="Arm" type="Node2D"]
 script = ExtResource("1_body")
@@ -20,6 +23,7 @@ internal_render = false
 [node name="Hand" type="Node2D" parent="."]
 script = ExtResource("1_body")
 world_path = NodePath("../../..")
+shape_density_scale = 0.1344
 gravity_scale = 0.0
 collision_layer = 0
 collision_mask = 0
@@ -28,19 +32,29 @@ can_sleep = false
 [node name="Shape0" type="Node2D" parent="Hand"]
 script = ExtResource("2_shape")
 source = 3
-paint = ExtResource("4_hand0")
+paint = ExtResource("9_phys")
 
 [node name="Visual" type="Sprite2D" parent="Hand"]
 process_physics_priority = 20
 script = ExtResource("7_visual")
-palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0.12, 0.12, 0.12, 1)])
+palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0.12, 0.12, 0.12, 1), Color(1, 1, 1, 1), Color(0, 0, 0, 0)])
 
-[node name="PoseGrab" type="Node2D" parent="Hand/Visual"]
+[node name="ArtUnfold" type="Sprite2D" parent="Hand/Visual"]
+script = ExtResource("20_art")
+image = ExtResource("4_hand0")
+fill_material = 5
+
+[node name="ArtGrab" type="Sprite2D" parent="Hand/Visual"]
 visible = false
 position = Vector2(1, 2)
-script = ExtResource("2_shape")
-source = 3
-paint = ExtResource("8_grab")
+script = ExtResource("20_art")
+image = ExtResource("8_grab")
+fill_material = 5
+
+[node name="ArmCurve" type="Line2D" parent="Hand/Visual"]
+width = 4.0
+default_color = Color(0, 0, 0, 1)
+script = ExtResource("21_armcurve")
 
 [node name="HandControl" type="Node" parent="Hand"]
 script = ExtResource("3_hand")

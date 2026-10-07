@@ -275,7 +275,7 @@ func _test_scene() -> void:
 	_check("ordinary landing does not damage player", scene.get_node("Player").collision_damage == 0.0)
 	print("[CollisionDamage] main 120 fixed steps: %.2f ms" % (float(elapsed) / 1000.0))
 	scene.auto_step = false
-	var canvas = scene.get_node("Canvas")
+	var canvas = scene.get_node("SmallCanvas")
 	for y in range(4):
 		for x in range(4):
 			canvas.surface.black_image.set_pixel(x, y, Color.BLACK)

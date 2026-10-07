@@ -24,6 +24,8 @@ const SOURCES := [
 	["player_body.png", "player_body", 2, false, 5, 4],
 	["player_hand_unfold.png", "player_hand_unfold", 3, true, 0, 4],
 	["player_hand_grab.png", "player_hand_grab", 3, true, 0, 4],
+	# 手部**物理剪影**：同一张图、材质 6（隐形墨水）—— 物理靠它，画靠上面两行（美术层）。
+	["player_hand_unfold.png", "player_hand_phys", 6, true, 0, 4],
 ]
 #endregion
 

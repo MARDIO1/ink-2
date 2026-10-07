@@ -30,6 +30,17 @@ func _run() -> void:
 	canvas.canvas_size = Vector2i(32, 32)
 	await _press(KEY_F9)
 	valid = valid and surface.black_image.get_data() == before and canvas.canvas_size == Vector2i(320, 180)
+	#钉子不回收：带钉子的实体回到画布不能崩，也不能把钉子写回墨水。
+	var home: Vector2 = canvas.position
+	canvas.position = Vector2(5000, 5000)      # 挪到空地：只回收这块刚体，别顺带把地形也收走
+	canvas.solid.solidify(surface, scene)
+	canvas.return_to_canvas()
+	valid = valid and surface.is_solid(20, 20) and not surface.is_solid(30, 20)
+	await process_frame
+	canvas.position = home
+	surface.clear()
+	surface._stroke(Vector2(20, 20), Vector2(40, 20), Color.BLACK)
+	surface._place_nail(Vector2(30, 20))
 	var body_count: int = scene.world.bodies.size()
 	canvas.solid.solidify(surface, scene)
 	valid = valid and scene.world.bodies.size() > body_count and not surface.is_solid(20, 20)

@@ -3,24 +3,34 @@ extends CanvasLayer
 ## Tab 在成品 HUD 与 debugHUD 之间切换。
 
 const MENU_SCENE := "res://ui/menu/menu.tscn"
+## UI 与关卡不在同一棵子树时的兜底查找：玩家 / 调试 HUD 都按组找（场景里挂的组见
+## `map/main.tscn` 的 `Player` 与 `debug/hud/debug_hud.tscn` 的根节点）。
+const PLAYER_GROUP := "player"
+const DEBUG_HUD_GROUP := "debug_hud"
 
 ## 接不到墨水源时横条的静态占位比例，0-1。
 @export_range(0.0, 1.0, 0.01) var bar_ratio: float = 0.72
 ## 玩家墨水生命值节点的相对路径（本节点是 Main 的子级）。
 @export var health_path: NodePath = ^"../Player/InkHealth"
-## 调试 HUD 的相对路径；Tab 切换时用它决定显隐。
+## 同树时的显式路径；找不到就按组找。
 @export var debug_hud_path: NodePath = ^"../debugHUD"
 
 @onready var status_bar: ProgressBar = $Root/StatusBar
 @onready var ink_meter: Label = $Root/InkMeter
-@onready var debug_hud = get_node(debug_hud_path)
+var debug_hud = null
 
 var _health = null
 
 
 func _ready() -> void:
-	debug_hud.visible = false
+	var explicit_hud := get_node_or_null(debug_hud_path)
+	debug_hud = explicit_hud if explicit_hud != null else get_tree().get_first_node_in_group(DEBUG_HUD_GROUP)
+	if debug_hud != null:
+		debug_hud.visible = false
 	_health = get_node_or_null(health_path)
+	if _health == null:
+		var player := get_tree().get_first_node_in_group(PLAYER_GROUP)
+		_health = player.get_node_or_null("InkHealth") if player != null else null
 	if _health != null:
 		_health.changed.connect(_refresh_bar)
 	_refresh_bar()
@@ -46,6 +56,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _switch_debug_hud() -> void:
+	if debug_hud == null:
+		return
 	debug_hud.visible = not debug_hud.visible
 	debug_hud.forces.enabled = debug_hud.visible
 	debug_hud.forces.queue_redraw()

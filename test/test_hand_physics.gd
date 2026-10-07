@@ -485,14 +485,14 @@ func _test_free_box_reaction(rig: Dictionary) -> void:
 	control._release_grab()
 
 
-## 抓握态是**美术贴图**（挂在渲染节点下的形状，只画不物理）：
+## 抓握态是**美术层**（`Visual` 下的 Sprite2D，只画不物理）：
 ## 换图只许换画，质量 / 惯量 / 质心 / 位置与 Rapier 侧刚体数一个都不许动。
 func _test_hand_pose(rig: Dictionary) -> void:
 	print("[GameLoop] grip pose is art-only")
 	var control: Node = rig["control"]
 	var hand = rig["hand"]
-	var visual: Node2D = rig["scene"].get_node("Player/Arm/Hand/Visual")
-	var pose: Node2D = visual.get_node("PoseGrab")
+	var art_unfold: Node2D = rig["scene"].get_node("Player/Arm/Hand/Visual/ArtUnfold")
+	var art_grab: Node2D = rig["scene"].get_node("Player/Arm/Hand/Visual/ArtGrab")
 	var mass: float = hand.mass
 	var inertia: float = hand.inertia
 	var com: Vector2 = hand.local_com
@@ -501,21 +501,24 @@ func _test_hand_pose(rig: Dictionary) -> void:
 
 	control.set_grip(true)
 	control._update_grip(DT)
-	_check("pose/grab art drawn", pose.visible and _drawn_pixels(visual) == 332,
-		"visible=%s pixels=%d" % [pose.visible, _drawn_pixels(visual)])
+	_check("pose/grab art drawn",
+		art_grab.visible and not art_unfold.visible and _drawn_pixels(art_grab) == 332,
+		"grab=%s unfold=%s pixels=%d" % [art_grab.visible, art_unfold.visible, _drawn_pixels(art_grab)])
 	_check("pose/switch touches no physics",
 		hand.mass == mass and hand.inertia == inertia and hand.local_com == com
 			and hand.position == position and rig["world"].rp_body_count() == bodies)
 
 	control.set_grip(false)
 	control._update_grip(DT)
-	_check("pose/unfold art restored", not pose.visible and _drawn_pixels(visual) == 354,
-		"visible=%s pixels=%d" % [pose.visible, _drawn_pixels(visual)])
+	_check("pose/unfold art restored",
+		art_unfold.visible and not art_grab.visible and _drawn_pixels(art_unfold) == 354,
+		"grab=%s unfold=%s pixels=%d" % [art_grab.visible, art_unfold.visible, _drawn_pixels(art_unfold)])
 	_check("pose/release touches no physics",
 		hand.mass == mass and rig["world"].rp_body_count() == bodies)
 
 
-## 渲染贴图里的非空像素数 —— 直接证明"手上画的是哪一张图"。
+## 渲染贴图里的**线稿**像素数（黑 = 材质 3）。白底（`fill_material = 5` 的填充）不算，
+## 所以它能唯一区分"手上画的是哪一张姿态图"。
 func _drawn_pixels(visual: Node2D) -> int:
 	if visual.texture == null:
 		return -1
@@ -523,7 +526,8 @@ func _drawn_pixels(visual: Node2D) -> int:
 	var n := 0
 	for y in image.get_height():
 		for x in image.get_width():
-			if image.get_pixel(x, y).a > 0.0:
+			var c := image.get_pixel(x, y)
+			if c.a > 0.0 and c.r < 0.5:
 				n += 1
 	return n
 

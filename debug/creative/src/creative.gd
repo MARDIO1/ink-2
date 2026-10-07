@@ -7,7 +7,7 @@ extends Node
 
 @export var player_path: NodePath = ^"../Player"
 ## 普通模式的小画布；创造模式里让位给大地图。
-@export var canvas_path: NodePath = ^"../Canvas"
+@export var canvas_path: NodePath = ^"../SmallCanvas"
 ## 创造模式的大画布（铺满全图）；平时隐藏。
 @export var map_canvas_path: NodePath = ^"../MapCanvas"
 @export_file("*.tscn") var map_path: String = "res://map/asset/map.tscn"

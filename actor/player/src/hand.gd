@@ -8,8 +8,8 @@ const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 @onready var player_body = $"../../..".body
 @onready var physics_world = $"../../../..".world
 ## 抓握态的美术贴图挂在渲染节点下（只画不物理），按下左键换成它。
-@onready var visual = $"../Visual"
-@onready var pose_grab: Node2D = $"../Visual/PoseGrab"
+@onready var art_unfold: Node2D = $"../Visual/ArtUnfold"
+@onready var art_grab: Node2D = $"../Visual/ArtGrab"
 var arm_joint = null
 var pivot_joint = null
 var grip_joint = null
@@ -247,9 +247,9 @@ const GRAB_RADIUS := 0.72
 
 func _update_grip(_delta: float) -> void:
 	var requested: bool = _grip_override if _grip_override != null else Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	if pose_grab.visible != requested:
-		pose_grab.visible = requested
-		visual.refresh()
+	if art_grab.visible != requested:
+		art_grab.visible = requested
+		art_unfold.visible = not requested
 	if not requested:
 		_release_grab()
 		return

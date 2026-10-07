@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://actor/gym/src/gym.gd" id="1_gym"]
+[ext_resource type="PackedScene" path="res://map/main.tscn" id="2_main"]
+
+[node name="Gym" type="Node2D"]
+script = ExtResource("1_gym")
+
+[node name="Main" parent="." instance=ExtResource("2_main")]
