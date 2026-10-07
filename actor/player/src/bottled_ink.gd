@@ -104,7 +104,7 @@ func _sync_visual() -> void:
 		_src_tex = _mask.texture
 		_interior_key = ""
 	_ensure_interior()
-	_fill = _health.ratio() if _health != null else 1.0
+	_fill = _health.ratio() if _health != null and _health.has_method("ratio") else 1.0
 	visible = _fill > 0.0
 	if not visible:
 		return

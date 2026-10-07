@@ -107,6 +107,14 @@ func _physics_process(delta: float) -> void:
 		# 归属判据只有引擎那一个 uses_internal_render（rebuild/bake_node/sync_world_bodies 同源）；
 		# 不归内部渲染器画的刚体必须 forget 掉旧贴图，否则它会停在旧位置变成鬼影。
 		_main.renderer.prune(_main._live_ids())
+		# ⚠️ 按下标取节点前先保证 _body_nodes 与 world.bodies 一一对应：绕过节点层的增删
+		#    （直接调 fracture_pixels、门面 spawn_*、调试脚本 add_body；灰尘剔除那条已由
+		#    _drop_culled_nodes() 覆盖）会让数组变短 -> 越界 -> 整个同步循环中断 ->
+		#    之后的碎片贴图停在旧位姿。按版本号对齐：平时一次整数比较。
+		# ⚠️ 每次同步前对齐一次：只补位/对齐、不删项，O(n) 很小（引擎 realign_body_nodes 的注释
+		#    写明这条不变量与静默错配的后果）。写成无条件是为了**不依赖引擎版本** ——
+		#    仓库里内置的 addon 快照还没有 world.bodies_rev（v0.3.11 才有），无条件对齐对两版都成立。
+		_main.realign_body_nodes()
 		for i in _main.world.bodies.size():
 			var body = _main.world.bodies[i]
 			var node = _main._body_nodes[i] if i < _main._body_nodes.size() else null
