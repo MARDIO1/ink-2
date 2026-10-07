@@ -72,30 +72,57 @@ const FluidPBF := preload("res://addons/pixel_destruction/fluid/fluid_pbf.gd")
 ##
 ## ⚠️ 别用 1.0：容器被填满时**没有液面**，晃动就完全看不出来了。
 ##    0.9 留出一成空腔，液面才有地方晃。
-@export_range(0.1, 1.0) var max_fill := 0.9
+@export_range(0.1, 1.0) var max_fill := 1.0
 
 ## 每步最多消掉剩余差额的百分之几。小变化由 fill_rate 兜住、大变化靠它加速。
 @export_range(0.0, 0.5) var fill_gain := 0.06
-## 一个流体格子占几个像素。**默认 1 = 掩码与容器的单位像素 1:1。**
+## 一个流体格子占几个像素。
 ##
-## 这是性能旋钮，而且很陡：代价大致随格子数线性涨。
-##   1 = 逐像素（瓶子 60x59 = 3540 格 / 3540 粒子，实测 **~2.4 ms/步**）
-##   2 = 2x2 像素一格（约 30x30 = 900 格 / 1000 粒子，**~0.5 ms/步**）
-##
-## ⚠️ 别为了省性能随手调大它：掩码是**降采样**出来的，格子越大，
-##    容器边界越难和剪影对齐（并集规则会外胖、中心采样会让细边消失），
-##    液面台阶也越粗。要省性能优先看 gravity_px / fill_rate，或者接受更小的瓶子。
-@export_range(1, 8) var cell_px := 1
+## ⚠️⚠️ **不是纯性能旋钮 —— 它同时决定流体稳不稳。**
+##    真正决定"沸腾不沸腾"的是**每步走几格**：
+##        cells/step = dt * sqrt(2 * gravity_px * num_y)
+##    而 num_y = 容器高 / cell_px。实测自由落体末速：
+##        cell_px 1 -> num_y 59 -> 4.43 格/步   （参照实现约 1.6）
+##        cell_px 2 -> num_y 30 -> 3.17 格/步
+##        cell_px 4 -> num_y 15 -> 2.24 格/步
+##    密度场和 MAC 网格都是**按格**的，一帧走 4 格时压力求解根本跟不上：
+##    粒子互相穿过 -> 最近邻距离掉到 min_dist 的 0.5 倍（99% 的粒子都重叠）
+##    -> push_apart 每步都在补救 -> 永远静不下来。降分辨率是**同时**解决
+##    "太贵"和"太沸"的那一个旋钮。
+## 代价大致随格子数线性涨：1 = 逐像素（60x59 = 3540 格 / 4169 粒子），
+##    2 = 2x2 像素一格（约 30x30 = 900 格 / 1000 粒子），4 = 再少四分之三。
+## ⚠️ 格子越大，液面台阶越粗（一格 = cell_px 个像素）—— 这是看得见的代价。
+@export_range(1, 8) var cell_px := 2
 
-## 重力大小（像素/秒²）。和引擎默认的 600~900 同量级。
+## 重力大小（像素/秒²）。
 ##
-## ⚠️ 它和 spacing 一起决定流体的"节奏"。参照实现是 域高 0.7 单位 / 重力 9.8，
-##    落到地上约 0.38 秒；这里是 域高 60 像素 / 重力 900，约 0.36 秒 —— 同量级，
-##    所以那套调好的参数（overRelaxation 1.9 / stiffness 1.0 / flipRatio 0.9）直接可用。
-## ⚠️ 这个值直接决定"晃得多快"。觉得太急就往下调 —— 落到底的时间是
-##    sqrt(2 * 域高 / g)，所以 900 -> 600 会慢 1.22 倍，900 -> 400 慢 1.5 倍。
-##    墨水是黏的，慢一点更像。
-@export var gravity_px := 600.0
+## ⚠️⚠️ **不能往小调** —— 试过 150，理由是"每步位移超了 CFL"（见下），
+##    结果是**液面永远静止不下来**：静水压力建立得极慢，实测 20 秒里
+##    液面从 92% 一路阴跌到 76%（还在跌），玩家一动就更不收敛。
+##    人对"液面在慢慢沉"比对"体积差一成"敏感得多，所以这条路是死的。
+##
+##    CFL 那件事是真的：自由落体末速 = dt * sqrt(2 * gravity_px * 容器高/cell_px)，
+##    而密度场和 MAC 网格都是**按格**的。但解法是**加阻尼**或**降分辨率**
+##    （见 cell_px 的说明），不是减重力。
+##
+## ⚠️ 落到底的时间是 sqrt(2 * 域高 / g)：600 -> 0.44 秒。觉得晃得太急就往下调一点
+##    （900 -> 600 慢 1.22 倍），但**别调过头**，上面那个坑就在下面。
+@export var gravity_px := 150.0
+
+## 脸部留空区域 —— **剪影贴图的像素坐标**（和 _grid_origin 同一套），不是格子坐标。
+## 墨水不在这个矩形里渲染；**模拟照旧连通**（液体照常从脸后面流过去）。
+##
+## ⚠️⚠️ 为什么是"手填的矩形"而不是自动识别 —— 两条自动判据都试过，都不可靠：
+##    · **材质**：实测剪影只有 0（没画）/ 2（线稿）/ 5（瓶身填充）三种，
+##      而脸**内部**就是材质 5，和瓶身其他地方一模一样 —— 分不出来。
+##    · **连通性**（"四临域泛洪走不到的不透明像素 = 脸"）：在**贴图空间**里
+##      瓶壁和瓶盖本来就断成两截（中间 4 行没有任何像素），于是整条瓶壁都被当成
+##      "孤岛"，框出来的矩形把肩线一起吞了；而在**格子空间**（cell_px=2）里，
+##      一像素粗的线稿只盖住半格 —— 判"整格透明"会连瓶身中段一起挡掉，
+##      判"有透明像素就算"又一点都挡不住。**格子太粗，线稿做不了障碍。**
+##    脸的位置是**美术事实**，推不出来，所以写成显式参数，可以在检查器里直接调。
+@export var face_rect := Rect2i()   # 默认空 = 关；自动掩码挡不住时再手填
+
 ## 满瓶墨水的等效质量（引擎质量单位）。0 = 墨水只画，不参与质量。
 @export var capacity_mass := 0.0
 ## 质量重算的量化粒度：density_scale 变化小于它就不重算。
@@ -208,6 +235,24 @@ func _tick_fluid(delta: float) -> void:
 	# ⚠️ 显式标 Vector2：_fluid 是 Object，_fluid.spacing 是 Variant，
 	#    整条乘法表达式就成了 Variant，var g := ... 会 "Cannot infer the type of g"。
 	var g: Vector2 = _local_gravity() * gravity_px * _fluid.spacing
+	# ⚠️⚠️ **别用调大 fluid.stiffness 的办法去托体积。**
+	#
+	#    试过（stiff 6 / over_relaxation 0.8）：覆盖确实从 0.62 涨到 0.88，
+	#    但液面变成一根**没有阻尼的弹簧** —— 一直重复"压缩 -> 释放 -> 压缩"。
+	#    原因：这个压力项给的是**速度**，而 FLIP（flip_ratio 0.9）会把那个向外速度
+	#    一直留着，冲过平衡点之后重力再压回来 —— 一个无阻尼振子。
+	#    实测（test/probe_rest_small.gd，12x48 判定台，每步位移 4.0 格，
+	#    "覆盖"取 600~900 帧的 min/max，目标是初始的 0.87）：
+	#      stiff 6 + over 0.8        -> 覆盖 0.63~0.99 摆，速度 3.7   ← 弹簧
+	#      stiff 2 + over 0.8        -> 覆盖 0.52~0.54 摆，速度 1.1   ← 稳了但体积塌
+	#      stiff 6 + 2 子步          -> 覆盖 0.63~0.65 摆，速度 1.2   ← 稳了但体积塌
+	#      stiff 6 + 每步 vel*=0.95  -> 覆盖 0.54~0.59 摆，速度 1.8   ← 弹簧被杀掉
+	#      stiff 20 + 每步 vel*=0.90 -> 覆盖 0.85~0.96 摆，速度 4.0   ← 体积也托住了
+	#
+	#    也就是说：**"稳"和"体积"要同时拿到，必须先给速度加阻尼，再加刚度。**
+	#    而阻尼是引擎里没有的项 —— 要 fluid_pbf.gd 与 fastphys.cpp 两边一起加
+	#    并重跑闸门（两边必须逐位相同）。没有它之前，stiffness 保持引擎默认的 1.0：
+	#    **宁可体积塌，也不要弹簧**（人对"液面停不下来"比对"少装一成"敏感得多）。
 	_fluid.step(g.x, g.y)
 
 
@@ -276,6 +321,9 @@ func _build_container(src_tex: Texture2D) -> void:
 		if py + 1 < h:
 			_push_out(outside, stack, rgba, p + w)
 
+	# ①.5 渲染掩码（**原生分辨率**）—— 见 _build_render_mask 的说明
+	var rmask := _build_render_mask(rgba, outside, w, h)
+
 	# ② 被围住的**透明**像素（老 _build_interior 的那一步）
 	var cavity := PackedByteArray()
 	cavity.resize(n)
@@ -326,13 +374,18 @@ func _build_container(src_tex: Texture2D) -> void:
 		return
 
 	# ④ 框内所有"不是外面"的格子 —— 不透明的身体块由此并进来，容器变成无洞的实心瓶身
-	#    按 cell_px 降采样：一格里**至少一半**的源像素属于容器，整格才算容器。
+	#    按 cell_px 降采样：一格里有**任意一个**源像素属于容器，整格就算容器（并集）。
 	#
-	# ⚠️⚠️ 判据是"多数票"，不是"任意一个"。
-	#    第一版用的是并集（任意一个就算）—— 那会让容器朝外**胖出最多 cell_px-1 个源像素**
-	#    （cell_px=2 时就是 1 像素），墨水会渗出瓶壁。当时没看出来是因为瓶壁线稿有
-	#    2 像素厚、又画在墨水上面，正好盖住 —— 换个更细的线稿就会露馅。
-	#    取中心也不行：瓶壁那一圈细边会整片消失，容器会漏。
+	# ⚠️⚠️ 判据是**并集（向外拓）**，不是多数票、也不是取中心。
+	#    · 多数票（曾经用过）：格子越大，容器越**往里缩** —— 液面到不了瓶壁，
+	#      四周留出一圈空，看上去就是"墨水没装满"。cell_px=2 时缩 1 个源像素，
+	#      cell_px=4 时缩到 3 个，越省性能越明显。
+	#    · 取中心：瓶壁那一圈细边会整片消失，容器直接漏。
+	#    · 并集：容器朝外**胖出最多 cell_px-1 个源像素**，墨水会盖到瓶壁**下面**。
+	#      这一条是**有意的**：瓶壁线稿有 2 像素厚、又画在墨水上面，正好压住；
+	#      而"墨水贴不到墙"是一眼就能看出来的。两害相权取其轻。
+	#      ⚠️ 换个 1 像素厚的细线稿时这里会露馅 —— 那时要么调小 cell_px，要么
+	#      给 _draw 单独用保守判据（它管画不画，本来就该比 _container 严）。
 	_grid_origin = lo
 	_gw = ceili(float(hi.x - lo.x + 1) / float(cell_px))
 	_gh = ceili(float(hi.y - lo.y + 1) / float(cell_px))
@@ -344,6 +397,7 @@ func _build_container(src_tex: Texture2D) -> void:
 		for gx in _gw:
 			var inside := 0
 			var clear := 0
+			var reach := 0
 			var total := 0
 			for sy in cell_px:
 				var yy := lo.y + gy * cell_px + sy
@@ -358,10 +412,17 @@ func _build_container(src_tex: Texture2D) -> void:
 						inside += 1
 					if rgba[(yy * w + xx) * 4 + 3] == 0:
 						clear += 1
-			var is_container := total > 0 and inside * 2 >= total
+					if rmask[yy * w + xx] != 0:
+						reach += 1
+			# 并集：任意一个源像素在容器里，整格就是容器 —— 见上面④的说明
+			var is_container := total > 0 and inside > 0
 			_container[gy * _gw + gx] = 1 if is_container else 0
 			# 模拟掩码管"能不能流过去"，这张管"画不画" —— 见 _draw 的说明。
-			_draw[gy * _gw + gx] = 1 if (is_container and clear * 2 >= total) else 0
+			# 取并集：只要格里有透明像素就允许出墨水，墨水于是能贴到瓶壁下面。
+			_draw[gy * _gw + gx] = 1 if (is_container and reach > 0) else 0
+
+	# ⑤ 脸部留空 —— 见 face_rect 的说明
+	_carve_face(lo)
 
 	# 流体：域 = 容器外接框，掩码 = 容器。
 	_fluid = FluidPBF.new()
@@ -397,6 +458,125 @@ func _push_out(reached: PackedByteArray, stack: PackedInt32Array,
 		return
 	reached[idx] = 1
 	stack.append(idx)
+
+
+## 把脸部矩形从 _draw 里挖掉。**只影响渲染**，_container（模拟）一个字都不动。
+## 渲染掩码 —— **在原生分辨率（源像素）上算**，不是格子。
+##
+## ⚠️⚠️ 为什么必须是原生分辨率：cell_px=2 时一像素粗的线稿只盖住**半格**。
+##    在格子空间里它既不能算"挡住"（判"整格透明"会把瓶身中段整片挡掉），
+##    也不能算"不挡"（判"有透明像素就算"则眼睛内部照漏）。**线稿能当障碍这件事，
+##    只在原生分辨率上成立。**
+##
+## 两步走（顺序是契约）：
+##   ① 从**图像四边**泛洪**不透明**像素 —— 得到"和画面外沿连着的线稿"：
+##      瓶身外轮廓 + 瓶壁 + 肩线 + 瓶盖（这些都连得到）。
+##      **脸的眼睛和嘴连不到** —— 它们是瓶身内部的孤岛。
+##   ② 从"紧挨着①的那些透明像素"泛洪**透明**像素 —— 得到可出墨水的区域。
+##      因为种子来自①，脸周围的透明像素会被填到，而**线稿围起来的空腔**
+##      （眼睛内部）没有种子，永远走不到 -> 不出墨水。
+## ⚠️ 反过来做（只从容器外沿找透明种子）是不行的：瓶壁是不透明的，
+##    瓶身内部的透明像素挨不到"外面"，一个种子都没有。
+func _build_render_mask(rgba: PackedByteArray, outside: PackedByteArray,
+		w: int, h: int) -> PackedByteArray:
+	var wall := PackedByteArray()
+	wall.resize(w * h)
+	var stack := PackedInt32Array()
+	for x in w:
+		_push_opaque(rgba, wall, stack, x)
+		_push_opaque(rgba, wall, stack, (h - 1) * w + x)
+	for y in h:
+		_push_opaque(rgba, wall, stack, y * w)
+		_push_opaque(rgba, wall, stack, y * w + w - 1)
+	while not stack.is_empty():
+		var sp := stack.size() - 1
+		var p := stack[sp]
+		stack.resize(sp)
+		var px := p % w
+		var py := p / w
+		if px > 0:
+			_push_opaque(rgba, wall, stack, p - 1)
+		if px + 1 < w:
+			_push_opaque(rgba, wall, stack, p + 1)
+		if py > 0:
+			_push_opaque(rgba, wall, stack, p - w)
+		if py + 1 < h:
+			_push_opaque(rgba, wall, stack, p + w)
+	var m := PackedByteArray()
+	m.resize(w * h)
+	stack.clear()
+	# 种子：透明像素，且四邻里有一个"①的线稿"或"外面"。
+	#
+	# ⚠️⚠️ 两条缺一不可，各管一半：
+	#    · **挨着线稿**：瓶身下半段的透明像素在瓶壁**后面**，挨不到"外面" ——
+	#      只有靠这条才能起头。
+	#    · **挨着外面**：瓶子的颈部（瓶盖线和肩线之间那一段）在贴图里
+	#      **两边根本没有线稿**（瓶壁到那里断了），不靠这条就一个种子都没有 ——
+	#      症状是"可画 410 格"而中间 15 行整片空着。
+	#    · 眼睛内部两条都不占（围它的线稿既没连到画面外沿、也不挨着外面）-> 走不到 ✓
+	for p in w * h:
+		if rgba[p * 4 + 3] != 0:
+			continue
+		var px2 := p % w
+		var py2 := p / w
+		var seed := false
+		if px2 > 0:
+			seed = wall[p - 1] != 0 or outside[p - 1] != 0
+		if not seed and px2 + 1 < w:
+			seed = wall[p + 1] != 0 or outside[p + 1] != 0
+		if not seed and py2 > 0:
+			seed = wall[p - w] != 0 or outside[p - w] != 0
+		if not seed and py2 + 1 < h:
+			seed = wall[p + w] != 0 or outside[p + w] != 0
+		if seed:
+			_push_clear(rgba, m, stack, p)
+	while not stack.is_empty():
+		var sp2 := stack.size() - 1
+		var q := stack[sp2]
+		stack.resize(sp2)
+		var qx := q % w
+		var qy := q / w
+		if qx > 0:
+			_push_clear(rgba, m, stack, q - 1)
+		if qx + 1 < w:
+			_push_clear(rgba, m, stack, q + 1)
+		if qy > 0:
+			_push_clear(rgba, m, stack, q - w)
+		if qy + 1 < h:
+			_push_clear(rgba, m, stack, q + w)
+	return m
+
+
+func _push_opaque(rgba: PackedByteArray, seen: PackedByteArray,
+		stack: PackedInt32Array, p: int) -> void:
+	if seen[p] != 0 or rgba[p * 4 + 3] == 0:
+		return
+	seen[p] = 1
+	stack.append(p)
+
+
+func _push_clear(rgba: PackedByteArray, m: PackedByteArray,
+		stack: PackedInt32Array, p: int) -> void:
+	if m[p] != 0 or rgba[p * 4 + 3] != 0:
+		return
+	m[p] = 1
+	stack.append(p)
+
+
+func _carve_face(lo: Vector2i) -> void:
+	if face_rect.size.x <= 0 or face_rect.size.y <= 0:
+		return
+	var x0 := clampi(floori(float(face_rect.position.x - lo.x) / float(cell_px)), 0, _gw)
+	var y0 := clampi(floori(float(face_rect.position.y - lo.y) / float(cell_px)), 0, _gh)
+	var x1 := clampi(ceili(float(face_rect.position.x + face_rect.size.x - lo.x) / float(cell_px)), 0, _gw)
+	var y1 := clampi(ceili(float(face_rect.position.y + face_rect.size.y - lo.y) / float(cell_px)), 0, _gh)
+	var cut := 0
+	for gy in range(y0, y1):
+		for gx in range(x0, x1):
+			_draw[gy * _gw + gx] = 0
+			cut += 1
+	print("[BottledInk] 脸部留空 %s -> 格 (%d,%d)..(%d,%d)，共 %d 格" % [
+		str(face_rect), x0, y0, x1 - 1, y1 - 1, cut])
 
 
 func _count_nonzero(a: PackedByteArray) -> int:
