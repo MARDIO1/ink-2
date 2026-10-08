@@ -2,16 +2,12 @@
 extends Sprite2D
 ## 瓶子里的墨水 —— 玩家体内的**假液体**图层。
 ##
-## ## 怎么画的：引擎的「裁剪子节点」，一个 shader 都没有
+## ## 怎么画的：瓶内遮罩 + 专用液位 shader
 ##
-## 本节点自己不画像素：它的贴图是**瓶内遮罩**（alpha 1 = 瓶内），
-## `clip_children = 仅裁剪` 让它只当模板。唯一的子节点 `Liquid` 是一个
-## **世界轴对齐**的大方块，顶边就是液面；引擎把方块按本节点的 alpha 裁一遍，
-## 屏幕上剩下的就是「方块 ∩ 瓶内」。所以：
-##   · 液面永远世界水平 —— 方块不跟玩家转，玩家翻跟头液面也不翻；
-##   · 玩家躺下 / 倒立，瓶内遮罩跟着剪影转，墨水照灌；
-##   · 全程没有逐像素坐标判别，也就没有「拿帧缓冲坐标当局部坐标」那类坑
-##     （上一版 shader 正是死在 VERTEX 上：液面从来不生效，往左躺整层消失）。
+## 本节点的贴图是**瓶内遮罩**（alpha 1 = 瓶内）。专用 shader 用贴图 UV 对瓶内空腔
+## 做投影，并用与 HUD 相同的 InkHealth.ratio() 裁出液面以下部分。重力方向会转换到
+## 角色局部坐标，所以玩家躺下 / 倒立时液面仍保持世界水平。
+## 液位判据只使用 UV / 贴图像素坐标，不再混用 VERTEX 帧缓冲坐标。
 ##
 ## 瓶内遮罩由 _build_interior() 对剪影贴图的**封闭空腔**做一次四边界泛洪算出：
 ## 描边（不透明）、瓶盖外的空白、剪影外都不算瓶内，所以角色永远是黑线稿，
@@ -37,7 +33,7 @@ extends Sprite2D
 @export var body_path := NodePath("..")
 ## 剪影来源：抄它的贴图 / offset / 变换，不重新烘焙。
 @export var mask_path := NodePath("../Visual")
-## 液面方块：本节点的子节点，变换每帧按世界竖直重算。
+## 旧版液面方块路径；节点保留用于场景兼容，但已隐藏，不参与渲染。
 @export var liquid_path := NodePath("Liquid")
 ## 像素世界节点：取重力方向，并用于重算质量。
 @export var world_path := NodePath("../../")
@@ -63,20 +59,37 @@ var _applied_scale := -1.0
 var _src_tex: Texture2D = null
 ## 瓶内遮罩的缓存键。剪影贴图和外接框不变就不重算。
 var _interior_key := ""
+## 实际瓶内空腔在贴图中的范围。液面只在这个范围内按 InkHealth 比例换算，
+## 避免瓶盖、角色外轮廓和透明留白把液面行程拉长。
+var _interior_rect := Rect2()
 
 
 func _ready() -> void:
 	centered = false
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# HUD 能在暂停/绘图界面中通过信号立即刷新；体内液面也必须保持相同行为。
+	# ALWAYS 只影响显示同步，不会推进玩家物理。
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_physics_process(not Engine.is_editor_hint())
 	_health = get_node_or_null(health_path)
+	if _health != null and _health.has_signal("changed"):
+		_health.changed.connect(_on_health_changed)
 	_liquid = get_node_or_null(liquid_path)
+	if _liquid != null:
+		# 中间液位不再依赖 clip_children；保留节点只为旧场景兼容。
+		_liquid.visible = false
 	if _liquid != null and _liquid.texture == null:
 		var one := Image.create_empty(1, 1, false, Image.FORMAT_RGBA8)
 		one.fill(Color.WHITE)
 		_liquid.texture = ImageTexture.create_from_image(one)
 		_liquid.centered = false
 		_liquid.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_sync_visual()
+
+
+## 与 HUD 监听同一个 changed 信号。这样画布扣墨时，即使场景树暂停或还没到下一物理帧，
+## 角色体内液面也会立即读取最新的 InkHealth.ratio()。
+func _on_health_changed() -> void:
 	_sync_visual()
 
 
@@ -108,37 +121,34 @@ func _sync_visual() -> void:
 	visible = _fill > 0.0
 	if not visible:
 		return
-	_place_liquid()
+	_update_liquid_material()
 
 
-## 液面 = 世界水平面。方块整个摆在世界系里：局部 X 轴 = 世界水平、局部 Y 轴 = 世界向下、
-## 左上角压在液面上。方块取剪影对角线的两倍，保证罩得住整只瓶子。
-func _place_liquid() -> void:
-	if _liquid == null:
+## 专用 shader 直接裁切瓶内遮罩。这样 0..1 的中间液位也会真实改变渲染结果，
+## 不再依赖「1x1 子精灵 + clip_children」这个在顶点 shader 下失效的组合。
+## down 转到角色局部坐标后再投影，所以玩家翻转时液面仍保持世界水平。
+func _update_liquid_material() -> void:
+	var shader_material := material as ShaderMaterial
+	if shader_material == null or not _interior_rect.has_area():
 		return
-	var down: Vector2 = _down_world()
-	var right := Vector2(-down.y, down.x)
-	var size: Vector2 = _src_tex.get_size()
+	var down_local := _down_world().rotated(-global_rotation).normalized()
+	var fill_rect := _interior_rect
 	var corners: Array[Vector2] = [
-		offset,
-		offset + Vector2(size.x, 0.0),
-		offset + Vector2(0.0, size.y),
-		offset + size,
+		fill_rect.position,
+		fill_rect.position + Vector2(fill_rect.size.x, 0.0),
+		fill_rect.position + Vector2(0.0, fill_rect.size.y),
+		fill_rect.end,
 	]
 	var lo := INF
 	var hi := -INF
-	var mid := Vector2.ZERO
 	for corner: Vector2 in corners:
-		var p: Vector2 = global_position + corner.rotated(global_rotation)
-		mid += p
-		lo = minf(lo, p.dot(down))
-		hi = maxf(hi, p.dot(down))
-	mid /= 4.0
-	# 液面沿世界向下从剪影最高点走 _fill 比例 —— 液面永远世界水平。
-	var surface: float = hi - _fill * (hi - lo)
-	var span: float = size.length() * 2.0
-	var origin: Vector2 = right * (mid.dot(right) - span * 0.5) + down * surface
-	_liquid.global_transform = Transform2D(right * span, down * span, origin)
+		var projected := corner.dot(down_local)
+		lo = minf(lo, projected)
+		hi = maxf(hi, projected)
+	shader_material.set_shader_parameter("fill", clampf(_fill, 0.0, 1.0))
+	shader_material.set_shader_parameter("liquid_down_local", down_local)
+	shader_material.set_shader_parameter("projection_low", lo)
+	shader_material.set_shader_parameter("projection_high", hi)
 
 
 ## 世界「向下」单位向量（全局坐标）。取物理世界的重力方向，取不到就退化成 +Y。
@@ -222,9 +232,23 @@ func _build_interior(src_tex: Texture2D) -> ImageTexture:
 			_push_empty(reached, stack, rgba, p + w)
 	var out := PackedByteArray()
 	out.resize(w * h * 4)
+	var min_x := w
+	var min_y := h
+	var max_x := -1
+	var max_y := -1
 	for i in w * h:
 		if reached[i] == 0 and rgba[i * 4 + 3] == 0:
 			out[i * 4 + 3] = 255
+			var px := i % w
+			var py := i / w
+			min_x = mini(min_x, px)
+			min_y = mini(min_y, py)
+			max_x = maxi(max_x, px)
+			max_y = maxi(max_y, py)
+	if max_x >= min_x and max_y >= min_y:
+		_interior_rect = Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x + 1, max_y - min_y + 1))
+	else:
+		_interior_rect = Rect2()
 	return ImageTexture.create_from_image(Image.create_from_data(w, h, false, Image.FORMAT_RGBA8, out))
 
 

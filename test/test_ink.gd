@@ -58,23 +58,26 @@ func _on_health_changed() -> void:
 	_changes += 1
 
 
-## 液面方块在世界里的顶边，沿世界向下的有符号距离。
+## 专用液位 shader 在角色局部贴图坐标中的液面投影值。
 func _surface() -> float:
-	var down: Vector2 = _scene.world.gravity.normalized()
-	return _liquid.global_transform.origin.dot(down)
+	var mat := _ink.material as ShaderMaterial
+	var fill: float = mat.get_shader_parameter("fill")
+	var low: float = mat.get_shader_parameter("projection_low")
+	var high: float = mat.get_shader_parameter("projection_high")
+	return lerpf(high, low, fill)
 
 
-## 液面判据：贴图像素点 p（局部坐标）在液面以下（>= 0 才画）。
-## 方块的世界系是「局部 X = 世界水平、局部 Y = 世界向下」，判据就是「世界点沿 down 投影 >= 方块顶边」。
+## 液面判据：贴图像素点 p 在 shader 的局部重力方向上位于液面以下。
 func _below(p: Vector2) -> float:
-	var down: Vector2 = _scene.world.gravity.normalized()
-	return (_ink.global_position + p.rotated(_ink.global_rotation)).dot(down) - _surface()
+	var mat := _ink.material as ShaderMaterial
+	var down: Vector2 = mat.get_shader_parameter("liquid_down_local")
+	return p.dot(down) - _surface()
 
 
-func _corners() -> Array[Vector2]:
-	var size: Vector2 = _visual.texture.get_size()
-	var o: Vector2 = _visual.offset
-	return [o, o + Vector2(size.x, 0.0), o + Vector2(0.0, size.y), o + size]
+func _fill_corners() -> Array[Vector2]:
+	var rect: Rect2 = _ink.get("_interior_rect")
+	var o: Vector2 = rect.position
+	return [o, o + Vector2(rect.size.x, 0.0), o + Vector2(0.0, rect.size.y), o + rect.size]
 
 
 ## shader 的完整判据（瓶内遮罩 + 液面），在贴图像素坐标上求值。
@@ -85,7 +88,7 @@ func _drawn_px(x: int, y: int) -> bool:
 		return false
 	if _interior_img.get_pixel(x, y).a <= 0.5:
 		return false
-	return _below(_ink.offset + Vector2(x + 0.5, y + 0.5)) >= -EPS
+	return _below(Vector2(x + 0.5, y + 0.5)) >= -EPS
 
 
 ## 一趟扫出瓶内像素数 + 最下/最上的瓶内像素。
@@ -142,11 +145,11 @@ func _run() -> void:
 	_health.changed.connect(_on_health_changed)
 	_health.ink = _health.max_ink
 	_changes = 0
-	_health.reduce(30.0)
-	_check("reduce takes ink away", is_equal_approx(_health.ink, _health.max_ink - 30.0))
+	_health.reduce(_health.max_ink * 0.3)
+	_check("reduce takes ink away", is_equal_approx(_health.ink, _health.max_ink * 0.7))
 	_check("ratio tracks ink", is_equal_approx(_health.ratio(), 0.7))
-	_health.add(10.0)
-	_check("add puts ink back", is_equal_approx(_health.ink, _health.max_ink - 20.0))
+	_health.add(_health.max_ink * 0.1)
+	_check("add puts ink back", is_equal_approx(_health.ink, _health.max_ink * 0.8))
 	_health.reduce(1.0e9)
 	_check("ink never drops below zero", _health.ink == 0.0 and _health.ratio() == 0.0)
 	_health.add(1.0e9)
@@ -159,16 +162,17 @@ func _run() -> void:
 	_scene.add_child(game_ui)
 	await process_frame
 	_hud = game_ui.get_node("Hud")
-	_check("hud bar shows the full ink", is_equal_approx(_hud.status_bar.value, 100.0))
+	_check("hud bar shows the full ink", is_equal_approx(_hud.bottle_fill.value, 100.0))
 	_health.reduce(_health.max_ink * 0.75)
-	_check("hud bar follows the ink source", is_equal_approx(_hud.status_bar.value, 25.0))
+	_check("hud bar follows the ink source", is_equal_approx(_hud.bottle_fill.value, 25.0))
 	_health.ink = _health.max_ink
 
 
-	# 2. 液面世界水平：液面方块自己的 Y 轴就是世界向下
+	# 2. 液面世界水平：shader 的局部 down 旋转回世界后就是世界重力方向
 	var down_world: Vector2 = _scene.world.gravity.normalized()
-	var liquid_down: Vector2 = _liquid.global_transform.y.normalized()
-	_check("liquid square Y axis follows gravity in world space", liquid_down.distance_to(down_world) < 1e-5)
+	var liquid_mat := _ink.material as ShaderMaterial
+	var liquid_down: Vector2 = (liquid_mat.get_shader_parameter("liquid_down_local") as Vector2).rotated(_ink.global_rotation)
+	_check("liquid shader follows gravity in world space", liquid_down.distance_to(down_world) < 1e-5)
 
 	# 空瓶：不画
 	_set_fill(0.0)
@@ -186,9 +190,9 @@ func _run() -> void:
 		_ink.visible and _ink.offset == _visual.offset
 		and _ink.texture.get_size() == _visual.texture.get_size())
 	var all_below := true
-	for corner: Vector2 in _corners():
+	for corner: Vector2 in _fill_corners():
 		all_below = all_below and _below(corner) >= -EPS
-	_check("full bottle puts the whole silhouette below the surface", all_below)
+	_check("full bottle puts the whole interior below the surface", all_below)
 	_check("bottle interior mask matches the silhouette texture",
 		_ink.texture != null and _ink.texture.get_size() == _visual.texture.get_size())
 	_interior_img = _ink.texture.get_image()
@@ -207,7 +211,7 @@ func _run() -> void:
 	_set_fill(0.5)
 	await physics_frame
 	var below_count := 0
-	for corner: Vector2 in _corners():
+	for corner: Vector2 in _fill_corners():
 		if _below(corner) >= -EPS:
 			below_count += 1
 	_check("half bottle keeps exactly the lower corners", below_count == 2)
