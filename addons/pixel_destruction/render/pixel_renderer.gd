@@ -446,6 +446,25 @@ func forget_blueprint(id: int) -> void:
 	_bounds.erase(key)
 
 
+## 只挪蓝图的位置/朝向，**不重建贴图**。
+##
+## ⚠️ 为什么必须单独一个方法：sync_blueprint 会**无条件**重跑 _build_texture_impl
+##    （逐像素重填 Image + tex.update）。降级的灰尘每帧都在动，但它的**像素内容
+##    一个字都没变** —— 该更新的是 transform，不是贴图。每帧对每粒灰调一次
+##    sync_blueprint 就是灾难（贴图重建是这条路里最贵的一步）。
+func place_blueprint(id: int, xform: Transform2D) -> void:
+	var n: Node2D = _blueprint_nodes.get(-1 - absi(id))
+	if n != null:
+		n.transform = xform
+
+
+## 单独调一条蓝图的透明度（灰尘淡出用）。同样不碰贴图。
+func tint_blueprint(id: int, alpha: float) -> void:
+	var n: Node2D = _blueprint_nodes.get(-1 - absi(id))
+	if n != null:
+		n.modulate = Color(1, 1, 1, alpha)
+
+
 func clear_blueprints() -> void:
 	for key in _blueprint_nodes.keys():
 		var n: Node = _blueprint_nodes[key]

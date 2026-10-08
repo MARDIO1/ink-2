@@ -293,6 +293,9 @@ Rapier 没有这个旋钮）、`rp_max_linear_velocity`、`min_fragment_pixels`�
 `ccd_ignore_mass` / `debris_max_mass` / `debris_min_speed`（灰尘策略，默认关）、`sleeping_enabled`、
 `sleep_linear`/`sleep_surface`/`sleep_delay`、`max_speculative_margin`、
 `ccd_enabled`/`ccd_auto`/`ccd_max_motion`/`ccd_max_substeps`、
+`ccd_substep_cost_budget_us` / `ccd_min_driver_thickness` / `ccd_per_body` / `max_surface_speed`
+（小碎片 x CCD 的四道闸门，默认全关 —— 见 `docs/manual/performance.md` 的「小碎片」一节）、
+`min_fragment_thickness`（太薄的碎片不生成刚体，随 `fracture_pixels` 的 `downgraded` 交回调用方）、
 `bodies`、`joints`（活动关节）、`broken_joints`（断掉/移除掉的，供游戏层轮询）。
 
 ### PBody —— 刚体
