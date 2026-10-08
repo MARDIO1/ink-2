@@ -10,7 +10,6 @@
 [ext_resource type="Script" uid="uid://c6otusd1181wl" path="res://actor/player/src/bottled_ink.gd" id="12_ink"]
 [ext_resource type="Script" uid="uid://dfa8tnl720dm" path="res://actor/player/src/ink_health.gd" id="13_health"]
 [ext_resource type="Material" path="res://actor/player/asset/player_breath_wobble.tres" id="14_wobble"]
-[ext_resource type="Material" path="res://actor/player/asset/player_liquid_wobble.tres" id="15_liquid_wobble"]
 
 [sub_resource type="Image" id="Image_jqpk3"]
 data = {
@@ -60,22 +59,16 @@ texture_filter = 1
 texture = SubResource("ImageTexture_g32og")
 centered = false
 script = ExtResource("10_visual")
-palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0.12, 0.12, 0.12, 1), Color(1, 1, 1, 1)])
+palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0.12, 0.12, 0.12, 1), Color(1, 1, 1, 0)])
 
 [node name="BottledInk" type="Sprite2D" parent="." unique_id=1298016972]
+z_index = -1
 process_physics_priority = 25
 visible = false
-material = ExtResource("15_liquid_wobble")
+material = ExtResource("14_wobble")
 texture_filter = 1
 centered = false
 script = ExtResource("12_ink")
-
-[node name="Liquid" type="Sprite2D" parent="BottledInk" unique_id=345494734]
-visible = false
-modulate = Color(0.09, 0.11, 0.28, 1)
-texture_filter = 1
-texture = SubResource("ImageTexture_w0ndq")
-centered = false
 
 [node name="InkHealth" type="Node" parent="." unique_id=2077019024]
 script = ExtResource("13_health")

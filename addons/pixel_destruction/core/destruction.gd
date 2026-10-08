@@ -712,6 +712,131 @@ static func _group(shape: PixelShape, keys: Array, parts: Dictionary) -> Diction
 	return groups
 
 
+## ---- 原生连通分量标注（GDExtension 的 PixelRaster op 3）----
+##
+## ⚠️ 为什么值得搬进原生：这条路径是**纯位运算 + 数组**（块内泛洪是 uint64 迭代、
+##    接缝是 union-find、归组是拼装），没有任何 GDScript 特有的语义。
+##    而参照实现 768x100（1248 块）要 13.5 ms —— 那还是**已经开了
+##    WorkerThreadPool 并行之后**的数字。C++ 那边单线程，赢在每步没有函数调用开销。
+##
+## ⚠️⚠️ 结果必须与 _components_cpu + _group 的产物**逐位相同**：同样的分组、
+##    同样的顺序、同样的掩码 —— **顺序不同也是不同**（它会进 Rapier 的碰撞体顺序）。
+##    闸门 tests/validation_components_native.gd。
+## ⚠️ 拿不到原生时**吵闹地**退回参照实现：连通分量标注**有**一条正确的慢路径，
+##    所以这里只 push_warning / push_error，不 assert。
+static var _raster: Object = null
+static var _raster_checked := false
+## 原生调用 / 回退计数。闸门靠它确认"真的走了原生"—— 否则"悄悄退回 GDScript"
+## 会让逐位对拍变成同义反复（结果当然一样）。
+static var native_calls := 0
+static var native_fallbacks := 0
+## 第一次调用给的结果段容量（按 (分组, 块) 对的个数算）。**这不是上限**：
+## 放不下时原生只写头（8 字节）把 total_pairs 报回来，按它精确重开一次。
+const NATIVE_PAIRS0 := 256
+
+
+## 懒加载原生标注器。返回 null 表示扩展不可用（调用方退回参照实现）。
+static func _ensure_raster() -> Object:
+	if not _raster_checked:
+		_raster_checked = true
+		if ClassDB.class_exists("PixelRaster"):
+			_raster = ClassDB.instantiate("PixelRaster")
+			# ⚠️ 与 PixelRenderer / GreedyRects 同一套：GDExtension 实例化出来的
+			#    RefCounted 引用计数是 2，多出来的那份没人还（Godot issue #111075）。
+			if _raster != null and _raster.get_reference_count() > 1:
+				_raster.unreference()
+			# ⚠️ 老 DLL（还没编进 op 3）要能安全回退：has_method 是判"扩展是不是太旧"
+			#    的正式手段 —— 否则每次调用都刷 "Nonexistent function"，
+			#    而错误信息指不到"DLL 太旧"。
+			if _raster != null and not _raster.has_method("components"):
+				_raster = null
+				push_warning("PixelRaster 扩展没有 components（DLL 太旧）—— 连通分量标注退回 GDScript。" +
+					"跑 python tools/build_native.py 重编 fastphys.dll。")
+		if _raster == null:
+			push_warning("PixelRaster 扩展不可用 —— 连通分量标注退回 GDScript（慢一个量级）。" +
+				"跑 python tools/build_native.py 重编 fastphys.dll。")
+	return _raster
+
+
+## 走一趟原生，返回**结果段本身**（不含 4 字节 written 头）。失败返回空数组。
+static func _call_components(r: Object, cmds: PackedByteArray, cap: int) -> PackedByteArray:
+	var inp := PackedByteArray()
+	inp.resize(8)
+	inp.encode_s32(0, cap)
+	inp.encode_s32(4, cmds.size())
+	inp.append_array(cmds)
+	var tmpl := PackedByteArray()
+	tmpl.resize(4 + cap)
+	var res: PackedByteArray = r.components(inp, tmpl)
+	if res.size() < 4 + cap:
+		push_error("PixelRaster.components 返回长度不对（res=%d 期望=%d）—— 退回 GDScript 参照实现"
+				% [res.size(), 4 + cap])
+		return PackedByteArray()
+	var written := res.decode_s32(0)
+	if written < 0 or written > cap:
+		push_error("PixelRaster.components written=%d 越界（cap=%d）—— 退回 GDScript" % [written, cap])
+		return PackedByteArray()
+	return res.slice(4, 4 + written)
+
+
+## 原生连通分量标注。返回 null = 没走原生（调用方退回参照实现）。
+## 协议见 gdext/fastphys.cpp 的 PixelRaster op 3。
+static func _components_native(shape: PixelShape, keys: Array) -> Variant:
+	var r := _ensure_raster()
+	if r == null or keys.is_empty():
+		return null
+	var n := keys.size()
+	var cmds := PackedByteArray()
+	cmds.resize(5 + n * 16)
+	cmds.encode_u8(0, 3)                 # op 3 = components
+	cmds.encode_s32(1, n)
+	var off := 5
+	for k: int in keys:
+		var c: PixelChunk = shape.chunks[k]
+		# cx / cy 是 PixelShape.key_x / key_y 的内联（这个循环要跑 n 次）
+		cmds.encode_s32(off, k >> 32)
+		cmds.encode_s32(off + 4, (k << 32) >> 32)
+		cmds.encode_s64(off + 8, c.occ)
+		off += 16
+	var body := _call_components(r, cmds, 8 + 16 * NATIVE_PAIRS0)
+	if body.size() < 8:
+		native_fallbacks += 1
+		push_error("PixelRaster.components 结果太短（size=%d）—— 退回 GDScript 参照实现" % body.size())
+		return null
+	var n_groups := body.decode_s32(0)
+	var total := body.decode_s32(4)
+	if n_groups < 0 or total < 0:
+		native_fallbacks += 1
+		push_error("PixelRaster.components 头非法（groups=%d pairs=%d）—— 退回 GDScript"
+				% [n_groups, total])
+		return null
+	# ⚠️ 头是 8 字节，但**每个分组还各有一个 i32 的块数** —— 漏掉它就会永远差
+	#    4*n_groups 字节，症状是 written 恒比 cap 大 4，然后静默退回参照实现。
+	#    （闸门"768x100 满实心"用例抓到的：written=18444 vs cap=18440。）
+	var need := 8 + n_groups * 4 + total * 16
+	if body.size() < need:
+		# 结果段放不下：原生只写了头，按 need 精确重开一次（与 decompose 同一条约定）
+		body = _call_components(r, cmds, need)
+		if body.size() < need:
+			native_fallbacks += 1
+			push_error("PixelRaster.components 重开之后仍然不够（need=%d got=%d）—— 退回 GDScript"
+					% [need, body.size()])
+			return null
+	# 组装：分组顺序 = 原生写出的顺序（= 节点首次出现的顺序），组内块顺序同理
+	var out := {}
+	var o := 8
+	for gi in n_groups:
+		var np := body.decode_s32(o)
+		o += 4
+		var g := {}
+		for j in np:
+			g[PixelShape.make_key(body.decode_s32(o), body.decode_s32(o + 4))] = body.decode_s64(o + 8)
+			o += 16
+		out[gi] = g
+	native_calls += 1
+	return out
+
+
 ## 连通分量标注（公共入口）。返回 { 分量序号: { chunk_key: 掩码 } }，序号重排为 0..n-1
 ## —— union-find 的 root 是内部编号，不适合外露。
 ##
@@ -720,6 +845,10 @@ static func components(shape: PixelShape) -> Dictionary:
 	var keys: Array = shape.chunks.keys()
 	if keys.is_empty():
 		return {}
+	# 原生优先（拿不到就退回参照实现）—— 见 _components_native 的说明
+	var nat = _components_native(shape, keys)
+	if nat != null:
+		return nat
 	var groups := _group(shape, keys, _components_cpu(shape, keys))
 	var out := {}
 	var i := 0

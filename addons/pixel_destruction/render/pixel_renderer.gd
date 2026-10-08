@@ -174,12 +174,14 @@ func sync(body) -> void:
 		forget(body.id)
 		return
 	var holder: Node2D = _nodes.get(body.id)
+	var fresh := false
 	if holder == null:
 		holder = Node2D.new()
 		holder.name = "Body%d" % body.id
 		add_child(holder)
 		_nodes[body.id] = holder
 		_bounds[body.id] = Rect2i()
+		fresh = true
 	# 🔥 只在**内容真的变了**时才重建贴图。
 	#
 	# ⚠️⚠️ 这里以前是无条件 node.texture = _build_texture(body, aabb)，
@@ -381,6 +383,12 @@ func sync(body) -> void:
 	var cs := cos(body.rotation)
 	var sn := sin(body.rotation)
 	holder.transform = Transform2D(Vector2(cs, sn), Vector2(-sn, cs), body.position)
+	# ⚠️⚠️ 新建的 holder 必须重置物理插值状态。上面是"先 add_child 入树、后设 transform"，
+	#    而 project 开着 physics/common/physics_interpolation 时，新节点这一帧会从**入树时
+	#    的变换（原点）**插值过来 —— 症状就是新碎片诞生那一帧被画在错位置（实测最小复现：
+	#    质心偏 593 px，reset 后 0.4 px）。只对**新建**那一帧 reset：每帧 reset 等于关掉插值。
+	if fresh:
+		holder.reset_physics_interpolation()
 
 static func _local_bounds(body) -> Rect2i:
 	var box := Rect2i()
@@ -436,6 +444,25 @@ func forget_blueprint(id: int) -> void:
 	_blueprint_nodes.erase(key)
 	_textures.erase(key)
 	_bounds.erase(key)
+
+
+## 只挪蓝图的位置/朝向，**不重建贴图**。
+##
+## ⚠️ 为什么必须单独一个方法：sync_blueprint 会**无条件**重跑 _build_texture_impl
+##    （逐像素重填 Image + tex.update）。降级的灰尘每帧都在动，但它的**像素内容
+##    一个字都没变** —— 该更新的是 transform，不是贴图。每帧对每粒灰调一次
+##    sync_blueprint 就是灾难（贴图重建是这条路里最贵的一步）。
+func place_blueprint(id: int, xform: Transform2D) -> void:
+	var n: Node2D = _blueprint_nodes.get(-1 - absi(id))
+	if n != null:
+		n.transform = xform
+
+
+## 单独调一条蓝图的透明度（灰尘淡出用）。同样不碰贴图。
+func tint_blueprint(id: int, alpha: float) -> void:
+	var n: Node2D = _blueprint_nodes.get(-1 - absi(id))
+	if n != null:
+		n.modulate = Color(1, 1, 1, alpha)
 
 
 func clear_blueprints() -> void:

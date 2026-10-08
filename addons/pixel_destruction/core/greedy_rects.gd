@@ -12,6 +12,12 @@ extends RefCounted
 ##   会凭空多出 1600 个碰撞格），所以这里的策略是：
 ##     - decompose()        永远精确。max_rects 只是"超了要告诉我"的阈值。
 ##     - decompose_proxy()  显式选择的近似代理，调用方自己承担幻影体积。
+##
+## 关于两条路（重要）：
+##   decompose()      = 原生（GDExtension 的 PixelRaster op 2）优先，拿不到就回退。
+##   decompose_gd()   = **参照实现**，原样保留。两条路必须**逐位相同**
+##                      （同样的矩形、同样的顺序）—— tests/validation_greedy_native.gd。
+##   ⚠️ "顺序不同也是不同"：矩形顺序会原样进入 Rapier 的碰撞体顺序。
 
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")
 const PixelChunk := preload("res://addons/pixel_destruction/core/pixel_chunk.gd")
@@ -58,7 +64,24 @@ const BLOCK_SHIFT := 6
 const BLOCK_SIZE := 64
 const BLOCK_CHUNKS := 8          # 64 / 8：每边 8 个 chunk（8 整除 64，所以 chunk 不会跨块）
 
+## 分解入口。原生优先，拿不到（扩展没编 / DLL 太旧 / 协议对不上）就回退参照实现。
 static func decompose(shape: PixelShape, max_rects: int = 0) -> Result:
+	if _ensure_raster() != null:
+		var r := _decompose_native(shape, max_rects)
+		if r != null:
+			return r
+	return decompose_gd(shape, max_rects)
+
+
+## **参照实现**：GDScript 版 decompose（原样保留，一字不改）。
+##
+## ⚠️ 它的每一处行为都是原生的判据，改它等于改判据：
+##    · 空形状（或全空块）时 origin 保持 Vector2.ZERO（**不是** aabb.position）
+##    · 分块锚在局部 0/64/128…，块按 key **有符号升序**遍历 -> 决定矩形顺序
+##    · 块内横/竖两遍贪心取**更少**那份（相等时留横优先）
+##    · _merge_pass 的分组按**首次出现**顺序输出
+##    · max_rects 不参与几何，只决定 budget_exceeded
+static func decompose_gd(shape: PixelShape, max_rects: int = 0) -> Result:
 	var res := Result.new()
 	var aabb := shape.local_aabb()
 	if aabb.size.x <= 0 or aabb.size.y <= 0:
@@ -69,6 +92,140 @@ static func decompose(shape: PixelShape, max_rects: int = 0) -> Result:
 	if max_rects > 0 and rects.size() > max_rects:
 		res.budget_exceeded = true
 	return res
+
+
+## ---- 原生分解（GDExtension 的 PixelRaster op 2）----
+##
+## ⚠️ 为什么值得（800x40 实测，见 tests/bench_decompose_native.gd）：
+##    · GDScript 冷路径（块缓存全空）3.1 ms
+##    · 每笔破坏的热路径 2.0 ms —— 其中 local_aabb() 的重扫占 1.8 ms，
+##      真正的分块 + 融合只占 0.2 ms
+##    · 原生把这两笔一起算掉：~0.15 ms
+##
+## ⚠️⚠️ **AABB 也由原生算**（是出参）。它是 decompose() 的第一步，留在 GDScript
+##    里就等于把 1.8 ms 从 decompose 挪到下一个 local_aabb() 的调用方
+##    （PBody.update_aabb / 渲染器）—— 总量一点没省。代价是原生算出的 AABB 会
+##    写回 PixelShape 的缓存，所以它必须**逐位正确**：闸门单独对拍它
+##    （含空形状 / 负原点 / 只占半个 chunk）。
+##
+## ⚠️ 原生化之后 GDScript 的块缓存（_rect_blocks）就不再被这条路喂了 ——
+##    它是按块指纹失效的缓存，空着只会让回退路径多算一点，**不会算错**。
+static var _raster: Object = null
+static var _raster_checked := false
+## 原生调用 / 回退计数。闸门靠它确认"真的走了原生"—— 否则"悄悄退回 GDScript"
+## 会让逐位对拍变成同义反复（结果当然一样）。
+static var native_calls := 0
+static var native_fallbacks := 0
+## 第一次调用给的结果段容量（按矩形个数算）。**这不是上限**：放不下时原生会把
+## count 报回来（头 24 字节一定写得下），按它精确重开一次。
+const NATIVE_CAP0 := 256
+
+
+## 懒加载原生分解器。返回 null 表示扩展不可用（调用方退回参照实现）。
+static func _ensure_raster() -> Object:
+	if not _raster_checked:
+		_raster_checked = true
+		if ClassDB.class_exists("PixelRaster"):
+			_raster = ClassDB.instantiate("PixelRaster")
+			# ⚠️ 与 RapierPhys 同一个 Godot 已知问题（issue #111075）：
+			#    GDExtension 实例化出来的 RefCounted 引用计数是 2，多出来的那份
+			#    没人还 -> 退出时报实例泄漏。判 > 1 再 unreference
+			#    （计数为 1 时调它会真的把对象释放掉）。
+			if _raster != null and _raster.get_reference_count() > 1:
+				_raster.unreference()
+			# ⚠️ 老 DLL（还没编进 op 2）也要能安全回退：注册的方法表里没有
+			#    decompose 就直接当扩展不可用 —— 否则每次调用都刷一条
+			#    "Nonexistent function" 错误，而错误信息指不到"DLL 太旧"。
+			if _raster != null and not _raster.has_method("decompose"):
+				_raster = null
+				push_warning("PixelRaster 扩展没有 decompose（DLL 太旧）—— 矩形分解退回 GDScript。" +
+					"跑 python tools/build_native.py 重编 fastphys.dll。")
+		if _raster == null:
+			# ⚠️ 只警告、不回退到 assert：矩形分解**有**一条正确的慢路径。
+			push_warning("PixelRaster 扩展不可用 —— 矩形分解退回 GDScript 路径（慢 ~10 倍）。" +
+				"跑 python tools/build_native.py 重编 fastphys.dll。")
+	return _raster
+
+
+## 原生路径。返回 null 表示"没走原生"，调用方回退参照实现。
+##
+## 协议见 gdext/fastphys.cpp 的 PixelRaster op 2。失败时**吵闹地**回退，
+## 不做"能算多少算多少"—— 静默算错比慢难查得多（本仓库的规矩）。
+static func _decompose_native(shape: PixelShape, max_rects: int) -> Result:
+	var n := shape.chunks.size()
+	if n <= 0:
+		# 空形状：参照实现那条路更短（而且它自己会把 AABB 缓存写好），不差这一次
+		return null
+	# ① 打包块记录：i32 cx, i32 cy, i64 occ（与 op 1 同一种记录，只是没有 mat）
+	var cmds := PackedByteArray()
+	cmds.resize(9 + n * 16)
+	cmds.encode_u8(0, 2)                 # op 2 = decompose
+	cmds.encode_s32(1, n)
+	cmds.encode_s32(5, max_rects)
+	var off := 9
+	for k: int in shape.chunks:
+		var c: PixelChunk = shape.chunks[k]
+		# cx / cy 是 PixelShape.key_x / key_y 的内联（这个循环要跑 n 次）
+		cmds.encode_s32(off, k >> 32)
+		cmds.encode_s32(off + 4, (k << 32) >> 32)
+		cmds.encode_s64(off + 8, c.occ)
+		off += 16
+	# ② 结果段：先给 NATIVE_CAP0 个矩形的位置
+	var cap := 24 + 16 * NATIVE_CAP0
+	var inp := PackedByteArray()
+	inp.resize(8)
+	inp.encode_s32(0, cap)
+	inp.encode_s32(4, cmds.size())
+	inp.append_array(cmds)
+	var tmpl := PackedByteArray()
+	tmpl.resize(4 + cap)
+	var res: PackedByteArray = _raster.decompose(inp, tmpl)
+	native_calls += 1
+	# ⚠️ 一次 to_int32_array() 拿全部（每个矩形 4 次 decode_s32 会把收益吃光）
+	var w32 := res.to_int32_array()
+	if w32.size() < 7:
+		native_fallbacks += 1
+		push_error("PixelRaster.decompose 返回太短（size=%d）—— 退回 GDScript 参照实现" % res.size())
+		return null
+	if w32[0] < 24:
+		native_fallbacks += 1
+		push_error("PixelRaster.decompose 没写头（written=%d）—— 退回 GDScript 参照实现" % w32[0])
+		return null
+	var count: int = w32[1]
+	if count > 0 and w32[0] < 24 + count * 16:
+		# 结果段放不下矩形：原生已经把 count 报回来了（头一定写得下），按它精确重开
+		cap = 24 + count * 16
+		inp.encode_s32(0, cap)
+		tmpl.resize(4 + cap)
+		res = _raster.decompose(inp, tmpl)
+		native_calls += 1
+		w32 = res.to_int32_array()
+		if w32.size() < 7 or w32[0] < 24 + count * 16 or w32[1] != count:
+			native_fallbacks += 1
+			push_error("PixelRaster.decompose 重开后仍然对不上（size=%d written=%d count=%d/%d）—— 退回 GDScript" % [
+				res.size(), w32[0] if w32.size() > 0 else -1, w32[1] if w32.size() > 1 else -1, count])
+			return null
+	if w32.size() < 7 + count * 4:
+		native_fallbacks += 1
+		push_error("PixelRaster.decompose 结果段缺矩形（size=%d count=%d）—— 退回 GDScript" % [w32.size(), count])
+		return null
+	# ③ AABB 写回缓存（见上面的说明：不写回就等于白优化）
+	#    同一条判据也在闸门里逐位对拍过（native_aabb == 重算的 local_aabb）。
+	shape._aabb_cache = Rect2i(w32[3], w32[4], w32[5], w32[6])
+	shape._aabb_rev = shape._bounds_rev
+	var out := Result.new()
+	out.budget_exceeded = w32[2] != 0
+	if w32[5] <= 0 or w32[6] <= 0:
+		# 与参照实现同一条早返回：origin 保持 Vector2.ZERO（不是 aabb.position）
+		return out
+	out.origin = Vector2(w32[3], w32[4])
+	var rects: Array = []
+	rects.resize(count)
+	for i in count:
+		var q := 7 + i * 4
+		rects[i] = Rect2(w32[q], w32[q + 1], w32[q + 2], w32[q + 3])
+	out.rects = rects
+	return out
 
 
 ## 按块（64x64）分解 + 缓存：只重算**指纹变了的块**。

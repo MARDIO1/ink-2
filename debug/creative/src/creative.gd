@@ -15,7 +15,7 @@ const HEALTH_UI_GROUP := &"health_ui"
 ## 创造模式的大画布（铺满全图）；平时隐藏。
 @export var map_canvas_path: NodePath = ^"../MapCanvas"
 @export_file("*.tscn") var map_path: String = "res://map/asset/map.tscn"
-## 保底 PNG：存关卡的同时存一张整图，`BakedMap` 场景（爬坡练习.tscn）就是读它当静态地图。
+## 保底 PNG：存关卡的同时存一张整图（黑=空、颜色=材质 id），现在只当参考图，没有节点读它。
 @export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
 ## 上帝位移速度，单位 px/s。
 @export var fly_speed := 600.0

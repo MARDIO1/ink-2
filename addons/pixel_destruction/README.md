@@ -278,6 +278,7 @@ docs/               架构与精度纪律
 | `add_body(body, shape_list, density_of?) -> PBody` | 加入刚体。`shape_list` 是 `PixelShape` 数组；`density_of` 可给逐材质密度 |
 | `remove_body(body)` | 移除 |
 | `step(dt)` | 推进一个时间步（内部按需切子步） |
+| `pre_step(dt) -> int` | **自己驱动子步时用它**：清接触事件 + 刷新质心 + 灰尘清理 + 子步估计，返回该切几个子步 |
 | `advance(delta) -> int` | 固定步长累加器版本，返回执行了几步 |
 | `fracture(body, damage, burst_speed?) -> Array` | **破坏**：返回新产生的碎片 Body |
 | `grab(body, world_point, accel?) -> Grab` | 建立鼠标拖动（策略层，不是求解器约束） |
@@ -292,6 +293,9 @@ Rapier 没有这个旋钮）、`rp_max_linear_velocity`、`min_fragment_pixels`�
 `ccd_ignore_mass` / `debris_max_mass` / `debris_min_speed`（灰尘策略，默认关）、`sleeping_enabled`、
 `sleep_linear`/`sleep_surface`/`sleep_delay`、`max_speculative_margin`、
 `ccd_enabled`/`ccd_auto`/`ccd_max_motion`/`ccd_max_substeps`、
+`ccd_substep_cost_budget_us` / `ccd_min_driver_thickness` / `ccd_per_body` / `max_surface_speed`
+（小碎片 x CCD 的四道闸门，默认全关 —— 见 `docs/manual/performance.md` 的「小碎片」一节）、
+`min_fragment_thickness`（太薄的碎片不生成刚体，随 `fracture_pixels` 的 `downgraded` 交回调用方）、
 `bodies`、`joints`（活动关节）、`broken_joints`（断掉/移除掉的，供游戏层轮询）。
 
 ### PBody —— 刚体
@@ -359,8 +363,13 @@ g++ -O2 -std=c++17 -ffp-contract=off -shared -static-libgcc -static-libstdc++ \
 ⚠️ **`-ffp-contract=off` 不能省** —— 少了它编译器会把浮点乘加融合成 FMA，
 与 GDScript 路径立刻分叉（见 [docs/PRECISION.md](docs/PRECISION.md)）。
 
-这个 DLL 里有两个类：`RapierPhys`（物理）与 `PixelRaster`（渲染栅格化）。
+这个 DLL 里有两个类：`RapierPhys`（物理）与 `PixelRaster`（栅格化 + 矩形分解）。
 后者**不依赖 Rapier 桥接**，所以 `rapier_bridge.dll` 没加载时它照样能用。
+
+`PixelRaster` 有两个方法（同一个命令流，靠 op 字节分派）：`fill_region`（形状 -> RGBA8，
+渲染用）与 `decompose`（像素团 -> 碰撞矩形集合，破坏用）。两个都有 GDScript 参照实现
+（`shading = true` / 扩展缺失 / DLL 太旧时自动退回），判据是**逐位相同**：
+`tests/validation_raster_native.gd` 与 `tests/validation_greedy_native.gd`。
 
 启用：Godot **不会**自动扫描 `.gdextension`，必须在项目的
 `.godot/extension_list.cfg` 里列出它的路径（一行一个，例如
