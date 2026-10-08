@@ -2,13 +2,14 @@
 
 [ext_resource type="Script" path="res://ui/dialogue/src/dialogue_box.gd" id="1_script"]
 [ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="2_theme"]
-[ext_resource type="FontFile" path="res://ui/dialogue/asset/ipix_12px.ttf" id="3_ipix"]
+[ext_resource type="Font" path="res://ui/theme/asset/ipix_ui_font.tres" id="3_ipix"]
 
 [sub_resource type="Shader" id="Shader_pixel_text"]
-code = "shader_type canvas_item;\n\nvoid fragment() {\n\tfloat coverage = texture(TEXTURE, UV).a;\n\tfloat hard_alpha = step(0.35, coverage);\n\tCOLOR = vec4(0.0, 0.0, 0.0, hard_alpha);\n}\n"
+code = "shader_type canvas_item;\n\nuniform float alpha_threshold : hint_range(0.0, 1.0, 0.01) = 0.25;\n\nvoid fragment() {\n\tfloat coverage = texture(TEXTURE, UV).a;\n\tfloat hard_alpha = step(alpha_threshold, coverage);\n\tCOLOR = vec4(0.0, 0.0, 0.0, hard_alpha);\n}\n"
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel_text"]
 shader = SubResource("Shader_pixel_text")
+shader_parameter/alpha_threshold = 0.25
 
 [node name="DialogueBox" type="CanvasLayer"]
 layer = 20
@@ -32,7 +33,7 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 32.0
-offset_top = -168.0
+offset_top = -200.0
 offset_right = -32.0
 offset_bottom = -24.0
 grow_horizontal = 2
@@ -46,33 +47,34 @@ texture_filter = 1
 layout_mode = 2
 mouse_filter = 2
 stretch = true
-stretch_shrink = 2
+stretch_shrink = 1
 
 [node name="TextViewport" type="SubViewport" parent="Root/DialoguePanel/PixelText"]
 transparent_bg = true
 handle_input_locally = false
-size = Vector2i(432, 56)
+size = Vector2i(864, 144)
 render_target_update_mode = 4
 
 [node name="DialogueLabel" type="Label" parent="Root/DialoguePanel/PixelText/TextViewport"]
-offset_left = 4.0
-offset_top = 2.0
-offset_right = 428.0
-offset_bottom = 40.0
+offset_left = 12.0
+offset_top = 8.0
+offset_right = 852.0
+offset_bottom = 108.0
 mouse_filter = 2
 theme = ExtResource("2_theme")
 theme_override_colors/font_color = Color(0, 0, 0, 1)
 theme_override_fonts/font = ExtResource("3_ipix")
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 16
+theme_override_constants/line_spacing = 0
 text = "对话文本"
 autowrap_mode = 2
 
 [node name="NextHint" type="Label" parent="Root/DialoguePanel/PixelText/TextViewport"]
 visible = false
-offset_left = 328.0
-offset_top = 40.0
-offset_right = 428.0
-offset_bottom = 56.0
+offset_left = 640.0
+offset_top = 108.0
+offset_right = 852.0
+offset_bottom = 140.0
 mouse_filter = 2
 theme = ExtResource("2_theme")
 theme_override_colors/font_color = Color(0, 0, 0, 1)

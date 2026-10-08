@@ -44,16 +44,30 @@ func _run() -> void:
 	_check(not dialogue.next_hint.visible, "打字时不应显示继续提示")
 	_check(pixel_text.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 		"低分辨率文字必须以最近邻方式放大")
-	_check(viewport.size == Vector2i(432, 56), "文字应在固定低分辨率视口中绘制")
+	_check(pixel_text.stretch_shrink == 1,
+		"文字内部不得再次二倍放大；只允许项目全局视口缩放一次")
+	_check(viewport.size == Vector2i(864, 144),
+		"文字视口应与对话框内容区保持一比一逻辑像素")
 	_check(pixel_text.material is ShaderMaterial, "文字视口应使用硬边像素化材质")
-	_check(dialogue_font.resource_path.ends_with("ipix_12px.ttf"), "对话文字必须使用 IPix 字体包")
+	_check(dialogue_font.resource_path.ends_with("ipix_ui_font.tres"),
+		"对话文字必须使用 IPix 显式回退链")
 	_check(dialogue.dialogue_label.get_theme_color("font_color") == Color.BLACK,
 		"正文颜色必须是纯黑色")
+	_check(dialogue.dialogue_label.get_theme_font_size("font_size") == 16,
+		"正文应以 16px 逻辑字号绘制，不得在对话框内部重复放大")
 	_check(dialogue.next_hint.get_theme_color("font_color") == Color.BLACK,
 		"继续提示颜色必须是纯黑色")
 	var shader: Shader = (pixel_text.material as ShaderMaterial).shader
+	_check("step(alpha_threshold, coverage)" in shader.code,
+		"硬边阈值应通过可调参数完成二值化")
+	_check(is_equal_approx(
+		(pixel_text.material as ShaderMaterial).get_shader_parameter("alpha_threshold"), 0.25),
+		"16px 正文必须使用 0.25 阈值，避免中文细笔画断裂")
 	_check("vec4(0.0, 0.0, 0.0, hard_alpha)" in shader.code,
 		"像素化输出必须把 RGB 强制为纯黑")
+	_check(dialogue.dialogue_label.position.y + dialogue.dialogue_label.size.y
+		<= dialogue.next_hint.position.y,
+		"正文区域不得侵入继续提示区域")
 
 	# 字形覆盖自检：当前所有台词和操作提示中的字符都必须能由 IPix 本身绘制。
 	var checked_characters := 0
