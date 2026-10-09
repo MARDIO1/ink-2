@@ -154,6 +154,9 @@ var _fluid = null
 var _grid_origin := Vector2i.ZERO
 var _gw := 0
 var _gh := 0
+## 墨水**贴图**的尺寸 = 流体网格每边多一格（见 _render 里"边界不能和线稿重合"的说明）。
+var _tex_w := 0
+var _tex_h := 0
 ## 1 = 容器内。长度 _gw * _gh。**这张是给模拟用的**（fluid.solid_mask）。
 var _container := PackedByteArray()
 ## 1 = 该格可以画墨水。长度 _gw * _gh。
@@ -213,7 +216,9 @@ func _sync_visual() -> void:
 	#    再被 scale 映射出去，所以屏幕上的落点是 **scale*offset**，不是 offset。
 	#    直接给 mask.offset + 框原点会让它被放大 cell_px 倍 —— 症状是**整层错位**
 	#    （cell_px=2 时偏出 (4,23)）。
-	offset = (_mask.offset + Vector2(_grid_origin)) / float(cell_px)
+	# ⚠️⚠️ 贴图比流体网格**每边多一格**（_tex_w/_tex_h），所以 offset 要往回挪**一格**：
+	#    墨的边界必须落在**线稿里面**，不能和线稿的边重合 —— 见 _render 的说明。
+	offset = (_mask.offset + Vector2(_grid_origin)) / float(cell_px) - Vector2.ONE
 	scale = Vector2(cell_px, cell_px)
 	_sync_wobble_uniforms()
 	_fill = _health.ratio() if _health != null and _health.has_method("ratio") else 1.0
@@ -237,7 +242,8 @@ func _sync_wobble_uniforms() -> void:
 		return
 	_wobble_key = key
 	mat.set_shader_parameter("visual_size", _src_tex.get_size())
-	mat.set_shader_parameter("grid_origin", Vector2(_grid_origin))
+	# 贴图比网格每边多一格 —— shader 里 UV->剪影像素的映射要把这一格算进去。
+	mat.set_shader_parameter("grid_origin", Vector2(_grid_origin) - Vector2(cell_px, cell_px))
 	mat.set_shader_parameter("cell_px", float(cell_px))
 
 
@@ -522,9 +528,11 @@ func _build_container(src_tex: Texture2D) -> void:
 	_fluid.set_fill_ratio(_fill)
 	_fluid.snap_fill(0.0, 1.0)
 	# 贴图：尺寸跟着容器走，重建（不是 update —— update 不接受尺寸变化）
-	_img = Image.create_empty(_gw, _gh, false, Image.FORMAT_RGBA8)
+	_tex_w = _gw + 2
+	_tex_h = _gh + 2
+	_img = Image.create_empty(_tex_w, _tex_h, false, Image.FORMAT_RGBA8)
 	_pixels = PackedByteArray()
-	_pixels.resize(_gw * _gh * 4)
+	_pixels.resize(_tex_w * _tex_h * 4)
 	_tex = ImageTexture.create_from_image(_img)
 	texture = _tex
 
@@ -586,6 +594,12 @@ func _wet_neighborhood(gx: int, gy: int) -> bool:
 ##
 ## ⚠️ 只在**真的变了**的格子上写 4 个字节：3540 格逐格写 4 字节是 1.4 万次写入，
 ##    每帧都做是白烧。先比一个字节、变了才写。
+##
+## ⚠️⚠️ 循环走的是**贴图格**（_tex_w x _tex_h，比流体网格每边多一格），外围那一圈
+##    **复制紧邻的边缘格**。为什么要多这一圈：墨层的边界**不能和线稿的边重合** ——
+##    屏幕缩放不是整数（本机 1.524），两个精灵在同一个小数坐标上各画各的，边界那一个
+##    物理像素谁都不覆盖，看上去就是"两侧还有缝隙"。多一圈之后墨的边落到线稿**里面**
+##    （被线稿盖住），重合消失。实测：细缝从 1 物理 px 降到 0。
 func _render() -> void:
 	if _fluid == null or _img == null:
 		return
@@ -598,13 +612,17 @@ func _render() -> void:
 	var gb := int(glass_color.b * 255.0)
 	var ga := int(glass_color.a * 255.0)
 	var changed := false
-	var gw := _gw
-	var gh := _gh
-	for gy in gh:
-		for gx in gw:
-			var i := gy * gw + gx
+	var gw := _tex_w
+	var gh := _tex_h
+	for ty in gh:
+		for tx in gw:
+			var i := ty * gw + tx
 			var o := i * 4
-			if _container[i] == 0:
+			# 外围一圈映射到最近的边缘格（复制），见函数头。
+			var gx: int = clampi(tx - 1, 0, _gw - 1)
+			var gy: int = clampi(ty - 1, 0, _gh - 1)
+			var ci := gy * _gw + gx
+			if _container[ci] == 0:
 				if _pixels[o + 3] != 0:
 					_pixels[o] = 0; _pixels[o + 1] = 0; _pixels[o + 2] = 0; _pixels[o + 3] = 0
 					changed = true
@@ -615,7 +633,7 @@ func _render() -> void:
 			#    流体的 ink 场管"这一格有没有液体"（_container 那半边由它自己保证）。
 			# ⚠️⚠️ 湿判据要**外扩**（见 _wet_neighborhood）：PBF 的粒子不会稳定地待在
 			#    贴墙那一格里，只按本格判就留 1~2 px 的缝（实测：肩线两侧"还有一点缝隙"）。
-			var wet: bool = _draw[i] != 0 and _wet_neighborhood(gx, gy)
+			var wet: bool = _draw[ci] != 0 and _wet_neighborhood(gx, gy)
 			var r := ir if wet else gr
 			var g := ig if wet else gg
 			var b := ib if wet else gb
@@ -628,7 +646,7 @@ func _render() -> void:
 				changed = true
 	if not changed:
 		return
-	_img = Image.create_from_data(_gw, _gh, false, Image.FORMAT_RGBA8, _pixels)
+	_img = Image.create_from_data(_tex_w, _tex_h, false, Image.FORMAT_RGBA8, _pixels)
 	_tex.update(_img)
 #endregion
 
