@@ -24,4 +24,5 @@
 - [主菜单](ui/menu/doc/主菜单.md)
 - [HUD](ui/hud/doc/HUD.md)
 - [ESC 菜单](ui/esc/doc/ESC菜单.md)
+- [代码审计](doc/代码审计.md)
 - [调研：喷射战士墨水与涟漪](doc/调研-喷射战士墨水与涟漪.md)
