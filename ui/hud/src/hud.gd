@@ -67,3 +67,9 @@ func _switch_debug_hud() -> void:
 
 func _on_exit_button_pressed() -> void:
 	get_tree().change_scene_to_file(ROOT_SCENE)
+
+
+func _on_log_button_pressed() -> void:
+	var dialogue := get_tree().get_first_node_in_group(&"dialogue_box")
+	if dialogue != null and dialogue.has_method("toggle_log"):
+		dialogue.toggle_log()

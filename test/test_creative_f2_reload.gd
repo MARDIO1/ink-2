@@ -2,6 +2,7 @@ extends SceneTree
 
 const ROOT_SCENE := preload("res://root/root.tscn")
 const MAP_SCENE := preload("res://map/asset/map.tscn")
+const ALTERNATE_MAP_PATH := "res://map/asset/imported/2.tscn"
 
 
 func _initialize() -> void:
@@ -13,6 +14,31 @@ func _run() -> void:
 	root.add_child(app)
 	current_scene = app
 	await process_frame
+	# 没有显式 map_path 的导入地图也必须以自身为编辑基底，不能回落到默认 map.tscn。
+	var alternate_scene := load(ALTERNATE_MAP_PATH) as PackedScene
+	var alternate_level: Node = app.load_level(alternate_scene)
+	await process_frame
+	await process_frame
+	var alternate_creative: Node = alternate_level.get_node("Creative")
+	alternate_creative.auto_save_on_exit = false
+	alternate_creative.auto_save_edits = false
+	var valid: bool = alternate_creative.map_path == ALTERNATE_MAP_PATH
+	valid = valid and alternate_creative.baked_map_path == ALTERNATE_MAP_PATH.get_basename() + ".png"
+	var alternate_f2 := InputEventAction.new()
+	alternate_f2.action = &"creative"
+	alternate_f2.pressed = true
+	alternate_creative._input(alternate_f2)
+	await process_frame
+	await process_frame
+	var restored_alternate: Node = app.get_node("Level").get_child(0)
+	var restored_alternate_creative: Node = restored_alternate.get_node("Creative")
+	valid = valid and bool(restored_alternate_creative.active)
+	valid = valid and restored_alternate_creative.map_path == ALTERNATE_MAP_PATH
+	# Ink21 是导入地图 2 独有节点；它仍在，证明 F2 重载的不是默认地图。
+	valid = valid and restored_alternate.has_node("Ink21")
+	restored_alternate_creative.auto_save_on_exit = false
+	restored_alternate_creative.auto_save_edits = false
+	restored_alternate_creative.set_active(false)
 	var original_level: Node = app.load_level(MAP_SCENE)
 	await process_frame
 	await process_frame
@@ -28,7 +54,7 @@ func _run() -> void:
 	var restored_level: Node = app.get_node("Level").get_child(0)
 	var restored_creative: Node = restored_level.get_node("Creative")
 	var hand: Node = restored_level.get_node("Player/Arm/Hand/HandControl")
-	var valid: bool = restored_level != original_level and bool(restored_creative.active)
+	valid = valid and restored_level != original_level and bool(restored_creative.active)
 	var editor_player: Node = restored_level.get_node("Player")
 	var editor_canvas: Node = restored_level.get_node("SmallCanvas")
 	var editor_center: Vector2 = editor_canvas.to_global(

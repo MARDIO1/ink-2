@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Texture2D" path="res://ui/hud/asset/health_hud.tres" id="1_health"]
 [ext_resource type="Texture2D" path="res://ui/esc/asset/exit.tres" id="2_exit"]
 [ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="3_theme"]
 [ext_resource type="Script" path="res://ui/hud/src/hud.gd" id="4_script"]
 [ext_resource type="Texture2D" path="res://ui/hud/asset/bottle_fill.svg" id="5_bottle_fill"]
+[ext_resource type="Texture2D" path="res://ui/hud/asset/dialogue_log.png" id="6_log"]
 
 [node name="Hud" type="CanvasLayer"]
 layer = 1
@@ -72,4 +73,22 @@ texture_normal = ExtResource("2_exit")
 ignore_texture_size = true
 stretch_mode = 5
 
+[node name="LogButton" type="TextureButton" parent="Root"]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -164.0
+offset_top = 20.0
+offset_right = -96.0
+offset_bottom = 78.0
+grow_horizontal = 0
+tooltip_text = "查看已经看过的对话"
+mouse_default_cursor_shape = 2
+texture_normal = ExtResource("6_log")
+ignore_texture_size = true
+stretch_mode = 5
+
 [connection signal="pressed" from="Root/ExitButton" to="." method="_on_exit_button_pressed"]
+[connection signal="pressed" from="Root/LogButton" to="." method="_on_log_button_pressed"]

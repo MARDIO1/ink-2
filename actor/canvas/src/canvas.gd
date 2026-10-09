@@ -8,6 +8,7 @@ signal map_changed
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
 const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 
 @onready var surface = $CanvasSurface
 @onready var solid = $CanvasSolid
@@ -20,6 +21,10 @@ const InkPalette := preload("res://Ink/src/ink_palette.gd")
 @onready var workbench: Node2D = $WorkbenchUI
 @onready var toggle_button: Button = $WorkbenchUI/Toggle
 @onready var canvas_frame: TextureRect = $CanvasFrame
+
+var _expand_canvas_window: Window
+var _expand_inputs: Dictionary = {}
+var _expand_size_preview: Label
 #endregion
 
 
@@ -199,11 +204,28 @@ func expand_canvas(direction: Vector2i, amount := -1) -> bool:
 		return false
 	var step := canvas_expand_step if amount <= 0 else amount
 	step = maxi(step, 1)
-	var content_offset := Vector2i(
-		step if direction == Vector2i.LEFT else 0,
-		step if direction == Vector2i.UP else 0
-	)
-	var new_size := canvas_size + Vector2i(abs(direction.x), abs(direction.y)) * step
+	match direction:
+		Vector2i.LEFT:
+			return expand_canvas_sides(step, 0, 0, 0)
+		Vector2i.RIGHT:
+			return expand_canvas_sides(0, step, 0, 0)
+		Vector2i.UP:
+			return expand_canvas_sides(0, 0, step, 0)
+		Vector2i.DOWN:
+			return expand_canvas_sides(0, 0, 0, step)
+	return false
+
+
+## 一次扩展四侧。左、上扩展会平移旧内容与画布节点，确保旧内容的世界坐标不变。
+func expand_canvas_sides(left: int, right: int, top: int, bottom: int) -> bool:
+	left = maxi(left, 0)
+	right = maxi(right, 0)
+	top = maxi(top, 0)
+	bottom = maxi(bottom, 0)
+	if left + right + top + bottom == 0:
+		return false
+	var content_offset := Vector2i(left, top)
+	var new_size := canvas_size + Vector2i(left + right, top + bottom)
 	if not surface.resize_preserving_content(new_size, content_offset):
 		return false
 	_syncing_preserved_resize = true
@@ -370,6 +392,11 @@ func set_screen_fixed(on: bool) -> void:
 func set_map_editor_mode(on: bool) -> void:
 	_map_editor_mode = on
 	tool_grid.get_node("Hand").visible = not on
+	tool_grid.get_node("ExpandCanvas").visible = on
+	if on and _expand_canvas_window == null:
+		_build_expand_canvas_window()
+	if not on and _expand_canvas_window != null:
+		_expand_canvas_window.hide()
 	var player_visibility_button: Button = resize_panel.get_node("Grid/PlayerVisibility")
 	player_visibility_button.set_pressed_no_signal(player != null and player.visible)
 	_update_player_visibility_tooltip(player_visibility_button.button_pressed)
@@ -466,10 +493,120 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("Redraw").pressed.connect(clear_canvas)
 	tool_grid.get_node("Generate").pressed.connect(generate)
 	tool_grid.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
+	tool_grid.get_node("ExpandCanvas").pressed.connect(_open_expand_canvas_window)
 	resize_panel.get_node("Grid/PlayerVisibility").toggled.connect(_on_player_visibility_toggled)
 	resize_panel.get_node("Grid/NailVisibility").toggled.connect(_on_nail_visibility_toggled)
 	toggle_button.pressed.connect(_toggle_workbench)
 	brush_panel.get_node("PenSlider").value_changed.connect(_on_pen_slider_changed)
+
+
+func _build_expand_canvas_window() -> void:
+	_expand_canvas_window = Window.new()
+	_expand_canvas_window.name = "ExpandCanvasWindow"
+	_expand_canvas_window.title = "扩展画布"
+	_expand_canvas_window.size = Vector2i(420, 390)
+	_expand_canvas_window.min_size = Vector2i(380, 350)
+	_expand_canvas_window.visible = false
+	_expand_canvas_window.transient = true
+	_expand_canvas_window.theme = EditorTheme
+	_expand_canvas_window.close_requested.connect(_expand_canvas_window.hide)
+	add_child(_expand_canvas_window)
+	_expand_canvas_window.hide()
+
+	var margin := MarginContainer.new()
+	margin.name = "Content"
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 28)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	_expand_canvas_window.add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.name = "Column"
+	column.add_theme_constant_override("separation", 16)
+	margin.add_child(column)
+
+	var explanation := Label.new()
+	explanation.text = "输入四侧需要增加的像素。原有地图内容的世界位置不会改变。"
+	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(explanation)
+
+	_expand_size_preview = Label.new()
+	_expand_size_preview.name = "SizePreview"
+	column.add_child(_expand_size_preview)
+
+	var input_grid := GridContainer.new()
+	input_grid.name = "Inputs"
+	input_grid.columns = 2
+	input_grid.add_theme_constant_override("h_separation", 24)
+	input_grid.add_theme_constant_override("v_separation", 10)
+	column.add_child(input_grid)
+	for side in ["Left", "Right", "Top", "Bottom"]:
+		var label := Label.new()
+		label.text = {"Left": "左侧", "Right": "右侧", "Top": "上侧", "Bottom": "下侧"}[side]
+		input_grid.add_child(label)
+		var amount := SpinBox.new()
+		amount.name = side + "Amount"
+		amount.custom_minimum_size = Vector2(210, 42)
+		amount.min_value = 0
+		amount.max_value = 8192
+		amount.step = 16
+		amount.value = 0
+		amount.suffix = " px"
+		amount.value_changed.connect(_update_expand_size_preview.unbind(1))
+		input_grid.add_child(amount)
+		_expand_inputs[side] = amount
+
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(spacer)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	actions.add_theme_constant_override("separation", 12)
+	column.add_child(actions)
+	var cancel := Button.new()
+	cancel.text = "取消"
+	cancel.pressed.connect(_expand_canvas_window.hide)
+	actions.add_child(cancel)
+	var confirm := Button.new()
+	confirm.text = "确认扩展"
+	confirm.pressed.connect(_confirm_expand_canvas)
+	actions.add_child(confirm)
+	_update_expand_size_preview()
+
+
+func _open_expand_canvas_window() -> void:
+	if not _map_editor_mode or _expand_canvas_window == null:
+		return
+	for input: SpinBox in _expand_inputs.values():
+		input.value = 0
+	_update_expand_size_preview()
+	_expand_canvas_window.popup_centered()
+
+
+func _update_expand_size_preview() -> void:
+	if _expand_size_preview == null:
+		return
+	var left := int((_expand_inputs.get("Left") as SpinBox).value)
+	var right := int((_expand_inputs.get("Right") as SpinBox).value)
+	var top := int((_expand_inputs.get("Top") as SpinBox).value)
+	var bottom := int((_expand_inputs.get("Bottom") as SpinBox).value)
+	_expand_size_preview.text = "当前：%d × %d px    扩展后：%d × %d px" % [
+		canvas_size.x, canvas_size.y,
+		canvas_size.x + left + right, canvas_size.y + top + bottom,
+	]
+
+
+func _confirm_expand_canvas() -> void:
+	var left := int((_expand_inputs["Left"] as SpinBox).value)
+	var right := int((_expand_inputs["Right"] as SpinBox).value)
+	var top := int((_expand_inputs["Top"] as SpinBox).value)
+	var bottom := int((_expand_inputs["Bottom"] as SpinBox).value)
+	if left + right + top + bottom == 0:
+		return
+	if expand_canvas_sides(left, right, top, bottom):
+		_expand_canvas_window.hide()
 
 
 ## 隐藏 / 显示工具栏本体。按钮自己一直露着，好点回来。

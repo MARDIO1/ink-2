@@ -12,6 +12,7 @@ const GROUP := &"map_dialogue_trigger"
 
 var _player_was_inside := false
 var _editor_visible := false
+var _triggered := false
 
 
 func _ready() -> void:
@@ -28,6 +29,8 @@ func _process(_delta: float) -> void:
 func _physics_process(_delta: float) -> void:
 	if _is_map_editor_active():
 		_player_was_inside = false
+		return
+	if _triggered:
 		return
 	var player := _find_player()
 	var body = player.get("body") if player != null else null
@@ -47,7 +50,7 @@ func trigger_rect() -> Rect2:
 
 
 func _start_dialogue() -> bool:
-	if lines.is_empty():
+	if _triggered or lines.is_empty():
 		return false
 	var dialogue := get_tree().get_first_node_in_group(&"dialogue_box")
 	if dialogue == null or not dialogue.has_method("start_dialogue"):
@@ -56,6 +59,7 @@ func _start_dialogue() -> bool:
 	if dialogue_root != null and dialogue_root.visible:
 		return false
 	dialogue.start_dialogue(lines)
+	_triggered = true
 	return true
 
 

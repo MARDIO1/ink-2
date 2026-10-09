@@ -50,6 +50,31 @@ func _run() -> void:
 	valid = valid and map_canvas.visible and map_canvas.active
 	valid = valid and map_canvas.get("_screen_fixed")
 	valid = valid and not map_canvas.get_node("WorkbenchUI/Buttons/Grid/Hand").visible
+	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons/Grid/ExpandCanvas").visible
+	var expand_window := map_canvas.get_node_or_null("ExpandCanvasWindow") as Window
+	valid = valid and expand_window != null
+	valid = valid and not expand_window.visible
+	valid = valid and expand_window.get_node_or_null("Content/Column/Inputs/LeftAmount") is SpinBox
+	valid = valid and expand_window.get_node_or_null("Content/Column/Inputs/RightAmount") is SpinBox
+	valid = valid and expand_window.get_node_or_null("Content/Column/Inputs/TopAmount") is SpinBox
+	valid = valid and expand_window.get_node_or_null("Content/Column/Inputs/BottomAmount") is SpinBox
+	var expand_button := map_canvas.get_node("WorkbenchUI/Buttons/Grid/ExpandCanvas") as Button
+	var expand_window_started_hidden := not expand_window.visible
+	expand_button.pressed.emit()
+	await process_frame
+	var expand_window_opened := expand_window.visible
+	expand_window.hide()
+	valid = valid and expand_window_opened
+	print("[CreativeEditor] expand toolbar/window: ", "PASS" if (
+		expand_button.visible
+		and expand_window != null
+		and expand_window_started_hidden
+		and expand_window_opened
+		and expand_window.get_node_or_null("Content/Column/Inputs/LeftAmount") is SpinBox
+		and expand_window.get_node_or_null("Content/Column/Inputs/RightAmount") is SpinBox
+		and expand_window.get_node_or_null("Content/Column/Inputs/TopAmount") is SpinBox
+		and expand_window.get_node_or_null("Content/Column/Inputs/BottomAmount") is SpinBox
+	) else "FAIL")
 	valid = valid and map_canvas.get_node("WorkbenchUI/ResizePanel").visible
 	valid = valid and not map_canvas.has_node("WorkbenchUI/ResizePanel/Grid/Left")
 	valid = valid and not map_canvas.has_node("WorkbenchUI/ResizePanel/Grid/Right")
@@ -276,12 +301,31 @@ func _run() -> void:
 	surface.write_pixel(Vector2i(5, 6), Color.BLACK)
 	surface.nail_layer.add(Vector2i(7, 8))
 	surface.refresh()
-	valid = valid and map_canvas.expand_canvas(Vector2i.LEFT)
+	var expanded_left: bool = map_canvas.expand_canvas(Vector2i.LEFT)
+	valid = valid and expanded_left
 	valid = valid and map_canvas.canvas_size == old_size + Vector2i(16, 0)
 	valid = valid and map_canvas.position == old_position - Vector2(16, 0)
 	valid = valid and surface.black_image.get_pixel(21, 6).a > 0.5
 	valid = valid and surface.nail_layer.nails.has(Vector2i(23, 8))
 	valid = valid and surface.total_ink_px() == old_ink
+
+	# 四边在一次操作中扩展；左、上新增区域补偿节点位置，旧内容世界坐标保持不变。
+	old_size = map_canvas.canvas_size
+	old_position = map_canvas.position
+	var expanded_four_sides: bool = map_canvas.expand_canvas_sides(3, 5, 7, 11)
+	valid = valid and expanded_four_sides
+	valid = valid and map_canvas.canvas_size == old_size + Vector2i(8, 18)
+	valid = valid and map_canvas.position == old_position - Vector2(3, 7)
+	valid = valid and surface.black_image.get_pixel(24, 13).a > 0.5
+	valid = valid and surface.nail_layer.nails.has(Vector2i(26, 15))
+	valid = valid and surface.total_ink_px() == old_ink
+	print("[CreativeEditor] four-side canvas expansion: ", "PASS" if (
+		map_canvas.canvas_size == old_size + Vector2i(8, 18)
+		and map_canvas.position == old_position - Vector2(3, 7)
+		and surface.black_image.get_pixel(24, 13).a > 0.5
+		and surface.nail_layer.nails.has(Vector2i(26, 15))
+		and surface.total_ink_px() == old_ink
+	) else "FAIL")
 
 	# 即使当前处于编辑模式，保存出来的场景也必须以正常游玩布局启动。
 	# 放在项目 test 临时路径，避免无用户目录的 headless/沙箱环境无法写 user://。
@@ -334,6 +378,11 @@ func _run() -> void:
 	map_dialogue._physics_process(0.0)
 	dialogue_valid = dialogue_valid and dialogue_box.root.visible
 	dialogue_valid = dialogue_valid and dialogue_box.lines == PackedStringArray(["第一句", "第二句"])
+	dialogue_box.root.hide()
+	map_dialogue._player_was_inside = false
+	map_dialogue._physics_process(0.0)
+	dialogue_valid = dialogue_valid and not dialogue_box.root.visible
+	dialogue_valid = dialogue_valid and not map_dialogue._start_dialogue()
 	valid = valid and dialogue_valid
 	print("[CreativeEditor] dialogue trigger placement/save/playback: ",
 		"PASS" if dialogue_valid else "FAIL")

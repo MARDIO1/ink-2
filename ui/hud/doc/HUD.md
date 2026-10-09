@@ -5,7 +5,8 @@
 **瓶内液面 = 墨水量**（`Root/BottleFill`，`TextureProgressBar` + `fill_mode=3` 自下而上 +
 `ui/hud/asset/bottle_fill.svg` 当瓶形遮罩），瓶身线稿 `Root/HealthArt`
 （`ui/hud/asset/health_hud.tres`）盖在液面之上；顶部横条已取消，不再表示任何数值。
-右上角 `Root/ExitButton`（`ui/esc/asset/exit.tres`）回主菜单。
+右上角 `Root/ExitButton`（`ui/esc/asset/exit.tres`）回主菜单；它左侧的 `Root/LogButton`
+使用 `ui/hud/asset/dialogue_log.png`，打开本次游玩中已经实际显示过的对话记录。
 
 `BottleFill / HealthArt / InkMeter` 属于 `health_ui` 组。进入创造/地图编辑模式时只隐藏这三个
 血量相关节点，退出时恢复它们进入前的显隐状态；`ExitButton` 不在该组，因此编辑时仍可用。

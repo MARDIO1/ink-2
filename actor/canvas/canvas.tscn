@@ -319,6 +319,24 @@ toggle_mode = true
 button_group = SubResource("ToolButtonGroup")
 text = "手"
 
+[node name="ExpandCanvas" type="Button" parent="WorkbenchUI/Buttons/Grid"]
+visible = false
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+tooltip_text = "扩展画布\n分别设置左、右、上、下四侧的扩展量"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+theme_override_colors/font_focus_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+theme_override_colors/font_hover_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+theme_override_colors/font_pressed_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconActionPressed")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+text = "扩"
+
 [node name="BrushPanel" type="Control" parent="WorkbenchUI" unique_id=2069911969]
 z_index = 100
 layout_mode = 3
@@ -385,7 +403,6 @@ layout_mode = 2
 tooltip_text = "隐藏钉子外观"
 focus_mode = 0
 mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("IconNormal")
 theme_override_styles/pressed = SubResource("IconSelected")
 theme_override_styles/hover = SubResource("IconHover")

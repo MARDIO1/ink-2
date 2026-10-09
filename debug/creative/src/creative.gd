@@ -106,6 +106,7 @@ func _ready() -> void:
 	_player = get_node_or_null(player_path)
 	_canvas = get_node_or_null(canvas_path)
 	_map_canvas = get_node_or_null(map_canvas_path)
+	_bind_paths_to_current_level()
 	if _map_canvas != null:
 		_map_canvas.dev_save_enabled = false   # 大地图的 F5 只走导出
 		if _map_canvas.has_signal("tool_changed"):
@@ -127,6 +128,22 @@ func _ready() -> void:
 	_build_map_save_window()
 	_show_canvas(_map_canvas, false)
 	call_deferred("_ensure_spawn_point")
+
+
+## 当前正在运行的关卡文件才是编辑器的基底。
+## 部分导入地图没有覆写 Creative.map_path，若沿用默认值，F2 会错误重载为默认第一关。
+## 快照也按关卡文件名隔离，避免 A 地图读到 B 地图尚未固化的画布内容。
+func _bind_paths_to_current_level() -> void:
+	var level := _level_root()
+	if level == null:
+		return
+	var current_path := str(level.scene_file_path)
+	if current_path.is_empty() or current_path.get_extension().to_lower() != "tscn":
+		return
+	map_path = current_path
+	baked_map_path = current_path.get_basename() + ".png"
+	var current_snapshot := current_path.get_basename() + ".edit.res"
+	edit_snapshot_path = current_snapshot if FileAccess.file_exists(current_snapshot) else ""
 
 
 ## 放置放在普通输入阶段处理，优先于地图画布的绘制/物件输入；

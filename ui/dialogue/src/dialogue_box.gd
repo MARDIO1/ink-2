@@ -6,6 +6,7 @@ extends CanvasLayer
 
 signal line_started(index: int, text: String)
 signal dialogue_finished
+signal history_changed(lines: PackedStringArray)
 
 @export_file("*.json") var dialogue_file: String = "res://ui/dialogue/asset/dialogue_lines.json"
 @export_range(1.0, 120.0, 1.0) var characters_per_second: float = 24.0
@@ -16,12 +17,15 @@ signal dialogue_finished
 @onready var panel: PanelContainer = $Root/DialoguePanel
 @onready var dialogue_label: Label = $Root/DialoguePanel/PixelText/TextViewport/DialogueLabel
 @onready var next_hint: Label = $Root/DialoguePanel/PixelText/TextViewport/NextHint
+@onready var log_root: Control = $LogRoot
+@onready var history_label: Label = $LogRoot/Center/Panel/Margin/Column/HistoryScroll/HistoryLabel
 
 var lines: PackedStringArray = PackedStringArray()
 var current_line: int = -1
 var _visible_character_count: int = 0
 var _type_accumulator: float = 0.0
 var _typing: bool = false
+var viewed_lines: PackedStringArray = PackedStringArray()
 
 
 func _ready() -> void:
@@ -32,6 +36,7 @@ func _ready() -> void:
 		start_dialogue()
 	else:
 		root.hide()
+	_refresh_history_text()
 
 
 func _process(delta: float) -> void:
@@ -86,6 +91,9 @@ func set_lines(new_lines: PackedStringArray, restart: bool = true) -> void:
 
 func _show_current_line() -> void:
 	var line := lines[current_line]
+	viewed_lines.append(line)
+	_refresh_history_text()
+	history_changed.emit(viewed_lines.duplicate())
 	dialogue_label.text = line
 	dialogue_label.visible_characters = 0
 	_visible_character_count = 0
@@ -108,6 +116,28 @@ func _finish_dialogue() -> void:
 	if hide_when_finished:
 		root.hide()
 	dialogue_finished.emit()
+
+
+func toggle_log() -> void:
+	if log_root.visible:
+		hide_log()
+	else:
+		show_log()
+
+
+func show_log() -> void:
+	_refresh_history_text()
+	log_root.show()
+
+
+func hide_log() -> void:
+	log_root.hide()
+
+
+func _refresh_history_text() -> void:
+	if history_label == null:
+		return
+	history_label.text = "还没有看过对话。" if viewed_lines.is_empty() else "\n\n".join(viewed_lines)
 
 
 func _load_lines_from_file() -> void:

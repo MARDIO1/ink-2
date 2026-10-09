@@ -83,7 +83,7 @@ voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
-position = Vector2(519.4542, -1.1101608)
+position = Vector2(439.37506, -104.59271)
 process_callback = 0
 script = ExtResource("9_x6104")
 
@@ -171,7 +171,7 @@ source = 3
 paint = SubResource("Image_vk6ij")
 
 [node name="Ink17" type="Node2D" parent="." unique_id=953893761 groups=["ink_item"]]
-position = Vector2(-511.8874, -255.99107)
+position = Vector2(-511.8938, -255.9909)
 script = ExtResource("18_726wg")
 
 [node name="@Node2D@2333" type="Node2D" parent="Ink17" unique_id=1291672173]
