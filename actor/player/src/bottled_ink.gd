@@ -151,6 +151,8 @@ var _applied_scale := -1.0
 var _src_tex: Texture2D = null
 ## 容器缓存键。剪影贴图和外接框不变就不重算。
 var _container_key := ""
+## 抖动 uniform 的缓存键（剪影尺寸 / 容器原点 / cell_px）—— 这三样不变就不重设。
+var _wobble_key := ""
 
 # ---- 容器 / 流体 ----
 var _fluid = null
@@ -220,11 +222,30 @@ func _sync_visual() -> void:
 	#    （cell_px=2 时偏出 (4,23)）。
 	offset = (_mask.offset + Vector2(_grid_origin)) / float(cell_px)
 	scale = Vector2(cell_px, cell_px)
+	_sync_wobble_uniforms()
 	_fill = _health.ratio() if _health != null and _health.has_method("ratio") else 1.0
 	visible = _fluid != null
 	if not visible:
 		return
 	_fluid.set_fill_ratio(_fill)
+
+
+## 墨层要跟线框**同相位**抖：把"剪影的像素空间"喂给 player_liquid_wobble.gdshader。
+##
+## ⚠️⚠️ 为什么不能像 Visual 那样用默认值：本节点的贴图只是**瓶身内部那块子矩形**
+##    （_gw x _gh 格），还被 scale=cell_px 放大过 —— UV 与 Visual 不是一套。
+##    shader 拿这三个值把 UV 映回剪影像素空间再算位移，两边才会同相（见那个 shader 的注释）。
+func _sync_wobble_uniforms() -> void:
+	var mat := material as ShaderMaterial
+	if mat == null or _src_tex == null:
+		return
+	var key := "%s|%s|%d" % [str(_src_tex.get_size()), str(_grid_origin), cell_px]
+	if key == _wobble_key:
+		return
+	_wobble_key = key
+	mat.set_shader_parameter("visual_size", _src_tex.get_size())
+	mat.set_shader_parameter("grid_origin", Vector2(_grid_origin))
+	mat.set_shader_parameter("cell_px", float(cell_px))
 
 
 ## 跑一步流体。
