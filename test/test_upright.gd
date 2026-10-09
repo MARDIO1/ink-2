@@ -74,7 +74,7 @@ func _open() -> void:
 	_feet = _scene.get_node("Player/PlayerInput")
 	_body = _scene.get_node("Player").body
 	_scene.get_node("Player/Arm/Hand/HandControl").set_physics_process(false)
-	_scene.get_node("CollisionDamage").min_approach = 1.0e12
+	_scene.get_node("SimulationRuntime/ImpactDamage").min_approach = 1.0e12
 
 
 func _run() -> void:
@@ -160,7 +160,7 @@ func _test_grip() -> void:
 	_feet = _scene.get_node("Player/PlayerInput")
 	_body = _scene.get_node("Player").body
 	var hand = _scene.get_node("Player/Arm/Hand/HandControl")
-	_scene.get_node("CollisionDamage").min_approach = 1.0e12
+	_scene.get_node("SimulationRuntime/ImpactDamage").min_approach = 1.0e12
 	hand.set_grip(true)
 	var welded: bool = hand._begin_grab(_scene.get_node("Ground").body, Vector2(0, 231))
 	hand.set_target_world(Vector2(60, 211))

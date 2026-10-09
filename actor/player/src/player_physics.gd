@@ -1,18 +1,17 @@
 @tool
 extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
-## 玩家、手和连杆的物理节点，分别持有自己的 PBody。
+## 玩家、手和连杆共用的 PixelBody2D 基类。
 const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 
-## 所属 PixelWorld 的相对路径，初始化时用于注册该节点的物理体。
+## 所属 PixelWorld 的相对路径。
 @export var world_path := NodePath("..")
-## 形状级密度倍率（质量 = Σ 材质密度 × 它）。物理剪影用"隐形墨水"这类基准密度 1.0 的
-## 材质时，靠它把密度拉回本物体本来该有的值（手 = 0.1344），质量/质心/惯量逐位不变。
+## 应用于所有直接子形状的密度倍率。
 @export var shape_density_scale := 1.0
-## 生物实体标记；反向栅格化（回到画布）时跳过。与 CanvasSolid 的同名标签对应。
+## 生物实体标记；反向栅格化时跳过。
 const LIVING_TAG := "living"
 
 #region 碰撞伤害
-## 只累计世界结算器给出的伤害；身体像素保持完整，生命和死亡以后接入。
+## 累计世界结算器给出的伤害。
 var collision_damage: float = 0.0
 
 
@@ -28,7 +27,7 @@ func _bake_lazily():
 func collect_shapes() -> Array:
 	var shapes: Array = []
 	for child in get_children():
-		# 只烘焙直接形状；嵌套的 Arm/Hand 各自持有独立 PBody。
+		# Arm 和 Hand 是独立刚体，不属于玩家主体形状。
 		if child.get_script() == PixelShape2D:
 			shapes.append(child.get_shape())
 	if shapes.is_empty():

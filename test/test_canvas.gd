@@ -118,11 +118,11 @@ func _run() -> void:
 		if nail_shape.get_pixel(35, y) != 0:
 			cut[Vector2i(35, y)] = true
 	var before_split: int = scene.world.bodies.size()
-	scene.get_node("CollisionDamage").commit(scene.world, {nailed: {nail_shape: cut}})
+	scene.get_node("SimulationRuntime").commit(scene.world, {nailed: {nail_shape: cut}})
 	valid = valid and nailed.is_static and scene.world.bodies.size() > before_split
 	valid = valid and not scene.world.bodies[-1].is_static
 	nail_shape = nailed.shapes[0]
-	scene.get_node("CollisionDamage").commit(scene.world,
+	scene.get_node("SimulationRuntime").commit(scene.world,
 		{nailed: {nail_shape: {Vector2i(30, 20): true}}})
 	valid = valid and not nailed.is_static and not nailed.tags.has("static_anchor_points")
 	print("[Canvas] resize, save/load, nail solidify/break: ", "PASS" if valid else "FAIL")

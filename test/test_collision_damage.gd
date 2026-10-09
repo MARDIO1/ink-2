@@ -1,6 +1,7 @@
 extends SceneTree
 
-const Damage = preload("res://map/src/collision_damage.gd")
+const ImpactDamage = preload("res://root/src/impact_damage.gd")
+const PhysicsStep = preload("res://root/src/physics_step.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
@@ -40,7 +41,8 @@ func _count(result: Dictionary) -> int:
 
 
 func _run() -> void:
-	var calc = Damage.new()
+	var calc = ImpactDamage.new()
+	var runtime = PhysicsStep.new()
 	_check("game defaults require a deliberate impact", calc.damage_scale == 0.012 and calc.min_approach == 300.0)
 	# 规则单测固定预算；真实游戏默认数值由下砸校准脚本单独验证。
 	calc.damage_scale = 0.1
@@ -62,37 +64,37 @@ func _run() -> void:
 	var impact: Dictionary = calc._impact(contact.points)
 	_check("contact points merge without multiplying impulse", is_equal_approx(impact.total_impulse, 24000.0)
 		and is_equal_approx(impact.impulse, 3000.0) and impact.position.is_equal_approx(Vector2(8, 4)))
-	var result: Dictionary = calc.calculate(world)
+	var result: Dictionary = calc.calculate(world, world.contacts)
 	_check("symmetric bodies lose symmetric pixels", result.removals[a][a.shapes[0]].size() == result.removals[b][b.shapes[0]].size())
 	_check("calculation leaves source shapes unchanged", a.shapes[0].pixel_count() == 64 and b.shapes[0].pixel_count() == 64)
 	_check("face reaches middle lanes", result.removals[a][a.shapes[0]].has(Vector2i(7, 4)))
 	var strong_count: int = _count(result)
 	var old_cap: float = calc.support_max
 	calc.support_max = 1.0
-	_check("thickness reduces removal budget", _count(calc.calculate(world)) > strong_count)
+	_check("thickness reduces removal budget", _count(calc.calculate(world, world.contacts)) > strong_count)
 	calc.support_max = old_cap
 	world.set_material_strength(1, 200.0)
-	_check("higher material resistance reduces removal", _count(calc.calculate(world)) < strong_count)
+	_check("higher material resistance reduces removal", _count(calc.calculate(world, world.contacts)) < strong_count)
 	world.set_material_strength(1, 100.0)
 	contact.points[0].impulse = 1.0
 	contact.points[1].impulse = 1.0
-	_check("subpixel budget is discarded", _count(calc.calculate(world)) == 0)
-	_check("small hits never accumulate", _count(calc.calculate(world)) == 0)
+	_check("subpixel budget is discarded", _count(calc.calculate(world, world.contacts)) == 0)
+	_check("small hits never accumulate", _count(calc.calculate(world, world.contacts)) == 0)
 	contact.points[0].impulse = 12000.0
 	contact.points[1].impulse = 12000.0
 	contact.approach = 0.0
-	_check("resting support causes no damage", _count(calc.calculate(world)) == 0)
+	_check("resting support causes no damage", _count(calc.calculate(world, world.contacts)) == 0)
 	contact.approach = 100.0
 	contact.points[0].tangent_impulse = 1e9
-	_check("friction impulse ignored", _count(calc.calculate(world)) == strong_count)
-	result = calc.calculate(world, a, [b])
+	_check("friction impulse ignored", _count(calc.calculate(world, world.contacts)) == strong_count)
+	result = calc.calculate(world, world.contacts, a, [b])
 	_check("player gets damage without pixel deletion", result.player_damage > 0.0 and result.removals.is_empty())
 	var player = Player.new()
 	player.apply_collision_damage(result.player_damage)
 	_check("player receiver accumulates positive damage", player.collision_damage == result.player_damage)
 	player.free()
 	world.set_material_strength(1, 0.0)
-	_check("zero strength is indestructible", _count(calc.calculate(world)) == 0)
+	_check("zero strength is indestructible", _count(calc.calculate(world, world.contacts)) == 0)
 	world.set_material_strength(1, 100.0)
 	a.shapes[0].set_pixel(6, 4, 2)
 	a.shapes[0].clear_pixel(4, 4)
@@ -121,11 +123,30 @@ func _run() -> void:
 		reproducible = reproducible and crack_a[i].position == crack_b[i].position
 		bent = bent or crack_a[i].position.y != 32
 	_check("glass crack is deterministic and turns", reproducible and bent)
+	glass.shapes[0].set_pixel(7, 32, 2)
+	glass.shapes[0].set_pixel(18, 32, 3)
+	world.set_material_strength(3, 0.0)
+	var fused_matches: bool = true
+	var saved_turn: float = calc.crack_turn_degrees
+	calc.crack_turn_degrees = 0.0
+	for crack_budget in [0.0, 99.0, 100.0, 150.0, 199.0, 200.0, 201.0, 2000.0, 3000.0]:
+		for seed in [0, 123, 987]:
+			var old_result: Dictionary = {"removals": {}, "player_damage": 0.0}
+			var fused_result: Dictionary = {"removals": {}, "player_damage": 0.0}
+			var old_path: Array = calc._crack_path(glass, Vector2(100.01, 42.5), Vector2.RIGHT,
+				world, crack_budget, seed)
+			calc._consume_path(world, glass, old_path, crack_budget, old_result)
+			calc._crack_path(glass, Vector2(100.01, 42.5), Vector2.RIGHT,
+				world, crack_budget, seed, 1.0, fused_result)
+			fused_matches = fused_matches and old_result == fused_result
+	calc.crack_turn_degrees = saved_turn
+	_check("fused crack deletion preserves budgets and mixed material barriers", fused_matches)
 	_release(world)
 	_test_native(calc)
-	_test_commit(calc)
+	_test_commit(runtime)
 	await _test_scene()
 	calc.free()
+	runtime.free()
 	print("[CollisionDamage] %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -152,7 +173,7 @@ func _test_native(calc) -> void:
 				protocol_ok = protocol_ok and point.normal.is_finite() and point.position.is_finite()
 				protocol_ok = protocol_ok and is_finite(point.impulse) and is_finite(point.tangent_impulse)
 				protocol_ok = protocol_ok and point.has("fid1") and point.has("fid2")
-		var result: Dictionary = calc.calculate(world)
+		var result: Dictionary = calc.calculate(world, world.contacts)
 		plan_seen = plan_seen or _count(result) > 0
 		if frame > 120:
 			resting_damage += _count(result)
@@ -248,7 +269,7 @@ func _test_scene() -> void:
 	var ground = scene.get_node("Ground").body
 	var original: int = box.shapes[0].pixel_count() + ground.shapes[0].pixel_count()
 	scene.auto_step = true
-	var controller = scene.get_node("CollisionDamage")
+	var controller = scene.get_node("SimulationRuntime")
 	var start: int = Time.get_ticks_usec()
 	for frame in 120:
 		controller._physics_process(1.0 / 60.0)

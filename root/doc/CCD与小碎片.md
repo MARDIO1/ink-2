@@ -18,7 +18,7 @@
 
 | 项 | 值 | 出处 |
 | --- | --- | --- |
-| 游戏侧 CCD | **开着**，而且**不做全局子步**（`ccd_per_body_only`） | `map/src/collision_damage.gd` 的 `_start()` |
+| 游戏侧 CCD | **开着**，而且**不做全局子步**（`ccd_per_body_only`） | `root/src/physics_step.gd` 的 `_start()` |
 | 历史 | 曾因"拿穿模换帧时间"关掉（commit `0ae371c`）；根因修掉后恢复 | §5 |
 | 子步上限（声明） | `ccd_max_substeps = 16` —— **死声明，无人读** | `addons/pixel_destruction/physics/pworld.gd:99` |
 | 子步上限（实际） | `ccd_substep_budget = 600` | 同上 `:103`、`:1668` |
@@ -126,7 +126,7 @@ Dennis 的是固定步数、不重算接触的求解器子步；这里是**自�
 ### 2.1 代码路径
 
 ```
-collision_damage._step(delta)                     map/src/collision_damage.gd:149
+physics_step._step(delta)                         root/src/physics_step.gd:187
   ├─ cull_fast_debris()                           pworld.gd:2868   灰尘闸门（先清）
   ├─ _compute_substeps(delta)                     pworld.gd:1653   决定切几刀
   │    ├─ _fastest_motion_plain()                 pworld.gd:1502   全世界最快的那**一个**
@@ -325,7 +325,7 @@ godot --headless --path . --script res://test/tools/bench_small_fragment_ccd.gd
 - 引擎 CCD 配置与全部说明：`addons/pixel_destruction/physics/pworld.gd:92-274`
 - 子步计算：`addons/pixel_destruction/physics/pworld.gd:1497-1692`
 - 逐体扫掠原语（已实现、未接线）：`addons/pixel_destruction/physics/sweep.gd`
-- 游戏侧步进驱动：`map/src/collision_damage.gd:149-189`
+- 游戏侧步进驱动：`root/src/physics_step.gd:187`
 - 场景旋钮：`map/main.tscn:23-28`
 - 详细取证报告：[调研-体素破坏引擎的小碎片处理.md](调研-体素破坏引擎的小碎片处理.md)
 
@@ -417,7 +417,7 @@ Rapier 的逐体 CCD 有两个旋钮，重要程度差一个数量级：
 | 引擎 | `src/physics/pbody.gd` | `thinnest_extent()` / `visible_short_side()` / `needs_ccd()` |
 | 引擎 | `src/physics/pworld.gd` | `ccd_per_body_only`；`ccd_max_substeps` 接回（曾是死声明）；`ccd_substep_cost_budget_us` / `ccd_min_driver_thickness` / `ccd_per_body` / `max_surface_speed`；`min_fragment_thickness` + `result.downgraded`；迟滞上限修死锁 |
 | 引擎 | `src/render/pixel_renderer.gd` | `place_blueprint()` / `tint_blueprint()`（只动 transform，不重建贴图） |
-| 游戏 | `map/src/collision_damage.gd` | `_clamp_speeds()` / `_apply_substep_budget()` / `_isolate_debris()`；CCD 配置；灰尘接线 |
-| 游戏 | `map/src/debris_dust.gd` | 新增：降级碎片的短命灰尘层 |
+| 游戏 | `root/src/physics_step.gd` | `_clamp_speeds()` / `_apply_substep_budget()` / `_isolate_debris()`；CCD 配置；灰尘接线 |
+| 游戏 | `root/src/debris_dust.gd` | 新增：降级碎片的短命灰尘层 |
 | 闸门 | `test/test_ccd_debris.gd` | 34 项断言（含两条回归钉） |
 | 证据 | `test/tools/bench_small_fragment_ccd.gd` | 帧时间 = 子步数 x 每子步代价，逐项量 |
