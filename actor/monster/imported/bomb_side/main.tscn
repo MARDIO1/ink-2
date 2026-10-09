@@ -1,0 +1,380 @@
+[gd_scene format=3 uid="uid://cw5lbyb6bqxdt"]
+
+[ext_resource type="Script" path="res://actor/monster/imported/bomb_side/main.gd" id="1_main"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/body.png" id="2_body"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/far_arm_normalized_4x.png" id="3_far_arm"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/near_arm_normalized_4x.png" id="4_near_arm"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/far_leg-mono-source-transparent-mono-source-transparent_normalized_4x.png" id="5_far_leg"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/near_leg-mono-source-transparent_normalized_4x.png" id="6_near_leg"]
+[ext_resource type="Script" path="res://actor/monster/imported/bomb_side/bone_overlay.gd" id="8_overlay"]
+[sub_resource type="Animation" id="Animation_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/BodyHead:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/BodyHead:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [-1.5708]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Skeleton2D/BodyHead/LeftArm:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [3.2861901]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Skeleton2D/BodyHead/RightArm:rotation")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [2.3445741]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Skeleton2D/BodyHead/LeftLeg:rotation")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [3.1221083]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Skeleton2D/BodyHead/RightLeg:rotation")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [2.9172397]
+}
+
+[sub_resource type="Animation" id="Animation_idle"]
+resource_name = "idle"
+length = 1.6
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/BodyHead:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, -4), Vector2(0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/BodyHead:rotation")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [-1.5858, -1.5558, -1.5858]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Skeleton2D/BodyHead/LeftArm:rotation")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [3.3254001, 3.2454001, 3.3254001]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Skeleton2D/BodyHead/RightArm:rotation")
+tracks/3/interp = 2
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [2.3037841, 2.3837841, 2.3037841]
+}
+
+[sub_resource type="Animation" id="Animation_throw"]
+resource_name = "throw"
+length = 1.2
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/BodyHead:rotation")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.3, 0.62, 1.2),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [-1.5708, -1.6508, -1.4708, -1.5708]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/BodyHead/RightArm:rotation")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.3, 0.62, 1.2),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [2.3445741, 3.1237841, 1.0237841, 2.3445741]
+}
+
+[sub_resource type="Animation" id="Animation_walk"]
+resource_name = "walk"
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/BodyHead:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, -7), Vector2(0, 0), Vector2(0, -7), Vector2(0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/BodyHead:rotation")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [-1.5958, -1.5458, -1.5958]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Skeleton2D/BodyHead/LeftArm:rotation")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [2.8954001, 3.6454001, 2.8954001]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Skeleton2D/BodyHead/RightArm:rotation")
+tracks/3/interp = 2
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [2.7037841, 1.9537841, 2.7037841]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Skeleton2D/BodyHead/LeftLeg:rotation")
+tracks/4/interp = 2
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [3.5013183, 2.7513183, 3.5013183]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Skeleton2D/BodyHead/RightLeg:rotation")
+tracks/5/interp = 2
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [2.5464497, 3.2964497, 2.5464497]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_main"]
+_data = {
+&"RESET": SubResource("Animation_reset"),
+&"idle": SubResource("Animation_idle"),
+&"throw": SubResource("Animation_throw"),
+&"walk": SubResource("Animation_walk")
+}
+
+[node name="Main" type="Node2D" unique_id=785724804]
+script = ExtResource("1_main")
+
+[node name="Background" type="ColorRect" parent="." unique_id=2085048411]
+offset_left = -4.0
+offset_top = -1.0
+offset_right = 956.0
+offset_bottom = 539.0
+mouse_filter = 2
+color = Color(0.94, 0.93, 0.89, 1)
+
+[node name="Ground" type="Polygon2D" parent="." unique_id=859459494]
+color = Color(0.78, 0.76, 0.69, 1)
+polygon = PackedVector2Array(0, 462, 960, 462, 960, 540, 0, 540)
+
+[node name="GroundLine" type="Line2D" parent="." unique_id=1320921481]
+points = PackedVector2Array(0, 462, 960, 462)
+width = 4.0
+default_color = Color(0.18, 0.18, 0.18, 0.65)
+
+[node name="Bomber" type="Node2D" parent="." unique_id=235961958]
+z_index = 10
+position = Vector2(390, 330)
+scale = Vector2(0.8, 0.8)
+
+[node name="Shadow" type="Polygon2D" parent="Bomber" unique_id=2083541194]
+position = Vector2(5, 164)
+color = Color(0.1, 0.1, 0.1, 0.14)
+polygon = PackedVector2Array(-100, 0, -70, -12, 45, -14, 88, -4, 52, 10, -64, 12)
+
+[node name="Skeleton2D" type="Skeleton2D" parent="Bomber" unique_id=1541997234]
+
+[node name="BodyHead" type="Bone2D" parent="Bomber/Skeleton2D" unique_id=796774335]
+rotation = -1.5708
+rest = Transform2D(-3.61999e-06, -1, 1, -3.61999e-06, 0, 0)
+
+[node name="LeftArm" type="Bone2D" parent="Bomber/Skeleton2D/BodyHead" unique_id=1169884724]
+position = Vector2(121.49928, -76.3241)
+rotation = 3.2861901
+rest = Transform2D(-0.989564, -0.144094, 0.144094, -0.989564, 121.49928, -76.3241)
+length = 141.01418
+
+[node name="Art" type="Sprite2D" parent="Bomber/Skeleton2D/BodyHead/LeftArm" unique_id=935337217]
+z_index = -2
+texture_filter = 1
+position = Vector2(-24.87693, 61.653374)
+rotation = -1.5566129
+texture = ExtResource("3_far_arm")
+centered = false
+
+[node name="RightArm" type="Bone2D" parent="Bomber/Skeleton2D/BodyHead" unique_id=675911783]
+position = Vector2(112.28148, 33.63707)
+rotation = 2.3445741
+rest = Transform2D(-0.698842, 0.715276, -0.715276, -0.698842, 112.28148, 33.63707)
+length = 125.39936
+
+[node name="Art" type="Sprite2D" parent="Bomber/Skeleton2D/BodyHead/RightArm" unique_id=728888459]
+z_index = 3
+texture_filter = 1
+position = Vector2(-32.32074, 36.51534)
+rotation = -1.3374226
+texture = ExtResource("4_near_arm")
+centered = false
+
+[node name="LeftLeg" type="Bone2D" parent="Bomber/Skeleton2D/BodyHead" unique_id=1053964376]
+position = Vector2(-21.99971, -47.999874)
+rotation = 3.1221083
+rest = Transform2D(-0.99981, 0.019483, -0.019483, -0.99981, -21.99971, -47.999874)
+length = 154.02922
+
+[node name="Art" type="Sprite2D" parent="Bomber/Skeleton2D/BodyHead/LeftLeg" unique_id=1912960932]
+z_index = -3
+texture_filter = 1
+position = Vector2(-33.396263, 71.36308)
+rotation = -1.5513183
+texture = ExtResource("5_far_leg")
+centered = false
+
+[node name="RightLeg" type="Bone2D" parent="Bomber/Skeleton2D/BodyHead" unique_id=1851966131]
+position = Vector2(-21.99987, 36.00013)
+rotation = 2.9172397
+rest = Transform2D(-0.974938, 0.222476, -0.222476, -0.974938, -21.99987, 36.00013)
+length = 152.82997
+
+[node name="Art" type="Sprite2D" parent="Bomber/Skeleton2D/BodyHead/RightLeg" unique_id=1091319082]
+z_index = 2
+texture_filter = 1
+position = Vector2(-40.986725, 35.778324)
+rotation = -1.3464496
+texture = ExtResource("6_near_leg")
+centered = false
+
+[node name="Art" type="Sprite2D" parent="Bomber/Skeleton2D/BodyHead" unique_id=2056450522]
+texture_filter = 1
+position = Vector2(334, -204)
+rotation = 1.5708
+texture = ExtResource("2_body")
+centered = false
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Bomber" unique_id=2125732217]
+libraries/ = SubResource("AnimationLibrary_main")
+
+[node name="BoneOverlay" type="Node2D" parent="Bomber" unique_id=2017724464]
+z_index = 10
+script = ExtResource("8_overlay")
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=719252607]
+
+[node name="Panel" type="PanelContainer" parent="UI" unique_id=1020605441]
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 318.0
+offset_bottom = 122.0
+
+[node name="VBox" type="VBoxContainer" parent="UI/Panel" unique_id=1436806803]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="Title" type="Label" parent="UI/Panel/VBox" unique_id=1080609331]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "骷髅炸弹人 · 五部分骨骼"
+
+[node name="State" type="Label" parent="UI/Panel/VBox" unique_id=1407902769]
+layout_mode = 2
+text = "当前动画：idle"
+
+[node name="Help" type="Label" parent="UI/Panel/VBox" unique_id=1219546299]
+layout_mode = 2
+text = "1 待机   2 走路   3 投掷   B 骨骼显示"

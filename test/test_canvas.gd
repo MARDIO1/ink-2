@@ -1,6 +1,7 @@
 extends "res://test/test_collision_damage.gd"
 
 const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const CanvasSurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 
 
 func _initialize() -> void:
@@ -19,12 +20,37 @@ func _run() -> void:
 	var valid: bool = surface.black_image.get_size() == Vector2i(320, 180)
 	valid = valid and bounds.shape.size == Vector2(320, 180) and bounds.position == Vector2(160, 90)
 	valid = valid and surface.collision_layer == 0 and not surface.monitoring
+	# 矩形必须是方角、等宽的边框；不能再用圆笔刷沿四边盖章，
+	# 否则粗笔刷会让外沿周期性鼓出。
+	var saved_tool: int = surface.tool
+	var saved_brush_size: int = surface.brush_size
+	surface.tool = CanvasSurfaceScript.Tool.RECT
+	surface.brush_size = 7
+	var rect_pixels: Dictionary = surface._shape_pixels(Vector2(20, 30), Vector2(80, 70))
+	var rect_valid := true
+	for y in range(30, 70):
+		for x in range(20, 80):
+			var should_be_border := x < 27 or x >= 73 or y < 37 or y >= 63
+			rect_valid = rect_valid and rect_pixels.has(Vector2i(x, y)) == should_be_border
+	# 不允许圆笔刷留下的毛刺伸出拖拽包围盒。
+	for pixel: Vector2i in rect_pixels:
+		rect_valid = rect_valid \
+			and pixel.x >= 20 and pixel.x < 80 and pixel.y >= 30 and pixel.y < 70
+	valid = valid and rect_valid
+	print("[Canvas] 平整矩形边框: ", "PASS" if rect_valid else "FAIL")
+	surface.tool = saved_tool
+	surface.brush_size = saved_brush_size
 	# 画一个实心笔划，确认编辑器范围改造没有破坏固化。
 	surface._stroke(Vector2(20, 20), Vector2(40, 20), Color.BLACK)
 	surface._place_nail(Vector2(30, 20))
-	var path: String = "user://canvas_roundtrip.tres"
+	# 使用项目内临时路径，确保无 user:// 写权限的 headless/沙箱环境也能验收；退出前删除。
+	var path: String = "res://test/.canvas_roundtrip.tmp.tres"
+	var png_path: String = "res://test/.canvas_roundtrip.tmp.png"
+	for temp_path in [path, png_path]:
+		if FileAccess.file_exists(temp_path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
 	canvas.capture_path = path
-	canvas.baked_map_path = "user://canvas_roundtrip.png"
+	canvas.baked_map_path = png_path
 	var before: PackedByteArray = surface.black_image.get_data()
 	await _press(KEY_F5)
 	valid = valid and ResourceLoader.exists(path)
@@ -108,6 +134,9 @@ func _run() -> void:
 	_release(scene.world)
 	scene.queue_free()
 	await process_frame
+	for temp_path in [path, png_path]:
+		if FileAccess.file_exists(temp_path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
 	quit(0 if valid else 1)
 
 

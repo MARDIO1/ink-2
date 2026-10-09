@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" uid="uid://b78lla71aiabs" path="res://actor/player/hand.tscn" id="11_hand"]
 [ext_resource type="Script" uid="uid://c6otusd1181wl" path="res://actor/player/src/bottled_ink.gd" id="12_ink"]
 [ext_resource type="Script" uid="uid://dfa8tnl720dm" path="res://actor/player/src/ink_health.gd" id="13_health"]
+[ext_resource type="Material" path="res://actor/player/asset/player_breath_wobble.tres" id="14_wobble"]
 
 [sub_resource type="Image" id="Image_jqpk3"]
 data = {
@@ -41,6 +42,7 @@ paint = ExtResource("4_body0")
 
 [node name="Visual" type="Sprite2D" parent="." unique_id=1684242029]
 process_physics_priority = 20
+material = ExtResource("14_wobble")
 texture_filter = 1
 texture = SubResource("ImageTexture_g32og")
 centered = false
@@ -49,6 +51,7 @@ palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1),
 
 [node name="BottledInk" type="Sprite2D" parent="." unique_id=1298016972]
 process_physics_priority = 25
+material = ExtResource("14_wobble")
 visible = false
 z_index = -1
 texture_filter = 1

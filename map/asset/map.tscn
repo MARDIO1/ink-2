@@ -16,6 +16,8 @@
 [ext_resource type="Script" uid="uid://dvtycwuj0keul" path="res://debug/creative/src/creative.gd" id="17_51wry"]
 [ext_resource type="Script" uid="uid://msw52rtj66lr" path="res://actor/ink_item/src/ink_item.gd" id="18_726wg"]
 [ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="19_6nj1v"]
+[ext_resource type="PackedScene" path="res://actor/monster/little_soldier.tscn" id="21_b3i6i"]
+[ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="22_x6104"]
 
 [sub_resource type="Image" id="Image_liwpj"]
 data = {
@@ -98,3 +100,15 @@ position = Vector2(1294, 567)
 script = ExtResource("19_6nj1v")
 source = 3
 paint = SubResource("Image_y2lvl")
+
+[node name="Monsters" type="Node2D" parent="." unique_id=2086146663]
+
+[node name="LittleSoldier" type="Node2D" parent="Monsters" unique_id=1598779156 groups=["map_monster"] instance=ExtResource("21_b3i6i")]
+process_priority = 100
+z_index = 1000
+position = Vector2(792.0037, 263.00195)
+scale = Vector2(0.79999995, 0.79999995)
+script = ExtResource("22_x6104")
+kind = 1
+display_name = "小兵"
+editor_id = "monster-11787986-1"

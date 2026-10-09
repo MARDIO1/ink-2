@@ -54,8 +54,12 @@ grow_vertical = 2
 layout_mode = 2
 
 [node name="Scroll" type="ScrollContainer" parent="Center/Panel"]
-custom_minimum_size = Vector2(380, 340)
+custom_minimum_size = Vector2(440, 480)
 layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+scroll_deadzone = 0
+tooltip_text = "滚动鼠标滚轮查看全部关卡"
 
 [node name="List" type="VBoxContainer" parent="Center/Panel/Scroll"]
 layout_mode = 2

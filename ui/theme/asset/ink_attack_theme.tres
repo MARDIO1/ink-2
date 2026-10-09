@@ -1,4 +1,6 @@
-[gd_resource type="Theme" format=3 uid="uid://co31d2rha8qdp"]
+[gd_resource type="Theme" load_steps=17 format=3 uid="uid://co31d2rha8qdp"]
+
+[ext_resource type="Font" path="res://ui/theme/asset/ipix_ui_font.tres" id="1_ipix"]
 
 [sub_resource type="StyleBoxFlat" id="Disabled"]
 content_margin_left = 12.0
@@ -138,14 +140,39 @@ shadow_color = Color(0.0352941, 0.0313726, 0.0235294, 0.5)
 shadow_size = 2
 shadow_offset = Vector2(3, 3)
 
-[sub_resource type="SystemFont" id="UIFont"]
-font_names = PackedStringArray("Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "SimHei")
-font_weight = 700
-subpixel_positioning = 0
+[sub_resource type="StyleBoxFlat" id="MenuActionNormal"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.231373, 0.219608, 0.192157, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+
+[sub_resource type="StyleBoxFlat" id="MenuActionHover"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.231373, 0.219608, 0.192157, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+expand_margin_left = 3.0
+expand_margin_top = 3.0
+expand_margin_right = 3.0
+expand_margin_bottom = 3.0
+
+[sub_resource type="StyleBoxEmpty" id="MenuActionFocus"]
 
 [resource]
-default_font = SubResource("UIFont")
-default_font_size = 16
+default_font = ExtResource("1_ipix")
+default_font_size = 14
 AccentLabel/base_type = &"Label"
 AccentLabel/colors/font_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 AccentLabel/font_sizes/font_size = 14
@@ -158,7 +185,7 @@ Button/colors/icon_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
 Button/colors/icon_normal_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 Button/colors/icon_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
 Button/constants/icon_max_width = 28
-Button/font_sizes/font_size = 16
+Button/font_sizes/font_size = 14
 Button/styles/disabled = SubResource("Disabled")
 Button/styles/focus = SubResource("Focus")
 Button/styles/hover = SubResource("ButtonHover")
@@ -177,15 +204,28 @@ InkMeter/base_type = &"ProgressBar"
 InkMeter/styles/background = SubResource("MeterBackground")
 InkMeter/styles/fill = SubResource("MeterFill")
 Label/colors/font_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
-Label/font_sizes/font_size = 16
+Label/font_sizes/font_size = 14
 LineEdit/colors/caret_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 LineEdit/colors/font_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 LineEdit/colors/selection_color = Color(0.25, 0.235294, 0.203922, 0.35)
 LineEdit/styles/focus = SubResource("Input")
 LineEdit/styles/normal = SubResource("Input")
+MenuActionButton/base_type = &"Button"
+MenuActionButton/colors/font_color = Color(0.968627, 0.952941, 0.854902, 1)
+MenuActionButton/colors/font_focus_color = Color(0.968627, 0.952941, 0.854902, 1)
+MenuActionButton/colors/font_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
+MenuActionButton/colors/font_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
+MenuActionButton/colors/icon_focus_color = Color(0.968627, 0.952941, 0.854902, 1)
+MenuActionButton/colors/icon_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
+MenuActionButton/colors/icon_normal_color = Color(0.968627, 0.952941, 0.854902, 1)
+MenuActionButton/colors/icon_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
+MenuActionButton/styles/focus = SubResource("MenuActionFocus")
+MenuActionButton/styles/hover = SubResource("MenuActionHover")
+MenuActionButton/styles/normal = SubResource("MenuActionNormal")
+MenuActionButton/styles/pressed = SubResource("MenuActionHover")
 MutedLabel/base_type = &"Label"
 MutedLabel/colors/font_color = Color(0.25, 0.235294, 0.203922, 1)
-MutedLabel/font_sizes/font_size = 13
+MutedLabel/font_sizes/font_size = 14
 OverlayPanel/base_type = &"PanelContainer"
 OverlayPanel/styles/panel = SubResource("Overlay")
 PanelContainer/styles/panel = SubResource("Panel")

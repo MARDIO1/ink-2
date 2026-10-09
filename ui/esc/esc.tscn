@@ -1,13 +1,13 @@
 [gd_scene load_steps=5 format=3]
 
-[ext_resource type="Texture2D" path="res://ui/esc/asset/icon_play.svg" id="1_play"]
-[ext_resource type="Texture2D" path="res://ui/esc/asset/exit.tres" id="2_exit"]
+[ext_resource type="Texture2D" path="res://ui/menu/asset/icon_play.svg" id="1_play"]
+[ext_resource type="Texture2D" path="res://ui/menu/asset/icon_exit.svg" id="2_exit"]
 [ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="3_theme"]
 [ext_resource type="Script" path="res://ui/esc/src/esc.gd" id="4_script"]
 
 [node name="Esc" type="CanvasLayer"]
 process_mode = 3
-layer = 20
+layer = 21
 script = ExtResource("4_script")
 
 [node name="Dim" type="ColorRect" parent="."]
@@ -45,24 +45,25 @@ text = "INK ATTACK"
 horizontal_alignment = 1
 
 [node name="ContinueButton" type="Button" parent="Center/Panel/Buttons"]
-custom_minimum_size = Vector2(0, 54)
+custom_minimum_size = Vector2(0, 58)
 layout_mode = 2
-theme_type_variation = &"PrimaryButton"
+theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
 text = "继续"
 icon = ExtResource("1_play")
 expand_icon = true
 
 [node name="MenuButton" type="Button" parent="Center/Panel/Buttons"]
-custom_minimum_size = Vector2(0, 54)
+custom_minimum_size = Vector2(0, 58)
 layout_mode = 2
+theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
 text = "回主菜单"
 
 [node name="QuitButton" type="Button" parent="Center/Panel/Buttons"]
-custom_minimum_size = Vector2(0, 54)
+custom_minimum_size = Vector2(0, 58)
 layout_mode = 2
-theme_type_variation = &"DangerButton"
+theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
 text = "退出"
 icon = ExtResource("2_exit")
