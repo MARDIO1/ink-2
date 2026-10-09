@@ -25,10 +25,13 @@ extends Sprite2D
 ## 现在分四步（见 _build_container）：
 ##   ① 从四边泛洪出"外面"（只走透明像素）；
 ##   ② "被围住的透明像素" = 里面那些；
-##   ③ 取②里**最大连通分量**的外接框 —— 这一步是为了**排除头/瓶盖**：
-##      头部的线稿空腔和身体是连着的，不框住的话墨水会灌进脑袋；
+##   ③ 取②里**与材质 5（瓶身填充）重叠最多**的连通分量的外接框 —— 外接框是为了
+##      **排除头/瓶盖**：头部的线稿空腔和身体是连着的，不框住的话墨水会灌进脑袋；
+##      ⚠️⚠️ 以前比的是**面积最大**，那会跟着美术走：实测最大的那圈是瓶壁与身体轮廓之间的
+##      「框」，真正的瓶身内部反而排第二 —— 症状是墨水只画在瓶子两侧的细条上，瓶身中间空着；
 ##   ④ 框内所有"不是外面"的格子都算容器 —— 于是不透明的身体块被并进来，
 ##      得到一个**没有洞的实心瓶身**（PBF 的 solidMask 支持任意形状，见引擎侧说明）。
+##      可画区域 = 框内**属于③那个分量**的格子（见 _draw）。
 ##
 ## ## 边界：墨水不进物理像素
 ##
@@ -44,12 +47,21 @@ extends Sprite2D
 ##    所以按 mass_quantum 量化，只在液面变化超过阈值时才重算 —— 不是每帧。
 
 const FluidPBF := preload("res://addons/pixel_destruction/fluid/fluid_pbf.gd")
+const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 
 @export_group("来源")
 ## 玩家物理节点（持有 PBody 的那个）。
 @export var body_path := NodePath("..")
 ## 剪影来源：抄它的贴图 / offset / 变换，不重新烘焙。
 @export var mask_path := NodePath("../Visual")
+## 剪影里「瓶身填充」的材质号 —— **墨水的可画区域就是它**（见 _fill_mask）。
+##
+## ⚠️⚠️ 别再回到「面积最大的被围空腔」那个判据：它**跟着美术走**。实测（2026-10-09 的角色美术）
+##    最大的那圈是**瓶壁与身体轮廓之间的「框」**（1436 px），真正的瓶身内部反而排第二
+##    （1248 px）—— 于是 _draw 选中的是框，墨水只画在瓶子两侧各一格宽的细条上，瓶身中间
+##    一滴都不画（就是「流体 mask 不对」）。材质 5 是美术**显式画出来**的瓶身填充，
+##    换线稿 / 重烤角色都不会翻车。
+@export var fill_material := 5
 ## 像素世界节点：取重力方向，并用于重算质量。
 @export var world_path := NodePath("../../")
 ## 墨水生命值节点：液面比例每帧从它的 ratio() 读，本图层不自己存 fill。
@@ -156,6 +168,8 @@ var _container := PackedByteArray()
 ##   · 渲染要的是"不盖住线稿"：那些格子**不该出墨水**，否则脸会被淹掉
 ##     （线稿虽然画在上面能挡住，但墨水会从线稿**边缘**糊出来一圈）。
 ## 甜甜圈形状的容器同理：中间的洞在模拟里连通、在画面上留空。
+## 判据 = 格里有**③选中的那个分量**的像素（= 材质 5 围出来的瓶身内部），
+## 所以眼睛/嘴这类**别的**被围空腔照旧不出墨水，而瓶身内部照旧画满。
 var _draw := PackedByteArray()
 ## 烘出来的图（每帧重填）
 var _img: Image = null
@@ -320,8 +334,8 @@ func _build_container(src_tex: Texture2D) -> void:
 		if py + 1 < h:
 			_push_out(outside, stack, rgba, p + w)
 
-	# ①.5 渲染掩码（**原生分辨率**）—— 见 _build_render_mask 的说明
-	var rmask := _build_render_mask(rgba, outside, w, h)
+	# ①.5 瓶身填充（材质 5）—— ③ 与 ④ 的判据，见 _fill_mask
+	var fill := _fill_mask(w, h)
 
 	# ② 被围住的**透明**像素（老 _build_interior 的那一步）
 	var cavity := PackedByteArray()
@@ -330,19 +344,27 @@ func _build_container(src_tex: Texture2D) -> void:
 		if outside[i] == 0 and rgba[i * 4 + 3] == 0:
 			cavity[i] = 1
 
-	# ③ 取最大连通分量的外接框 —— 用来**排除头和瓶盖**（它们的空腔和身体是连着的）
-	var seen := PackedByteArray()
-	seen.resize(n)
+	# ③ 选「瓶身内部」那个连通分量：**与材质 5 重叠最多**的，回退才是面积最大
+	#    外接框同时用来**排除头和瓶盖** —— 它们的空腔和身体是连着的，不框住墨水会灌进脑袋。
+	# ⚠️⚠️ 判据不能只比面积：实测最大的那圈是瓶壁与身体轮廓之间的「框」（1436 px），
+	#    真正的瓶身内部（材质 5 那一片）反而排第二（1248 px）。见 fill_material 的说明。
+	var comp := PackedInt32Array()
+	comp.resize(n)
+	comp.fill(-1)
+	var best := -1
+	var best_fill := 0
 	var best_area := 0
 	var lo := Vector2i(1 << 30, 1 << 30)
 	var hi := Vector2i(-(1 << 30), -(1 << 30))
+	var cid := 0
 	for i in n:
-		if cavity[i] == 0 or seen[i] != 0:
+		if cavity[i] == 0 or comp[i] >= 0:
 			continue
-		seen[i] = 1
+		comp[i] = cid
 		stack.clear()
 		stack.append(i)
 		var area := 0
+		var hits := 0
 		var clo := Vector2i(1 << 30, 1 << 30)
 		var chi := Vector2i(-(1 << 30), -(1 << 30))
 		while not stack.is_empty():
@@ -352,6 +374,8 @@ func _build_container(src_tex: Texture2D) -> void:
 			var px := p % w
 			var py := p / w
 			area += 1
+			if fill[p] != 0:
+				hits += 1
 			clo.x = mini(clo.x, px); clo.y = mini(clo.y, py)
 			chi.x = maxi(chi.x, px); chi.y = maxi(chi.y, py)
 			for off: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
@@ -360,15 +384,18 @@ func _build_container(src_tex: Texture2D) -> void:
 				if nx < 0 or nx >= w or ny < 0 or ny >= h:
 					continue
 				var q := ny * w + nx
-				if cavity[q] == 0 or seen[q] != 0:
+				if cavity[q] == 0 or comp[q] >= 0:
 					continue
-				seen[q] = 1
+				comp[q] = cid
 				stack.append(q)
-		if area > best_area:
+		if hits > best_fill or (hits == best_fill and area > best_area):
+			best_fill = hits
 			best_area = area
+			best = cid
 			lo = clo
 			hi = chi
-	if best_area == 0:
+		cid += 1
+	if best < 0:
 		push_warning("BottledInk：剪影里没有被围住的空腔，墨水层不启用。")
 		return
 
@@ -395,8 +422,7 @@ func _build_container(src_tex: Texture2D) -> void:
 	for gy in _gh:
 		for gx in _gw:
 			var inside := 0
-			var clear := 0
-			var reach := 0
+			var owned := 0
 			var total := 0
 			for sy in cell_px:
 				var yy := lo.y + gy * cell_px + sy
@@ -409,16 +435,15 @@ func _build_container(src_tex: Texture2D) -> void:
 					total += 1
 					if outside[yy * w + xx] == 0:
 						inside += 1
-					if rgba[(yy * w + xx) * 4 + 3] == 0:
-						clear += 1
-					if rmask[yy * w + xx] != 0:
-						reach += 1
+					if comp[yy * w + xx] == best:
+						owned += 1
 			# 并集：任意一个源像素在容器里，整格就是容器 —— 见上面④的说明
 			var is_container := total > 0 and inside > 0
 			_container[gy * _gw + gx] = 1 if is_container else 0
 			# 模拟掩码管"能不能流过去"，这张管"画不画" —— 见 _draw 的说明。
-			# 取并集：只要格里有透明像素就允许出墨水，墨水于是能贴到瓶壁下面。
-			_draw[gy * _gw + gx] = 1 if (is_container and reach > 0) else 0
+			# 取并集：只要格里有**瓶身内部**（③那个分量）的像素就允许出墨水，
+			# 墨水于是能贴到瓶壁下面，而眼睛这类**别的空腔**照旧排除。
+			_draw[gy * _gw + gx] = 1 if (is_container and owned > 0) else 0
 
 	# ⑤ 脸部留空 —— 见 face_rect 的说明
 	_carve_face(lo)
@@ -456,109 +481,51 @@ func _push_out(reached: PackedByteArray, stack: PackedInt32Array,
 	stack.append(idx)
 
 
-## 渲染掩码 —— **在原生分辨率（源像素）上算**，不是格子。
+## 材质 5（瓶身填充）在**剪影贴图坐标系**里的掩码。1 = 该像素是瓶身填充。
 ##
-## ⚠️⚠️ 为什么必须是原生分辨率：cell_px=2 时一像素粗的线稿只盖住**半格**。
-##    在格子空间里它既不能算"挡住"（判"整格透明"会把瓶身中段整片挡掉），
-##    也不能算"不挡"（判"有透明像素就算"则眼睛内部照漏）。**线稿能当障碍这件事，
-##    只在原生分辨率上成立。**
-##
-## 两步走（顺序是契约）：
-##   ① 从**图像四边**泛洪**不透明**像素 —— 得到"和画面外沿连着的线稿"：
-##      瓶身外轮廓 + 瓶壁 + 肩线 + 瓶盖（这些都连得到）。
-##      **脸的眼睛和嘴连不到** —— 它们是瓶身内部的孤岛。
-##   ② 从"紧挨着①的那些透明像素"泛洪**透明**像素 —— 得到可出墨水的区域。
-##      因为种子来自①，脸周围的透明像素会被填到，而**线稿围起来的空腔**
-##      （眼睛内部）没有种子，永远走不到 -> 不出墨水。
-## ⚠️ 反过来做（只从容器外沿找透明种子）是不行的：瓶壁是不透明的，
-##    瓶身内部的透明像素挨不到"外面"，一个种子都没有。
-func _build_render_mask(rgba: PackedByteArray, outside: PackedByteArray,
-		w: int, h: int) -> PackedByteArray:
-	var wall := PackedByteArray()
-	wall.resize(w * h)
-	var stack := PackedInt32Array()
-	for x in w:
-		_push_opaque(rgba, wall, stack, x)
-		_push_opaque(rgba, wall, stack, (h - 1) * w + x)
-	for y in h:
-		_push_opaque(rgba, wall, stack, y * w)
-		_push_opaque(rgba, wall, stack, y * w + w - 1)
-	while not stack.is_empty():
-		var sp := stack.size() - 1
-		var p := stack[sp]
-		stack.resize(sp)
-		var px := p % w
-		var py := p / w
-		if px > 0:
-			_push_opaque(rgba, wall, stack, p - 1)
-		if px + 1 < w:
-			_push_opaque(rgba, wall, stack, p + 1)
-		if py > 0:
-			_push_opaque(rgba, wall, stack, p - w)
-		if py + 1 < h:
-			_push_opaque(rgba, wall, stack, p + w)
-	var m := PackedByteArray()
-	m.resize(w * h)
-	stack.clear()
-	# 种子：透明像素，且四邻里有一个"①的线稿"或"外面"。
-	#
-	# ⚠️⚠️ 两条缺一不可，各管一半：
-	#    · **挨着线稿**：瓶身下半段的透明像素在瓶壁**后面**，挨不到"外面" ——
-	#      只有靠这条才能起头。
-	#    · **挨着外面**：瓶子的颈部（瓶盖线和肩线之间那一段）在贴图里
-	#      **两边根本没有线稿**（瓶壁到那里断了），不靠这条就一个种子都没有 ——
-	#      症状是"可画 410 格"而中间 15 行整片空着。
-	#    · 眼睛内部两条都不占（围它的线稿既没连到画面外沿、也不挨着外面）-> 走不到 ✓
-	for p in w * h:
-		if rgba[p * 4 + 3] != 0:
+## ⚠️⚠️ 为什么必须回到形状的 mat 数组：剪影贴图是**调色板烘出来的**，材质 0（没画）与
+##    材质 5（瓶身填充）在它上面**都是 alpha 0** —— 从贴图上根本分不出来（见 test/probe_face_mat.gd）。
+##    而「瓶身内部在哪」是**美术事实**，只能由美术显式标出来 —— 就是材质 5。
+func _fill_mask(w: int, h: int) -> PackedByteArray:
+	var out := PackedByteArray()
+	out.resize(w * h)
+	if fill_material < 0 or _mask == null or not _mask.has_method("_collect"):
+		return out
+	var shapes: Array = _mask.call("_collect")
+	if shapes.is_empty():
+		return out
+	# 贴图空间 = 形状并集的外接框（与 pixel_sprite_2d.rebuild() 同一套换算）
+	var box := Rect2i()
+	var first := true
+	for s in shapes:
+		var b: Rect2i = s.local_aabb()
+		if b.size.x <= 0:
 			continue
-		var px2 := p % w
-		var py2 := p / w
-		var seed := false
-		if px2 > 0:
-			seed = wall[p - 1] != 0 or outside[p - 1] != 0
-		if not seed and px2 + 1 < w:
-			seed = wall[p + 1] != 0 or outside[p + 1] != 0
-		if not seed and py2 > 0:
-			seed = wall[p - w] != 0 or outside[p - w] != 0
-		if not seed and py2 + 1 < h:
-			seed = wall[p + w] != 0 or outside[p + w] != 0
-		if seed:
-			_push_clear(rgba, m, stack, p)
-	while not stack.is_empty():
-		var sp2 := stack.size() - 1
-		var q := stack[sp2]
-		stack.resize(sp2)
-		var qx := q % w
-		var qy := q / w
-		if qx > 0:
-			_push_clear(rgba, m, stack, q - 1)
-		if qx + 1 < w:
-			_push_clear(rgba, m, stack, q + 1)
-		if qy > 0:
-			_push_clear(rgba, m, stack, q - w)
-		if qy + 1 < h:
-			_push_clear(rgba, m, stack, q + w)
-	return m
+		box = b if first else box.merge(b)
+		first = false
+	if first:
+		return out
+	for s in shapes:
+		for k: int in s.chunks:
+			var c = s.chunks[k]
+			var bx := (PixelShape.key_x(k) << 3) - box.position.x
+			var by := (PixelShape.key_y(k) << 3) - box.position.y
+			var bits: int = c.occ
+			while bits != 0:
+				# ⚠️ 不用 Bits.first_bit_index —— 那个单例不在本工程的全局作用域里（见 probe_face_mat.gd）
+				var i := 0
+				var probe := bits
+				while (probe & 1) == 0:
+					probe >>= 1
+					i += 1
+				bits &= bits - 1
+				var gx := bx + (i & 7)
+				var gy := by + (i >> 3)
+				if gx >= 0 and gx < w and gy >= 0 and gy < h and int(c.mat[i]) == fill_material:
+					out[gy * w + gx] = 1
+	return out
 
-
-func _push_opaque(rgba: PackedByteArray, seen: PackedByteArray,
-		stack: PackedInt32Array, p: int) -> void:
-	if seen[p] != 0 or rgba[p * 4 + 3] == 0:
-		return
-	seen[p] = 1
-	stack.append(p)
-
-
-func _push_clear(rgba: PackedByteArray, m: PackedByteArray,
-		stack: PackedInt32Array, p: int) -> void:
-	if m[p] != 0 or rgba[p * 4 + 3] != 0:
-		return
-	m[p] = 1
-	stack.append(p)
-
-
-## 把脸部矩形从 _draw 里挖掉（手动后备：`face_rect` 默认是空矩形 = 关，正常由 `_build_render_mask` 自动挡）。
+## 把脸部矩形从 _draw 里挖掉（手动后备：`face_rect` 默认是空矩形 = 关，正常由材质 5 的判据自动挡）。
 ## **只影响渲染**，_container（模拟）一个字都不动。
 func _carve_face(lo: Vector2i) -> void:
 	if face_rect.size.x <= 0 or face_rect.size.y <= 0:
