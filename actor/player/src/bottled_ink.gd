@@ -25,14 +25,15 @@ extends Sprite2D
 ## 现在分四步（见 _build_container）：
 ##   ① 从四边泛洪出"外面"（只走透明像素）；
 ##   ② "被围住的透明像素" = 里面那些；
-##   ③ 取②里**面积最大**的连通分量的外接框 —— 实测它就是整个瓶身内部（颈→肩→瓶肚→瓶底），
-##      外接框正好把瓶盖/瓶顶那圈空腔挡在外面；**可画**再并上框内其它够大的空腔
-##      （瓶肚被它自己的线稿圈成第二个空腔），眼睛那种小岛不算 —— 见 CAVITY_MIN_SHARE；
-##      ⚠️⚠️ 试过把域改成"与材质 5（瓶身填充）重叠最多"，**是错的**：材质 5 只覆盖**瓶肚**
-##      那一块（脸上那片），域会缩到脸上，位置整个错掉；
+##   ③ 取②里**面积最大**的连通分量的外接框 —— 实测它就是整个瓶身内部的**外圈**
+##      （颈→肩→两侧→瓶底），外接框正好把瓶盖/瓶顶那圈空腔挡在外面；
+##      ⚠️⚠️ **瓶肚不画**（用户口径：墨水不该出现在瓶肚/脸那一片）。瓶肚是被它自己的线稿
+##      圈出来的**第二个**空腔（实测 1248 px ≈ 最大者的 87%），既不是域、也不进可画；
+##      ⚠️⚠️ 也试过把域改成"与材质 5（瓶身填充）重叠最多"，**是错的**：材质 5 只覆盖瓶肚，
+##      域会缩到脸上，位置整个错掉；
 ##   ④ 框内所有"不是外面"的格子都算容器 —— 于是不透明的身体块被并进来，
 ##      得到一个**没有洞的实心瓶身**（PBF 的 solidMask 支持任意形状，见引擎侧说明）。
-##      可画区域 = 框内**属于③收下的那些分量**的格子（见 _draw）。
+##      可画区域 = 框内**属于③那个分量**的格子（见 _draw）。
 ##
 ## ## 边界：墨水不进物理像素
 ##
@@ -48,9 +49,6 @@ extends Sprite2D
 ##    所以按 mass_quantum 量化，只在液面变化超过阈值时才重算 —— 不是每帧。
 
 const FluidPBF := preload("res://addons/pixel_destruction/fluid/fluid_pbf.gd")
-## 可画空腔的**最小面积占比**（相对最大的那个空腔）。见 _build_container 的 ③。
-## ⚠️ 它不是"调参旋钮"而是判据的一部分：瓶肚是第二个空腔（实测 87%），眼睛是 2%。
-const CAVITY_MIN_SHARE := 0.1
 
 @export_group("来源")
 ## 玩家物理节点（持有 PBody 的那个）。
@@ -165,8 +163,7 @@ var _container := PackedByteArray()
 ##   · 渲染要的是"不盖住线稿"：那些格子**不该出墨水**，否则脸会被淹掉
 ##     （线稿虽然画在上面能挡住，但墨水会从线稿**边缘**糊出来一圈）。
 ## 甜甜圈形状的容器同理：中间的洞在模拟里连通、在画面上留空。
-## 判据 = 格里有**③收下的那些分量**的像素（瓶身内部 + 瓶肚，见 CAVITY_MIN_SHARE），
-## 所以眼睛这类**小**被围空腔照旧不出墨水，而瓶肚照旧画满。
+## 判据 = 格里有**③那个分量**（瓶身外圈）的像素 —— 瓶肚是另一个空腔，照旧不画。
 var _draw := PackedByteArray()
 ## 烘出来的图（每帧重填）
 var _img: Image = null
@@ -357,17 +354,19 @@ func _build_container(src_tex: Texture2D) -> void:
 		if outside[i] == 0 and rgba[i * 4 + 3] == 0:
 			cavity[i] = 1
 
-	# ③ 被围空腔的连通分量。**域**取**面积最大**的那个 —— 实测它就是整个瓶身内部
-	#    （颈→肩→瓶肚→瓶底），外接框正好把瓶盖/瓶顶那圈空腔挡在外面。
-	# ⚠️⚠️ 别把域改成"与材质 5（瓶身填充）重叠最多"（试过，错的）：材质 5 只覆盖**瓶肚**
-	#    那一块（脸上那片），域会缩到脸上、位置整个错掉。
-	# ⚠️ 也**别**以为"最大的那圈是瓶壁与身体轮廓之间的框"：那其实是把瓶肚自己的线稿
-	#    圈出来的第二个空腔，当成"外面的世界"了 —— 瓶肚照旧要画（见下面 owned）。
+	# ③ 被围空腔的连通分量。**域与可画都只取面积最大的那个** —— 实测它就是整个瓶身内部的
+	#    **外圈**（颈→肩→两侧→瓶底），外接框正好把瓶盖/瓶顶那圈空腔挡在外面。
+	# ⚠️⚠️ **瓶肚不画**：它是被自己的线稿圈出来的**第二个**空腔（实测 1248 px ≈ 最大者的
+	#    87%），墨水不该出现在瓶肚/脸那一片（用户口径）。
+	# ⚠️ 也**别**把域改成"与材质 5（瓶身填充）重叠最多"（试过，错的）：材质 5 只覆盖瓶肚，
+	#    域会缩到脸上、位置整个错掉。
 	var comp := PackedInt32Array()
 	comp.resize(n)
 	comp.fill(-1)
-	var areas: Array[int] = []
-	var boxes: Array[Rect2i] = []
+	var best := -1
+	var best_area := 0
+	var lo := Vector2i(1 << 30, 1 << 30)
+	var hi := Vector2i(-(1 << 30), -(1 << 30))
 	var cid := 0
 	for i in n:
 		if cavity[i] == 0 or comp[i] >= 0:
@@ -397,30 +396,15 @@ func _build_container(src_tex: Texture2D) -> void:
 					continue
 				comp[q] = cid
 				stack.append(q)
-		areas.append(area)
-		boxes.append(Rect2i(clo, chi - clo + Vector2i.ONE))
+		if area > best_area:
+			best_area = area
+			best = cid
+			lo = clo
+			hi = chi
 		cid += 1
-	if cid == 0:
+	if best < 0:
 		push_warning("BottledInk：剪影里没有被围住的空腔，墨水层不启用。")
 		return
-	var best := 0
-	for i in cid:
-		if areas[i] > areas[best]:
-			best = i
-	var lo := boxes[best].position
-	var hi := boxes[best].end - Vector2i.ONE
-	# 可画 = 域外接框**内**那些够大的分量：瓶肚（1248 px ≈ 最大者的 87%）要收，
-	# 眼睛那种小岛（31 px ≈ 2%）要挡。⚠️ 判据用**比例**而不是绝对像素数，
-	# 换美术尺寸时才不会失效。
-	var owned := PackedByteArray()
-	owned.resize(n)
-	var min_area := int(float(areas[best]) * CAVITY_MIN_SHARE)
-	for i in n:
-		var ci := comp[i]
-		if ci < 0:
-			continue
-		if ci == best or (areas[ci] >= min_area and boxes[best].encloses(boxes[ci])):
-			owned[i] = 1
 
 	# ④ 框内所有"不是外面"的格子 —— 不透明的身体块由此并进来，容器变成无洞的实心瓶身
 	#    按 cell_px 降采样：一格里有**任意一个**源像素属于容器，整格就算容器（并集）。
@@ -445,7 +429,7 @@ func _build_container(src_tex: Texture2D) -> void:
 	for gy in _gh:
 		for gx in _gw:
 			var inside := 0
-			var n_owned := 0
+			var owned := 0
 			var total := 0
 			for sy in cell_px:
 				var yy := lo.y + gy * cell_px + sy
@@ -458,15 +442,15 @@ func _build_container(src_tex: Texture2D) -> void:
 					total += 1
 					if outside[yy * w + xx] == 0:
 						inside += 1
-					if owned[yy * w + xx] != 0:
-						n_owned += 1
+					if comp[yy * w + xx] == best:
+						owned += 1
 			# 并集：任意一个源像素在容器里，整格就是容器 —— 见上面④的说明
 			var is_container := total > 0 and inside > 0
 			_container[gy * _gw + gx] = 1 if is_container else 0
 			# 模拟掩码管"能不能流过去"，这张管"画不画" —— 见 _draw 的说明。
-			# 取并集：只要格里有③收下的那些分量（瓶身内部 + 瓶肚）的像素就允许出墨水，
-			# 墨水于是能贴到瓶壁下面，而眼睛这类**小空腔**照旧排除。
-			_draw[gy * _gw + gx] = 1 if (is_container and n_owned > 0) else 0
+			# 取并集：只要格里有③那个分量（瓶身外圈）的像素就允许出墨水 —— 墨水于是能
+			# 贴到瓶壁下面；瓶肚是另一个空腔，照旧不出墨水。
+			_draw[gy * _gw + gx] = 1 if (is_container and owned > 0) else 0
 
 	# ⑤ 脸部留空 —— 见 face_rect 的说明
 	_carve_face(lo)
