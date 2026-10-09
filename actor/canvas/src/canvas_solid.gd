@@ -73,6 +73,10 @@ func _remove_overlaps(shape, surface, bodies: Array) -> int:
 	var removed: int = 0
 	var canvas_rect: Rect2 = Rect2(surface.global_position, Vector2(surface.canvas_size))
 	for body in bodies:
+		# 玩家、手和小怪只是暂时站在画布上，不是关卡固体的一部分。
+		# 若在这里按重叠挖洞，固化时会把整块墨水切成碎片。
+		if body == null or body.tags.has(LIVING_TAG):
+			continue
 		var overlap: Rect2 = body.aabb.intersection(canvas_rect)
 		if overlap.size.x <= 0.0 or overlap.size.y <= 0.0:
 			continue
@@ -196,6 +200,70 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 	surface.refresh()
 	print("RESTORE bodies=%d pixels=%d fragments=%d kept=%s" % [
 		targets.size(), pixels, fragments, str(keep_bodies)])
+
+
+## 把框内的固化像素采样回画布并从世界实体中摘除。
+## 与完整“返回画布”不同，这里保留钉子材质，供框删撤销时精确恢复到画布。
+func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
+	if world == null or surface == null or local_rect.size.x <= 0 or local_rect.size.y <= 0:
+		return 0
+	var clipped := local_rect.intersection(Rect2i(Vector2i.ZERO, surface.canvas_size))
+	if clipped.size.x <= 0 or clipped.size.y <= 0:
+		return 0
+	var world_rect := Rect2(surface.to_global(Vector2(clipped.position)), Vector2(clipped.size))
+	var targets: Array = []
+	for child in world.get_children():
+		if not child is PixelBody2D:
+			continue
+		var body = child.get("body")
+		if body == null or body.tags.has(LIVING_TAG):
+			continue
+		if body.aabb.intersects(world_rect):
+			targets.append(child)
+	var removed := 0
+	for node in targets:
+		var body = node.get("body")
+		var plan: Dictionary = {}
+		var anchors: Dictionary = {}
+		removed += _sample_body_rect(surface, body, clipped, plan, anchors)
+		if plan.is_empty():
+			continue
+		var result: Dictionary = world.fracture_pixels_and_sync(body, plan, 0.0, false, anchors)
+		_free_nails(world, body)
+		if not result.body_alive and is_instance_valid(node):
+			node.queue_free()
+	return removed
+
+
+func _sample_body_rect(surface, body, local_rect: Rect2i, plan: Dictionary,
+		anchors: Dictionary) -> int:
+	var sampled := 0
+	for shape in body.shapes:
+		var rect: Rect2i = shape.local_aabb()
+		for y in range(rect.position.y, rect.end.y):
+			for x in range(rect.position.x, rect.end.x):
+				var material: int = shape.get_pixel(x, y)
+				if material == 0:
+					continue
+				var shape_pixel := Vector2i(x, y)
+				if material == InkPalette.nail_material_id():
+					if not anchors.has(shape):
+						anchors[shape] = {}
+					anchors[shape][shape_pixel] = true
+				var world_point: Vector2 = body.to_world(Vector2(x + 0.5, y + 0.5))
+				var local: Vector2 = surface.to_local(world_point)
+				var target := Vector2i((local - Vector2(0.5, 0.5)).round())
+				if not local_rect.has_point(target):
+					continue
+				if not plan.has(shape):
+					plan[shape] = {}
+				plan[shape][shape_pixel] = true
+				var color: Color = surface.nail_color() if material == InkPalette.nail_material_id() \
+					else InkPalette.color_for_material_id(material)
+				if color.a > 0.0:
+					surface.write_pixel(target, color)
+				sampled += 1
+	return sampled
 
 
 ## 删掉挂在这个刚体上、锚点像素已经被摘掉的钉子外观。

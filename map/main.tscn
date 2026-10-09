@@ -67,6 +67,8 @@ rect_size = Vector2i(32, 32)
 [node name="Player" parent="." groups=["player"] unique_id=1427605215 instance=ExtResource("6_vthes")]
 position = Vector2(-128, 90)
 
+[node name="Monsters" type="Node2D" parent="."]
+
 [node name="debugHUD" parent="." instance=ExtResource("20_debughud")]
 
 [node name="CollisionDamage" type="Node" parent="." unique_id=1398976209]

@@ -14,6 +14,8 @@
 [ext_resource type="Texture2D" path="res://ui/asset/generate.tres" id="12_generate"]
 [ext_resource type="Texture2D" path="res://ui/asset/clear.tres" id="13_clear"]
 [ext_resource type="Texture2D" path="res://ui/asset/canvas_frame.tres" id="14_canvas_frame"]
+[ext_resource type="Script" path="res://actor/canvas/src/selection_overlay.gd" id="15_selection_overlay"]
+[ext_resource type="Texture2D" path="res://ui/asset/select_delete.tres" id="16_select_delete"]
 
 [sub_resource type="RectangleShape2D" id="CanvasBounds"]
 resource_local_to_scene = true
@@ -105,6 +107,10 @@ centered = false
 [node name="NailLayer" type="Node2D" parent="CanvasSurface" unique_id=1721133058]
 script = ExtResource("4_nail_script")
 
+[node name="SelectionOverlay" type="Node2D" parent="CanvasSurface"]
+z_index = 100
+script = ExtResource("15_selection_overlay")
+
 [node name="CanvasSolid" type="Node" parent="." unique_id=1762855216]
 script = ExtResource("3_solid")
 
@@ -138,7 +144,7 @@ anchors_preset = 0
 offset_left = -222.0
 offset_top = 116.0
 offset_right = -86.0
-offset_bottom = 396.0
+offset_bottom = 468.0
 theme = ExtResource("5_theme")
 
 [node name="Grid" type="GridContainer" parent="WorkbenchUI/Buttons" unique_id=1785751357]
@@ -232,6 +238,22 @@ button_group = SubResource("ToolButtonGroup")
 icon = ExtResource("10_fill")
 expand_icon = true
 
+[node name="SelectDelete" type="Button" parent="WorkbenchUI/Buttons/Grid"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+tooltip_text = "框选删除（8）\n拖拽矩形，同时删除未固化与已固化内容；Ctrl+Z 撤销"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 52
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconSelected")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+toggle_mode = true
+button_group = SubResource("ToolButtonGroup")
+icon = ExtResource("16_select_delete")
+expand_icon = true
+
 [node name="ReturnToCanvas" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=850868090]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
@@ -300,9 +322,9 @@ z_index = 100
 layout_mode = 3
 anchors_preset = 0
 offset_left = -222.0
-offset_top = 404.0
+offset_top = 476.0
 offset_right = -86.0
-offset_bottom = 428.0
+offset_bottom = 500.0
 
 [node name="PenSlider" type="HSlider" parent="WorkbenchUI/BrushPanel" unique_id=1648477528]
 layout_mode = 1
@@ -326,9 +348,9 @@ z_index = 100
 layout_mode = 3
 anchors_preset = 0
 offset_left = -222.0
-offset_top = 436.0
+offset_top = 508.0
 offset_right = -86.0
-offset_bottom = 492.0
+offset_bottom = 564.0
 theme = ExtResource("5_theme")
 
 [node name="Grid" type="GridContainer" parent="WorkbenchUI/ResizePanel"]

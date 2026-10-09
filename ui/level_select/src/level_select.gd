@@ -4,6 +4,9 @@ extends Control
 ## 判据是内容判据（不靠目录名）：场景状态里存在名为 `Player` 的节点。
 ## 地形件（一块烘好的静态图）没有 Player，自动被排除；创造模式 F5 存出来的新关卡
 ## （`debug/creative/src/creative.gd` 的 `map_path`）自动进列表，不用改这里。
+##
+## 列表由 ScrollContainer 承载：只允许纵向滚动，鼠标停在列表上时可直接滚轮浏览；
+## 所以导入更多地图后，下方按钮不会落在屏幕外而无法选择。
 
 const LEVEL_DIR := "res://map"
 const PLAYER_NODE := "Player"
@@ -13,9 +16,16 @@ const BUTTON_SIZE := Vector2(340, 46)
 signal level_chosen(path: String)
 
 @onready var list: VBoxContainer = $Center/Panel/Scroll/List
+@onready var scroll: ScrollContainer = $Center/Panel/Scroll
 
 
 func _ready() -> void:
+	# 不让横向内容意外挤出一个横向滚动条；纵向条在内容溢出时自动出现，
+	# ScrollContainer 原生处理鼠标滚轮和触控板滚动。
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.scroll_deadzone = 0
+	scroll.get_v_scroll_bar().focus_mode = Control.FOCUS_ALL
 	var paths := find_levels()
 	print("LEVELS: %s" % str(paths))
 	for path in paths:

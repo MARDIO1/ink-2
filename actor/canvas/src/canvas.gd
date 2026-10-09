@@ -2,6 +2,8 @@
 @tool
 extends Node2D
 
+signal tool_changed(tool: int)
+
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
 const InkPalette := preload("res://Ink/src/ink_palette.gd")
@@ -55,6 +57,7 @@ func _ready() -> void:
 	if not Engine.is_editor_hint():
 		_build_side_panel()
 		_bind_buttons()
+		surface.selection_delete_requested.connect(_delete_selection)
 		_apply_tool(surface.tool)
 #endregion
 
@@ -89,6 +92,51 @@ func generate() -> void:
 ## 画布范围内的实体重采样回墨水。
 func return_to_canvas() -> void:
 	solid.rasterize(surface, world)
+
+
+## 地图编辑模式清理已经整体掉出画布的固化墨水。
+## 原始 InkItem 由节点组识别；破坏产生的碎片没有节点，用 null 占位识别。
+## 静态地形、生物以及仍有任意部分碰到画布的实体都保留。
+func clear_solidified_bodies_outside_canvas() -> int:
+	if world == null or world.get("world") == null:
+		return 0
+	var physics = world.get("world")
+	world.realign_body_nodes()
+	var nodes_by_body: Dictionary = {}
+	for index in mini(world._body_nodes.size(), physics.bodies.size()):
+		var node = world._body_nodes[index]
+		if is_instance_valid(node):
+			nodes_by_body[physics.bodies[index]] = node
+	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
+	var removed: Array = []
+	for body in physics.bodies:
+		if body == null or body.is_static or body.tags.has("living"):
+			continue
+		var node = nodes_by_body.get(body)
+		var is_solidified_ink: bool = node == null or node.is_in_group("ink_item")
+		if is_solidified_ink and not body.aabb.intersects(canvas_rect):
+			removed.append(body)
+	if removed.is_empty():
+		return 0
+	for body in removed:
+		physics.remove_body(body)
+		var node = nodes_by_body.get(body)
+		if is_instance_valid(node):
+			node.queue_free()
+		for child in world.get_children():
+			if child is NailScript and child.get("body") == body:
+				child.queue_free()
+	world.sync_world_bodies()
+	return removed.size()
+
+
+## 未固化墨水与已固化实体一起框删，并合并成一个画布撤销步骤。
+func _delete_selection(rect: Rect2i) -> void:
+	surface._begin_undo_step()
+	solid.rasterize_rect(surface, world, rect)
+	surface.erase_rect(rect)
+	surface._commit_undo_step()
+	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 
 ## 保底 PNG：把世界里所有实心像素采样进画布 → 存一张透明 PNG → 把画布还原成空的。
@@ -402,6 +450,7 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("Shape").pressed.connect(_select_shape_tool)
 	tool_grid.get_node("Nail").pressed.connect(set_tool.bind(SurfaceScript.Tool.NAIL))
 	tool_grid.get_node("Bucket").pressed.connect(set_tool.bind(SurfaceScript.Tool.BUCKET))
+	tool_grid.get_node("SelectDelete").pressed.connect(set_tool.bind(SurfaceScript.Tool.SELECT_DELETE))
 	tool_grid.get_node("Redraw").pressed.connect(clear_canvas)
 	tool_grid.get_node("Generate").pressed.connect(generate)
 	tool_grid.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
@@ -476,7 +525,9 @@ func _apply_tool(tool: int) -> void:
 	)
 	tool_grid.get_node("Nail").set_pressed_no_signal(tool == SurfaceScript.Tool.NAIL)
 	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
+	tool_grid.get_node("SelectDelete").set_pressed_no_signal(tool == SurfaceScript.Tool.SELECT_DELETE)
 	_sync_hand_enabled(tool)
+	tool_changed.emit(tool)
 
 
 #滑块带格子（step = 2），值域就是奇数直径 1..17。
@@ -542,6 +593,8 @@ func _input(event: InputEvent) -> void:
 				set_tool(SurfaceScript.Tool.CIRCLE)
 			KEY_7:
 				set_tool(SurfaceScript.Tool.BUCKET)
+			KEY_8:
+				set_tool(SurfaceScript.Tool.SELECT_DELETE)
 			KEY_E:
 				generate()
 	#保存/读取走输入动作，别和上面的裸键 match 串成一个分支。

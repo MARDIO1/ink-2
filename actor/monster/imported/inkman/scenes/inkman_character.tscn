@@ -1,0 +1,96 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://actor/monster/imported/inkman/scripts/inkman_character.gd" id="1_character"]
+[ext_resource type="Script" path="res://actor/monster/imported/inkman/scripts/ink_fill.gd" id="3_fill"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/inkman/assets/effects/bottle_wobble_7f.png" id="4_bottle"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/inkman/assets/unified/face_common.png" id="5_face"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/inkman/assets/unified/hand_open.png" id="7_hand_open"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bottle_0"]
+atlas = ExtResource("4_bottle")
+region = Rect2(0, 0, 400, 400)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bottle_1"]
+atlas = ExtResource("4_bottle")
+region = Rect2(400, 0, 400, 400)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bottle_2"]
+atlas = ExtResource("4_bottle")
+region = Rect2(800, 0, 400, 400)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bottle_3"]
+atlas = ExtResource("4_bottle")
+region = Rect2(1200, 0, 400, 400)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bottle_4"]
+atlas = ExtResource("4_bottle")
+region = Rect2(1600, 0, 400, 400)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bottle_5"]
+atlas = ExtResource("4_bottle")
+region = Rect2(2000, 0, 400, 400)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bottle_6"]
+atlas = ExtResource("4_bottle")
+region = Rect2(2400, 0, 400, 400)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_bottle_wobble"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bottle_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bottle_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bottle_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bottle_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bottle_4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bottle_5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bottle_6")
+}],
+"loop": true,
+"name": &"boil",
+"speed": 3.3333333
+}]
+
+[node name="InkmanCharacter" type="Node2D"]
+script = ExtResource("1_character")
+
+[node name="Body" type="Node2D" parent="."]
+
+[node name="InkFill" type="Node2D" parent="Body"]
+z_index = 0
+script = ExtResource("3_fill")
+
+[node name="BottleShell" type="AnimatedSprite2D" parent="Body"]
+texture_filter = 1
+z_index = 2
+sprite_frames = SubResource("SpriteFrames_bottle_wobble")
+animation = &"boil"
+autoplay = "boil"
+
+[node name="Face" type="Sprite2D" parent="Body"]
+texture_filter = 1
+z_index = 3
+position = Vector2(0, 14)
+scale = Vector2(0.82, 0.82)
+texture = ExtResource("5_face")
+
+[node name="MouseHand" type="Sprite2D" parent="."]
+texture_filter = 1
+z_index = 10
+position = Vector2(245, -35)
+scale = Vector2(0.72, 0.72)
+texture = ExtResource("7_hand_open")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]

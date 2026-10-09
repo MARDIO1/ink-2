@@ -22,8 +22,14 @@ func _run() -> void:
 	root.add_child(game_ui)
 	await process_frame
 	var integrated_dialogue := game_ui.get_node_or_null("Dialogue") as DialogueBox
+	var integrated_esc := game_ui.get_node_or_null("Esc") as CanvasLayer
 	_check(integrated_dialogue != null, "GameUI 应装配 DialogueBox")
 	_check(integrated_dialogue.lines.size() == 3, "GameUI 中的对话框应加载默认台词")
+	_check(integrated_esc != null, "GameUI 应装配 ESC 菜单")
+	_check(integrated_esc.layer > integrated_dialogue.layer,
+		"ESC 菜单及压暗遮罩必须绘制在剧情框之上（ESC=%d，剧情=%d）" % [
+			integrated_esc.layer, integrated_dialogue.layer
+		])
 	game_ui.queue_free()
 	await process_frame
 
