@@ -239,6 +239,8 @@ func _enter() -> void:
 	if _body == null:
 		push_error("Creative: Player 还没烘焙出 body")
 		return
+	# 编辑模式也从正式出生点开始，避免沿用游玩时被推走/摔落后的位置。
+	_reset_player_to_spawn()
 	_saved_layer = _body.collision_layer
 	_saved_mask = _body.collision_mask
 	_saved_gravity = _body.gravity_scale
@@ -302,31 +304,41 @@ func _exit() -> void:
 	print("CREATIVE off")
 
 
-## 旧地图没有出生点时，以场景中 Player 的原始位置补建一个持久化标记。
+## 旧地图没有出生点时补建一个持久化标记；已有标记也始终校准到
+## 游玩模式可绘画画布的中心。
 func _ensure_spawn_point() -> Marker2D:
 	if is_instance_valid(_spawn_point):
-		_center_spawn_on_map_canvas(_spawn_point)
+		_center_spawn_on_play_canvas(_spawn_point)
 		return _spawn_point
 	var level := _level_root()
 	if level == null:
 		return null
 	_spawn_point = level.get_node_or_null(NodePath(String(PLAYER_SPAWN_NAME))) as Marker2D
 	if _spawn_point != null:
-		_center_spawn_on_map_canvas(_spawn_point)
+		_center_spawn_on_play_canvas(_spawn_point)
 		return _spawn_point
 	_spawn_point = Marker2D.new()
 	_spawn_point.name = PLAYER_SPAWN_NAME
 	level.add_child(_spawn_point)
-	_center_spawn_on_map_canvas(_spawn_point)
+	_center_spawn_on_play_canvas(_spawn_point)
 	_spawn_point.owner = level
 	return _spawn_point
 
 
-func _center_spawn_on_map_canvas(spawn: Marker2D) -> void:
+func _center_spawn_on_play_canvas(spawn: Marker2D) -> void:
 	if spawn == null:
 		return
-	if _map_canvas != null:
-		spawn.global_position = _map_canvas.to_global(Vector2(_map_canvas.canvas_size) * 0.5)
+	if _canvas != null:
+		var canvas_center: Vector2 = _canvas.to_global(Vector2(_canvas.canvas_size) * 0.5)
+		var player_body = _body if _body != null else (_player.get("body") if _player != null else null)
+		var local_bounds := Rect2()
+		var has_bounds := false
+		if player_body != null:
+			for shape in player_body.shapes:
+				var shape_rect := Rect2(shape.local_aabb())
+				local_bounds = local_bounds.merge(shape_rect) if has_bounds else shape_rect
+				has_bounds = true
+		spawn.global_position = canvas_center - (local_bounds.get_center() if has_bounds else Vector2.ZERO)
 	else:
 		spawn.global_position = _player.global_position if _player != null else Vector2.ZERO
 	spawn.global_rotation = 0.0
@@ -346,9 +358,31 @@ func _reset_player_to_spawn() -> void:
 	_body.control_torque = 0.0
 	_body.refresh_com()
 	_body.update_aabb()
+	_ensure_spawn_floor_pixels()
 	var hand: Node = _player.get_node_or_null(^"Arm/Hand/HandControl")
 	if hand != null and hand.has_method("reset_after_player_teleport"):
 		hand.reset_after_player_teleport()
+
+
+## 在出生角色脚下铺一小段地图墨水。编辑态先保留在大画布像素层，F2 退出时
+## 现有保存流程会将它固化为真实碰撞体，因此游玩开始时脚下必定有支撑。
+func _ensure_spawn_floor_pixels() -> void:
+	if _map_canvas == null or _body == null:
+		return
+	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
+	if surface == null:
+		return
+	var half_width := maxi(12, ceili(_body.aabb.size.x * 0.5) + 8)
+	var foot_center := Vector2(_body.aabb.get_center().x, _body.aabb.end.y + 0.5)
+	var local_foot: Vector2 = surface.to_local(foot_center)
+	var floor_y := ceili(local_foot.y)
+	var center_x := roundi(local_foot.x)
+	var wrote := false
+	for y in range(floor_y, floor_y + 4):
+		for x in range(center_x - half_width, center_x + half_width + 1):
+			wrote = surface.write_pixel(Vector2i(x, y), Color.BLACK) or wrote
+	if wrote:
+		surface.refresh()
 
 
 #切换哪块画布在工作：可见 + 收不收输入。
