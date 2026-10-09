@@ -74,5 +74,6 @@ max_ink = 20000.0
 [node name="PlayerInput" type="Node" parent="." unique_id=452559037]
 script = ExtResource("2_input")
 upright_stiffness = 500000000.0
+upright_damping = 30000000.0
 
 [node name="Arm" parent="." unique_id=1691926357 instance=ExtResource("11_hand")]

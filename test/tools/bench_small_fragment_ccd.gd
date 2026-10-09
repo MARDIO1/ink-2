@@ -78,7 +78,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_w = _scene.world
-	# 强制两层 CCD 都开（场景默认关着，见 map/src/collision_damage.gd:71-76）
+	# 强制两层 CCD 都开（游戏侧配置见 map/src/physics_step.gd）。
 	_w.ccd_enabled = true
 	_w.rp_ccd_substeps = 1
 	# 为了量「碎片本身的代价」，先把两道灰尘闸门关掉（默认引擎值）

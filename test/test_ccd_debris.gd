@@ -114,7 +114,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_w = _scene.world
-	_ctl = _scene.get_node("CollisionDamage")
+	_ctl = _scene.get_node("PhysicsRuntime")
 	await process_frame
 
 	print("=== ① 配置真的推上去了 ===")

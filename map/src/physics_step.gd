@@ -1,37 +1,14 @@
-#region 依赖与规则
 extends Node
-## 世界级碰撞结算。每个固定步先算双方，再统一删像素、分片和重建。
-## 不保存像素余量；碎片只需 PBody，不需要额外挂载脚本。
+## 游戏侧物理总调度：引擎参数、固定步、接触读取与破坏提交都收口在这里。
+## 颜色规则是子节点；底层像素物理插件不依赖玩法。
 
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const DebrisDust = preload("res://map/src/debris_dust.gd")
-## 材质定义统一从 InkPalette 读取。
 const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const Query = preload("res://addons/pixel_destruction/physics/query.gd")
+const RedInk = preload("res://Ink/src/red_ink.gd")
 const ANCHOR_TAG := "static_anchor_points"
 
-## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
-## 碰撞冲量转为破坏预算的倍率；越大越容易删像素。
-@export var damage_scale: float = 0.012
-## 触发损坏的最小接近速度，单位 px/s；低于该值不结算，避免静态压力损坏。
-@export var min_approach: float = 300.0
-## 厚度支撑累加上限，以表面材料强度归一化；超过后不再增加减伤。
-@export var support_max: float = 64.0
-## 厚度对数减伤系数；越大，同样厚度下的损坏越小。
-@export var thickness_scale: float = 0.5
-## 厚度修正的最低倍率；即使支撑很厚也保留该比例的破坏预算。
-@export_range(0.0, 1.0, 0.01) var min_thickness_factor: float = 0.2
-## 强度 0 表示不删像素；作为攻击方及玩家伤害的参考抗性仍需有限值。
-@export var reference_strength: float = 100.0
-## 单次撞击最多生成的主裂纹数；实际数量仍由可破坏像素预算决定。
-@export_range(1, 4, 1) var crack_max_count: int = 4
-## 每增加一条主裂纹需要的等效可破坏像素数；越大越难出现多条裂纹。
-@export_range(1.0, 32.0, 0.5) var crack_pixels_per_branch: float = 6.0
-## 主裂纹围绕受力进入方向的最大展开角；实际角度带确定性扰动，不形成整齐扇形。
-@export_range(0.0, 80.0, 1.0) var crack_spread_degrees: float = 35.0
-## 每段裂纹的最大随机转角；越大越接近闪电或树根，越小越接近玻璃直裂纹。
-@export_range(0.0, 30.0, 1.0) var crack_turn_degrees: float = 10.0
-## 裂纹前进多少像素后重新取一次转角；越小折线越密。
-@export_range(1, 16, 1) var crack_turn_pixels: int = 4
 var _elapsed: float = 0.0
 var _main = null
 var _player = null
@@ -39,6 +16,8 @@ var _protected: Array = []
 @onready var _feet = $"../Player/PlayerInput"
 @onready var _forces = get_node_or_null("../debugHUD/ForceDebug")
 @onready var _camera: Camera2D = $"../Camera2D"
+@onready var _damage = $ImpactDamage
+var _ink_rules: Array = []
 ## 活动范围相对当前可见画面的宽高倍率；4 表示宽高各四倍，完全在外的刚体冻结。
 @export_range(1.0, 32.0, 0.5) var freeze_view_scale: float = 4.0
 
@@ -74,8 +53,9 @@ const DEFAULT_MASK := 0xFFFFFFFF
 var _dust = null
 var profile_enabled: bool = false
 var _profile: Dictionary = {}
-#endregion
-
+var _reaction_scale: float = 1.0
+var _pending_dust: Array = []
+var _defer_dust: bool = false
 
 #region 世界步进
 func _ready() -> void:
@@ -99,6 +79,9 @@ func _start() -> void:
 	_main = get_parent()
 	_player = _main.get_node("Player")
 	_protected = [_player.get_node("Arm").body, _player.get_node("Arm/Hand").body]
+	for child in get_children():
+		if child.has_method("observe_removals") and child.has_method("resolve"):
+			_ink_rules.append(child)
 	_main.set_physics_process(false)
 	_main.world.contact_events_enabled = false
 	# CCD 总闸与 Rapier 子步均开启；逐体模式使用固定 3 个求解子步。
@@ -151,9 +134,10 @@ func _physics_process(delta: float) -> void:
 	while _elapsed >= _main.fixed_dt and steps < _main.max_substeps:
 		var result: Dictionary = _step(_main.fixed_dt)
 		_player.apply_collision_damage(result.player_damage)
+		_defer_dust = true
 		if not result.removals.is_empty():
 			var nodes: Array = _main._body_nodes.duplicate()
-			commit(_main.world, result.removals)
+			commit(_main.world, result.removals, result.get("bursts", {}))
 			var sync_start: int = Time.get_ticks_usec() if profile_enabled else 0
 			_main.sync_world_bodies()
 			if profile_enabled:
@@ -164,6 +148,9 @@ func _physics_process(delta: float) -> void:
 			for node in nodes:
 				if is_instance_valid(node) and not live.has(node.body):
 					node.queue_free()
+		apply_blast_impulses(result.get("impulses", []))
+		flush_blast_dust()
+		_defer_dust = false
 		_elapsed -= _main.fixed_dt
 		steps += 1
 	if _elapsed > _main.fixed_dt * _main.max_substeps:
@@ -195,10 +182,19 @@ func _physics_process(delta: float) -> void:
 func set_profile_enabled(enabled: bool) -> void:
 	profile_enabled = enabled
 	_profile.clear()
+	for rule in _ink_rules:
+		if rule.has_method("set_profile_enabled"):
+			rule.set_profile_enabled(enabled)
 
 
 func take_profile() -> Dictionary:
 	var result: Dictionary = _profile.duplicate()
+	var rules: Dictionary = {}
+	for rule in _ink_rules:
+		if rule.has_method("take_profile"):
+			rules[rule.name] = rule.take_profile()
+	if not rules.is_empty():
+		result.rules = rules
 	_profile.clear()
 	return result
 
@@ -225,7 +221,8 @@ func _step(delta: float) -> Dictionary:
 	if profile_enabled:
 		_profile.fixed_steps = _profile.get("fixed_steps", 0) + 1
 		_profile.substeps = _profile.get("substeps", 0) + count
-	var result: Dictionary = {"removals": {}, "player_damage": 0.0}
+	_reaction_scale = 1.0
+	var result: Dictionary = {"removals": {}, "player_damage": 0.0, "bursts": {}, "impulses": []}
 	for i in count:
 		physics.contacts.clear()
 		var native_start: int = Time.get_ticks_usec() if profile_enabled else 0
@@ -233,19 +230,34 @@ func _step(delta: float) -> Dictionary:
 		if profile_enabled:
 			_profile.native_us = _profile.get("native_us", 0) + Time.get_ticks_usec() - native_start
 		var impact: Dictionary = calculate(physics, _player.body, _protected)
-		result.player_damage += impact.player_damage
-		for body in impact.removals:
-			if not result.removals.has(body):
-				result.removals[body] = impact.removals[body]
-				continue
-			for shape in impact.removals[body]:
-				if not result.removals[body].has(shape):
-					result.removals[body][shape] = impact.removals[body][shape]
-				else:
-					result.removals[body][shape].merge(impact.removals[body][shape], true)
+		_merge_result(result, impact)
+	# 两轮爆炸射线之间只提交破坏，不插入运动，保持发射点与方向一致。
+	for rule in _ink_rules:
+		var rule_start: int = Time.get_ticks_usec() if profile_enabled else 0
+		_merge_result(result, rule.resolve(physics, _damage, _player.body, _protected))
+		if profile_enabled:
+			_profile.ink_resolve_us = _profile.get("ink_resolve_us", 0) + Time.get_ticks_usec() - rule_start
 	if profile_enabled:
 		_profile.step_us = _profile.get("step_us", 0) + Time.get_ticks_usec() - profile_start
 	return result
+
+
+func _merge_result(target: Dictionary, source: Dictionary) -> void:
+	target.player_damage += source.player_damage
+	if not source.get("impulses", []).is_empty():
+		target.impulses.append_array(source.impulses)
+		_reaction_scale = minf(_reaction_scale, source.get("reaction_scale", 1.0))
+	for body in source.get("bursts", {}):
+		target.bursts[body] = maxf(target.bursts.get(body, 0.0), source.bursts[body])
+	for body in source.removals:
+		if not target.removals.has(body):
+			target.removals[body] = source.removals[body]
+			continue
+		for shape in source.removals[body]:
+			if not target.removals[body].has(shape):
+				target.removals[body][shape] = source.removals[body][shape]
+			else:
+				target.removals[body][shape].merge(source.removals[body][shape], true)
 
 
 ## cull_fast_debris() 直接删除 PBody；这里恢复节点数组对齐并回收失效节点。
@@ -302,146 +314,34 @@ func _apply_substep_budget(physics, count: int) -> int:
 
 #endregion
 
-
-#region 碰撞结算
-## 返回 {removals: {PBody: {PixelShape: {Vector2i: true}}}, player_damage: float}。
-## 重叠删除取并集；每条 lane 独立消费预算，未满一个像素的余量舍弃。
+#region 接触边界
+## 引擎接触只在总调度中读取；规则脚本只接收普通接触数组。
 func calculate(world, player_body: PBody = null, protected_bodies: Array = []) -> Dictionary:
-	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
-	var result: Dictionary = {"removals": {}, "player_damage": 0.0}
 	var contacts_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var contacts: Array = _contacts(world)
 	if profile_enabled:
 		_profile.contacts_us = _profile.get("contacts_us", 0) + Time.get_ticks_usec() - contacts_start
 		_profile.contact_pairs = _profile.get("contact_pairs", 0) + contacts.size()
+		for contact in contacts:
+			_profile.max_approach = maxf(_profile.get("max_approach", 0.0), contact.approach)
+			var impulse: float = 0.0
+			for point in contact.points:
+				impulse += maxf(point.impulse, 0.0)
+			_profile.max_contact_impulse = maxf(_profile.get("max_contact_impulse", 0.0), impulse)
+			if contact.approach > _damage.min_approach:
+				if not _profile.has("impacts"):
+					_profile.impacts = []
+				_profile.impacts.append({"a": contact.a.id, "b": contact.b.id,
+					"approach": contact.approach, "impact": _damage._impact(contact.points)})
 	if is_instance_valid(_forces):
 		_forces.sample_contacts(contacts, _main.fixed_dt / world.last_substeps)
 	if is_instance_valid(_feet):
 		_feet.update_support(contacts)
-	# 轻碎片豁免：一个子步只建一次集合，别在每对接触上重建（见 _dust_bodies）。
-	var dust: Dictionary = _dust_bodies(world, player_body, protected_bodies)
-	for contact in contacts:
-		if contact.approach <= min_approach:
-			continue
-		# 两头都是灰尘：两侧都被豁免，连冲量合成都不必算。
-		if dust.has(contact.a) and dust.has(contact.b):
-			continue
-		var impact: Dictionary = _impact(contact.points)
-		if impact.is_empty():
-			continue
-		var point: Vector2 = impact.position
-		var normal: Vector2 = impact.normal
-		var a_origin: Vector2 = point - normal * 0.001
-		var b_origin: Vector2 = point + normal * (maxf(impact.dist, 0.0) + 0.001)
-		var a_material: int = _material_at(contact.a, a_origin)
-		var b_material: int = _material_at(contact.b, b_origin)
-		if a_material == 0 or b_material == 0:
-			continue
-		for side in [[contact.a, a_origin, -normal, a_material, b_material, -1.0],
-				[contact.b, b_origin, normal, b_material, a_material, 1.0]]:
-			var body: PBody = side[0]
-			if protected_bodies.has(body) or dust.has(body):
-				continue
-			var strength: float = world.material_strength(side[3]).x
-			if strength <= 0.0 and body != player_body:
-				continue
-			strength = strength if strength > 0.0 else reference_strength
-			var attacker: float = world.material_strength(side[4]).x
-			attacker = attacker if attacker > 0.0 else reference_strength
-			var budget: float = damage_scale * impact.impulse * attacker / strength
-			if body != player_body and budget < strength:
-				continue  # 连第一层都删不掉，不必扫描厚度。
-			var path: Array = _trace(body, side[1], side[2], world, 0.0 if body == player_body else budget, body == player_body)
-			var seed: int = hash(Vector3i(roundi(point.x * 16.0), roundi(point.y * 16.0), roundi(impact.impulse)))
-			_damage_side(world, body, path, side[4], impact.impulse, player_body,
-				protected_bodies, result, side[1], side[2], seed, side[5])
+	var damage_start: int = Time.get_ticks_usec() if profile_enabled else 0
+	var result: Dictionary = _damage.calculate(world, contacts, player_body, protected_bodies)
 	if profile_enabled:
-		_profile.damage_us = _profile.get("damage_us", 0) + Time.get_ticks_usec() - profile_start
+		_profile.damage_us = _profile.get("damage_us", 0) + Time.get_ticks_usec() - damage_start
 	return result
-
-
-## 轻碎片豁免：阈值直接用世界的 ccd_ignore_mass（0 = 关，引擎默认），与引擎
-## _exempt_bodies()（pworld.gd:1488）是同一个「灰尘」定义 —— 引擎既然不为「质量 <= 它」
-## 的刚体做防穿（一个 2x2 碎片就能逼全世界跑 334 子步，pworld.gd:93-103），也就不必为
-## 它们跑 _trace()/_damage_side() 那趟逐层厚度扫描；calculate() 是每个子步跑一次的
-## （_step 的子步循环里），碎块一多这趟扫描就是纯开销。
-## 豁免只针对「被撞的一方」；玩家、手臂/手、抓着的、挂关节的一律不在集合里
-## （与引擎 _exempt_bodies() 末尾 erase(_interactive_bodies()) 同义）。
-func _dust_bodies(world, player_body: PBody, protected_bodies: Array) -> Dictionary:
-	var out: Dictionary = {}
-	var limit: float = world.ccd_ignore_mass
-	if limit <= 0.0:
-		return out
-	var interactive: Dictionary = world._interactive_bodies()
-	for body: PBody in world.bodies:
-		if body == player_body or protected_bodies.has(body):
-			continue
-		if body.is_static or body.frozen:
-			continue
-		if body.mass <= limit and not interactive.has(body):
-			out[body] = true
-	return out
-
-
-func _damage_side(world, body: PBody, path: Array, attacker_material: int,
-		impulse: float, player_body: PBody, protected_bodies: Array, result: Dictionary,
-		origin: Vector2 = Vector2.INF, direction: Vector2 = Vector2.ZERO, seed: int = 0,
-		mirror: float = 1.0) -> void:
-	if protected_bodies.has(body) or path.is_empty():
-		return
-	var surface_strength: float = world.material_strength(path[0].material).x
-	if surface_strength <= 0.0:
-		if body != player_body:
-			return
-		surface_strength = reference_strength
-	var attacker_strength: float = world.material_strength(attacker_material).x
-	if attacker_strength <= 0.0:
-		attacker_strength = reference_strength
-	var support: float = 0.0
-	for pixel in path:
-		var strength: float = world.material_strength(pixel.material).x
-		if body == player_body and strength <= 0.0:
-			strength = reference_strength
-		# 不可破坏的内层提供最大支撑，且逐层消耗时会阻挡贯穿。
-		support = minf(support_max, support + (strength / surface_strength if strength > 0.0 else support_max))
-		if support >= support_max:
-			break
-	var factor: float = min_thickness_factor + (1.0 - min_thickness_factor) / (1.0 + thickness_scale * log(1.0 + support))
-	var budget: float = damage_scale * impulse * attacker_strength / surface_strength * factor
-	if body == player_body:
-		result.player_damage += budget
-		return
-	if not origin.is_finite() or direction.is_zero_approx():
-		_consume_path(world, body, path, budget, result)
-		return
-	var count: int = _crack_count(budget / surface_strength)
-	var branch_budget: float = budget / float(count)
-	for i in count:
-		var spread: float = 0.0 if count == 1 else remap(float(i), 0.0, float(count - 1), -1.0, 1.0)
-		var jitter: float = (_noise(seed, i) * 2.0 - 1.0) * crack_turn_degrees
-		var angle: float = deg_to_rad((spread * crack_spread_degrees + jitter) * mirror)
-		var crack: Array = _crack_path(body, origin, direction.rotated(angle), world,
-			branch_budget, seed + i * 97, mirror)
-		_consume_path(world, body, crack, branch_budget, result)
-
-
-func _crack_count(pixel_budget: float) -> int:
-	return clampi(1 + floori(maxf(0.0, pixel_budget - 1.0) / crack_pixels_per_branch), 1, crack_max_count)
-
-
-func _consume_path(world, body: PBody, path: Array, budget: float, result: Dictionary) -> void:
-	for pixel in path:
-		var cost: float = world.material_strength(pixel.material).x
-		if cost <= 0.0 or budget < cost:
-			break
-		budget -= cost
-		if not result.removals.has(body):
-			result.removals[body] = {}
-		if not result.removals[body].has(pixel.shape):
-			result.removals[body][pixel.shape] = {}
-		result.removals[body][pixel.shape][pixel.position] = true
-#endregion
-
 
 #region 接触面
 ## 只查询冲量，避免接触事件逐像素计算宽度与应力。
@@ -468,157 +368,46 @@ func _contacts(world) -> Array:
 	return contacts
 
 
-## 同一碰撞对只形成一次撞击；多接触点按各自冲量合成，避免 N 个点产生 N 份伤害。
-func _impact(points: Array) -> Dictionary:
-	var total: float = 0.0
-	var position: Vector2 = Vector2.ZERO
-	var normal: Vector2 = Vector2.ZERO
-	var dist: float = 0.0
-	for point in points:
-		if point.impulse <= 0.0:
-			continue
-		total += point.impulse
-		position += point.position * point.impulse
-		normal += point.normal * point.impulse
-		dist += point.dist * point.impulse
-	if total <= 0.0 or normal.is_zero_approx():
-		return {}
-	normal = normal.normalized()
-	var tangent: Vector2 = Vector2(-normal.y, normal.x)
-	var first: float = INF
-	var last: float = -INF
-	for point in points:
-		if point.impulse > 0.0:
-			first = minf(first, point.position.dot(tangent))
-			last = maxf(last, point.position.dot(tangent))
-	var width: int = maxi(1, ceili(last - first))
-	return {"position": position / total, "normal": normal, "dist": dist / total,
-		"impulse": total / float(width), "total_impulse": total}
 #endregion
-
-
-#region 像素路径
-func _material_at(body: PBody, point: Vector2) -> int:
-	var cell: Vector2i = Vector2i(body.to_local(point).floor())
-	for shape in body.shapes:
-		var material: int = shape.get_pixel(cell.x, cell.y)
-		if material != 0:
-			return material
-	return 0
-
-
-## 局部网格 DDA：每个进入的像素只访问一次；第一处空洞停止，跨材料继续。
-## 支撑已饱和且累计像素成本覆盖未经减伤的预算时，后续深度不再影响结果。
-func _trace(body: PBody, origin: Vector2, direction: Vector2, world = null,
-		budget: float = INF, player: bool = false) -> Array:
-	var point: Vector2 = body.to_local(origin)
-	var ray: Vector2 = direction.rotated(-body.rotation)
-	var cell: Vector2i = Vector2i(floori(point.x), floori(point.y))
-	var step: Vector2i = Vector2i(int(signf(ray.x)), int(signf(ray.y)))
-	var delta: Vector2 = Vector2(INF if ray.x == 0.0 else absf(1.0 / ray.x), INF if ray.y == 0.0 else absf(1.0 / ray.y))
-	var edge: Vector2 = Vector2(cell) + Vector2(1.0 if ray.x > 0.0 else 0.0, 1.0 if ray.y > 0.0 else 0.0)
-	var next: Vector2 = Vector2(INF if ray.x == 0.0 else (edge.x - point.x) / ray.x, INF if ray.y == 0.0 else (edge.y - point.y) / ray.y)
-	var path: Array = []
-	var support: float = 0.0
-	var cost: float = 0.0
-	var surface: float = 0.0
-	while true:
-		var hit = null
-		for shape in body.shapes:
-			var material: int = shape.get_pixel(cell.x, cell.y)
-			if material != 0:
-				hit = {"shape": shape, "position": cell, "material": material}
-				break
-		if hit == null:
-			return path
-		path.append(hit)
-		if world != null:
-			var strength: float = world.material_strength(hit.material).x
-			if player and strength <= 0.0:
-				strength = reference_strength
-			if surface == 0.0:
-				surface = strength
-			support += strength / surface if strength > 0.0 else support_max
-			cost += strength if strength > 0.0 else INF
-			if support >= support_max and cost >= budget:
-				return path
-		# 正好经过格点时同时跨两轴，不把仅触碰角点的邻格算作实体层。
-		if is_equal_approx(next.x, next.y):
-			cell += step
-			next += delta
-		elif next.x < next.y:
-			cell.x += step.x
-			next.x += delta.x
-		else:
-			cell.y += step.y
-			next.y += delta.y
-	return path
-
-
-## 半像素步进保证不跨格；每段只改变方向，不增加破坏预算。
-func _crack_path(body: PBody, origin: Vector2, direction: Vector2, world,
-		budget: float, seed: int, mirror: float = 1.0) -> Array:
-	var point: Vector2 = body.to_local(origin)
-	var base: Vector2 = direction.rotated(-body.rotation).normalized()
-	var ray: Vector2 = base
-	var last: Vector2i = Vector2i(1 << 30, 1 << 30)
-	var path: Array = []
-	var cost: float = 0.0
-	var turn: int = 0
-	while true:
-		var cell: Vector2i = Vector2i(point.floor())
-		if cell != last:
-			last = cell
-			var hit = null
-			for shape in body.shapes:
-				var material: int = shape.get_pixel(cell.x, cell.y)
-				if material != 0:
-					hit = {"shape": shape, "position": cell, "material": material}
-					break
-			if hit == null:
-				return path
-			path.append(hit)
-			var strength: float = world.material_strength(hit.material).x
-			if strength <= 0.0:
-				return path
-			cost += strength
-			if cost >= budget:
-				return path
-			if path.size() % crack_turn_pixels == 0:
-				var angle: float = (_noise(seed, turn + 31) * 2.0 - 1.0) * crack_turn_degrees * mirror
-				ray = base.rotated(deg_to_rad(angle))
-				turn += 1
-		point += ray * 0.5
-	return path
-
-
-func _noise(seed: int, index: int) -> float:
-	var value: int = absi(seed % 2147483647)
-	value = (value + (index + 1) * 48271) % 2147483647
-	value = (value * 1103515245 + 12345) % 2147483647
-	return float(value) / 2147483647.0
-
-
-#endregion
-
 
 #region 现有破坏接口
 ## 每个受损物体提交一次掩码，分片由引擎负责。
-func commit(physics, removals: Dictionary) -> Dictionary:
+func commit(physics, removals: Dictionary, bursts: Dictionary = {}) -> Dictionary:
 	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var removed: int = 0
 	var fragments: int = 0
+	var replacements: Dictionary = {}
 	for body in removals:
+		for rule in _ink_rules:
+			rule.observe_removals(body, removals[body], _reaction_scale)
 		var anchor_points: Dictionary = body.tags.get(ANCHOR_TAG, {})
-		var result: Dictionary = physics.fracture_pixels(body, removals[body], 0.0, true,
+		var result: Dictionary = physics.fracture_pixels(body, removals[body], bursts.get(body, 0.0), true,
 			_anchor_map(body, anchor_points))
 		removed += result.removed
 		fragments += result.fragments.size()
+		replacements[body] = result.fragments.duplicate()
+		if result.body_alive:
+			replacements[body].append(body)
+		else:
+			for shape in body.shapes:
+				shape.owner_body = null
+			body.shapes.clear()
+		for entry in result.get("downgraded", []):
+			var piece = entry.shape.owner_body
+			if piece != null:
+				replacements[body].append(piece)
+				entry["body"] = piece
+			_pending_dust.append(entry)
+		if profile_enabled:
+			if not _profile.has("fragment_parents"):
+				_profile.fragment_parents = []
+			var ids: Array = []
+			for piece in replacements[body]:
+				ids.append(piece.id)
+			_profile.fragment_parents.append({"parent": body.id, "pieces": ids})
 		# 中等薄度的默认层碎片改用隔离碰撞层。
 		_isolate_debris(result.fragments)
 		# 引擎降级的碎片交给纯视觉灰尘层。
-		if _dust != null:
-			_dust.spawn(result.get("downgraded", []))
 		if result.removed > 0:
 			for changed_body in [body] + result.fragments:
 				_update_anchors(changed_body, anchor_points)
@@ -627,7 +416,68 @@ func commit(physics, removals: Dictionary) -> Dictionary:
 		_profile.commit_calls = _profile.get("commit_calls", 0) + removals.size()
 		_profile.removed_pixels = _profile.get("removed_pixels", 0) + removed
 		_profile.fragments = _profile.get("fragments", 0) + fragments
-	return {"calls": removals.size()}
+	if not _defer_dust:
+		flush_blast_dust()
+	return {"calls": removals.size(), "replacements": replacements}
+
+
+## 第二轮只查破坏后的几何并施力，不生成伤害、不搜索旧体对应的最近碎片。
+func apply_blast_impulses(blasts: Array) -> void:
+	var start: int = Time.get_ticks_usec() if profile_enabled else 0
+	var totals: Dictionary = {}
+	for blast in blasts:
+		var bounds: Rect2 = Rect2(blast.origin - Vector2.ONE * blast.radius,
+			Vector2.ONE * blast.radius * 2.0)
+		var candidates: Array = Query.aabb_bodies(bounds)
+		# 降级灰尘尚未提交渲染，也作为第二轮的实际几何接收冲量。
+		for entry in _pending_dust:
+			var piece = entry.get("body")
+			if piece != null and bounds.intersects(piece.aabb) and not candidates.has(piece):
+				candidates.append(piece)
+		for i in blast.ray_count:
+			var direction: Vector2 = Vector2.from_angle(TAU * float(i) / float(blast.ray_count))
+			var ray_start: int = Time.get_ticks_usec() if profile_enabled else 0
+			var hit = RedInk.raycast_candidates(candidates, blast.origin, direction, blast.radius)
+			if profile_enabled:
+				_profile.impulse_rays = _profile.get("impulse_rays", 0) + 1
+				_profile.impulse_raycast_us = _profile.get("impulse_raycast_us", 0) + Time.get_ticks_usec() - ray_start
+			if not hit.hit or hit.body.is_static:
+				continue
+			var receiver = hit.body
+			var impulse: Vector2 = direction * blast.impulse
+			if not totals.has(receiver):
+				totals[receiver] = {"linear": Vector2.ZERO, "angular": 0.0}
+			totals[receiver].linear += impulse
+			totals[receiver].angular += (hit.point - receiver.com_world()).cross(impulse)
+			if profile_enabled:
+				_profile.impulse_ray_hits = _profile.get("impulse_ray_hits", 0) + 1
+	var apply_start: int = Time.get_ticks_usec() if profile_enabled else 0
+	for body in totals:
+		body.apply_impulse(totals[body].linear, body.com_world())
+		body.apply_torque_impulse(totals[body].angular)
+		if profile_enabled:
+			if not _profile.has("blast_impulses"):
+				_profile.blast_impulses = []
+			_profile.blast_impulses.append({"body_id": body.id,
+				"linear": [totals[body].linear.x, totals[body].linear.y],
+				"angular": totals[body].angular})
+	if profile_enabled:
+		_profile.impulse_apply_us = _profile.get("impulse_apply_us", 0) + Time.get_ticks_usec() - apply_start
+		_profile.impulse_us = _profile.get("impulse_us", 0) + Time.get_ticks_usec() - start
+		_profile.impulse_bodies = _profile.get("impulse_bodies", 0) + totals.size()
+
+
+func flush_blast_dust() -> void:
+	for entry in _pending_dust:
+		var body = entry.get("body")
+		entry["velocity"] = body.linear_velocity if body != null else Vector2.ZERO
+		entry.shape.owner_body = null
+		if body != null:
+			body.shapes.clear()
+		entry.erase("body")
+	if _dust != null:
+		_dust.spawn(_pending_dust)
+	_pending_dust.clear()
 
 
 ## 将满足尺寸条件且仍使用默认过滤器的碎片改为 layer=2/mask=1。
