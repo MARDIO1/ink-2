@@ -1,0 +1,18 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://map/src/simulation_runtime.gd" id="1_simulation"]
+[ext_resource type="Script" path="res://map/src/physics_step.gd" id="2_physics"]
+[ext_resource type="Script" path="res://map/src/impact_damage.gd" id="3_damage"]
+[ext_resource type="Script" path="res://Ink/src/red_ink.gd" id="4_red"]
+
+[node name="SimulationRuntime" type="Node"]
+script = ExtResource("1_simulation")
+
+[node name="PhysicsStep" type="Node" parent="."]
+script = ExtResource("2_physics")
+
+[node name="ImpactDamage" type="Node" parent="."]
+script = ExtResource("3_damage")
+
+[node name="RedInk" type="Node" parent="."]
+script = ExtResource("4_red")

@@ -1,9 +1,13 @@
 extends Node
 ## 删除前保存红墨事件，下一固定步反应；没有独立的撞击阈值或点火扫描。
+
+#region 依赖
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Query = preload("res://addons/pixel_destruction/physics/query.gd")
 const RED_ID: int = 8
+#endregion
 
+#region 配置
 ## 引爆门槛使用 red.tres 的材料强度，不另设点火阈值。
 @export_group("爆炸调参")
 @export_range(0.0, 1.0, 0.01) var propagation_decay: float = 0.9
@@ -15,26 +19,35 @@ const RED_ID: int = 8
 @export_range(4, 64, 4) var ray_count: int = 32
 ## 爆炸事件归组尺寸，不改变引擎 8×8 像素存储。
 @export_range(8, 64, 8) var event_chunk_size: int = 64
+#endregion
 
+#region 状态
 var _pending: Array = []
 var _profile_enabled: bool = false
 var _profile: Dictionary = {}
+#endregion
 
 
+#region Profiling
+## 开关红墨规则计时并清空旧样本。
 func set_profile_enabled(enabled: bool) -> void:
 	_profile_enabled = enabled
 	_profile.clear()
 
 
+## 取出并清空自上次读取以来的红墨规则计时。
 func take_profile() -> Dictionary:
 	var result: Dictionary = _profile.duplicate()
 	_profile.clear()
 	return result
+#endregion
 
 
+#region 规则接口
 ## 裂纹触及红墨后，将同一分组内全部红墨加入删除计划；其他材料不额外删除。
 ## 必须在 fracture 前调用，事件能量按本次实际消耗的全部红像素计算。
-func observe_removals(body: PBody, removals: Dictionary, retention: float = 1.0) -> void:
+func observe_removals(_context: Dictionary, body: PBody, removals: Dictionary,
+		retention: float = 1.0) -> void:
 	var start: int = Time.get_ticks_usec() if _profile_enabled else 0
 	var groups: Dictionary = {}
 	var size: int = maxi(1, event_chunk_size)
@@ -77,21 +90,29 @@ func observe_removals(body: PBody, removals: Dictionary, retention: float = 1.0)
 		_profile.observe_us = _profile.get("observe_us", 0) + Time.get_ticks_usec() - start
 
 
-func resolve(world, damage, player_body: PBody, protected_bodies: Array) -> Dictionary:
+## 在下一固定步消费缓存事件，生成伤害删除计划和径向冲量事件。
+func resolve_fixed(context: Dictionary) -> Dictionary:
 	var start: int = Time.get_ticks_usec() if _profile_enabled else 0
 	var result: Dictionary = {"removals": {}, "player_damage": 0.0,
 		"bursts": {}, "impulses": [], "reaction_scale": propagation_decay}
 	var current: Array = _pending
 	_pending = []
+	var damage = context.services.get(&"damage")
+	if damage == null:
+		return result
 	for event in current:
 		# fracture 保留坐标变换；原体删光也不会丢失这次爆炸。
 		var center: Vector2 = event.body.to_world(event.local)
-		_blast(world, damage, center, event.energy, player_body, protected_bodies, result)
+		_blast(context.world, damage, center, event.energy, context.player_body,
+			context.protected_bodies, result)
 	if _profile_enabled:
 		_profile.resolve_us = _profile.get("resolve_us", 0) + Time.get_ticks_usec() - start
 	return result
+#endregion
 
 
+#region 爆炸求解
+## 将一个红墨事件展开为均匀伤害射线，并登记破坏后的第二轮物理冲量。
 func _blast(world, damage, center: Vector2, energy: float,
 		player_body: PBody, protected_bodies: Array, result: Dictionary) -> void:
 	if blast_radius <= 0.0 or ray_count <= 0:
@@ -121,8 +142,10 @@ func _blast(world, damage, center: Vector2, energy: float,
 		if _profile_enabled:
 			_profile.ray_hits = _profile.get("ray_hits", 0) + 1
 			_profile.damage_us = _profile.get("damage_us", 0) + Time.get_ticks_usec() - damage_start
+#endregion
 
 
+#region 射线查询
 ## AABB 先裁到入点，再复用引擎细射线 DDA，避免对小碎片遍历整段空域。
 static func raycast_candidates(candidates: Array, origin: Vector2, direction: Vector2,
 		max_distance: float):
@@ -152,3 +175,4 @@ static func raycast_candidates(candidates: Array, origin: Vector2, direction: Ve
 			hit.distance += offset
 			best = hit
 	return best
+#endregion

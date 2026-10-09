@@ -269,7 +269,7 @@ func _test_scene() -> void:
 	var ground = scene.get_node("Ground").body
 	var original: int = box.shapes[0].pixel_count() + ground.shapes[0].pixel_count()
 	scene.auto_step = true
-	var controller = scene.get_node("PhysicsRuntime")
+	var controller = scene.get_node("SimulationRuntime")
 	var start: int = Time.get_ticks_usec()
 	for frame in 120:
 		controller._physics_process(1.0 / 60.0)

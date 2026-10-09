@@ -39,7 +39,7 @@ class ProfileForces:
 		draw_us += Time.get_ticks_usec() - start
 ## 磁盘真实画布、固定抓点和180步抬举动作。每项消融单独启动新进程。
 class Profile:
-	extends "res://map/src/physics_step.gd"
+	extends "res://map/src/simulation_runtime.gd"
 	var no_damage: bool = false
 	var no_contacts: bool = false
 	var contact_us: int = 0
@@ -57,10 +57,12 @@ class Profile:
 		super._physics_process(delta)
 		physics_us += Time.get_ticks_usec() - start
 		physics_calls += 1
-	func commit(world, removals: Dictionary, bursts: Dictionary = {}) -> Dictionary:
+	## 统计协调层提交破坏所花时间，并保持与正式接口完全相同的签名。
+	func commit(world, removals: Dictionary, bursts: Dictionary = {},
+			defer_dust: bool = false) -> Dictionary:
 		var before: int = world.bodies.size()
 		var start: int = Time.get_ticks_usec()
-		var result: Dictionary = super.commit(world, removals, bursts)
+		var result: Dictionary = super.commit(world, removals, bursts, defer_dust)
 		commit_us += Time.get_ticks_usec() - start
 		commit_calls += result.calls
 		fragments += maxi(0, world.bodies.size() - before)
@@ -162,7 +164,7 @@ func _run() -> void:
 	scene.get_node("SmallCanvas").position = Vector2((200 if args.has("--bottom") else 0) - anchor.x - 0.5, 229 - bottom)
 	var point: Vector2 = scene.get_node("SmallCanvas").position + Vector2(anchor) + Vector2(0.5, 0.5)
 	scene.get_node("Player").position = point - Vector2(104, 40 if args.has("--bottom") else 16)
-	var controller = scene.get_node("PhysicsRuntime")
+	var controller = scene.get_node("SimulationRuntime")
 	controller.set_script(Profile)
 	controller.no_damage = args.has("--no-damage")
 	controller.no_contacts = args.has("--no-contacts")

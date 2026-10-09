@@ -57,7 +57,7 @@ func _run() -> void:
 	root.add_child(scene)
 	await process_frame
 	await process_frame
-	var runtime = scene.get_node("PhysicsRuntime")
+	var runtime = scene.get_node("SimulationRuntime")
 	var hud = scene.get_node("debugHUD")
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--event-size="):

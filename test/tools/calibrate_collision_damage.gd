@@ -52,7 +52,7 @@ func _scenario(slam: bool, apply: bool = false) -> void:
 	scene.auto_step = false
 	if slam:
 		scene.get_node("Player").position = Vector2(0, 180)
-	var controller = scene.get_node("PhysicsRuntime")
+	var controller = scene.get_node("SimulationRuntime")
 	var probe = controller.get_node("ImpactDamage")
 	probe.set_script(Probe)
 	probe.apply = apply

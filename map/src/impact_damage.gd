@@ -2,6 +2,7 @@ extends Node
 ## 碰撞伤害规则：把已求解的接触或外部冲量转换为删除计划和玩家伤害。
 ## 不推进世界、不提交破坏，也不依赖场景节点。
 
+#region 依赖与配置
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
@@ -27,6 +28,20 @@ const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 @export_range(0.0, 30.0, 1.0) var crack_turn_degrees: float = 10.0
 ## 裂纹前进多少像素后重新取一次转角；越小折线越密。
 @export_range(1, 16, 1) var crack_turn_pixels: int = 4
+#endregion
+
+
+#region 规则接口
+## 注册为伤害服务，供其他玩法规则通过上下文调用，不要求知道本脚本路径。
+func service_name() -> StringName:
+	return &"damage"
+
+
+## 接收协调层提供的接触帧，并转换成统一效果包。
+func resolve_contacts(context: Dictionary, contacts: Array) -> Dictionary:
+	return calculate(context.world, contacts, context.player_body, context.protected_bodies)
+#endregion
+
 
 #region 碰撞结算
 ## 返回 {removals: {PBody: {PixelShape: {Vector2i: true}}}, player_damage: float}。
@@ -96,6 +111,7 @@ func _dust_bodies(world, player_body: PBody, protected_bodies: Array) -> Diction
 	return out
 
 
+## 按厚度、材料强度和裂纹分支消耗单侧冲量预算。
 func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 		impulse: float, player_body: PBody, protected_bodies: Array, result: Dictionary,
 		origin: Vector2 = Vector2.INF, direction: Vector2 = Vector2.ZERO, seed: int = 0,
@@ -138,10 +154,12 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 			branch_budget, seed + i * 97, mirror, result)
 
 
+## 根据等效像素预算选择一到四条主裂纹。
 func _crack_count(pixel_budget: float) -> int:
 	return clampi(1 + floori(maxf(0.0, pixel_budget - 1.0) / crack_pixels_per_branch), 1, crack_max_count)
 
 
+## 沿给定路径逐像素消费材料成本，并把成功删除的像素并入效果包。
 func _consume_path(world, body: PBody, path: Array, budget: float, result: Dictionary) -> void:
 	for pixel in path:
 		var cost: float = pixel.strength if pixel.has("strength") else world.material_strength(pixel.material).x
@@ -155,6 +173,9 @@ func _consume_path(world, body: PBody, path: Array, budget: float, result: Dicti
 		result.removals[body][pixel.shape][pixel.position] = true
 #endregion
 
+
+#region 接触合成
+## 把同一碰撞对的多个接触点按冲量合成为一次面冲击。
 func _impact(points: Array) -> Dictionary:
 	var total: float = 0.0
 	var position: Vector2 = Vector2.ZERO
@@ -183,6 +204,7 @@ func _impact(points: Array) -> Dictionary:
 #endregion
 
 #region 像素路径
+## 返回世界点所在的刚体像素材质；空白位置返回 0。
 func _material_at(body: PBody, point: Vector2) -> int:
 	var cell: Vector2i = Vector2i(body.to_local(point).floor())
 	for shape in body.shapes:
@@ -299,6 +321,7 @@ func _crack_path(body: PBody, origin: Vector2, direction: Vector2, world,
 	return path
 
 
+## 生成与撞击位置绑定的确定性伪随机数，保证裂纹可复现。
 func _noise(seed: int, index: int) -> float:
 	var value: int = absi(seed % 2147483647)
 	value = (value + (index + 1) * 48271) % 2147483647

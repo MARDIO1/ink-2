@@ -3,7 +3,7 @@
 `debug/hud/debug_hud.tscn`（CanvasLayer + `Stats` Label + `ForceDebug`），脚本在 `src/`。
 
 - **挂在哪**：由**关卡**实例（`map/main.tscn` 的 `debugHUD` 节点）。它要读 `../Player/...`、
-  `../PhysicsRuntime`，也要在世界坐标里画力箭头，所以它是"关卡的调试覆盖层"，不是全局 UI ——
+  `../SimulationRuntime`，也要在世界坐标里画力箭头，所以它是"关卡的调试覆盖层"，不是全局 UI ——
   不放 `ui/`（`ui/` 只放玩家看的成品 UI，见 `ui/game_ui.tscn`）。
 - **开关**：成品 HUD 的 Tab（输入动作 `debug`）与它互相取反（`ui/hud/src/hud.gd:_switch_debug_hud`）。
   两个节点原本是兄弟，现在 HUD 在 `UI` 容器、调试 HUD 在关卡里，所以 HUD 用**组 `debug_hud`**
