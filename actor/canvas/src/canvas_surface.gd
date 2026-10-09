@@ -19,6 +19,7 @@ var black_texture: ImageTexture
 @onready var bounds: CollisionShape2D = $Bounds
 func _ready() -> void:
 	black_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_resize()
 	if not saved_ink_path.is_empty():
 		call_deferred("_restore_saved_ink")
@@ -42,6 +43,11 @@ func _restore_saved_ink() -> void:
 	set(value):
 		background_color = value
 		queue_redraw()
+## 纸张底图；绘制时按原始尺寸循环平铺，画布扩展后会自动补齐。
+@export var background_texture: Texture2D:
+	set(value):
+		background_texture = value
+		queue_redraw()
 ## 画布边框颜色；只影响显示。
 @export var border_color := Color(0.12, 0.12, 0.12, 1.0):
 	set(value):
@@ -56,6 +62,8 @@ func _restore_saved_ink() -> void:
 func _draw() -> void:
 	var rect := Rect2(Vector2.ZERO, Vector2(canvas_size))
 	draw_rect(rect, background_color, true)
+	if background_texture != null:
+		draw_texture_rect(background_texture, rect, true)
 	draw_rect(rect, border_color, false, border_width)
 #endregion
 
@@ -84,8 +92,9 @@ func _process(_delta: float) -> void:
 	elif _painting:
 		_continue_stroke()
 
-## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；墨水桶灌满封闭空区。
-enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE }
+## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；
+## 直线按拖拽起终点绘制；墨水桶灌满封闭空区。LINE 追加在末尾以保持旧地图工具枚举值兼容。
+enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE }
 
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
@@ -177,8 +186,8 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 		_bucket_fill(point)
 		_commit_undo_step()
 		return
-	#矩形/圆形是拖拽工具：按下定起点，拖拽出形状，松手定型。
-	if tool == Tool.RECT or tool == Tool.CIRCLE:
+	#矩形/圆形/直线是拖拽工具：按下定起点，拖拽出形状，松手定型。
+	if tool == Tool.RECT or tool == Tool.CIRCLE or tool == Tool.LINE:
 		_begin_undo_step()
 		_shaping = true
 		_shape_origin = point
@@ -480,7 +489,7 @@ func material_at(x: int, y: int) -> int:
 #endregion
 
 
-#region 矩形 / 圆形
+#region 矩形 / 圆形 / 直线
 #拖拽预览：每动一次先把上一帧改过的像素还原，再按新位置重画一圈。
 #松手才记账，所以拖拽过程不会反复扣墨水。
 func _update_shape() -> void:
@@ -526,13 +535,17 @@ func _end_shape() -> void:
 #形状外框 = 拿笔刷沿边界扫一圈，所以线宽就是笔刷直径。
 func _shape_pixels(from: Vector2, to: Vector2) -> Dictionary:
 	var out := {}
-	if tool == Tool.CIRCLE:
-		#圆心 = 按下点，半径 = 拖出的距离；永远是正圆。
-		_brush_circle(out, from, from.distance_to(to))
-	else:
-		# 矩形不能复用圆形笔刷沿边盖章：圆盘相交后的最外层会周期性凹凸，
-		# 粗边框固化后就会变成明显锯齿。这里直接生成整数像素包围盒和等宽方角边框。
-		_brush_rect(out, from, to)
+	match tool:
+		Tool.CIRCLE:
+			#圆心 = 按下点，半径 = 拖出的距离；永远是正圆。
+			_brush_circle(out, from, from.distance_to(to))
+		Tool.LINE:
+			#起点到终点的连续线段，粗细与当前笔刷一致。
+			_brush_line(out, from, to)
+		_:
+			# 矩形不能复用圆形笔刷沿边盖章：圆盘相交后的最外层会周期性凹凸，
+			# 粗边框固化后就会变成明显锯齿。这里直接生成整数像素包围盒和等宽方角边框。
+			_brush_rect(out, from, to)
 	return out
 
 

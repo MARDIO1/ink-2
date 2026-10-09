@@ -10,8 +10,9 @@ const NAIL_TEXTURE := preload("res://actor/nail/asset/nail.png")
 const ANCHOR_CENTER := Vector2(16.0, 16.0)
 ## 所有运行时钉子外观都进入这个组，地图编辑器只切显示，不改物理锚点。
 const VISUAL_GROUP := &"nail_visual"
-## 新生成的钉子继承当前编辑器显示状态。
+## 地图编辑器可单独预览预置钉子；切回游玩后只隐藏这类钉子的外观。
 static var visuals_visible := true
+static var map_editor_active := false
 ## 钉子对应的材料 id；真源在 Ink/src/ink_palette.gd。
 const InkPalette := preload("res://Ink/src/ink_palette.gd")
 #endregion
@@ -20,25 +21,33 @@ const InkPalette := preload("res://Ink/src/ink_palette.gd")
 #region 状态
 var body = null
 var pixel := Vector2i.ZERO
+var hide_outside_map_editor := false
 #endregion
 
 
 #region 挂载
 func _enter_tree() -> void:
 	add_to_group(VISUAL_GROUP)
-	visible = visuals_visible
+	refresh_visibility()
 
 
 ## 绑定到一个刚体上的某个钉子像素；调用前先 add_child。
-func setup(target_body, target_pixel: Vector2i) -> void:
+func setup(target_body, target_pixel: Vector2i, editor_placed := false) -> void:
 	body = target_body
 	pixel = target_pixel
+	hide_outside_map_editor = editor_placed
 	texture = NAIL_TEXTURE
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	centered = false
 	offset = -ANCHOR_CENTER        # 固定点落在节点原点
 	process_physics_priority = 20  # 和 pbody_visual 一样，等世界走完再读位置
+	refresh_visibility()
 	_follow()
+
+
+## 预置钉子只在地图编辑模式显示；普通游玩钉子始终保留外观。
+func refresh_visibility() -> void:
+	visible = not hide_outside_map_editor or (map_editor_active and visuals_visible)
 #endregion
 
 

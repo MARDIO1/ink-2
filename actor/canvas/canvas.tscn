@@ -16,6 +16,7 @@
 [ext_resource type="Texture2D" path="res://ui/asset/canvas_frame.tres" id="14_canvas_frame"]
 [ext_resource type="Script" path="res://actor/canvas/src/selection_overlay.gd" id="15_selection_overlay"]
 [ext_resource type="Texture2D" path="res://ui/asset/select_delete.tres" id="16_select_delete"]
+[ext_resource type="Texture2D" path="res://actor/canvas/asset/lined_paper.png" id="17_lined_paper"]
 
 [sub_resource type="RectangleShape2D" id="CanvasBounds"]
 resource_local_to_scene = true
@@ -93,6 +94,7 @@ monitorable = false
 script = ExtResource("2_surface")
 canvas_size = Vector2i(400, 280)
 background_color = Color(0.968627, 0.952941, 0.854902, 1)
+background_texture = ExtResource("17_lined_paper")
 border_width = 1.0
 tool = 1
 
@@ -192,8 +194,8 @@ expand_icon = true
 [node name="Shape" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=560230217]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "自选形状（5/6）
-重复点击切换矩形与圆形"
+tooltip_text = "自选形状（5/6/9）
+重复点击切换矩形、圆形与直线"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52

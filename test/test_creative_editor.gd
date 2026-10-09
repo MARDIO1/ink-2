@@ -67,9 +67,38 @@ func _run() -> void:
 	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/BombSideButton")
 	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/AdjustMonsterButton")
 	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/ResetMonsterScaleButton")
+	var has_place_dialogue := monster_palette.has_node("Root/Panel/Margin/VBox/PlaceDialogueTriggerButton")
+	var has_delete_dialogue := monster_palette.has_node("Root/Panel/Margin/VBox/DeleteDialogueTriggerButton")
+	var dialogue_valid := has_place_dialogue and has_delete_dialogue
 	valid = valid and not monster_palette.has_node("Root/Panel/Margin/VBox/ShieldFrontButton")
 	valid = valid and not monster_palette.has_node("Root/Panel/Margin/VBox/BombManiacButton")
 	valid = valid and not monster_palette.has_node("Root/Panel/Margin/VBox/InkmanButton")
+	var dialogue_window := creative.get_node_or_null("DialogueTriggerInput") as Window
+	dialogue_valid = dialogue_valid and dialogue_window != null
+	creative._open_dialogue_input(Vector2(760, 260))
+	var dialogue_lines_box: VBoxContainer = creative.get("_dialogue_lines_box")
+	var first_line := dialogue_lines_box.get_child(0) as LineEdit
+	first_line.text = "第一句"
+	creative._on_dialogue_line_submitted(first_line.text, first_line)
+	dialogue_valid = dialogue_valid and dialogue_lines_box.get_child_count() == 2
+	var second_line := dialogue_lines_box.get_child(1) as LineEdit
+	second_line.text = "第二句"
+	creative._confirm_dialogue_input()
+	var dialogue_triggers: Node = scene.get_node_or_null("DialogueTriggers")
+	dialogue_valid = dialogue_valid and dialogue_triggers != null and dialogue_triggers.get_child_count() == 1
+	var map_dialogue: Node2D = dialogue_triggers.get_child(0) as Node2D
+	dialogue_valid = dialogue_valid and map_dialogue.visible
+	dialogue_valid = dialogue_valid and map_dialogue.trigger_rect().size == Vector2(100, 100)
+	dialogue_valid = dialogue_valid and PackedStringArray(map_dialogue.get("lines")) \
+		== PackedStringArray(["第一句", "第二句"])
+	var dialogue_id := str(map_dialogue.get("editor_id"))
+	dialogue_valid = dialogue_valid and creative.remove_dialogue_trigger_at(Vector2(760, 260))
+	dialogue_valid = dialogue_valid and dialogue_triggers.get_child_count() == 0
+	dialogue_valid = dialogue_valid and creative.undo_last_edit()
+	dialogue_valid = dialogue_valid and dialogue_triggers.get_child_count() == 1
+	map_dialogue = dialogue_triggers.get_child(0) as Node2D
+	dialogue_valid = dialogue_valid and str(map_dialogue.get("editor_id")) == dialogue_id
+	valid = valid and dialogue_valid
 
 	# 画一笔后放怪：两次撤销必须严格按时间顺序先撤怪、再撤画。
 	var undo_pixel := Vector2i(40, 40)
@@ -191,6 +220,7 @@ func _run() -> void:
 	var runtime_nail := NailVisual.new()
 	runtime_nail.set_physics_process(false)
 	scene.add_child(runtime_nail)
+	runtime_nail.setup(null, Vector2i.ZERO, true)
 	surface.nail_layer.add(Vector2i(1, 1))
 	valid = valid and nail_visibility_button.button_pressed
 	nail_visibility_button.button_pressed = false
@@ -199,6 +229,7 @@ func _run() -> void:
 	var later_nail := NailVisual.new()
 	later_nail.set_physics_process(false)
 	scene.add_child(later_nail)
+	later_nail.setup(null, Vector2i.ZERO, true)
 	valid = valid and not later_nail.visible
 	nail_visibility_button.button_pressed = true
 	valid = valid and surface.nail_layer.visible and runtime_nail.visible and later_nail.visible
@@ -279,6 +310,10 @@ func _run() -> void:
 		for monster in saved_monsters.get_children():
 			saved_kinds.append(int(monster.get("kind")))
 		valid = valid and saved_kinds.has(MapMonsterScript.Kind.BOMB_SIDE)
+		var saved_dialogues: Node = saved.get_node("DialogueTriggers")
+		dialogue_valid = dialogue_valid and saved_dialogues.get_child_count() == 1
+		dialogue_valid = dialogue_valid and PackedStringArray(saved_dialogues.get_child(0).get("lines")) \
+			== PackedStringArray(["第一句", "第二句"])
 		saved.free()
 	if FileAccess.file_exists(save_path):
 		DirAccess.remove_absolute(save_absolute)
@@ -290,6 +325,18 @@ func _run() -> void:
 		valid = valid and not item.visible
 	creative.set_active(false)
 	valid = valid and not monster_palette.visible
+	dialogue_valid = dialogue_valid and not map_dialogue.visible
+	var dialogue_box: DialogueBox = game_ui.get_node("Dialogue") as DialogueBox
+	dialogue_box.root.hide()
+	player.body.position += map_dialogue.global_position - player.body.aabb.get_center()
+	player.body.update_aabb()
+	map_dialogue._player_was_inside = false
+	map_dialogue._physics_process(0.0)
+	dialogue_valid = dialogue_valid and dialogue_box.root.visible
+	dialogue_valid = dialogue_valid and dialogue_box.lines == PackedStringArray(["第一句", "第二句"])
+	valid = valid and dialogue_valid
+	print("[CreativeEditor] dialogue trigger placement/save/playback: ",
+		"PASS" if dialogue_valid else "FAIL")
 	valid = valid and player.visible and small_canvas.visible and not map_canvas.visible
 	for item in health_ui:
 		valid = valid and item.visible

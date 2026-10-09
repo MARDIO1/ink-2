@@ -20,6 +20,7 @@
 [ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="18_fxqyv"]
 [ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="19_rybri"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="20_flwcd"]
+[ext_resource type="Script" path="res://debug/creative/src/dialogue_trigger.gd" id="21_u6pys"]
 
 [sub_resource type="Image" id="Image_qququ"]
 data = {
@@ -75,6 +76,24 @@ data = {
 "width": 85
 }
 
+[sub_resource type="Image" id="Image_xnq5e"]
+data = {
+"data": PackedByteArray("AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ=="),
+"format": "Red8",
+"height": 4,
+"mipmaps": false,
+"width": 85
+}
+
+[sub_resource type="Image" id="Image_1fn5k"]
+data = {
+"data": PackedByteArray("AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ=="),
+"format": "Red8",
+"height": 4,
+"mipmaps": false,
+"width": 85
+}
+
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10
 script = ExtResource("1_qququ")
@@ -90,7 +109,7 @@ voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
-position = Vector2(380.70053, 87.69269)
+position = Vector2(310.86884, 97.74208)
 process_callback = 0
 script = ExtResource("10_b4ewl")
 
@@ -111,8 +130,7 @@ canvas_size = Vector2i(2048, 1024)
 active = false
 
 [node name="Player" type="Node2D" parent="." unique_id=1427605215 groups=["player"] instance=ExtResource("13_3qedj")]
-position = Vector2(225.42487, 49.94948)
-rotation = -0.0045286776
+position = Vector2(207, 54.5)
 script = ExtResource("14_tf538")
 can_sleep = false
 
@@ -144,8 +162,7 @@ paint = SubResource("Image_qququ")
 [node name="Monsters" type="Node2D" parent="." unique_id=2086146663]
 
 [node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1905620244]
-position = Vector2(225.42487, 49.94948)
-rotation = -0.0045286776
+position = Vector2(207, 54.5)
 
 [node name="InkSaved4" type="Node2D" parent="." unique_id=757825359 groups=["ink_item"]]
 position = Vector2(-512, -256)
@@ -181,7 +198,7 @@ source = 3
 paint = SubResource("Image_5dl6p")
 
 [node name="Ink17" type="Node2D" parent="." unique_id=953893761 groups=["ink_item"]]
-position = Vector2(-511.88763, -255.99759)
+position = Vector2(-511.88867, -255.99803)
 script = ExtResource("19_rybri")
 
 [node name="@Node2D@2113" type="Node2D" parent="Ink17" unique_id=1924708528]
@@ -190,12 +207,10 @@ script = ExtResource("20_flwcd")
 source = 3
 paint = SubResource("Image_1pgpw")
 
-[node name="Ink18" type="Node2D" parent="." unique_id=2116589232 groups=["ink_item"]]
-position = Vector2(-512, -256)
-script = ExtResource("19_rybri")
+[node name="DialogueTriggers" type="Node2D" parent="." unique_id=110420043]
 
-[node name="@Node2D@2114" type="Node2D" parent="Ink18" unique_id=1293020861]
-position = Vector2(711, 398)
-script = ExtResource("20_flwcd")
-source = 3
-paint = SubResource("Image_el3iw")
+[node name="DialogueTrigger" type="Node2D" parent="DialogueTriggers" unique_id=1018994680]
+position = Vector2(426.25974, 160.36197)
+script = ExtResource("21_u6pys")
+lines = PackedStringArray("你想怎么爬上这堵墙呢", "是用镐子爬上去", "还是破开岩壁一路前行")
+editor_id = "dialogue_1"

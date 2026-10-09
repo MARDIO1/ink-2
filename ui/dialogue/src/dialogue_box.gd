@@ -25,6 +25,7 @@ var _typing: bool = false
 
 
 func _ready() -> void:
+	add_to_group(&"dialogue_box")
 	panel.gui_input.connect(_on_panel_gui_input)
 	_load_lines_from_file()
 	if start_automatically and not lines.is_empty():

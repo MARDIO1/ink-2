@@ -87,7 +87,7 @@ func clear_canvas() -> void:
 
 ## 墨水固化成实体（原 E 键）。
 func generate() -> void:
-	solid.solidify(surface, world)
+	solid.solidify(surface, world, _map_editor_mode)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 
@@ -501,11 +501,13 @@ func _on_nail_visibility_toggled(show_nails: bool) -> void:
 
 func _apply_nail_visuals(show_nails: bool) -> void:
 	NailScript.visuals_visible = show_nails
+	NailScript.map_editor_active = _map_editor_mode
 	surface.nail_layer.visible = show_nails
 	if not is_inside_tree():
 		return
 	for nail in get_tree().get_nodes_in_group(NailScript.VISUAL_GROUP):
-		nail.visible = show_nails
+		if nail.has_method("refresh_visibility"):
+			nail.refresh_visibility()
 
 
 func _update_nail_visibility_tooltip(show_nails: bool) -> void:
@@ -521,10 +523,16 @@ func _select_shape_tool() -> void:
 	if surface.tool == SurfaceScript.Tool.RECT:
 		_shape_tool = SurfaceScript.Tool.CIRCLE
 	elif surface.tool == SurfaceScript.Tool.CIRCLE:
+		_shape_tool = SurfaceScript.Tool.LINE
+	elif surface.tool == SurfaceScript.Tool.LINE:
 		_shape_tool = SurfaceScript.Tool.RECT
 	_apply_tool(_shape_tool)
-	var shape_name := "圆形" if _shape_tool == SurfaceScript.Tool.CIRCLE else "矩形"
-	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（5/6）\n再次点击切换形状" % shape_name
+	var shape_name := "矩形"
+	if _shape_tool == SurfaceScript.Tool.CIRCLE:
+		shape_name = "圆形"
+	elif _shape_tool == SurfaceScript.Tool.LINE:
+		shape_name = "直线"
+	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（5/6/9）\n再次点击切换形状" % shape_name
 
 
 func _apply_tool(tool: int) -> void:
@@ -533,7 +541,8 @@ func _apply_tool(tool: int) -> void:
 	tool_grid.get_node("Brush").set_pressed_no_signal(tool == SurfaceScript.Tool.BRUSH)
 	tool_grid.get_node("Eraser").set_pressed_no_signal(tool == SurfaceScript.Tool.ERASER)
 	tool_grid.get_node("Shape").set_pressed_no_signal(
-		tool == SurfaceScript.Tool.RECT or tool == SurfaceScript.Tool.CIRCLE
+		tool == SurfaceScript.Tool.RECT or tool == SurfaceScript.Tool.CIRCLE \
+		or tool == SurfaceScript.Tool.LINE
 	)
 	tool_grid.get_node("Nail").set_pressed_no_signal(tool == SurfaceScript.Tool.NAIL)
 	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
@@ -607,6 +616,8 @@ func _input(event: InputEvent) -> void:
 				set_tool(SurfaceScript.Tool.BUCKET)
 			KEY_8:
 				set_tool(SurfaceScript.Tool.SELECT_DELETE)
+			KEY_9:
+				set_tool(SurfaceScript.Tool.LINE)
 			KEY_E:
 				generate()
 	#保存/读取走输入动作，别和上面的裸键 match 串成一个分支。

@@ -22,7 +22,7 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 
 #region 固化
 #把画布表面固化成动态刚体节点，并把结果打印到控制台
-func solidify(surface, world) -> void:
+func solidify(surface, world, editor_placed_nails := false) -> void:
 	if world == null:
 		push_error("CanvasSolid.solidify: world 为空")
 		return
@@ -57,7 +57,7 @@ func solidify(surface, world) -> void:
 	var spawned := 0
 	var total_pixels := 0
 	for part in parts:
-		if _spawn_component(world, pos, part, anchors):
+		if _spawn_component(world, pos, part, anchors, editor_placed_nails):
 			spawned += 1
 			total_pixels += part.pixel_count()
 
@@ -108,7 +108,7 @@ func _remove_overlaps(shape, surface, bodies: Array) -> int:
 #⚠️ 形状用 `PixelShape2D(source = PAINT)` + 内嵌 Image，而**不是**自造的 CanvasShape：
 #   后者装的是 RefCounted 的 PixelShape，PackedScene 存不下来 ——
 #   而 F5 是直接 pack 整个关卡，所以运行时就必须是"能存"的形态。
-func _spawn_component(world, pos, part, anchors: Dictionary) -> bool:
+func _spawn_component(world, pos, part, anchors: Dictionary, editor_placed_nails := false) -> bool:
 	var local_anchors: Dictionary = {}
 	for point: Vector2i in anchors:
 		if part.get_pixel(point.x, point.y) == InkPalette.nail_material_id():
@@ -116,6 +116,7 @@ func _spawn_component(world, pos, part, anchors: Dictionary) -> bool:
 	var body_node := InkItem.new()
 	body_node.name = "Ink%d" % world.get_child_count()
 	body_node.is_static = not local_anchors.is_empty()
+	body_node.hide_nails_in_play = editor_placed_nails
 	body_node.add_to_group(INK_GROUP, true)
 	var rect: Rect2i = part.local_aabb()
 	var shape_node := PixelShape2D.new()
@@ -132,7 +133,7 @@ func _spawn_component(world, pos, part, anchors: Dictionary) -> bool:
 	var body = world.add_body_node(body_node)
 	if body != null and not local_anchors.is_empty():
 		body.tags[ANCHOR_TAG] = local_anchors
-		_spawn_nails(world, body, local_anchors)
+		_spawn_nails(world, body, local_anchors, editor_placed_nails)
 	return body != null
 
 
@@ -150,11 +151,11 @@ func _material_image(shape, rect: Rect2i) -> Image:
 
 #region 钉子外观
 #给每个钉子像素配一枚可见钉子，贴在刚体上；像素被破坏后它会自毁。
-func _spawn_nails(world, body, anchors: Dictionary) -> void:
+func _spawn_nails(world, body, anchors: Dictionary, editor_placed_nails := false) -> void:
 	for point: Vector2i in anchors:
 		var nail := Nail.new()
 		world.add_child(nail)
-		nail.setup(body, point)
+		nail.setup(body, point, editor_placed_nails)
 #endregion
 
 

@@ -13,10 +13,13 @@ const PLAYER_SPAWN_NAME := &"PlayerSpawn"
 const MONSTER_MODE_NONE := -1
 const MONSTER_MODE_DELETE := -2
 const MONSTER_MODE_ADJUST := -3
+const DIALOGUE_MODE_PLACE := -4
+const DIALOGUE_MODE_DELETE := -5
 const MONSTER_SCALE_STEP := 0.1
 const MONSTER_MIN_SCALE := 0.35
 const MONSTER_MAX_SCALE := 2.5
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
+const DialogueTriggerScript := preload("res://debug/creative/src/dialogue_trigger.gd")
 const MONSTER_SCENES: Array[PackedScene] = [
 	preload("res://actor/monster/bomb_side.tscn"),
 ]
@@ -85,6 +88,14 @@ var _auto_save_revision := 0
 var _syncing_canvas_tool := false
 var _edit_history: Array[Dictionary] = []
 var _next_monster_id := 1
+var _dialogue_container: Node2D = null
+var _place_dialogue_button: Button = null
+var _delete_dialogue_button: Button = null
+var _dialogue_window: Window = null
+var _dialogue_lines_box: VBoxContainer = null
+var _dialogue_input_status: Label = null
+var _pending_dialogue_position := Vector2.ZERO
+var _next_dialogue_id := 1
 #endregion
 
 
@@ -111,6 +122,7 @@ func _ready() -> void:
 	# 此时 add_child 会失败。等一帧装配完成后再创建，放置函数本身也会在需要时重试。
 	call_deferred("_prepare_monster_container")
 	_build_monster_palette()
+	_build_dialogue_input_window()
 	_build_save_directory_dialog()
 	_build_map_save_window()
 	_show_canvas(_map_canvas, false)
@@ -162,6 +174,10 @@ func _handle_editor_input(event: InputEvent) -> bool:
 			get_viewport().get_canvas_transform().affine_inverse() * event.position
 		if _monster_mode == MONSTER_MODE_DELETE:
 			remove_monster_at(world_position)
+		elif _monster_mode == DIALOGUE_MODE_PLACE:
+			_open_dialogue_input(world_position)
+		elif _monster_mode == DIALOGUE_MODE_DELETE:
+			remove_dialogue_trigger_at(world_position)
 		else:
 			place_monster(_monster_mode, world_position)
 		return true
@@ -260,6 +276,7 @@ func _enter() -> void:
 		_map_canvas.set_map_editor_mode(true)
 	if _monster_palette != null:
 		_monster_palette.visible = true
+	_refresh_dialogue_trigger_visuals()
 	_set_ink_free(true)
 	if _player != null:
 		var health = _player.get_node_or_null("InkHealth")
@@ -271,6 +288,7 @@ func _enter() -> void:
 
 func _exit() -> void:
 	set_physics_process(false)
+	_cancel_dialogue_input()
 	if _body != null:
 		_body.collision_layer = _saved_layer
 		_body.collision_mask = _saved_mask
@@ -294,6 +312,7 @@ func _exit() -> void:
 	_update_monster_buttons()
 	if _monster_palette != null:
 		_monster_palette.visible = false
+	_refresh_dialogue_trigger_visuals()
 	_set_ink_free(false)
 	if _player != null:
 		_player.visible = _saved_player_visible
@@ -358,31 +377,9 @@ func _reset_player_to_spawn() -> void:
 	_body.control_torque = 0.0
 	_body.refresh_com()
 	_body.update_aabb()
-	_ensure_spawn_floor_pixels()
 	var hand: Node = _player.get_node_or_null(^"Arm/Hand/HandControl")
 	if hand != null and hand.has_method("reset_after_player_teleport"):
 		hand.reset_after_player_teleport()
-
-
-## 在出生角色脚下铺一小段地图墨水。编辑态先保留在大画布像素层，F2 退出时
-## 现有保存流程会将它固化为真实碰撞体，因此游玩开始时脚下必定有支撑。
-func _ensure_spawn_floor_pixels() -> void:
-	if _map_canvas == null or _body == null:
-		return
-	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
-	if surface == null:
-		return
-	var half_width := maxi(12, ceili(_body.aabb.size.x * 0.5) + 8)
-	var foot_center := Vector2(_body.aabb.get_center().x, _body.aabb.end.y + 0.5)
-	var local_foot: Vector2 = surface.to_local(foot_center)
-	var floor_y := ceili(local_foot.y)
-	var center_x := roundi(local_foot.x)
-	var wrote := false
-	for y in range(floor_y, floor_y + 4):
-		for x in range(center_x - half_width, center_x + half_width + 1):
-			wrote = surface.write_pixel(Vector2i(x, y), Color.BLACK) or wrote
-	if wrote:
-		surface.refresh()
 
 
 #切换哪块画布在工作：可见 + 收不收输入。
@@ -441,8 +438,8 @@ func _build_monster_palette() -> void:
 	panel.offset_left = -224.0
 	panel.offset_top = 16.0
 	panel.offset_right = -16.0
-	# 三种小怪 + 调整/删除/停止/提示，给完整按钮列保留足够高度。
-	panel.offset_bottom = 590.0
+	# 小怪编辑与对话触发点共用侧栏，完整内容超出时仍保持在屏幕内。
+	panel.offset_bottom = 700.0
 	panel.theme = EDITOR_THEME
 	panel.theme_type_variation = &"OverlayPanel"
 	root.add_child(panel)
@@ -505,6 +502,34 @@ func _build_monster_palette() -> void:
 	_delete_monster_button.pressed.connect(select_monster_tool.bind(MONSTER_MODE_DELETE))
 	column.add_child(_delete_monster_button)
 
+	var separator := HSeparator.new()
+	column.add_child(separator)
+	var dialogue_title := Label.new()
+	dialogue_title.text = "对话触发点"
+	dialogue_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	dialogue_title.theme_type_variation = &"TitleLabel"
+	column.add_child(dialogue_title)
+
+	_place_dialogue_button = Button.new()
+	_place_dialogue_button.name = "PlaceDialogueTriggerButton"
+	_place_dialogue_button.text = "放置对话点"
+	_place_dialogue_button.tooltip_text = "选择后单击地图，输入按顺序播放的多句文案"
+	_place_dialogue_button.toggle_mode = true
+	_place_dialogue_button.focus_mode = Control.FOCUS_NONE
+	_place_dialogue_button.custom_minimum_size = Vector2(176.0, 38.0)
+	_place_dialogue_button.pressed.connect(select_monster_tool.bind(DIALOGUE_MODE_PLACE))
+	column.add_child(_place_dialogue_button)
+
+	_delete_dialogue_button = Button.new()
+	_delete_dialogue_button.name = "DeleteDialogueTriggerButton"
+	_delete_dialogue_button.text = "删除对话点"
+	_delete_dialogue_button.tooltip_text = "选择后单击 100×100 对话触发区域进行删除"
+	_delete_dialogue_button.toggle_mode = true
+	_delete_dialogue_button.focus_mode = Control.FOCUS_NONE
+	_delete_dialogue_button.custom_minimum_size = Vector2(176.0, 38.0)
+	_delete_dialogue_button.pressed.connect(select_monster_tool.bind(DIALOGUE_MODE_DELETE))
+	column.add_child(_delete_dialogue_button)
+
 	var stop_button := Button.new()
 	stop_button.name = "StopMonsterToolButton"
 	stop_button.text = "停止放置"
@@ -520,13 +545,14 @@ func _build_monster_palette() -> void:
 	column.add_child(_monster_status_label)
 
 	var hint := Label.new()
-	hint.text = "放置：左键单击\n调整：拖动位置，滚轮缩放\nCtrl+Z 撤销绘图或小怪操作"
+	hint.text = "放置：左键单击\n对话：Enter 输入下一句\nCtrl+Z 撤销编辑操作"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(hint)
 
 
 func select_monster_tool(mode: int) -> void:
 	if mode != MONSTER_MODE_NONE and mode != MONSTER_MODE_DELETE and mode != MONSTER_MODE_ADJUST \
+	and mode != DIALOGUE_MODE_PLACE and mode != DIALOGUE_MODE_DELETE \
 	and not MONSTER_KINDS.has(mode):
 		mode = MONSTER_MODE_NONE
 	elif mode == _monster_mode:
@@ -551,6 +577,10 @@ func _update_monster_buttons() -> void:
 		_adjust_monster_button.set_pressed_no_signal(_monster_mode == MONSTER_MODE_ADJUST)
 	if _reset_monster_scale_button != null:
 		_reset_monster_scale_button.disabled = not is_instance_valid(_selected_monster)
+	if _place_dialogue_button != null:
+		_place_dialogue_button.set_pressed_no_signal(_monster_mode == DIALOGUE_MODE_PLACE)
+	if _delete_dialogue_button != null:
+		_delete_dialogue_button.set_pressed_no_signal(_monster_mode == DIALOGUE_MODE_DELETE)
 
 
 func _on_canvas_tool_changed(_tool: int) -> void:
@@ -688,6 +718,230 @@ func monster_count() -> int:
 	return container.get_child_count() if container != null else 0
 
 
+## 对话输入窗口：每句一个文本栏，Enter 自动建立并聚焦下一句。
+func _build_dialogue_input_window() -> void:
+	if _dialogue_window != null:
+		return
+	var window := Window.new()
+	window.name = "DialogueTriggerInput"
+	window.title = "设置对话触发点（100×100）"
+	window.size = Vector2i(560, 430)
+	window.min_size = Vector2i(440, 320)
+	window.transient = true
+	window.exclusive = true
+	window.unresizable = false
+	window.visible = false
+	window.theme = EDITOR_THEME
+	window.close_requested.connect(_cancel_dialogue_input)
+	add_child(window)
+	_dialogue_window = window
+
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	window.add_child(margin)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 10)
+	margin.add_child(column)
+
+	var help := Label.new()
+	help.text = "输入第一句，按 Enter 切换到下一句；播放时将按此顺序逐句输出。"
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(help)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(scroll)
+	_dialogue_lines_box = VBoxContainer.new()
+	_dialogue_lines_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_dialogue_lines_box.add_theme_constant_override("separation", 8)
+	scroll.add_child(_dialogue_lines_box)
+
+	_dialogue_input_status = Label.new()
+	_dialogue_input_status.modulate = Color(0.75, 0.12, 0.08)
+	column.add_child(_dialogue_input_status)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	column.add_child(actions)
+	var cancel := Button.new()
+	cancel.text = "取消"
+	cancel.pressed.connect(_cancel_dialogue_input)
+	actions.add_child(cancel)
+	var confirm := Button.new()
+	confirm.text = "放置触发点"
+	confirm.pressed.connect(_confirm_dialogue_input)
+	actions.add_child(confirm)
+
+
+func _open_dialogue_input(world_position: Vector2) -> void:
+	if not active or _dialogue_window == null:
+		return
+	_pending_dialogue_position = world_position
+	for child in _dialogue_lines_box.get_children():
+		child.queue_free()
+	_dialogue_input_status.text = ""
+	var first := _add_dialogue_line_input()
+	_dialogue_window.popup_centered(Vector2i(560, 430))
+	first.call_deferred("grab_focus")
+
+
+func _add_dialogue_line_input(initial_text := "") -> LineEdit:
+	var input := LineEdit.new()
+	input.placeholder_text = "第 %d 句" % (_dialogue_lines_box.get_child_count() + 1)
+	input.text = initial_text
+	input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	input.text_submitted.connect(_on_dialogue_line_submitted.bind(input))
+	_dialogue_lines_box.add_child(input)
+	return input
+
+
+func _on_dialogue_line_submitted(_text: String, input: LineEdit) -> void:
+	var index := input.get_index()
+	var next: LineEdit = null
+	if index + 1 < _dialogue_lines_box.get_child_count():
+		next = _dialogue_lines_box.get_child(index + 1) as LineEdit
+	else:
+		next = _add_dialogue_line_input()
+	if next != null:
+		next.grab_focus()
+
+
+func _confirm_dialogue_input() -> void:
+	var dialogue_lines := PackedStringArray()
+	for child in _dialogue_lines_box.get_children():
+		if not child is LineEdit:
+			continue
+		var sentence: String = child.text.strip_edges()
+		if not sentence.is_empty():
+			dialogue_lines.append(sentence)
+	if dialogue_lines.is_empty():
+		_dialogue_input_status.text = "请至少输入一句文案。"
+		return
+	place_dialogue_trigger(_pending_dialogue_position, dialogue_lines)
+	_dialogue_window.hide()
+
+
+func _cancel_dialogue_input() -> void:
+	if _dialogue_window != null:
+		_dialogue_window.hide()
+
+
+func _ensure_dialogue_container() -> Node2D:
+	if is_instance_valid(_dialogue_container):
+		return _dialogue_container
+	var level := _level_root()
+	if level == null:
+		return null
+	_dialogue_container = level.get_node_or_null("DialogueTriggers") as Node2D
+	if _dialogue_container == null:
+		_dialogue_container = Node2D.new()
+		_dialogue_container.name = "DialogueTriggers"
+		level.add_child(_dialogue_container)
+		_dialogue_container.owner = level
+	return _dialogue_container
+
+
+func place_dialogue_trigger(
+	world_position: Vector2,
+	dialogue_lines: PackedStringArray,
+	record_undo := true,
+	trigger_id := ""
+) -> Node2D:
+	if dialogue_lines.is_empty():
+		return null
+	var container := _ensure_dialogue_container()
+	if container == null:
+		return null
+	var trigger := DialogueTriggerScript.new() as Node2D
+	trigger.name = "DialogueTrigger"
+	trigger.set("lines", dialogue_lines.duplicate())
+	if trigger_id.is_empty():
+		trigger_id = _new_dialogue_id()
+	trigger.set("editor_id", trigger_id)
+	container.add_child(trigger, true)
+	trigger.global_position = world_position
+	var level := _level_root()
+	if level != null:
+		trigger.owner = level
+	if record_undo:
+		_record_edit({"type": &"dialogue_place", "id": trigger_id})
+	return trigger
+
+
+func remove_dialogue_trigger_at(world_position: Vector2) -> bool:
+	var trigger := _find_dialogue_trigger_at(world_position)
+	if trigger == null:
+		return false
+	var removed := {
+		"type": &"dialogue_delete",
+		"id": str(trigger.get("editor_id")),
+		"position": trigger.global_position,
+		"lines": PackedStringArray(trigger.get("lines")),
+	}
+	trigger.get_parent().remove_child(trigger)
+	trigger.queue_free()
+	_record_edit(removed)
+	return true
+
+
+func _find_dialogue_trigger_at(world_position: Vector2) -> Node2D:
+	var container := _ensure_dialogue_container()
+	if container == null:
+		return null
+	var nearest: Node2D = null
+	var nearest_distance: float = INF
+	for child in container.get_children():
+		if not child is Node2D or not child.is_in_group(DialogueTriggerScript.GROUP):
+			continue
+		if not child.trigger_rect().has_point(world_position):
+			continue
+		var distance: float = child.global_position.distance_to(world_position)
+		if distance < nearest_distance:
+			nearest = child
+			nearest_distance = distance
+	return nearest
+
+
+func _new_dialogue_id() -> String:
+	var container := _ensure_dialogue_container()
+	while true:
+		var candidate := "dialogue_%d" % _next_dialogue_id
+		_next_dialogue_id += 1
+		var used := false
+		if container != null:
+			for child in container.get_children():
+				if str(child.get("editor_id")) == candidate:
+					used = true
+					break
+		if not used:
+			return candidate
+	return ""
+
+
+func _remove_dialogue_trigger_by_id(trigger_id: String) -> bool:
+	var container := _ensure_dialogue_container()
+	if container == null or trigger_id.is_empty():
+		return false
+	for child in container.get_children():
+		if str(child.get("editor_id")) != trigger_id:
+			continue
+		container.remove_child(child)
+		child.queue_free()
+		return true
+	return false
+
+
+func _refresh_dialogue_trigger_visuals() -> void:
+	if not is_inside_tree():
+		return
+	for trigger in get_tree().get_nodes_in_group(DialogueTriggerScript.GROUP):
+		if trigger.has_method("_refresh_editor_visibility"):
+			trigger._refresh_editor_visibility()
+
+
 func _on_canvas_edit_committed() -> void:
 	if active:
 		_record_edit({"type": &"canvas"})
@@ -731,6 +985,15 @@ func undo_last_edit() -> bool:
 				edit.get("old_position", Vector2.ZERO),
 				edit.get("old_scale", Vector2.ONE)
 			)
+		&"dialogue_place":
+			changed = _remove_dialogue_trigger_by_id(str(edit.get("id", "")))
+		&"dialogue_delete":
+			changed = place_dialogue_trigger(
+				edit.get("position", Vector2.ZERO),
+				PackedStringArray(edit.get("lines", PackedStringArray())),
+				false,
+				str(edit.get("id", ""))
+			) != null
 	if changed:
 		_queue_edit_auto_save()
 	return changed

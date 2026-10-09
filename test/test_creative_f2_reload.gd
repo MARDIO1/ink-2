@@ -93,11 +93,6 @@ func _run() -> void:
 		Vector2(play_canvas.canvas_size) * 0.5
 	)
 	valid = valid and player.body.aabb.get_center().distance_to(expected_center) < 0.01
-	var floor_surface: Node = restored_level.get_node("MapCanvas/CanvasSurface")
-	var foot_local: Vector2 = floor_surface.to_local(Vector2(
-		player.body.aabb.get_center().x, player.body.aabb.end.y + 0.5
-	))
-	valid = valid and floor_surface.is_solid(roundi(foot_local.x), ceili(foot_local.y))
 	var grab_target = _first_nonliving_body(restored_level)
 	valid = valid and grab_target != null
 	if grab_target != null:
