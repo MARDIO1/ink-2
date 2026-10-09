@@ -144,7 +144,9 @@ static func attach(world) -> void:
 ## 注销。**必须在世界销毁时调用** —— 否则这个静态数组会一直持有刚体引用，
 ## Godot 退出时会报 "resources still in use at exit" / "Orphan StringName"。
 static func detach(world = null) -> void:
-	if world == null or _bodies == world.bodies:
+	# Array 的 == 比较内容，不比较引用。F2 换关卡时旧、新世界可能在销毁时
+	# 恰好拥有相同内容，旧世界便会误把新世界刚 attach 的查询清空。
+	if world == null or is_same(_bodies, world.bodies):
 		_bodies = []
 	_reject.clear()
 

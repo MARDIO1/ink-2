@@ -235,6 +235,69 @@ func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
 	return removed
 
 
+## 把运行时 PBody 的当前像素形状写回可被 PackedScene 保存的节点。
+## 破坏/框删只会修改 RefCounted 物理体；若不做这一步，重载场景时仍会从
+## PixelShape2D 的旧 paint 图烘焙，已删除的像素便会重新出现。
+func sync_serializable_bodies(world) -> void:
+	if world == null or world.world == null:
+		return
+	world.realign_body_nodes()
+	var live_bodies: Dictionary = {}
+	for body in world.world.bodies:
+		live_bodies[body] = true
+
+	# 已被物理世界完全删除的旧描述节点不能留给 PackedScene。
+	for child in world.get_children().duplicate():
+		if not child is PixelBody2D:
+			continue
+		var old_body = child.get("body")
+		if old_body != null and not old_body.tags.has(LIVING_TAG) and not live_bodies.has(old_body):
+			child.free()
+
+	world.realign_body_nodes()
+	for index in world.world.bodies.size():
+		var body = world.world.bodies[index]
+		if body == null or body.tags.has(LIVING_TAG):
+			continue
+		var body_node = world._body_nodes[index] if index < world._body_nodes.size() else null
+		if body_node == null or not is_instance_valid(body_node):
+			body_node = InkItem.new()
+			body_node.name = "InkSaved%d" % index
+			body_node.body = body
+			body_node.add_to_group(INK_GROUP, true)
+			world.add_child(body_node)
+			body_node.owner = world
+			world._body_nodes[index] = body_node
+		_write_body_node(body_node, body, world)
+	world.realign_body_nodes()
+
+
+func _write_body_node(body_node, body, owner: Node) -> void:
+	body_node.position = body.position
+	body_node.rotation = body.rotation
+	body_node.scale = Vector2.ONE
+	body_node.is_static = body.is_static
+	body_node.gravity_scale = body.gravity_scale
+	body_node.collision_layer = body.collision_layer
+	body_node.collision_mask = body.collision_mask
+	body_node.internal_render = body.internal_render
+	body_node.initial_velocity = Vector2.ZERO
+	body_node.initial_angular_velocity = 0.0
+	for child in body_node.get_children().duplicate():
+		if child is PixelShape2D:
+			child.free()
+	for shape in body.shapes:
+		var rect: Rect2i = shape.local_aabb()
+		if rect.size.x <= 0 or rect.size.y <= 0:
+			continue
+		var shape_node := PixelShape2D.new()
+		shape_node.position = Vector2(rect.position)
+		shape_node.source = PixelShape2D.Source.PAINT
+		shape_node.paint = _material_image(shape, rect)
+		body_node.add_child(shape_node)
+		shape_node.owner = owner
+
+
 func _sample_body_rect(surface, body, local_rect: Rect2i, plan: Dictionary,
 		anchors: Dictionary) -> int:
 	var sampled := 0

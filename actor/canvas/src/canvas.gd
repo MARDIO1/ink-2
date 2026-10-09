@@ -3,6 +3,7 @@
 extends Node2D
 
 signal tool_changed(tool: int)
+signal map_changed
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
@@ -58,7 +59,8 @@ func _ready() -> void:
 		_build_side_panel()
 		_bind_buttons()
 		surface.selection_delete_requested.connect(_delete_selection)
-		_apply_tool(surface.tool)
+		# 进入正常游戏时始终从“手”开始，不能继承地图保存时的画笔状态。
+		_apply_tool(SurfaceScript.Tool.HAND if active else surface.tool)
 #endregion
 
 
@@ -132,8 +134,12 @@ func clear_solidified_bodies_outside_canvas() -> int:
 
 ## 未固化墨水与已固化实体一起框删，并合并成一个画布撤销步骤。
 func _delete_selection(rect: Rect2i) -> void:
+	# 固化实体必须先写回可编辑画布，再建立撤销快照。旧顺序在框内只有
+	# 固化像素时会得到“空 -> 空”的快照，既不触发自动保存，也无法撤销。
+	var removed: int = solid.rasterize_rect(surface, world, rect)
+	if removed > 0:
+		solid.sync_serializable_bodies(world)
 	surface._begin_undo_step()
-	solid.rasterize_rect(surface, world, rect)
 	surface.erase_rect(rect)
 	surface._commit_undo_step()
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
@@ -169,6 +175,11 @@ func _sync_hand_enabled(tool: int) -> void:
 		hand.set_enabled(tool == SurfaceScript.Tool.HAND)
 
 
+## 从地图编辑器返回游戏时，强制恢复手工具并重新启用抓取。
+func activate_hand_tool() -> void:
+	set_tool(SurfaceScript.Tool.HAND)
+
+
 ## 直接按 px 设定笔触直径。
 func set_brush_size(px: int) -> void:
 	surface.brush_size = px
@@ -199,6 +210,7 @@ func expand_canvas(direction: Vector2i, amount := -1) -> bool:
 	canvas_size = new_size
 	_syncing_preserved_resize = false
 	position -= Vector2(content_offset)
+	map_changed.emit()
 	return true
 
 

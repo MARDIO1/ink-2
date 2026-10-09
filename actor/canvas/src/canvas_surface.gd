@@ -20,7 +20,14 @@ var black_texture: ImageTexture
 func _ready() -> void:
 	black_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_resize()
+	if not saved_ink_path.is_empty():
+		call_deferred("_restore_saved_ink")
 #endregion
+
+
+func _restore_saved_ink() -> void:
+	if not saved_ink_path.is_empty() and ResourceLoader.exists(saved_ink_path):
+		load_ink(saved_ink_path)
 
 
 #region 外观
@@ -42,6 +49,8 @@ func _ready() -> void:
 		queue_redraw()
 ## 画布边框线宽，单位 px。
 @export var border_width := 2.0
+## 地图编辑自动保存使用的未固化画布快照；场景载入完成后自动恢复。
+@export_file("*.res", "*.tres") var saved_ink_path := ""
 
 #纸底和边框由表面画，黑色墨水由 BlackSprite 盖在上面
 func _draw() -> void:

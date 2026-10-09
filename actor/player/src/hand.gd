@@ -345,6 +345,37 @@ func set_grip(closed: bool) -> void:
 
 func clear_grip_override() -> void:
 	_grip_override = null
+
+
+## 玩家被地图编辑器传送回出生点后，旧的臂/抓握关节仍引用编辑态的位姿。
+## 在新位置重建整条约束链，并恢复鼠标抓握。
+func reset_after_player_teleport() -> void:
+	_release_grab()
+	_remove_arm()
+	# F2 会销毁旧关卡并换入新 PixelWorld；确保模块级场景查询明确指向
+	# 当前手所在的世界，左键指尖检测才能命中物体。
+	Query.attach(physics_world)
+	_target_override = null
+	_grip_override = null
+	enabled = true
+	target_relative = rest_offset.limit_length(max_reach - reach_solver_margin)
+	var center: Vector2 = player_body.com_world() + target_relative.rotated(player_body.rotation)
+	body.rotation = player_body.rotation
+	body.position = center - body.local_com.rotated(body.rotation)
+	body.linear_velocity = Vector2.ZERO
+	body.angular_velocity = 0.0
+	body.control_force = Vector2.ZERO
+	body.control_torque = 0.0
+	body.awake = true
+	body.sleep_timer = 0.0
+	body.refresh_com()
+	body.update_aabb()
+	arm_body.linear_velocity = Vector2.ZERO
+	arm_body.angular_velocity = 0.0
+	arm_body.control_force = Vector2.ZERO
+	arm_body.control_torque = 0.0
+	_apply_enabled_state()
+	_ensure_arm_joint()
 #endregion
 
 

@@ -20,8 +20,6 @@
 [ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="18_aipoi"]
 [ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="19_eq062"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="20_0rcm4"]
-[ext_resource type="PackedScene" path="res://actor/monster/little_soldier.tscn" id="21_mdsyj"]
-[ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="22_xkpcx"]
 
 [sub_resource type="Image" id="Image_liwpj"]
 data = {
@@ -74,7 +72,7 @@ voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
-position = Vector2(1080.1359, -260.43527)
+position = Vector2(613.5809, 87.75035)
 process_callback = 0
 script = ExtResource("10_asmu7")
 
@@ -95,8 +93,8 @@ canvas_size = Vector2i(2048, 1024)
 active = false
 
 [node name="Player" type="Node2D" parent="." unique_id=1427605215 groups=["player"] instance=ExtResource("13_qp4c0")]
-position = Vector2(1050.9095, -307.0351)
-rotation = 0.10617205
+position = Vector2(583.5844, 41.642532)
+rotation = 0.08955745
 script = ExtResource("14_4iufe")
 can_sleep = false
 
@@ -127,26 +125,6 @@ source = 3
 paint = SubResource("Image_liwpj")
 
 [node name="Monsters" type="Node2D" parent="." unique_id=127459464]
-
-[node name="LittleSoldier" type="Node2D" parent="Monsters" unique_id=889863994 groups=["map_monster"] instance=ExtResource("21_mdsyj")]
-process_priority = 100
-z_index = 1000
-position = Vector2(784.81226, 252.70116)
-scale = Vector2(0.6999999, 0.6999999)
-script = ExtResource("22_xkpcx")
-kind = 1
-display_name = "小兵"
-editor_id = "monster-13385164-1"
-
-[node name="LittleSoldier2" type="Node2D" parent="Monsters" unique_id=347386711 groups=["map_monster"] instance=ExtResource("21_mdsyj")]
-process_priority = 100
-z_index = 1000
-position = Vector2(665.2161, 253.499)
-scale = Vector2(0.6999999, 0.6999999)
-script = ExtResource("22_xkpcx")
-kind = 1
-display_name = "小兵"
-editor_id = "monster-14232368-2"
 
 [node name="Ink10" type="Node2D" parent="." unique_id=328219210 groups=["ink_item"]]
 position = Vector2(-512, -256)

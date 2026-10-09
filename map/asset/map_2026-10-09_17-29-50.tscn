@@ -20,8 +20,6 @@
 [ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="18_663ib"]
 [ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="19_fl1js"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="20_7qesi"]
-[ext_resource type="PackedScene" path="res://actor/monster/little_soldier.tscn" id="21_1bqj5"]
-[ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="22_5heuk"]
 
 [sub_resource type="Image" id="Image_liwpj"]
 data = {
@@ -65,7 +63,7 @@ voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
-position = Vector2(1100.8373, -240.46336)
+position = Vector2(644.9857, 65.65843)
 process_callback = 0
 script = ExtResource("10_flvik")
 
@@ -86,8 +84,8 @@ canvas_size = Vector2i(2048, 1024)
 active = false
 
 [node name="Player" type="Node2D" parent="." unique_id=1427605215 groups=["player"] instance=ExtResource("13_bva6j")]
-position = Vector2(1074.7853, -288.90933)
-rotation = 0.17294247
+position = Vector2(618.981, 17.187073)
+rotation = 0.1739179
 script = ExtResource("14_3d847")
 can_sleep = false
 
@@ -119,26 +117,6 @@ paint = SubResource("Image_liwpj")
 
 [node name="Monsters" type="Node2D" parent="." unique_id=127459464]
 
-[node name="LittleSoldier" type="Node2D" parent="Monsters" unique_id=889863994 groups=["map_monster"] instance=ExtResource("21_1bqj5")]
-process_priority = 100
-z_index = 1000
-position = Vector2(784.81226, 252.70116)
-scale = Vector2(0.6999999, 0.6999999)
-script = ExtResource("22_5heuk")
-kind = 1
-display_name = "小兵"
-editor_id = "monster-13385164-1"
-
-[node name="LittleSoldier2" type="Node2D" parent="Monsters" unique_id=347386711 groups=["map_monster"] instance=ExtResource("21_1bqj5")]
-process_priority = 100
-z_index = 1000
-position = Vector2(665.2161, 253.499)
-scale = Vector2(0.6999999, 0.6999999)
-script = ExtResource("22_5heuk")
-kind = 1
-display_name = "小兵"
-editor_id = "monster-14232368-2"
-
 [node name="Ink10" type="Node2D" parent="." unique_id=328219210 groups=["ink_item"]]
 position = Vector2(-512, -256)
 script = ExtResource("19_fl1js")
@@ -151,7 +129,7 @@ source = 3
 paint = SubResource("Image_deo50")
 
 [node name="Ink15" type="Node2D" parent="." unique_id=2119930339 groups=["ink_item"]]
-position = Vector2(-512, -256)
+position = Vector2(-512, -256.00043)
 script = ExtResource("19_fl1js")
 
 [node name="@Node2D@444" type="Node2D" parent="Ink15" unique_id=559448992]

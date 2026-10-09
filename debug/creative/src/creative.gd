@@ -9,6 +9,7 @@ signal map_saved(path: String)
 
 const HEALTH_UI_GROUP := &"health_ui"
 const MONSTER_CONTAINER_NAME := &"Monsters"
+const PLAYER_SPAWN_NAME := &"PlayerSpawn"
 const MONSTER_MODE_NONE := -1
 const MONSTER_MODE_DELETE := -2
 const MONSTER_MODE_ADJUST := -3
@@ -17,17 +18,13 @@ const MONSTER_MIN_SCALE := 0.35
 const MONSTER_MAX_SCALE := 2.5
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 const MONSTER_SCENES: Array[PackedScene] = [
-	preload("res://actor/monster/shield_side.tscn"),
-	preload("res://actor/monster/little_soldier.tscn"),
 	preload("res://actor/monster/bomb_side.tscn"),
 ]
 const MONSTER_KINDS := [
-	MapMonsterScript.Kind.SHIELD_SIDE,
-	MapMonsterScript.Kind.LITTLE_SOLDIER,
 	MapMonsterScript.Kind.BOMB_SIDE,
 ]
-const MONSTER_NAMES := ["大盾侧面", "小兵", "炸弹狂侧面"]
-const MONSTER_NODE_NAMES := ["ShieldSide", "LittleSoldier", "BombSide"]
+const MONSTER_NAMES := ["炸弹狂侧面"]
+const MONSTER_NODE_NAMES := ["BombSide"]
 const EDITOR_THEME := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const MAX_EDIT_HISTORY := 128
 
@@ -39,6 +36,13 @@ const MAX_EDIT_HISTORY := 128
 @export_file("*.tscn") var map_path: String = "res://map/asset/map.tscn"
 ## 保底 PNG：存关卡的同时存一张整图（黑=空、颜色=材质 id），现在只当参考图，没有节点读它。
 @export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
+## 自动保存的未固化画布像素；路径存放在关卡本体，避免实例子节点属性被场景打包忽略。
+@export_file("*.res", "*.tres") var edit_snapshot_path := ""
+## F2 退出编辑器时覆盖保存当前地图；自动测试可关闭它来避免重复打包超大地图。
+@export var auto_save_on_exit := true
+## 每次完成绘图、小怪编辑或撤销后，覆盖保存当前地图。
+@export var auto_save_edits := true
+@export_range(0.05, 2.0, 0.05) var auto_save_delay := 0.3
 ## 上帝位移速度，单位 px/s。
 @export var fly_speed := 600.0
 ## 按住 Shift 的倍率。
@@ -50,6 +54,7 @@ const MAX_EDIT_HISTORY := 128
 var active := false
 var _player = null
 var _body = null
+var _spawn_point: Marker2D = null
 var _canvas = null
 var _map_canvas = null
 var _saved_layer := 1
@@ -71,6 +76,12 @@ var _drag_offset := Vector2.ZERO
 var _drag_start_position := Vector2.ZERO
 var _drag_start_scale := Vector2.ONE
 var _save_directory_dialog: FileDialog = null
+var _map_save_window: PopupPanel = null
+var _save_name_input: LineEdit = null
+var _save_directory_input: LineEdit = null
+var _save_preview: TextureRect = null
+var _skip_restore_on_enter := false
+var _auto_save_revision := 0
 var _syncing_canvas_tool := false
 var _edit_history: Array[Dictionary] = []
 var _next_monster_id := 1
@@ -91,25 +102,38 @@ func _ready() -> void:
 		var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
 		if surface != null and surface.has_signal("edit_committed"):
 			surface.edit_committed.connect(_on_canvas_edit_committed)
+		if surface != null and not edit_snapshot_path.is_empty():
+			surface.saved_ink_path = edit_snapshot_path
+			surface.call_deferred("_restore_saved_ink")
+		if _map_canvas.has_signal("map_changed"):
+			_map_canvas.map_changed.connect(_on_map_changed)
 	# 部分导入地图没有预置 Monsters；本节点的 _ready 仍处在父场景装配子节点阶段，
 	# 此时 add_child 会失败。等一帧装配完成后再创建，放置函数本身也会在需要时重试。
 	call_deferred("_prepare_monster_container")
 	_build_monster_palette()
 	_build_save_directory_dialog()
+	_build_map_save_window()
 	_show_canvas(_map_canvas, false)
+	call_deferred("_ensure_spawn_point")
 
 
 ## 放置放在普通输入阶段处理，优先于地图画布的绘制/物件输入；
 ## 旧地图中某些旧节点会提前消费 unhandled 输入，导致看起来选择了大盾却无法落下。
 func _input(event: InputEvent) -> void:
+	# F2 进入编辑器时可能在本次输入处理中立刻替换整个关卡。
+	# 先保留当前 Viewport，避免旧 Creative 节点脱离场景树后 get_viewport() 返回 null。
+	var viewport := get_viewport()
 	if _handle_editor_input(event):
-		get_viewport().set_input_as_handled()
+		if is_instance_valid(viewport):
+			viewport.set_input_as_handled()
 
 
 ## 保留 unhandled 入口，供直接运行旧关卡和自动测试使用。
 func _unhandled_input(event: InputEvent) -> void:
+	var viewport := get_viewport()
 	if _handle_editor_input(event):
-		get_viewport().set_input_as_handled()
+		if is_instance_valid(viewport):
+			viewport.set_input_as_handled()
 
 
 func _handle_editor_input(event: InputEvent) -> bool:
@@ -203,6 +227,11 @@ func set_active(value: bool) -> void:
 
 
 func _enter() -> void:
+	# 从游玩态进编辑器时，运行中的破坏/碎片不能带进来。通过 Root 换成上次
+	# F2 退出时覆盖保存的关卡实例，再由新实例进入编辑态。
+	if not _skip_restore_on_enter and _reload_saved_map_for_editor():
+		return
+	_skip_restore_on_enter = false
 	if _player == null:
 		push_error("Creative: 找不到 Player")
 		return
@@ -248,10 +277,16 @@ func _exit() -> void:
 		_body.angular_velocity = 0.0
 		_body.awake = true
 		_body.sleep_timer = 0.0
+	_reset_player_to_spawn()
+	# 玩家复位后再覆盖地图，编辑器中的飞行位置绝不能成为下一次出生位置。
+	if auto_save_on_exit:
+		_save_current_map_overwrite()
 	_show_canvas(_map_canvas, false)
 	_show_canvas(_canvas, true)
 	if _map_canvas != null:
 		_map_canvas.set_map_editor_mode(false)
+	if _canvas != null and _canvas.has_method("activate_hand_tool"):
+		_canvas.activate_hand_tool()
 	_monster_mode = MONSTER_MODE_NONE
 	_set_selected_monster(null)
 	_update_monster_buttons()
@@ -265,6 +300,55 @@ func _exit() -> void:
 			health.damage_enabled = true
 	_restore_health_ui()
 	print("CREATIVE off")
+
+
+## 旧地图没有出生点时，以场景中 Player 的原始位置补建一个持久化标记。
+func _ensure_spawn_point() -> Marker2D:
+	if is_instance_valid(_spawn_point):
+		_center_spawn_on_map_canvas(_spawn_point)
+		return _spawn_point
+	var level := _level_root()
+	if level == null:
+		return null
+	_spawn_point = level.get_node_or_null(NodePath(String(PLAYER_SPAWN_NAME))) as Marker2D
+	if _spawn_point != null:
+		_center_spawn_on_map_canvas(_spawn_point)
+		return _spawn_point
+	_spawn_point = Marker2D.new()
+	_spawn_point.name = PLAYER_SPAWN_NAME
+	level.add_child(_spawn_point)
+	_center_spawn_on_map_canvas(_spawn_point)
+	_spawn_point.owner = level
+	return _spawn_point
+
+
+func _center_spawn_on_map_canvas(spawn: Marker2D) -> void:
+	if spawn == null:
+		return
+	if _map_canvas != null:
+		spawn.global_position = _map_canvas.to_global(Vector2(_map_canvas.canvas_size) * 0.5)
+	else:
+		spawn.global_position = _player.global_position if _player != null else Vector2.ZERO
+	spawn.global_rotation = 0.0
+
+
+func _reset_player_to_spawn() -> void:
+	var spawn := _ensure_spawn_point()
+	if spawn == null or _player == null or _body == null:
+		return
+	_player.global_position = spawn.global_position
+	_player.global_rotation = spawn.global_rotation
+	_body.position = spawn.global_position
+	_body.rotation = spawn.global_rotation
+	_body.linear_velocity = Vector2.ZERO
+	_body.angular_velocity = 0.0
+	_body.control_force = Vector2.ZERO
+	_body.control_torque = 0.0
+	_body.refresh_com()
+	_body.update_aabb()
+	var hand: Node = _player.get_node_or_null(^"Arm/Hand/HandControl")
+	if hand != null and hand.has_method("reset_after_player_teleport"):
+		hand.reset_after_player_teleport()
 
 
 #切换哪块画布在工作：可见 + 收不收输入。
@@ -575,10 +659,16 @@ func _on_canvas_edit_committed() -> void:
 		_record_edit({"type": &"canvas"})
 
 
+func _on_map_changed() -> void:
+	if active:
+		_queue_edit_auto_save()
+
+
 func _record_edit(edit: Dictionary) -> void:
 	_edit_history.append(edit)
 	if _edit_history.size() > MAX_EDIT_HISTORY:
 		_edit_history.pop_front()
+	_queue_edit_auto_save()
 
 
 ## 按绘图与小怪编辑发生的实际顺序撤销，供 Ctrl+Z 和自动测试调用。
@@ -586,14 +676,15 @@ func undo_last_edit() -> bool:
 	if _edit_history.is_empty():
 		return false
 	var edit: Dictionary = _edit_history.pop_back()
+	var changed := false
 	match edit.get("type", &""):
 		&"canvas":
 			var surface: Node = _map_canvas.get_node_or_null("CanvasSurface") if _map_canvas != null else null
-			return surface != null and surface.undo_last_edit()
+			changed = surface != null and surface.undo_last_edit()
 		&"monster_place":
-			return _remove_monster_by_id(str(edit.get("id", "")))
+			changed = _remove_monster_by_id(str(edit.get("id", "")))
 		&"monster_delete":
-			return place_monster(
+			changed = place_monster(
 				int(edit.get("kind", -1)),
 				edit.get("position", Vector2.ZERO),
 				false,
@@ -601,12 +692,14 @@ func undo_last_edit() -> bool:
 				edit.get("scale", Vector2.ONE)
 			) != null
 		&"monster_transform":
-			return _apply_monster_transform(
+			changed = _apply_monster_transform(
 				str(edit.get("id", "")),
 				edit.get("old_position", Vector2.ZERO),
 				edit.get("old_scale", Vector2.ONE)
 			)
-	return false
+	if changed:
+		_queue_edit_auto_save()
+	return changed
 
 
 func _remove_monster_by_id(monster_id: String) -> bool:
@@ -703,7 +796,7 @@ func _physics_process(delta: float) -> void:
 ## 把**整个关卡**存成一个场景：PixelWorld + 玩家 + 画布 + 全部墨水 + 地形/HUD 都在里面。
 ## 存出来的是和 main.tscn **平级**的关卡 —— 能单独打开、也能当主场景跑。
 func export_map() -> Error:
-	_request_map_save_directory()
+	_open_map_save_window()
 	return OK
 
 
@@ -719,7 +812,7 @@ func _build_save_directory_dialog() -> void:
 	dialog.file_mode = FileDialog.FILE_MODE_OPEN_DIR
 	dialog.access = FileDialog.ACCESS_RESOURCES
 	dialog.current_dir = map_path.get_base_dir()
-	dialog.dir_selected.connect(_save_map_in_directory)
+	dialog.dir_selected.connect(_on_save_directory_chosen)
 	add_child(dialog)
 	_save_directory_dialog = dialog
 
@@ -734,15 +827,160 @@ func _request_map_save_directory() -> void:
 	_save_directory_dialog.popup_centered_ratio(0.72)
 
 
-func _save_map_in_directory(directory: String) -> void:
-	var stamp := Time.get_datetime_string_from_system().replace("T", "_").replace(":", "-")
-	var scene_path := directory.path_join("map_%s.tscn" % stamp)
-	var preview_path := directory.path_join("map_%s.png" % stamp)
-	map_path = scene_path
-	baked_map_path = preview_path
-	var error := export_map_to(scene_path)
-	if error == OK:
-		print("MAP saved after choosing folder: %s" % ProjectSettings.globalize_path(scene_path))
+func _build_map_save_window() -> void:
+	if _map_save_window != null:
+		return
+	var popup := PopupPanel.new()
+	popup.name = "MapSaveWindow"
+	popup.theme = EDITOR_THEME
+	add_child(popup)
+	_map_save_window = popup
+	var column := VBoxContainer.new()
+	column.name = "Content"
+	column.custom_minimum_size = Vector2(520, 440)
+	column.add_theme_constant_override("separation", 10)
+	popup.add_child(column)
+	var title := Label.new()
+	title.text = "保存地图"
+	title.theme_type_variation = &"TitleLabel"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(title)
+	_save_preview = TextureRect.new()
+	_save_preview.name = "MapThumbnail"
+	_save_preview.custom_minimum_size = Vector2(480, 270)
+	_save_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_save_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	column.add_child(_save_preview)
+	var name_row := HBoxContainer.new()
+	column.add_child(name_row)
+	var name_label := Label.new()
+	name_label.text = "名称"
+	name_label.custom_minimum_size = Vector2(68, 0)
+	name_row.add_child(name_label)
+	_save_name_input = LineEdit.new()
+	_save_name_input.name = "MapNameInput"
+	_save_name_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_save_name_input.placeholder_text = "输入地图名称"
+	name_row.add_child(_save_name_input)
+	var dir_row := HBoxContainer.new()
+	column.add_child(dir_row)
+	var dir_label := Label.new()
+	dir_label.text = "路径"
+	dir_label.custom_minimum_size = Vector2(68, 0)
+	dir_row.add_child(dir_label)
+	_save_directory_input = LineEdit.new()
+	_save_directory_input.name = "MapDirectoryInput"
+	_save_directory_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_save_directory_input.editable = false
+	dir_row.add_child(_save_directory_input)
+	var browse := Button.new()
+	browse.text = "选择路径"
+	browse.pressed.connect(_request_map_save_directory)
+	dir_row.add_child(browse)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	column.add_child(actions)
+	var cancel := Button.new()
+	cancel.text = "取消"
+	cancel.pressed.connect(popup.hide)
+	actions.add_child(cancel)
+	var save := Button.new()
+	save.text = "保存"
+	save.pressed.connect(_confirm_named_map_save)
+	actions.add_child(save)
+
+
+func _open_map_save_window() -> void:
+	if _map_save_window == null:
+		_build_map_save_window()
+	if _map_save_window == null:
+		return
+	_save_name_input.text = map_path.get_file().get_basename()
+	_save_directory_input.text = map_path.get_base_dir()
+	_refresh_map_save_preview()
+	_map_save_window.popup_centered()
+
+
+func _refresh_map_save_preview() -> void:
+	if _save_preview == null:
+		return
+	var image := get_viewport().get_texture().get_image()
+	if image == null:
+		return
+	image.resize(480, 270, Image.INTERPOLATE_NEAREST)
+	_save_preview.texture = ImageTexture.create_from_image(image)
+
+
+func _on_save_directory_chosen(directory: String) -> void:
+	if _save_directory_input != null:
+		_save_directory_input.text = directory
+
+
+func _confirm_named_map_save() -> void:
+	if _save_name_input == null or _save_directory_input == null:
+		return
+	var name := _save_name_input.text.strip_edges().validate_filename()
+	if name.to_lower().ends_with(".tscn"):
+		name = name.trim_suffix(".tscn")
+	var directory := _save_directory_input.text.strip_edges()
+	if name.is_empty() or directory.is_empty():
+		return
+	map_path = directory.path_join(name + ".tscn")
+	baked_map_path = directory.path_join(name + ".png")
+	if export_map_to(map_path) == OK and _map_save_window != null:
+		_map_save_window.hide()
+
+
+func _save_current_map_overwrite() -> Error:
+	if map_path.is_empty():
+		return ERR_INVALID_PARAMETER
+	baked_map_path = map_path.get_basename() + ".png"
+	return export_map_to(map_path)
+
+
+## 编辑中的自动保存只打包当前状态，不固化画布，保证下一步仍然可以撤销和继续绘制。
+func _queue_edit_auto_save() -> void:
+	if not active or not auto_save_edits or map_path.is_empty():
+		return
+	_auto_save_revision += 1
+	var revision := _auto_save_revision
+	get_tree().create_timer(auto_save_delay).timeout.connect(_run_edit_auto_save.bind(revision))
+
+
+func _run_edit_auto_save(revision: int) -> void:
+	if revision != _auto_save_revision or not active or not auto_save_edits:
+		return
+	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface") if _map_canvas != null else null
+	if surface != null and surface.has_method("save_ink"):
+		var snapshot_path := map_path.get_basename() + ".edit.res"
+		if surface.save_ink(snapshot_path) != OK:
+			return
+		edit_snapshot_path = snapshot_path
+		surface.saved_ink_path = snapshot_path
+	export_map_to(map_path, false)
+
+
+func _reload_saved_map_for_editor() -> bool:
+	var tree_root := get_tree().current_scene
+	if tree_root == null or not tree_root.has_method("load_level") or map_path.is_empty():
+		return false
+	# 自动保存会反复覆盖同一路径；忽略资源缓存才能恢复磁盘上的最新版本。
+	var packed := ResourceLoader.load(
+		map_path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE
+	) as PackedScene
+	if packed == null:
+		push_warning("Creative: 无法恢复已保存地图 %s" % map_path)
+		return false
+	var level: Node = tree_root.load_level(packed)
+	var replacement := level.get_node_or_null(^"Creative")
+	if replacement != null:
+		replacement.call_deferred("_activate_restored_editor")
+	return true
+
+
+func _activate_restored_editor() -> void:
+	_skip_restore_on_enter = true
+	set_active(true)
 
 
 ## 保存入口始终写出可直接运行的 `.tscn`。prepare_canvas=false 仅供自动测试或只打包当前状态使用。
@@ -761,6 +999,10 @@ func export_map_to(save_path: String, prepare_canvas := true) -> Error:
 		if bake_error != OK:
 			push_error("Map preview save failed: %s (%d)" % [baked_map_path, bake_error])
 			return bake_error
+		var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
+		if surface != null:
+			surface.saved_ink_path = ""
+		edit_snapshot_path = ""
 	_sync_node_transforms(scene)
 	var packed := PackedScene.new()
 	var error := _pack_as_playable_scene(packed, scene)
@@ -833,6 +1075,10 @@ func _sync_node_transforms(root: Node) -> void:
 			continue
 		var body = node.get("body")
 		if body == null:
+			continue
+		# 玩家、手与小怪的运行时姿态不是地图编辑结果；尤其不能把上帝模式
+		# 飞行位置写成出生位置。
+		if body.tags.has(&"living"):
 			continue
 		node.position = body.position
 		node.rotation = body.rotation

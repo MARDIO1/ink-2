@@ -19,6 +19,8 @@ func _run() -> void:
 	await process_frame
 
 	var creative: Node = scene.get_node("Creative")
+	creative.auto_save_on_exit = false
+	creative.auto_save_edits = false
 	var player: Node2D = scene.get_node("Player")
 	var small_canvas: Node2D = scene.get_node("SmallCanvas")
 	var map_canvas: Node2D = scene.get_node("MapCanvas")
@@ -35,6 +37,11 @@ func _run() -> void:
 	if save_directory_dialog != null:
 		valid = valid and save_directory_dialog.file_mode == FileDialog.FILE_MODE_OPEN_DIR
 		valid = valid and save_directory_dialog.access == FileDialog.ACCESS_RESOURCES
+	var save_window := creative.get_node_or_null("MapSaveWindow") as PopupPanel
+	valid = valid and save_window != null
+	valid = valid and save_window.get_node_or_null("Content/MapThumbnail") is TextureRect
+	valid = valid and save_window.get_node_or_null("Content/MapNameInput") is LineEdit
+	valid = valid and save_window.get_node_or_null("Content/MapDirectoryInput") is LineEdit
 	for item in health_ui:
 		valid = valid and not item.visible
 	valid = valid and exit_button.visible
@@ -57,8 +64,6 @@ func _run() -> void:
 	# 小怪栏提供大盾侧面、小兵和炸弹狂侧面；素材演示 UI / 呼吸缩放关闭，所有部件都在画布上方。
 	var monster_palette: CanvasLayer = creative.get_node("MonsterPalette")
 	valid = valid and monster_palette.visible
-	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/ShieldSideButton")
-	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/LittleSoldierButton")
 	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/BombSideButton")
 	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/AdjustMonsterButton")
 	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/ResetMonsterScaleButton")
@@ -74,7 +79,7 @@ func _run() -> void:
 	surface.refresh()
 	surface._commit_undo_step()
 	var undo_monster: Node2D = creative.place_monster(
-		MapMonsterScript.Kind.SHIELD_SIDE, Vector2(200, 200)
+		MapMonsterScript.Kind.BOMB_SIDE, Vector2(200, 200)
 	)
 	valid = valid and undo_monster != null and creative.monster_count() == 1
 	var undo_key := InputEventKey.new()
@@ -125,7 +130,7 @@ func _run() -> void:
 
 	var monster_positions := [Vector2(520, 220)]
 	var monster_kinds := [
-		MapMonsterScript.Kind.SHIELD_SIDE,
+		MapMonsterScript.Kind.BOMB_SIDE,
 	]
 	for index in monster_kinds.size():
 		var monster: Node2D = creative.place_monster(monster_kinds[index], monster_positions[index])
@@ -139,17 +144,15 @@ func _run() -> void:
 		if breath != null:
 			valid = valid and breath.process_mode == Node.PROCESS_MODE_DISABLED
 	valid = valid and creative.monster_count() == 1
-	var side_monster: Node2D = scene.get_node("Monsters/ShieldSide")
-	var side_shield: Sprite2D = side_monster.get_node("Visual/Skeleton2D/Root/ShieldBone/ShieldArt")
-	valid = valid and side_shield.texture != null
-	valid = valid and side_monster.z_index + side_shield.z_index > map_canvas.z_index
+	var side_monster: Node2D = scene.get_node("Monsters/BombSide")
+	valid = valid and side_monster.z_index > map_canvas.z_index
 
 	# 删除也进入同一撤销栈；恢复后保留类型、坐标和稳定 id。
 	var side_id := str(side_monster.get("editor_id"))
 	valid = valid and creative.remove_monster_at(monster_positions[0])
 	valid = valid and creative.monster_count() == 0
 	valid = valid and creative.undo_last_edit() and creative.monster_count() == 1
-	var restored_side: Node2D = scene.get_node("Monsters/ShieldSide")
+	var restored_side: Node2D = scene.get_node("Monsters/BombSide")
 	valid = valid and str(restored_side.get("editor_id")) == side_id
 	valid = valid and restored_side.global_position == monster_positions[0]
 	valid = valid and not player.visible
@@ -275,7 +278,7 @@ func _run() -> void:
 		var saved_kinds := []
 		for monster in saved_monsters.get_children():
 			saved_kinds.append(int(monster.get("kind")))
-		valid = valid and saved_kinds.has(MapMonsterScript.Kind.SHIELD_SIDE)
+		valid = valid and saved_kinds.has(MapMonsterScript.Kind.BOMB_SIDE)
 		saved.free()
 	if FileAccess.file_exists(save_path):
 		DirAccess.remove_absolute(save_absolute)

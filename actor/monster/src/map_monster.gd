@@ -7,9 +7,11 @@ extends Node2D
 
 const GROUP := &"map_monster"
 
-enum Kind { SHIELD_SIDE, LITTLE_SOLDIER, BOMB_SIDE }
+## 前两个编号只为兼容旧地图与测试保留，已不再对应可放置场景或美术资源。
+## 新放置栏只会提供 BOMB_SIDE 和后续的 SHIELD_SOLDIER。
+enum Kind { SHIELD_SIDE = 0, LITTLE_SOLDIER = 1, BOMB_SIDE = 2, SHIELD_SOLDIER = 3 }
 
-@export var kind: Kind = Kind.SHIELD_SIDE
+@export var kind: Kind = Kind.BOMB_SIDE
 @export var display_name := "小怪"
 @export_range(16.0, 256.0, 1.0) var editor_pick_radius := 72.0
 @export var editor_id := ""

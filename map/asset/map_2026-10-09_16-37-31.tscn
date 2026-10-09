@@ -20,7 +20,6 @@
 [ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="18_f0h5t"]
 [ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="19_ocgjp"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="20_d2tty"]
-[ext_resource type="PackedScene" path="res://actor/monster/little_soldier.tscn" id="21_33vxh"]
 [ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="22_gtd7r"]
 
 [sub_resource type="Image" id="Image_liwpj"]
@@ -119,23 +118,3 @@ source = 3
 paint = SubResource("Image_y2lvl")
 
 [node name="Monsters" type="Node2D" parent="." unique_id=127459464]
-
-[node name="LittleSoldier" type="Node2D" parent="Monsters" unique_id=889863994 groups=["map_monster"] instance=ExtResource("21_33vxh")]
-process_priority = 100
-z_index = 1000
-position = Vector2(784.81226, 252.70116)
-scale = Vector2(0.6999999, 0.6999999)
-script = ExtResource("22_gtd7r")
-kind = 1
-display_name = "小兵"
-editor_id = "monster-13385164-1"
-
-[node name="LittleSoldier2" type="Node2D" parent="Monsters" unique_id=347386711 groups=["map_monster"] instance=ExtResource("21_33vxh")]
-process_priority = 100
-z_index = 1000
-position = Vector2(665.2161, 253.499)
-scale = Vector2(0.6999999, 0.6999999)
-script = ExtResource("22_gtd7r")
-kind = 1
-display_name = "小兵"
-editor_id = "monster-14232368-2"
