@@ -77,10 +77,6 @@ static func color_for_material_id(material_id: int) -> Color:
 	return Color.TRANSPARENT
 
 
-static func nail_material() -> Resource:
-	return NAIL
-
-
 static func nail_material_id() -> int:
 	return material_id_of(NAIL)
 

@@ -83,7 +83,7 @@ func _build() -> void:
 	_cell.min_value = 2
 	_cell.max_value = 128
 	_cell.step = 1
-	_cell.value = BakeArt.CELL
+	_cell.value = float(BakeArt.SOURCES[0][5])   # 跟第一张源图的格宽对齐：用错的格宽预览/写盘会毁资产
 	_cell.value_changed.connect(_on_changed)
 	bar.add_child(_cell)
 

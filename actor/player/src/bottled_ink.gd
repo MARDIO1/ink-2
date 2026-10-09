@@ -10,11 +10,10 @@ extends Sprite2D
 ##
 ## ## ⚠️ 本节点画在线稿**下面**（z_index = -1）
 ##
-## 所以三件事必须同时成立，少一件就看不见墨水：
+## 所以两件事必须同时成立，少一件就看不见墨水：
 ##   1. 本节点的 z_index < Visual 的（见 player.tscn）；
 ##   2. Visual 的**瓶身填充（材质 5）必须是透明的** —— 它是 58x34 的实心块，
-##      不透明就会把墨水整个盖住（见 player.tscn 里 Visual.palette 的第 6 项）；
-##   3. 空瓶时那块地方由本节点的**玻璃色**补上，否则角色看起来是漏的。
+##      不透明就会把墨水整个盖住（见 player.tscn 里 Visual.palette 的第 6 项）。
 ## 黑线稿（材质 2）在线稿层，永远压在墨水上面 —— 所以脸不会被淹掉。
 ##
 ## ## 容器 = 整个瓶身（含身体块），不是"被围住的透明像素"
@@ -457,7 +456,6 @@ func _push_out(reached: PackedByteArray, stack: PackedInt32Array,
 	stack.append(idx)
 
 
-## 把脸部矩形从 _draw 里挖掉。**只影响渲染**，_container（模拟）一个字都不动。
 ## 渲染掩码 —— **在原生分辨率（源像素）上算**，不是格子。
 ##
 ## ⚠️⚠️ 为什么必须是原生分辨率：cell_px=2 时一像素粗的线稿只盖住**半格**。
@@ -560,6 +558,8 @@ func _push_clear(rgba: PackedByteArray, m: PackedByteArray,
 	stack.append(p)
 
 
+## 把脸部矩形从 _draw 里挖掉（手动后备：`face_rect` 默认是空矩形 = 关，正常由 `_build_render_mask` 自动挡）。
+## **只影响渲染**，_container（模拟）一个字都不动。
 func _carve_face(lo: Vector2i) -> void:
 	if face_rect.size.x <= 0 or face_rect.size.y <= 0:
 		return
@@ -572,12 +572,6 @@ func _carve_face(lo: Vector2i) -> void:
 			_draw[gy * _gw + gx] = 0
 
 
-func _count_nonzero(a: PackedByteArray) -> int:
-	var c := 0
-	for v in a:
-		if v != 0:
-			c += 1
-	return c
 #endregion
 
 

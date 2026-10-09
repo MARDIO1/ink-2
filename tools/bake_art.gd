@@ -13,8 +13,6 @@ extends RefCounted
 ## GUI: 编辑器里打开 res://tools/bake_editor.tscn
 
 #region 配置
-## 默认格宽；每张源图实际用多少看 SOURCES 第 6 项（bag 原生稿是 4px/格）。
-const CELL := 16
 const DIR := "res://actor/player/asset/"
 ## [源图, 输出前缀, 材质 id, 顺时针转90, 视觉材质 id（0 = 不拆）, 格宽]
 ##

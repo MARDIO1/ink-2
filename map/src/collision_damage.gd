@@ -72,10 +72,6 @@ const DEFAULT_LAYER := 1
 const DEFAULT_MASK := 0xFFFFFFFF
 
 var _dust = null
-## 上一次固定步被 _clamp_speeds 收口的次数（诊断用）。
-var last_speed_clamped: int = 0
-## 上一次固定步被 _apply_substep_budget 压掉的子步数（诊断用，0 = 没压）。
-var last_substeps_capped: int = 0
 var profile_enabled: bool = false
 var _profile: Dictionary = {}
 #endregion
@@ -139,12 +135,11 @@ func _start() -> void:
 
 
 ## 设置可选的引擎参数；部署快照缺少参数时记录警告并继续运行。
-func _push_knob(world, name: String, value) -> bool:
+func _push_knob(world, name: String, value) -> void:
 	if not (name in world):
 		push_warning("[CCD] 引擎没有 %s —— 这一道闸门失效（需要本仓库的引擎快照）" % name)
-		return false
+		return
 	world.set(name, value)
-	return true
 
 
 func _physics_process(delta: float) -> void:
@@ -223,11 +218,9 @@ func _step(delta: float) -> Dictionary:
 	if culled > 0:
 		_drop_culled_nodes()
 	# 先按原始速度清理轻碎片，再执行全局速度钳制。
-	last_speed_clamped = _clamp_speeds(physics)
+	_clamp_speeds(physics)
 	var count: int = physics._compute_substeps(delta)
-	var capped: int = _apply_substep_budget(physics, count)
-	last_substeps_capped = count - capped
-	count = capped
+	count = _apply_substep_budget(physics, count)
 	physics.last_substeps = count
 	if profile_enabled:
 		_profile.fixed_steps = _profile.get("fixed_steps", 0) + 1
@@ -500,7 +493,7 @@ func _impact(points: Array) -> Dictionary:
 			last = maxf(last, point.position.dot(tangent))
 	var width: int = maxi(1, ceili(last - first))
 	return {"position": position / total, "normal": normal, "dist": dist / total,
-		"impulse": total / float(width), "total_impulse": total, "width": width}
+		"impulse": total / float(width), "total_impulse": total}
 #endregion
 
 
@@ -606,9 +599,6 @@ func _noise(seed: int, index: int) -> float:
 	return float(value) / 2147483647.0
 
 
-## 预留剪切入口；暂不消费切向摩擦冲量。
-func calculate_shear() -> void:
-	pass
 #endregion
 
 
@@ -616,7 +606,6 @@ func calculate_shear() -> void:
 ## 每个受损物体提交一次掩码，分片由引擎负责。
 func commit(physics, removals: Dictionary) -> Dictionary:
 	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
-	var changed: Array = []
 	var removed: int = 0
 	var fragments: int = 0
 	for body in removals:
@@ -631,8 +620,6 @@ func commit(physics, removals: Dictionary) -> Dictionary:
 		if _dust != null:
 			_dust.spawn(result.get("downgraded", []))
 		if result.removed > 0:
-			changed.append(body)
-			changed.append_array(result.fragments)
 			for changed_body in [body] + result.fragments:
 				_update_anchors(changed_body, anchor_points)
 	if profile_enabled:
@@ -640,7 +627,7 @@ func commit(physics, removals: Dictionary) -> Dictionary:
 		_profile.commit_calls = _profile.get("commit_calls", 0) + removals.size()
 		_profile.removed_pixels = _profile.get("removed_pixels", 0) + removed
 		_profile.fragments = _profile.get("fragments", 0) + fragments
-	return {"changed": changed, "calls": removals.size()}
+	return {"calls": removals.size()}
 
 
 ## 将满足尺寸条件且仍使用默认过滤器的碎片改为 layer=2/mask=1。

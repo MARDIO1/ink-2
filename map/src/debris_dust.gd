@@ -57,13 +57,6 @@ func count() -> int:
 	return _items.size()
 
 
-func clear() -> void:
-	if _renderer != null:
-		for it in _items:
-			_renderer.forget_blueprint(it["id"])
-	_items.clear()
-
-
 func _process(delta: float) -> void:
 	if _items.is_empty():
 		return
