@@ -3,7 +3,7 @@ extends SceneTree
 ##
 ##   godot --headless --path . --script res://test/tools/bench_small_fragment_ccd.gd
 ##
-## 结论见 map/doc/CCD与小碎片.md。三个乘数都是**乘**关系，而且都只跟**一个**最快的刚体有关：
+## 结论见 root/doc/CCD与小碎片.md。三个乘数都是**乘**关系，而且都只跟**一个**最快的刚体有关：
 ##   子步数   = ceil(全世界最快刚体的运动 x dt / ccd_max_motion)   <- 一个碎片说了算
 ##   每子步   ~ 全世界总矩形数                                     <- 所有刚体陪跑
 ## 而「又轻又快的小碎片」正好是最容易造出高运动的东西（Δv = J/m，轻 100 倍就快 100 倍）。
@@ -78,7 +78,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_w = _scene.world
-	# 强制两层 CCD 都开（游戏侧配置见 map/src/physics_step.gd）。
+	# 强制两层 CCD 都开（游戏侧配置见 root/src/physics_step.gd）。
 	_w.ccd_enabled = true
 	_w.rp_ccd_substeps = 1
 	# 为了量「碎片本身的代价」，先把两道灰尘闸门关掉（默认引擎值）

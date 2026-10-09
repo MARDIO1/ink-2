@@ -18,6 +18,7 @@
 - [墨水](actor/player/doc/墨水.md)
 - [生命值](actor/player/doc/生命值.md)
 - [画布](actor/canvas/doc/画布.md)
+- [创造模式 / 地图编辑器](debug/creative/doc/创造模式.md)
 - [烘焙](tools/doc/烘焙.md)
 - [验收](test/doc/验收.md)
 - [关卡选择](ui/level_select/doc/关卡选择.md)
@@ -26,3 +27,4 @@
 - [ESC 菜单](ui/esc/doc/ESC菜单.md)
 - [代码审计](doc/代码审计.md)
 - [调研：喷射战士墨水与涟漪](doc/调研-喷射战士墨水与涟漪.md)
+- [像素打字机对话框](ui/dialogue/doc/对话框.md)

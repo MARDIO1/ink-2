@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="1_monster"]
+[ext_resource type="PackedScene" path="res://actor/monster/imported/inkman/scenes/inkman_character.tscn" id="2_visual"]
+
+[node name="Inkman" type="Node2D" groups=["map_monster"]]
+z_index = 1000
+script = ExtResource("1_monster")
+kind = 2
+display_name = "墨水小人"
+editor_pick_radius = 64.0
+
+[node name="Visual" parent="." instance=ExtResource("2_visual")]
+position = Vector2(0, -90)
+scale = Vector2(0.45, 0.45)
+center_when_run_alone = false
+mouse_hand_follows_cursor = false

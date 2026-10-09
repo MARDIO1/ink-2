@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Texture2D" path="res://ui/menu/asset/paper.png" id="1_paper"]
 [ext_resource type="Texture2D" path="res://ui/menu/asset/title.png" id="2_title"]
@@ -6,64 +6,6 @@
 [ext_resource type="Texture2D" path="res://ui/menu/asset/icon_exit.svg" id="4_exit"]
 [ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="5_theme"]
 [ext_resource type="Script" path="res://ui/menu/src/menu.gd" id="6_script"]
-
-[sub_resource type="StyleBoxFlat" id="StartNormal"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
-
-[sub_resource type="StyleBoxFlat" id="StartHover"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
-expand_margin_left = 3.0
-expand_margin_top = 3.0
-expand_margin_right = 3.0
-expand_margin_bottom = 3.0
-
-[sub_resource type="StyleBoxFlat" id="QuitNormal"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.231373, 0.219608, 0.192157, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
-
-[sub_resource type="StyleBoxFlat" id="QuitHover"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.231373, 0.219608, 0.192157, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
-expand_margin_left = 3.0
-expand_margin_top = 3.0
-expand_margin_right = 3.0
-expand_margin_bottom = 3.0
-
-[sub_resource type="StyleBoxEmpty" id="MenuFocus"]
 
 [node name="Menu" type="Control"]
 layout_mode = 3
@@ -120,17 +62,7 @@ theme_override_constants/separation = 16
 [node name="StartButton" type="Button" parent="ButtonCenter/Buttons"]
 custom_minimum_size = Vector2(280, 58)
 layout_mode = 2
-theme_type_variation = &"PrimaryButton"
-theme_override_colors/font_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/font_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/font_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/icon_normal_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/icon_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/icon_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_styles/normal = SubResource("StartNormal")
-theme_override_styles/hover = SubResource("StartHover")
-theme_override_styles/pressed = SubResource("StartHover")
-theme_override_styles/focus = SubResource("MenuFocus")
+theme_type_variation = &"MenuActionButton"
 focus_neighbor_bottom = NodePath("../QuitButton")
 mouse_default_cursor_shape = 2
 text = "开始"
@@ -140,17 +72,7 @@ expand_icon = true
 [node name="QuitButton" type="Button" parent="ButtonCenter/Buttons"]
 custom_minimum_size = Vector2(280, 58)
 layout_mode = 2
-theme_type_variation = &"DangerButton"
-theme_override_colors/font_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/font_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/font_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/icon_normal_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/icon_hover_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_colors/icon_pressed_color = Color(0.968627, 0.952941, 0.854902, 1)
-theme_override_styles/normal = SubResource("QuitNormal")
-theme_override_styles/hover = SubResource("QuitHover")
-theme_override_styles/pressed = SubResource("QuitHover")
-theme_override_styles/focus = SubResource("MenuFocus")
+theme_type_variation = &"MenuActionButton"
 focus_neighbor_top = NodePath("../StartButton")
 mouse_default_cursor_shape = 2
 text = "退出"

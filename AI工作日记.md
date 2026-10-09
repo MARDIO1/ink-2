@@ -1689,3 +1689,26 @@ canvas 的 `PenSlider` 也一样（同一个主题）。要对齐就得往主题
   `addons/pixel_destruction/gpu/destruction.glsl` 阻塞。
 - `test_ink.gd` 仍因既有 `BottledInk/Liquid` 路径失效而卡住，本轮已停止进程，未修改该旧验收。
 - 没 commit。
+
+## 2026-10-09 — PhysicsRuntime 去玩法化并完成接口拆层
+
+### 结构
+- 用 `map/simulation_runtime.tscn` 和 `map/src/simulation_runtime.gd` 取代旧
+  `physics_runtime.tscn`：协调层按 `service_name`、`resolve_contacts`、`resolve_fixed`、
+  `observe_removals` 能力接口发现规则，不导入红、黄、蓝任一具体墨水类型。
+- `map/src/physics_step.gd` 现在只负责配置/推进底层世界、读取接触、提交删除与分片、
+  应用通用径向冲量以及同步渲染；移除了 `RedInk` 和 `InkPalette` 依赖。
+- `ImpactDamage` 注册为通用 `damage` 服务；`RedInk` 通过上下文取服务，生成统一的
+  `removals / player_damage / bursts / impulses` 效果包。以后添加颜色脚本只需实现接口并挂到场景。
+- 主地图、资产地图、HUD、测试和性能工具均改用 `SimulationRuntime`；旧场景已删除。
+- 四个正式脚本的每个函数都补了 `##` 说明，并按依赖、配置、状态、生命周期、调度、
+  规则接口、效果提交和 Profiling 等职责划分 `#region`；region 数量已核对成对。
+
+### 验收
+- Godot 4.7.2 对 `simulation_runtime.gd`、`physics_step.gd`、`impact_damage.gd`、
+  `red_ink.gd` 和碰撞性能脚本逐一 `--check-only`：全部 exit 0。
+- 主场景 headless 短启动：exit 0，无脚本错误。
+- `test_collision_damage.gd`：42 checks / 0 failures / exit 0。
+- `test_red_ink.gd`：33 checks / 1 failure；唯一失败是“同体炮管必须向左反冲”。用未修改的
+  `b45ecce` 独立工作树复跑得到完全相同速度与失败，因此是既有测试/物理行为矛盾，不是本次拆层回归。
+- 没有修改爆炸算法，也没有 commit。

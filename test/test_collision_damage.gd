@@ -1,7 +1,7 @@
 extends SceneTree
 
-const ImpactDamage = preload("res://map/src/impact_damage.gd")
-const PhysicsStep = preload("res://map/src/physics_step.gd")
+const ImpactDamage = preload("res://root/src/impact_damage.gd")
+const PhysicsStep = preload("res://root/src/physics_step.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
@@ -269,7 +269,7 @@ func _test_scene() -> void:
 	var ground = scene.get_node("Ground").body
 	var original: int = box.shapes[0].pixel_count() + ground.shapes[0].pixel_count()
 	scene.auto_step = true
-	var controller = scene.get_node("PhysicsRuntime")
+	var controller = scene.get_node("SimulationRuntime")
 	var start: int = Time.get_ticks_usec()
 	for frame in 120:
 		controller._physics_process(1.0 / 60.0)

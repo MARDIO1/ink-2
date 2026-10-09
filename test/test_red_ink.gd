@@ -5,8 +5,8 @@ const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Query = preload("res://addons/pixel_destruction/physics/query.gd")
 const RedInk = preload("res://Ink/src/red_ink.gd")
-const Damage = preload("res://map/src/impact_damage.gd")
-const Step = preload("res://map/src/physics_step.gd")
+const Damage = preload("res://root/src/impact_damage.gd")
+const Step = preload("res://root/src/physics_step.gd")
 const Palette = preload("res://Ink/src/ink_palette.gd")
 
 var failures: int = 0
@@ -37,7 +37,6 @@ func _setup() -> Dictionary:
 	var red = RedInk.new()
 	var damage = Damage.new()
 	var runtime = Step.new()
-	runtime._ink_rules = [red]
 	Query.attach(world)
 	return {"world": world, "red": red, "damage": damage, "runtime": runtime}
 
@@ -72,14 +71,23 @@ static func contact(a, b, point: Vector2, impulse: float, approach: float) -> Di
 
 
 func _tick(ctx: Dictionary) -> Dictionary:
-	var result: Dictionary = ctx.red.resolve(ctx.world, ctx.damage, null, [])
-	ctx.runtime._reaction_scale = result.reaction_scale
-	ctx.runtime._defer_dust = true
-	ctx.runtime.commit(ctx.world, result.removals)
-	ctx.runtime.apply_blast_impulses(result.impulses)
+	var result: Dictionary = ctx.red.resolve_fixed(_context(ctx))
+	_commit(ctx, result.removals, result.reaction_scale, true)
+	ctx.runtime.apply_radial_impulses(result.impulses)
 	ctx.runtime.flush_blast_dust()
-	ctx.runtime._defer_dust = false
 	return result
+
+
+func _context(ctx: Dictionary) -> Dictionary:
+	return {"world": ctx.world, "player_body": null, "protected_bodies": [],
+		"services": {&"damage": ctx.damage}}
+
+
+func _commit(ctx: Dictionary, removals: Dictionary, retention: float = 1.0,
+		defer_dust: bool = false) -> Dictionary:
+	for body in removals:
+		ctx.red.observe_removals(_context(ctx), body, removals[body], retention)
+	return ctx.runtime.commit(ctx.world, removals, {}, defer_dust)
 
 
 func _test_cannon() -> void:
@@ -98,7 +106,7 @@ func _test_cannon() -> void:
 		[contact(hammer, cannon, Vector2(0, 10), 400000.0, 800.0)])
 	var red_removed: int = _red_count(impact.removals)
 	_check("existing collision cracks reach enclosed red", red_removed > 0)
-	ctx.runtime.commit(ctx.world, impact.removals)
+	_commit(ctx, impact.removals)
 	_check("ignition waits until next tick", shot.linear_velocity.is_zero_approx())
 	# 撞击物已经弹开，不让它遮住炮尾。
 	ctx.world.remove_body(hammer)
@@ -123,7 +131,7 @@ func _test_grenade() -> void:
 	var impact: Dictionary = ctx.damage.calculate(ctx.world,
 		[contact(hammer, grenade, Vector2(0, 12), 1000000.0, 800.0)])
 	_check("thin-wall collision cracks ignite interior red", _red_count(impact.removals) > 0)
-	ctx.runtime.commit(ctx.world, impact.removals)
+	_commit(ctx, impact.removals)
 	ctx.world.remove_body(hammer)
 	var reacted: int = 0
 	var peak_bodies: int = 0
@@ -162,7 +170,7 @@ func _test_air_chain(seed_size: int = 8) -> void:
 	for y in seed_size:
 		for x in seed_size:
 			cells[Vector2i(x, y)] = true
-	ctx.runtime.commit(ctx.world, {seed: {seed_shape: cells}})
+	_commit(ctx, {seed: {seed_shape: cells}})
 	var result: Dictionary = _tick(ctx)
 	_check("destroyed source still emits next-tick blast across air", not result.impulses.is_empty())
 	_check("%dx%d charge ignites separate red cluster" % [seed_size, seed_size], not ctx.red._pending.is_empty())
@@ -186,7 +194,7 @@ func _test_symmetric_shell() -> void:
 	for y in range(-1, 1):
 		for x in range(-1, 1):
 			mask[Vector2i(x, y)] = true
-	ctx.runtime.commit(ctx.world, {seed: {seed_shape: mask}})
+	_commit(ctx, {seed: {seed_shape: mask}})
 	_tick(ctx)
 	_check("sealed symmetric casing cancels linear impulses", shell.linear_velocity.length() < 0.001)
 	_check("sealed symmetric casing cancels angular impulses", absf(shell.angular_velocity) < 0.001)
@@ -203,12 +211,12 @@ func _test_event_group() -> void:
 		for x in 16:
 			mask[Vector2i(x, y)] = true
 	ctx.red.event_chunk_size = 16
-	ctx.red.observe_removals(body, {shape: mask})
+	ctx.red.observe_removals(_context(ctx), body, {shape: mask})
 	_check("16px events merge storage chunks without losing charge",
 		ctx.red._pending.size() == 1 and ctx.red._pending[0].energy == 256.0)
 	ctx.red._pending.clear()
 	ctx.red.event_chunk_size = 8
-	ctx.red.observe_removals(body, {shape: mask})
+	ctx.red.observe_removals(_context(ctx), body, {shape: mask})
 	_check("event grouping is exported independently of storage", ctx.red._pending.size() == 4)
 	_release(ctx)
 
@@ -224,8 +232,8 @@ func _test_second_pass() -> void:
 	var side_shape = Shape.new()
 	side_shape.fill_rect(Rect2i(0, 0, 1, 1), 4)
 	var side = add_body(ctx.world, Vector2(4, 3), side_shape)
-	ctx.runtime.commit(ctx.world, {front: {front_shape: {Vector2i.ZERO: true}}})
-	ctx.runtime.apply_blast_impulses(
+	_commit(ctx, {front: {front_shape: {Vector2i.ZERO: true}}})
+	ctx.runtime.apply_radial_impulses(
 		[{"origin": Vector2(0.5, 0.5), "radius": 16.0, "ray_count": 1, "impulse": 100.0}])
 	_check("second pass crosses deleted front and hits surviving rear", target.linear_velocity.x > 0.0)
 	_check("second pass does not redirect momentum to nearby off-ray piece", side.linear_velocity.is_zero_approx())
@@ -240,7 +248,7 @@ func _test_chunk_consumption() -> void:
 	shape.set_pixel(2, 0, 4)
 	var body = add_body(ctx.world, Vector2.ZERO, shape)
 	var removals: Dictionary = {body: {shape: {Vector2i.ZERO: true}}}
-	ctx.runtime.commit(ctx.world, removals)
+	_commit(ctx, removals)
 	_check("one touched red pixel consumes every red pixel in its 64px group",
 		removals[body][shape].size() == 127)
 	_check("group consumption does not delete gray or the next group",
@@ -256,7 +264,7 @@ func _test_chunk_consumption() -> void:
 					red_left += 1 if remaining_shape.get_pixel(x, y) == 8 else 0
 	_check("consumed group leaves no red fragments, untouched group survives", red_left == 2)
 	ctx.red._pending.clear()
-	ctx.red.observe_removals(body, {shape: {Vector2i.ZERO: true}})
+	ctx.red.observe_removals(_context(ctx), body, {shape: {Vector2i.ZERO: true}})
 	_check("consumed pixels cannot enqueue a second explosion", ctx.red._pending.is_empty())
 	_release(ctx, [body])
 
@@ -270,7 +278,7 @@ func _test_negative_group() -> void:
 	var body = PBody.new()
 	ctx.world.add_body(body, [first, second])
 	var mask: Dictionary = {first: {Vector2i(-1, 0): true}}
-	ctx.red.observe_removals(body, mask)
+	ctx.red.observe_removals(_context(ctx), body, mask)
 	_check("negative coordinates consume only the matching group",
 		mask[first].has(Vector2i(-2, 0)) and not mask[first].has(Vector2i.ZERO))
 	_check("group consumption spans all shapes of the same body",
@@ -286,15 +294,15 @@ func _test_damage_impulse_tuning() -> void:
 	var wall_shape = Shape.new()
 	wall_shape.fill_rect(Rect2i(0, 0, 8, 8), 4)
 	add_body(ctx.world, Vector2(12, 0), wall_shape)
-	ctx.runtime.commit(ctx.world, {seed: {seed_shape: {Vector2i.ZERO: true}}})
+	_commit(ctx, {seed: {seed_shape: {Vector2i.ZERO: true}}})
 	var events: Array = ctx.red._pending.duplicate()
 	ctx.red.damage_multiplier = 1.0
 	ctx.red.impulse_multiplier = 1.0
-	var old: Dictionary = ctx.red.resolve(ctx.world, ctx.damage, null, [])
+	var old: Dictionary = ctx.red.resolve_fixed(_context(ctx))
 	ctx.red._pending = events.duplicate()
 	ctx.red.damage_multiplier = 0.05
 	ctx.red.impulse_multiplier = 2.0
-	var tuned: Dictionary = ctx.red.resolve(ctx.world, ctx.damage, null, [])
+	var tuned: Dictionary = ctx.red.resolve_fixed(_context(ctx))
 	var old_pixels: int = 0
 	var tuned_pixels: int = 0
 	for shapes in old.removals.values():
@@ -307,11 +315,11 @@ func _test_damage_impulse_tuning() -> void:
 		tuned_pixels < old_pixels and tuned.impulses[0].impulse == old.impulses[0].impulse * 2.0)
 	ctx.red._pending = events.duplicate()
 	ctx.red.impulse_multiplier = 4.0
-	var stronger: Dictionary = ctx.red.resolve(ctx.world, ctx.damage, null, [])
+	var stronger: Dictionary = ctx.red.resolve_fixed(_context(ctx))
 	_check("increasing physical impulse does not increase first-pass damage", stronger.removals == tuned.removals)
 	ctx.red._pending = events.duplicate()
 	ctx.red.damage_multiplier = 0.0
-	var push_only: Dictionary = ctx.red.resolve(ctx.world, ctx.damage, null, [])
+	var push_only: Dictionary = ctx.red.resolve_fixed(_context(ctx))
 	_check("zero explosion damage still schedules physical impulse", push_only.removals.is_empty() and push_only.impulses[0].impulse > 0.0)
 	_release(ctx, [seed])
 

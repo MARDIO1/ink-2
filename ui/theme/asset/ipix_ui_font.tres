@@ -1,0 +1,9 @@
+[gd_resource type="FontVariation" load_steps=3 format=3]
+
+[ext_resource type="FontFile" path="res://ui/theme/asset/ipix_ui_primary.ttf" id="1_primary"]
+[ext_resource type="FontFile" path="res://ui/dialogue/asset/ipix_12px.ttf" id="2_full"]
+
+[resource]
+base_font = ExtResource("1_primary")
+fallbacks = Array[Font]([ExtResource("2_full")])
+spacing_glyph = 1

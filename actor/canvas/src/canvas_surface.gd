@@ -5,6 +5,10 @@
 @tool
 extends Area2D
 
+signal selection_delete_requested(rect: Rect2i)
+
+signal edit_committed
+
 const InkPalette := preload("res://Ink/src/ink_palette.gd")
 #endregion
 
@@ -53,6 +57,10 @@ func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
 	if event is InputEventMouseButton:
+		# 工具栏是屏幕固定 GUI，但本节点使用全局输入；若不主动拦截，按钮点击会同时
+		# 穿透到背后的世界画布。松开事件仍要放行，用来正确结束已开始的笔画/形状。
+		if event.pressed and get_viewport().gui_get_hovered_control() != null:
+			return
 		_on_mouse_button(event as InputEventMouseButton)
 
 
@@ -60,17 +68,30 @@ func _input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
-	if _shaping:
+	if _selecting:
+		_update_selection()
+	elif _shaping:
 		_update_shape()
 	elif _painting:
 		_continue_stroke()
 
 ## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；墨水桶灌满封闭空区。
-enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET }
+enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE }
 
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
 var _last_point := Vector2.ZERO
+var _undo_steps: Array[Dictionary] = []
+var _undo_capture := {}
+var _undo_capturing := false
+const MAX_UNDO_STEPS := 64
+## 框选删除只负责交互与预览；真正删除由 Canvas 完成，因为固化实体属于 PixelWorld。
+var _selecting := false
+var _selection_origin := Vector2.ZERO
+@onready var selection_overlay: Node2D = $SelectionOverlay
+# 墨水桶一次保留的最大像素数。允许灌到画布边缘，但不能让误点把超大地图
+# 整张扫描进内存而卡住编辑器。
+const MAX_BUCKET_PIXELS := 250000
 ## 形状拖拽中：起点、预览期间被改过的像素（原色）、本次新增的墨水量。
 var _shaping := false
 var _shape_origin := Vector2.ZERO
@@ -79,8 +100,13 @@ var _shape_delta := 0
 ## 当前工具；切换时中断正在进行的笔画或形状。
 @export var tool: Tool = Tool.HAND:
 	set(value):
+		if _selecting:
+			_cancel_selection()
 		if _shaping:
 			_revert_shape()
+			_cancel_undo_step()
+		elif _painting:
+			_commit_undo_step()
 		tool = value
 		_painting = false
 		_shaping = false
@@ -111,24 +137,40 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	if button.button_index == MOUSE_BUTTON_MIDDLE:
 		_painting = false
 		if button.pressed:
+			_begin_undo_step()
 			_place_nail(_mouse_point())
+			_commit_undo_step()
 		return
 	if button.button_index != MOUSE_BUTTON_LEFT:
 		return
 	if not button.pressed:
+		if _selecting:
+			_finish_selection()
+			return
 		if _shaping:
 			_end_shape()
+			_commit_undo_step()
+		elif _painting:
+			_commit_undo_step()
 		_painting = false
 		return
 	var point := _mouse_point()
 	if not _inside(point):
 		return
+	if tool == Tool.SELECT_DELETE:
+		_selecting = true
+		_selection_origin = point
+		_update_selection()
+		return
 	#墨水桶是点击工具：按下即灌满所在空区。
 	if tool == Tool.BUCKET:
+		_begin_undo_step()
 		_bucket_fill(point)
+		_commit_undo_step()
 		return
 	#矩形/圆形是拖拽工具：按下定起点，拖拽出形状，松手定型。
 	if tool == Tool.RECT or tool == Tool.CIRCLE:
+		_begin_undo_step()
 		_shaping = true
 		_shape_origin = point
 		_update_shape()
@@ -137,6 +179,7 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	if color == null:
 		return
 	_painting = true
+	_begin_undo_step()
 	_paint_color = color
 	_last_point = point
 	_stroke(point, point, color)
@@ -162,6 +205,7 @@ func _continue_stroke() -> void:
 	#移出画布时停笔，避免从外侧拖回时突然补一条线
 	if not _inside(point):
 		_painting = false
+		_commit_undo_step()
 		return
 	_stroke(_last_point, point, _paint_color)
 	_last_point = point
@@ -179,18 +223,93 @@ func _inside(point: Vector2) -> bool:
 		and point.x < float(canvas_size.x)
 		and point.y < float(canvas_size.y)
 	)
+
+
+func _selection_rect(from: Vector2, to: Vector2) -> Rect2i:
+	var first := Vector2i(from.floor()).clamp(Vector2i.ZERO, canvas_size - Vector2i.ONE)
+	var last := Vector2i(to.floor()).clamp(Vector2i.ZERO, canvas_size - Vector2i.ONE)
+	var position := first.min(last)
+	return Rect2i(position, first.max(last) - position + Vector2i.ONE)
+
+
+func _update_selection() -> void:
+	if not _selecting:
+		return
+	var point := _mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2(0.001, 0.001))
+	selection_overlay.set_selection(_selection_rect(_selection_origin, point))
+
+
+func _finish_selection() -> void:
+	if not _selecting:
+		return
+	var point := _mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2(0.001, 0.001))
+	var rect := _selection_rect(_selection_origin, point)
+	_cancel_selection()
+	selection_delete_requested.emit(rect)
+
+
+func _cancel_selection() -> void:
+	_selecting = false
+	if is_instance_valid(selection_overlay):
+		selection_overlay.clear_selection()
 #endregion
 
 
 #region 绘制
 var black_image: Image
+var _preserve_next_resize := false
+
+
 func _resize() -> void:
 	# Area 只表达可编辑的画布范围，不参与游戏刚体碰撞。
 	bounds.shape.size = Vector2(canvas_size)
 	bounds.position = Vector2(canvas_size) * 0.5
-	_reset()
+	if not _preserve_next_resize:
+		_reset()
 	black_sprite.texture = black_texture
 	queue_redraw()
+
+
+## 扩大画布时保留已有像素、墨水账本和钉子。
+## content_offset 表示旧内容在新画布中的左上角；扩左/扩上时分别传入正的 x/y 偏移。
+func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZERO) -> bool:
+	new_size = Vector2i(maxi(new_size.x, 1), maxi(new_size.y, 1))
+	if content_offset.x < 0 or content_offset.y < 0:
+		push_error("CanvasSurface: content_offset 不能为负数")
+		return false
+	if content_offset.x + canvas_size.x > new_size.x \
+	or content_offset.y + canvas_size.y > new_size.y:
+		push_error("CanvasSurface: 新画布装不下旧内容")
+		return false
+	if new_size == canvas_size and content_offset == Vector2i.ZERO:
+		return true
+
+	# 先结束未完成的预览，避免扩容后仍引用旧坐标。
+	if _shaping:
+		_revert_shape()
+	_painting = false
+	_shaping = false
+	var old_image := black_image
+	var old_size := canvas_size
+	var old_nails: Array = nail_layer.nails.keys()
+
+	# 属性 setter 仍负责更新碰撞范围，但这一次不能清空像素或退还墨水。
+	_preserve_next_resize = true
+	canvas_size = new_size
+	_preserve_next_resize = false
+
+	var expanded := Image.create_empty(new_size.x, new_size.y, false, Image.FORMAT_RGBA8)
+	expanded.fill(Color.TRANSPARENT)
+	expanded.blit_rect(old_image, Rect2i(Vector2i.ZERO, old_size), content_offset)
+	black_image = expanded
+	black_texture = ImageTexture.create_from_image(black_image)
+	black_sprite.texture = black_texture
+
+	nail_layer.clear()
+	for nail in old_nails:
+		nail_layer.add(Vector2i(nail) + content_offset)
+	queue_redraw()
+	return true
 
 
 #重建透明画布，透明像素在 BlackSprite 下露出纸底
@@ -301,6 +420,7 @@ func _collect_stamp(out: Dictionary, center: Vector2) -> void:
 
 #只改像素 + 同步钉子外观层，不碰任何账本。
 func _set_pixel_raw(pixel: Vector2i, color: Color) -> void:
+	_track_undo_pixel(pixel)
 	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
 	if _is_nail(color):
@@ -401,12 +521,28 @@ func _shape_pixels(from: Vector2, to: Vector2) -> Dictionary:
 		#圆心 = 按下点，半径 = 拖出的距离；永远是正圆。
 		_brush_circle(out, from, from.distance_to(to))
 	else:
-		#按下点是一角，拖到对角。
-		_brush_line(out, from, Vector2(to.x, from.y))
-		_brush_line(out, Vector2(to.x, from.y), to)
-		_brush_line(out, to, Vector2(from.x, to.y))
-		_brush_line(out, Vector2(from.x, to.y), from)
+		# 矩形不能复用圆形笔刷沿边盖章：圆盘相交后的最外层会周期性凹凸，
+		# 粗边框固化后就会变成明显锯齿。这里直接生成整数像素包围盒和等宽方角边框。
+		_brush_rect(out, from, to)
 	return out
+
+
+## 生成轴对齐、方角、外沿完全平整的矩形边框。
+## 拖拽的两个点定义外包围盒；最大边按半开坐标换算，确保鼠标落在画布最右/下边时不越界。
+func _brush_rect(out: Dictionary, from: Vector2, to: Vector2) -> void:
+	var left := clampi(floori(minf(from.x, to.x)), 0, canvas_size.x - 1)
+	var top := clampi(floori(minf(from.y, to.y)), 0, canvas_size.y - 1)
+	var right := clampi(ceili(maxf(from.x, to.x)) - 1, 0, canvas_size.x - 1)
+	var bottom := clampi(ceili(maxf(from.y, to.y)) - 1, 0, canvas_size.y - 1)
+	# 单击或零宽/零高拖拽仍至少落一个像素。
+	right = maxi(right, left)
+	bottom = maxi(bottom, top)
+	var thickness := maxi(1, brush_size)
+	for y in range(top, bottom + 1):
+		for x in range(left, right + 1):
+			if x - left < thickness or right - x < thickness \
+			or y - top < thickness or bottom - y < thickness:
+				out[Vector2i(x, y)] = true
 
 
 #沿线段撒笔刷脚印；步长 ≤ 笔刷半径，保证圈与圈之间不留缝。
@@ -447,20 +583,22 @@ func _brush_step() -> float:
 #
 #⚠️ 入栈和标记必须**内联**：`PackedByteArray` / `PackedInt32Array` 在 GDScript 里是
 #   **值拷贝**，塞进 helper 里改，改的是副本 —— 会变成永远推同一个像素的死循环。
-func _bucket_fill(point: Vector2) -> void:
+func _bucket_fill(point: Vector2) -> bool:
 	var w := canvas_size.x
 	var h := canvas_size.y
 	var start := Vector2i(point.floor())
+	if not _inside(start):
+		return false
 	var data := black_image.get_data()
 	var seen := PackedByteArray()
 	seen.resize(w * h)
 	var stack := PackedInt32Array()
 	var targets := PackedInt32Array()
-	var room := _ink_room(ink_material_id())
+	var room := mini(_ink_room(ink_material_id()), MAX_BUCKET_PIXELS)
 
 	var first := start.y * w + start.x
 	if data[first * 4 + 3] > 127:
-		return                       # 点在实心像素上：什么都不做
+		return false                  # 点在实心像素上：什么都不做
 	seen[first] = 1
 	stack.append(first)
 	while not stack.is_empty():
@@ -470,12 +608,12 @@ func _bucket_fill(point: Vector2) -> void:
 		targets.append(idx)
 		var x := idx % w
 		var y := idx / w
-		if x == 0 or y == 0 or x == w - 1 or y == h - 1:
-			print("墨水桶：这片区域没封口（漫到画布边缘），不灌")
-			return
 		if targets.size() > room:
-			print("墨水不足：这一片灌不下（瓶里 %d px）" % room)
-			return
+			if room == MAX_BUCKET_PIXELS:
+				print("墨水桶：区域过大（上限 %d px），请先用边框分隔" % MAX_BUCKET_PIXELS)
+			else:
+				print("墨水不足：这一片灌不下（瓶里 %d px）" % room)
+			return false
 		if x > 0 and seen[idx - 1] == 0 and data[(idx - 1) * 4 + 3] <= 127:
 			seen[idx - 1] = 1
 			stack.append(idx - 1)
@@ -493,6 +631,8 @@ func _bucket_fill(point: Vector2) -> void:
 		int(ink_color().r * 255.0), int(ink_color().g * 255.0),
 		int(ink_color().b * 255.0), 255])
 	for idx: int in targets:
+		var target := Vector2i(idx % w, idx / w)
+		_track_undo_pixel(target)
 		var at := idx * 4
 		data[at] = pixel[0]
 		data[at + 1] = pixel[1]
@@ -502,6 +642,74 @@ func _bucket_fill(point: Vector2) -> void:
 	black_texture.update(black_image)
 	_bump_ink(ink_material_id(), targets.size())
 	_flush_ink()
+	return true
+#endregion
+
+
+#region 撤销
+## 删除框内当前画布像素。调用方可先把固化实体的框内像素采样回来，
+## 两部分会作为同一个撤销步骤被 Ctrl+Z 恢复。
+func erase_rect(rect: Rect2i) -> bool:
+	var clipped := rect.intersection(Rect2i(Vector2i.ZERO, canvas_size))
+	var changed := false
+	for y in range(clipped.position.y, clipped.end.y):
+		for x in range(clipped.position.x, clipped.end.x):
+			var pixel := Vector2i(x, y)
+			if black_image.get_pixelv(pixel).a <= 0.5:
+				continue
+			_set_pixel_raw(pixel, Color.TRANSPARENT)
+			changed = true
+	if changed:
+		black_texture.update(black_image)
+		_flush_ink()
+	return changed
+
+
+func _begin_undo_step() -> void:
+	_undo_capture = {}
+	_undo_capturing = true
+
+
+func _track_undo_pixel(pixel: Vector2i) -> void:
+	if not _undo_capturing or _undo_capture.has(pixel):
+		return
+	_undo_capture[pixel] = black_image.get_pixelv(pixel)
+
+
+func _commit_undo_step() -> void:
+	if not _undo_capturing:
+		return
+	_undo_capturing = false
+	if _undo_capture.is_empty():
+		_undo_capture = {}
+		return
+	_undo_steps.append(_undo_capture)
+	if _undo_steps.size() > MAX_UNDO_STEPS:
+		_undo_steps.pop_front()
+	_undo_capture = {}
+	edit_committed.emit()
+
+
+func _cancel_undo_step() -> void:
+	_undo_capture = {}
+	_undo_capturing = false
+
+
+## 撤销最近一次完整的画笔、橡皮、形状、墨水桶或钉子操作。
+func undo_last_edit() -> bool:
+	if _undo_steps.is_empty():
+		return false
+	if _shaping:
+		_revert_shape()
+	_shaping = false
+	_painting = false
+	_cancel_undo_step()
+	var step: Dictionary = _undo_steps.pop_back()
+	for pixel: Vector2i in step:
+		_set_pixel_raw(pixel, step[pixel])
+	black_texture.update(black_image)
+	_flush_ink()
+	return true
 #endregion
 
 

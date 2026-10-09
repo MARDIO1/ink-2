@@ -2,7 +2,10 @@
 @tool
 extends Node2D
 
+signal tool_changed(tool: int)
+
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
+const NailScript := preload("res://actor/nail/src/nail.gd")
 const InkPalette := preload("res://Ink/src/ink_palette.gd")
 
 @onready var surface = $CanvasSurface
@@ -12,6 +15,7 @@ const InkPalette := preload("res://Ink/src/ink_palette.gd")
 @onready var buttons = $WorkbenchUI/Buttons
 @onready var tool_grid = $WorkbenchUI/Buttons/Grid
 @onready var brush_panel = $WorkbenchUI/BrushPanel
+@onready var resize_panel = $WorkbenchUI/ResizePanel
 @onready var workbench: Node2D = $WorkbenchUI
 @onready var toggle_button: Button = $WorkbenchUI/Toggle
 @onready var canvas_frame: TextureRect = $CanvasFrame
@@ -24,8 +28,12 @@ const InkPalette := preload("res://Ink/src/ink_palette.gd")
 	set(value):
 		canvas_size = Vector2i(maxi(value.x, 1), maxi(value.y, 1))
 		if is_node_ready():
-			surface.canvas_size = canvas_size
+			if not _syncing_preserved_resize:
+				surface.canvas_size = canvas_size
 			_place_controls()
+
+## 地图编辑器每次向一个方向增加的逻辑像素数。
+@export_range(16, 2048, 16) var canvas_expand_step := 256
 
 ## 用玩家身体到画布边缘的世界距离控制右侧工具栏。当前小人约 107 px 高；
 ## 进入距离稍短、离开距离约两个身位，形成迟滞，避免在边界反复闪烁。
@@ -37,16 +45,19 @@ const InkPalette := preload("res://Ink/src/ink_palette.gd")
 func _ready() -> void:
 	process_physics_priority = 18       # 世界步进(10)之后、相机(20)之前：跟随时读到的才是这一帧的位姿
 	_workbench_home = workbench.position
+	_workbench_home_transform = workbench.transform
 	surface.canvas_size = canvas_size
 	_place_controls()
 	set_brush_size(int(brush_panel.get_node("PenSlider").value))
 	surface.set_process_input(active)
 	set_process_input(active)
 	set_physics_process(active and not Engine.is_editor_hint())
+	set_process(false)
 	_refresh_workbench_visibility()
 	if not Engine.is_editor_hint():
 		_build_side_panel()
 		_bind_buttons()
+		surface.selection_delete_requested.connect(_delete_selection)
 		_apply_tool(surface.tool)
 #endregion
 
@@ -60,6 +71,7 @@ func _ready() -> void:
 			surface.set_process_input(value)
 			set_process_input(value)
 			set_physics_process(value and not Engine.is_editor_hint())
+			set_process(value and _screen_fixed and not Engine.is_editor_hint())
 			_refresh_workbench_visibility()
 			#谁激活谁说了算：手的状态跟着当前这块画布的当前工具。
 			if value:
@@ -74,11 +86,57 @@ func clear_canvas() -> void:
 ## 墨水固化成实体（原 E 键）。
 func generate() -> void:
 	solid.solidify(surface, world)
+	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 
 ## 画布范围内的实体重采样回墨水。
 func return_to_canvas() -> void:
 	solid.rasterize(surface, world)
+
+
+## 地图编辑模式清理已经整体掉出画布的固化墨水。
+## 原始 InkItem 由节点组识别；破坏产生的碎片没有节点，用 null 占位识别。
+## 静态地形、生物以及仍有任意部分碰到画布的实体都保留。
+func clear_solidified_bodies_outside_canvas() -> int:
+	if world == null or world.get("world") == null:
+		return 0
+	var physics = world.get("world")
+	world.realign_body_nodes()
+	var nodes_by_body: Dictionary = {}
+	for index in mini(world._body_nodes.size(), physics.bodies.size()):
+		var node = world._body_nodes[index]
+		if is_instance_valid(node):
+			nodes_by_body[physics.bodies[index]] = node
+	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
+	var removed: Array = []
+	for body in physics.bodies:
+		if body == null or body.is_static or body.tags.has("living"):
+			continue
+		var node = nodes_by_body.get(body)
+		var is_solidified_ink: bool = node == null or node.is_in_group("ink_item")
+		if is_solidified_ink and not body.aabb.intersects(canvas_rect):
+			removed.append(body)
+	if removed.is_empty():
+		return 0
+	for body in removed:
+		physics.remove_body(body)
+		var node = nodes_by_body.get(body)
+		if is_instance_valid(node):
+			node.queue_free()
+		for child in world.get_children():
+			if child is NailScript and child.get("body") == body:
+				child.queue_free()
+	world.sync_world_bodies()
+	return removed.size()
+
+
+## 未固化墨水与已固化实体一起框删，并合并成一个画布撤销步骤。
+func _delete_selection(rect: Rect2i) -> void:
+	surface._begin_undo_step()
+	solid.rasterize_rect(surface, world, rect)
+	surface.erase_rect(rect)
+	surface._commit_undo_step()
+	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 
 ## 保底 PNG：把世界里所有实心像素采样进画布 → 存一张透明 PNG → 把画布还原成空的。
@@ -120,6 +178,44 @@ func set_brush_size(px: int) -> void:
 ## 免墨水：创造模式里画图不该花瓶子里的墨（"重绘"也就不会再凭空生墨）。
 func set_ink_free(on: bool) -> void:
 	surface.ink_free = on
+
+
+## 在指定方向扩展画布，保留已有像素和钉子；向左/上扩展时同步移动节点，
+## 因此旧内容在世界中的位置保持不变。
+func expand_canvas(direction: Vector2i, amount := -1) -> bool:
+	if direction not in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		push_error("Canvas: 扩展方向必须是上、下、左、右")
+		return false
+	var step := canvas_expand_step if amount <= 0 else amount
+	step = maxi(step, 1)
+	var content_offset := Vector2i(
+		step if direction == Vector2i.LEFT else 0,
+		step if direction == Vector2i.UP else 0
+	)
+	var new_size := canvas_size + Vector2i(abs(direction.x), abs(direction.y)) * step
+	if not surface.resize_preserving_content(new_size, content_offset):
+		return false
+	_syncing_preserved_resize = true
+	canvas_size = new_size
+	_syncing_preserved_resize = false
+	position -= Vector2(content_offset)
+	return true
+
+
+func expand_left() -> void:
+	expand_canvas(Vector2i.LEFT)
+
+
+func expand_right() -> void:
+	expand_canvas(Vector2i.RIGHT)
+
+
+func expand_up() -> void:
+	expand_canvas(Vector2i.UP)
+
+
+func expand_down() -> void:
+	expand_canvas(Vector2i.DOWN)
 #endregion
 
 
@@ -129,11 +225,19 @@ func set_ink_free(on: bool) -> void:
 ## 工具栏本体在 WorkbenchUI 里是往左下方铺的（x -222..-86、y 56..428），
 ## 所以这里给的是"让那一摞按钮落在玩家右手边"的量。
 @export var follow_offset := Vector2(246, -106)
+## 固定工具栏时，WorkbenchUI 原点所在的视口逻辑坐标。
+## 控件自身向左偏移 222 px、向下偏移 56 px，所以默认值会让可见区域从 (16, 16) 开始。
+@export var screen_toolbar_origin := Vector2(238, -40)
 
 var _workbench_nearby := true
 var _workbench_hidden := false
 var _workbench_home := Vector2.ZERO
+var _workbench_home_transform := Transform2D.IDENTITY
 var _follow_player := false
+var _screen_fixed := false
+var _map_editor_mode := false
+var _syncing_preserved_resize := false
+var _nails_visible := true
 
 
 func _place_controls() -> void:
@@ -228,11 +332,42 @@ func _place_side_panel() -> void:
 
 ## 把工具栏挂到玩家身上（创造模式全图飞行时够得着）；关掉就回到场景里摆的位置。
 func set_follow_player(on: bool) -> void:
+	if on:
+		set_screen_fixed(false)
 	_follow_player = on
 	if on:
 		_update_follow_position()
 	else:
 		workbench.position = _workbench_home
+	_refresh_workbench_visibility()
+
+
+## 工具栏固定在视口左侧，不受相机移动、旋转或缩放影响。
+func set_screen_fixed(on: bool) -> void:
+	_screen_fixed = on
+	if on:
+		_follow_player = false
+		_update_screen_fixed_position()
+	else:
+		workbench.transform = _workbench_home_transform
+	set_process(on and active and not Engine.is_editor_hint())
+	_refresh_workbench_visibility()
+
+
+## 地图编辑专用布局：隐藏无角色时没有意义的“手”工具，并显示四向扩展按钮。
+func set_map_editor_mode(on: bool) -> void:
+	_map_editor_mode = on
+	tool_grid.get_node("Hand").visible = not on
+	var player_visibility_button: Button = resize_panel.get_node("Grid/PlayerVisibility")
+	player_visibility_button.set_pressed_no_signal(player != null and player.visible)
+	_update_player_visibility_tooltip(player_visibility_button.button_pressed)
+	var nail_visibility_button: Button = resize_panel.get_node("Grid/NailVisibility")
+	nail_visibility_button.set_pressed_no_signal(_nails_visible)
+	_update_nail_visibility_tooltip(_nails_visible)
+	_apply_nail_visuals(_nails_visible if on else true)
+	if on and surface.tool == SurfaceScript.Tool.HAND:
+		set_tool(SurfaceScript.Tool.BRUSH)
+	set_screen_fixed(on)
 	_refresh_workbench_visibility()
 
 
@@ -244,6 +379,19 @@ func _update_follow_position() -> void:
 	var center: Vector2 = body.com_world() if body != null else player.global_position
 	workbench.position = to_local(center + follow_offset)
 	_place_side_panel()
+
+
+func _update_screen_fixed_position() -> void:
+	if not is_inside_tree():
+		return
+	var screen_transform := Transform2D.IDENTITY
+	screen_transform.origin = screen_toolbar_origin
+	workbench.global_transform = get_viewport().get_canvas_transform().affine_inverse() * screen_transform
+
+
+func _process(_delta: float) -> void:
+	if _screen_fixed:
+		_update_screen_fixed_position()
 
 
 func _physics_process(_delta: float) -> void:
@@ -258,7 +406,7 @@ func _refresh_workbench_visibility() -> void:
 		return
 	# 单独预览 Canvas 场景时没有玩家，工具栏保持可见，便于编辑与测试；
 	# 跟着人走时也不存在"离画布太远"这回事。
-	if player == null or _follow_player:
+	if player == null or _follow_player or _screen_fixed:
 		_set_workbench_visible(true)
 		return
 	var distance := _distance_from_player_to_canvas()
@@ -274,6 +422,7 @@ func _set_workbench_visible(nearby: bool) -> void:
 	toggle_button.visible = active and nearby
 	buttons.visible = active and nearby and not _workbench_hidden
 	brush_panel.visible = active and nearby and not _workbench_hidden
+	resize_panel.visible = active and nearby and not _workbench_hidden and _map_editor_mode
 	#右侧面板是另一套布局，不跟着左边那个"隐藏"按钮走。
 	if _side_panel != null:
 		_side_panel.visible = active and nearby
@@ -301,9 +450,12 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("Shape").pressed.connect(_select_shape_tool)
 	tool_grid.get_node("Nail").pressed.connect(set_tool.bind(SurfaceScript.Tool.NAIL))
 	tool_grid.get_node("Bucket").pressed.connect(set_tool.bind(SurfaceScript.Tool.BUCKET))
+	tool_grid.get_node("SelectDelete").pressed.connect(set_tool.bind(SurfaceScript.Tool.SELECT_DELETE))
 	tool_grid.get_node("Redraw").pressed.connect(clear_canvas)
 	tool_grid.get_node("Generate").pressed.connect(generate)
 	tool_grid.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
+	resize_panel.get_node("Grid/PlayerVisibility").toggled.connect(_on_player_visibility_toggled)
+	resize_panel.get_node("Grid/NailVisibility").toggled.connect(_on_nail_visibility_toggled)
 	toggle_button.pressed.connect(_toggle_workbench)
 	brush_panel.get_node("PenSlider").value_changed.connect(_on_pen_slider_changed)
 
@@ -313,6 +465,40 @@ func _toggle_workbench() -> void:
 	_workbench_hidden = not _workbench_hidden
 	toggle_button.text = "显示" if _workbench_hidden else "隐藏"
 	_refresh_workbench_visibility()
+
+
+func _on_player_visibility_toggled(show_player: bool) -> void:
+	if not _map_editor_mode or player == null:
+		return
+	player.visible = show_player
+	_update_player_visibility_tooltip(show_player)
+
+
+func _update_player_visibility_tooltip(show_player: bool) -> void:
+	var button: Button = resize_panel.get_node("Grid/PlayerVisibility")
+	button.tooltip_text = "隐藏小人" if show_player else "显示小人"
+
+
+func _on_nail_visibility_toggled(show_nails: bool) -> void:
+	if not _map_editor_mode:
+		return
+	_nails_visible = show_nails
+	_apply_nail_visuals(show_nails)
+	_update_nail_visibility_tooltip(show_nails)
+
+
+func _apply_nail_visuals(show_nails: bool) -> void:
+	NailScript.visuals_visible = show_nails
+	surface.nail_layer.visible = show_nails
+	if not is_inside_tree():
+		return
+	for nail in get_tree().get_nodes_in_group(NailScript.VISUAL_GROUP):
+		nail.visible = show_nails
+
+
+func _update_nail_visibility_tooltip(show_nails: bool) -> void:
+	var button: Button = resize_panel.get_node("Grid/NailVisibility")
+	button.tooltip_text = "隐藏钉子外观" if show_nails else "显示钉子外观"
 
 
 var _shape_tool: int = SurfaceScript.Tool.RECT
@@ -339,7 +525,9 @@ func _apply_tool(tool: int) -> void:
 	)
 	tool_grid.get_node("Nail").set_pressed_no_signal(tool == SurfaceScript.Tool.NAIL)
 	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
+	tool_grid.get_node("SelectDelete").set_pressed_no_signal(tool == SurfaceScript.Tool.SELECT_DELETE)
 	_sync_hand_enabled(tool)
+	tool_changed.emit(tool)
 
 
 #滑块带格子（step = 2），值域就是奇数直径 1..17。
@@ -362,6 +550,8 @@ func _input(event: InputEvent) -> void:
 		return
 	#绘图工具下，右键只充当临时橡皮：按住切换，松开恢复，不改变长期工具选择。
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		if event.pressed and get_viewport().gui_get_hovered_control() != null:
+			return
 		if event.pressed and not _temporary_eraser and surface.tool == SurfaceScript.Tool.BRUSH:
 			_temporary_eraser = true
 			_apply_tool(SurfaceScript.Tool.ERASER)
@@ -371,6 +561,23 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
+		# 地图扩展保留为快捷键，界面不再占一排方向按钮。
+		if _map_editor_mode and event.ctrl_pressed:
+			var expanded := true
+			match event.keycode:
+				KEY_LEFT:
+					expand_left()
+				KEY_RIGHT:
+					expand_right()
+				KEY_UP:
+					expand_up()
+				KEY_DOWN:
+					expand_down()
+				_:
+					expanded = false
+			if expanded:
+				get_viewport().set_input_as_handled()
+				return
 		match event.keycode:
 			KEY_1:
 				set_tool(SurfaceScript.Tool.HAND)
@@ -386,6 +593,8 @@ func _input(event: InputEvent) -> void:
 				set_tool(SurfaceScript.Tool.CIRCLE)
 			KEY_7:
 				set_tool(SurfaceScript.Tool.BUCKET)
+			KEY_8:
+				set_tool(SurfaceScript.Tool.SELECT_DELETE)
 			KEY_E:
 				generate()
 	#保存/读取走输入动作，别和上面的裸键 match 串成一个分支。

@@ -6,4 +6,4 @@
 script = ExtResource("1_mat")
 display_name = "black"
 color = Color(0, 0, 0, 1)
-compress_strength = 200.0
+compress_strength = 100.0

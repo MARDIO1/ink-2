@@ -1,0 +1,246 @@
+[gd_scene load_steps=16 format=3]
+
+[ext_resource type="Script" path="res://actor/monster/imported/little_soldier/scripts/little_soldier_rig.gd" id="1_rig"]
+[ext_resource type="Script" path="res://actor/monster/imported/little_soldier/scripts/ik_target.gd" id="2_target"]
+[ext_resource type="Script" path="res://actor/monster/imported/little_soldier/scripts/periodic_breath.gd" id="12_breath"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/little_soldier/assets/parts/body.png" id="3_body"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/little_soldier/assets/parts/left_upper_arm.png" id="4_lua"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/little_soldier/assets/parts/left_lower_arm.png" id="5_lla"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/little_soldier/assets/parts/right_upper_arm.png" id="6_rua"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/little_soldier/assets/parts/right_lower_arm.png" id="7_rla"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/little_soldier/assets/parts/left_thigh.png" id="8_lt"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/little_soldier/assets/parts/left_shin_foot.png" id="9_lsf"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/little_soldier/assets/parts/right_thigh.png" id="10_rt"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/little_soldier/assets/parts/right_shin_foot.png" id="11_rsf"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_target"]
+radius = 18.0
+
+[sub_resource type="Animation" id="Animation_reset"]
+resource_name = "RESET"
+length = 0.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/Root/BodyBone:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+
+[sub_resource type="Animation" id="Animation_idle"]
+resource_name = "idle"
+length = 2.4
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/Root/BodyBone:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.6, 1.2, 1.8, 2.4),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [0.0, -0.012, 0.0, 0.012, 0.0]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_main"]
+_data = {
+&"RESET": SubResource("Animation_reset"),
+&"idle": SubResource("Animation_idle")
+}
+
+[node name="LittleSoldier" type="Node2D"]
+texture_filter = 1
+script = ExtResource("1_rig")
+
+[node name="PeriodicBreath" type="Node" parent="."]
+script = ExtResource("12_breath")
+
+[node name="Skeleton2D" type="Skeleton2D" parent="."]
+
+[node name="Root" type="Bone2D" parent="Skeleton2D"]
+autocalculate_length_and_angle = false
+length = 1.0
+rest = Transform2D(1, 0, 0, 1, 0, 0)
+
+[node name="BodyBone" type="Bone2D" parent="Skeleton2D/Root"]
+autocalculate_length_and_angle = false
+length = 130.0
+rest = Transform2D(1, 0, 0, 1, 0, 0)
+
+[node name="BodyArt" type="Sprite2D" parent="Skeleton2D/Root/BodyBone"]
+z_index = 2
+position = Vector2(0, -118.4)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("3_body")
+
+[node name="LeftUpperArm" type="Bone2D" parent="Skeleton2D/Root/BodyBone"]
+autocalculate_length_and_angle = false
+position = Vector2(-76.8, -124.8)
+rotation = 1.9416876
+length = 61.8023
+rest = Transform2D(-0.36244627, 0.9320047, -0.9320047, -0.36244627, -76.8, -124.8)
+
+[node name="LeftUpperArmArt" type="Sprite2D" parent="Skeleton2D/Root/BodyBone/LeftUpperArm"]
+z_index = 0
+position = Vector2(27.5045, 13.338)
+rotation = -1.9416876
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("4_lua")
+
+[node name="LeftLowerArm" type="Bone2D" parent="Skeleton2D/Root/BodyBone/LeftUpperArm"]
+autocalculate_length_and_angle = false
+position = Vector2(61.8023, 0)
+rotation = 0.14825483
+length = 77.3977
+rest = Transform2D(0.98903036, 0.14771232, -0.14771232, 0.98903036, 61.8023, 0)
+
+[node name="LeftLowerArmArt" type="Sprite2D" parent="Skeleton2D/Root/BodyBone/LeftUpperArm/LeftLowerArm"]
+z_index = 0
+position = Vector2(49.4154, -13.495)
+rotation = -2.0899425
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("5_lla")
+
+[node name="LeftHandTip" type="Marker2D" parent="Skeleton2D/Root/BodyBone/LeftUpperArm/LeftLowerArm"]
+position = Vector2(77.3977, 0)
+
+[node name="RightUpperArm" type="Bone2D" parent="Skeleton2D/Root/BodyBone"]
+autocalculate_length_and_angle = false
+position = Vector2(70.4, -128)
+rotation = 1.2178059
+length = 64.7951
+rest = Transform2D(0.34570536, 0.9383431, -0.9383431, 0.34570536, 70.4, -128)
+
+[node name="RightUpperArmArt" type="Sprite2D" parent="Skeleton2D/Root/BodyBone/RightUpperArm"]
+z_index = 4
+position = Vector2(26.1551, -10.8255)
+rotation = -1.2178059
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("6_rua")
+
+[node name="RightLowerArm" type="Bone2D" parent="Skeleton2D/Root/BodyBone/RightUpperArm"]
+autocalculate_length_and_angle = false
+position = Vector2(64.7951, 0)
+rotation = -0.19379845
+length = 86.1626
+rest = Transform2D(0.9812798, -0.19258763, 0.19258763, 0.9812798, 64.7951, 0)
+
+[node name="RightLowerArmArt" type="Sprite2D" parent="Skeleton2D/Root/BodyBone/RightUpperArm/RightLowerArm"]
+z_index = 4
+position = Vector2(55.0847, 11.0526)
+rotation = -1.0240074
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("7_rla")
+
+[node name="RightHandTip" type="Marker2D" parent="Skeleton2D/Root/BodyBone/RightUpperArm/RightLowerArm"]
+position = Vector2(86.1626, 0)
+
+[node name="LeftThigh" type="Bone2D" parent="Skeleton2D/Root"]
+autocalculate_length_and_angle = false
+position = Vector2(-44.8, 0)
+rotation = 1.82812
+length = 62.87
+rest = Transform2D(-0.2544933, 0.9670745, -0.9670745, -0.2544933, -44.8, 0)
+
+[node name="LeftThighArt" type="Sprite2D" parent="Skeleton2D/Root/LeftThigh"]
+z_index = 1
+position = Vector2(31.8422, 1.5473)
+rotation = -1.82812
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("8_lt")
+
+[node name="LeftShin" type="Bone2D" parent="Skeleton2D/Root/LeftThigh"]
+autocalculate_length_and_angle = false
+position = Vector2(62.87, 0)
+rotation = 0.16090061
+length = 63.0327
+rest = Transform2D(0.9870834, 0.16020726, -0.16020726, 0.9870834, 62.87, 0)
+
+[node name="LeftShinFootArt" type="Sprite2D" parent="Skeleton2D/Root/LeftThigh/LeftShin"]
+z_index = 1
+position = Vector2(34.603, -4.8737)
+rotation = -1.9890207
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("9_lsf")
+
+[node name="LeftFootTip" type="Marker2D" parent="Skeleton2D/Root/LeftThigh/LeftShin"]
+position = Vector2(63.0327, 0)
+
+[node name="RightThigh" type="Bone2D" parent="Skeleton2D/Root"]
+autocalculate_length_and_angle = false
+position = Vector2(38.4, 0)
+rotation = 1.4141945
+length = 61.5532
+rest = Transform2D(0.15596257, 0.987763, -0.987763, 0.15596257, 38.4, 0)
+
+[node name="RightThighArt" type="Sprite2D" parent="Skeleton2D/Root/RightThigh"]
+z_index = 3
+position = Vector2(30.5271, 1.5804)
+rotation = -1.4141945
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("10_rt")
+
+[node name="RightShin" type="Bone2D" parent="Skeleton2D/Root/RightThigh"]
+autocalculate_length_and_angle = false
+position = Vector2(61.5532, 0)
+rotation = -0.26625204
+length = 70.1815
+rest = Transform2D(0.9647638, -0.2631174, 0.2631174, 0.9647638, 61.5532, 0)
+
+[node name="RightShinFootArt" type="Sprite2D" parent="Skeleton2D/Root/RightThigh/RightShin"]
+z_index = 3
+position = Vector2(37.4982, 6.347)
+rotation = -1.1479424
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("11_rsf")
+
+[node name="RightFootTip" type="Marker2D" parent="Skeleton2D/Root/RightThigh/RightShin"]
+position = Vector2(70.1815, 0)
+
+[node name="Targets" type="Node2D" parent="."]
+z_index = 20
+
+[node name="LeftHandTarget" type="Area2D" parent="Targets"]
+position = Vector2(-137.6, 0)
+script = ExtResource("2_target")
+target_color = Color(0.95, 0.42, 0.16, 0.95)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/LeftHandTarget"]
+shape = SubResource("CircleShape2D_target")
+
+[node name="RightHandTarget" type="Area2D" parent="Targets"]
+position = Vector2(137.6, 6.4)
+script = ExtResource("2_target")
+target_color = Color(0.08, 0.62, 0.95, 0.95)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/RightHandTarget"]
+shape = SubResource("CircleShape2D_target")
+
+[node name="LeftFootTarget" type="Area2D" parent="Targets"]
+position = Vector2(-86.4, 118.4)
+script = ExtResource("2_target")
+target_color = Color(0.62, 0.28, 0.92, 0.95)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/LeftFootTarget"]
+shape = SubResource("CircleShape2D_target")
+
+[node name="RightFootTarget" type="Area2D" parent="Targets"]
+position = Vector2(76.8, 124.8)
+script = ExtResource("2_target")
+target_color = Color(0.05, 0.68, 0.42, 0.95)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/RightFootTarget"]
+shape = SubResource("CircleShape2D_target")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {
+&"": SubResource("AnimationLibrary_main")
+}
+autoplay = "idle"

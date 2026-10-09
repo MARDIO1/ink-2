@@ -1,0 +1,329 @@
+[gd_scene format=3 uid="uid://c3tjwcpt4acc"]
+
+[ext_resource type="Script" path="res://actor/monster/imported/shield_side/scripts/side_viking_rig.gd" id="1_rig"]
+[ext_resource type="Script" path="res://actor/monster/imported/shield_side/scripts/ik_target.gd" id="2_target"]
+[ext_resource type="Script" path="res://actor/monster/imported/shield_side/scripts/periodic_breath.gd" id="25_breath"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/inkman_composite_4x_1__normalized_4x.png" id="3_core"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/parts/cape.png" id="6_s72uk"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/near_upper_arm.png" id="12_near_upper_arm"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/near_forearm.png" id="13_near_forearm"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/near_hand.png" id="14_near_hand"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/far_upper_arm.png" id="15_far_upper_arm"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/far_forearm.png" id="16_far_forearm"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/far_hand.png" id="17_far_hand"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/near_thigh.png" id="18_near_thigh"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/near_shin.png" id="19_near_shin"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/near_foot.png" id="20_near_foot"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/far_thigh.png" id="21_far_thigh"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/far_shin.png" id="22_far_shin"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/far_foot.png" id="23_far_foot"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/shield_side/assets/unified/shield.png" id="24_shield"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_target"]
+radius = 22.0
+
+[node name="SideVikingCharacter" type="Node2D" unique_id=2137774724]
+editor_description = "Rebuilt from the unified side-viking textures. Four scale-safe two-bone IK chains, independent cape/skirts/shield bones, and an empty AnimationPlayer are included."
+texture_filter = 1
+script = ExtResource("1_rig")
+
+[node name="PeriodicBreath" type="Node" parent="."]
+script = ExtResource("25_breath")
+
+[node name="Skeleton2D" type="Skeleton2D" parent="." unique_id=2117708166]
+
+[node name="Root" type="Bone2D" parent="Skeleton2D" unique_id=2011098178]
+rest = Transform2D(1, 0, 0, 1, 0, 0)
+
+[node name="Spine" type="Bone2D" parent="Skeleton2D/Root" unique_id=962842027]
+rotation = -1.5707964
+rest = Transform2D(0, -1, 1, 0, 0, 0)
+
+[node name="CoreComposite" type="Sprite2D" parent="Skeleton2D/Root/Spine" unique_id=353350338]
+z_index = 1
+position = Vector2(-222, -22)
+rotation = 1.5707964
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("3_core")
+
+[node name="Cape" type="Bone2D" parent="Skeleton2D/Root/Spine" unique_id=1988067985]
+position = Vector2(145, 62)
+rotation = -3.1415925
+rest = Transform2D(-1, 0, 0, -1, 145, 62)
+
+[node name="05披风Transparent" type="Sprite2D" parent="Skeleton2D/Root/Spine/Cape" unique_id=1447534818]
+position = Vector2(217.00002, -11.000014)
+rotation = -1.6504308
+scale = Vector2(0.13488951, 0.16435875)
+texture = ExtResource("6_s72uk")
+
+[node name="CapeTip" type="Bone2D" parent="Skeleton2D/Root/Spine/Cape" unique_id=1158791877]
+position = Vector2(428, -141.00003)
+rest = Transform2D(1, 0, 0, 1, 430, 0)
+
+[node name="FarUpperArm" type="Bone2D" parent="Skeleton2D/Root/Spine" unique_id=524700487]
+position = Vector2(133.3, -69.59999)
+rotation = -2.4571455
+scale = Vector2(0.9999997, 0.9999997)
+rest = Transform2D(-0.926709, -0.375779, 0.375779, -0.926709, 133.3, -69.59999)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/Spine/FarUpperArm" unique_id=1671812386]
+z_index = -8
+position = Vector2(24.57306, -20.988022)
+rotation = -1.688281
+scale = Vector2(0.5334381, 0.43969473)
+texture = ExtResource("15_far_upper_arm")
+
+[node name="FarForearm" type="Bone2D" parent="Skeleton2D/Root/Spine/FarUpperArm" unique_id=2122672618]
+position = Vector2(94.20431, -8e-06)
+rotation = -0.12579495
+scale = Vector2(0.9999999, 0.9999999)
+rest = Transform2D(0.997784, -0.066534, 0.066534, 0.997784, 94.20431, -8e-06)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/Spine/FarUpperArm/FarForearm" unique_id=1279036112]
+z_index = -7
+position = Vector2(42.401237, 0.07111)
+rotation = -1.579879
+scale = Vector2(0.50773335, 0.5037037)
+texture = ExtResource("16_far_forearm")
+
+[node name="FarHand" type="Bone2D" parent="Skeleton2D/Root/Spine/FarUpperArm/FarForearm" unique_id=2134763949]
+position = Vector2(102.1421, 8e-06)
+rest = Transform2D(1, 0, 0, 1, 102.1421, 8e-06)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/Spine/FarUpperArm/FarForearm/FarHand" unique_id=344821357]
+z_index = -6
+position = Vector2(10.685405, 11.525717)
+rotation = -1.579879
+scale = Vector2(0.51322, 0.49365032)
+texture = ExtResource("17_far_hand")
+
+[node name="FarHandTip" type="Bone2D" parent="Skeleton2D/Root/Spine/FarUpperArm/FarForearm/FarHand" unique_id=786310506]
+position = Vector2(52.789238, 6.804677)
+rest = Transform2D(1, 0, 0, 1, 77.948, -0.708)
+
+[node name="NearUpperArm" type="Bone2D" parent="Skeleton2D/Root/Spine" unique_id=917609220]
+position = Vector2(145.5, 54.50001)
+rotation = 1.8598611
+scale = Vector2(0.99999976, 0.99999976)
+rest = Transform2D(-0.840085, 0.542455, -0.542455, -0.840085, 145.5, 54.50001)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/Spine/NearUpperArm" unique_id=859414980]
+z_index = 7
+position = Vector2(71.51587, 6.45972)
+rotation = -1.4808658
+scale = Vector2(0.5509524, 0.4129412)
+texture = ExtResource("12_near_upper_arm")
+
+[node name="NearForearm" type="Bone2D" parent="Skeleton2D/Root/Spine/NearUpperArm" unique_id=898420531]
+position = Vector2(104.1561, -2.3e-05)
+rotation = 1.4284774
+rest = Transform2D(0.984306, 0.176473, -0.176473, 0.984306, 104.1561, -2.3e-05)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/Spine/NearUpperArm/NearForearm" unique_id=375460393]
+z_index = 8
+position = Vector2(51.335163, -6.527905)
+rotation = -1.520508
+scale = Vector2(0.5133333, 0.506)
+texture = ExtResource("13_near_forearm")
+
+[node name="NearHand" type="Bone2D" parent="Skeleton2D/Root/Spine/NearUpperArm/NearForearm" unique_id=626410983]
+position = Vector2(132.2309, 1.5e-05)
+rest = Transform2D(1, 0, 0, 1, 132.2309, 1.5e-05)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/Spine/NearUpperArm/NearForearm/NearHand" unique_id=1082273915]
+z_index = 9
+position = Vector2(11.47506, 4.999049)
+rotation = -1.3859107
+scale = Vector2(0.462, 0.44372094)
+texture = ExtResource("14_near_hand")
+
+[node name="NearHandTip" type="Bone2D" parent="Skeleton2D/Root/Spine/NearUpperArm/NearForearm/NearHand" unique_id=72715554]
+position = Vector2(33.21638, 16.589289)
+rotation = 1.324065
+scale = Vector2(0.9999997, 0.9999997)
+rest = Transform2D(1, 0, 0, 1, 58, 0)
+
+[node name="FarSkirt" type="Bone2D" parent="Skeleton2D/Root" unique_id=66646599]
+position = Vector2(-22, 38)
+rotation = 1.5707964
+rest = Transform2D(0, 1, -1, 0, -22, 38)
+
+[node name="FarSkirtTip" type="Bone2D" parent="Skeleton2D/Root/FarSkirt" unique_id=1921959364]
+position = Vector2(135, 0)
+rest = Transform2D(1, 0, 0, 1, 135, 0)
+
+[node name="FrontSkirt" type="Bone2D" parent="Skeleton2D/Root" unique_id=2039651082]
+position = Vector2(-18, 40)
+rotation = 1.5707964
+rest = Transform2D(0, 1, -1, 0, -18, 40)
+
+[node name="FrontSkirtTip" type="Bone2D" parent="Skeleton2D/Root/FrontSkirt" unique_id=941134735]
+position = Vector2(156, -24.000006)
+rest = Transform2D(1, 0, 0, 1, 140, 0)
+
+[node name="NearSkirt" type="Bone2D" parent="Skeleton2D/Root" unique_id=1860244802]
+position = Vector2(24, 40)
+rotation = 1.5707964
+rest = Transform2D(0, 1, -1, 0, 24, 40)
+
+[node name="NearSkirtTip" type="Bone2D" parent="Skeleton2D/Root/NearSkirt" unique_id=1542262116]
+position = Vector2(140, 0)
+rest = Transform2D(1, 0, 0, 1, 140, 0)
+
+[node name="FarThigh" type="Bone2D" parent="Skeleton2D/Root" unique_id=1555382144]
+position = Vector2(-24, 48)
+rotation = 1.9379464
+rest = Transform2D(-0.450487, 0.892783, -0.892783, -0.450487, -24, 48)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/FarThigh" unique_id=1902002782]
+z_index = -4
+position = Vector2(63.2335, -0.137448)
+rotation = -1.57297
+scale = Vector2(0.686, 0.6555862)
+texture = ExtResource("21_far_thigh")
+
+[node name="FarShin" type="Bone2D" parent="Skeleton2D/Root/FarThigh" unique_id=1207065240]
+position = Vector2(122.0901, -2e-06)
+rotation = -0.12080337
+scale = Vector2(0.99999994, 0.99999994)
+rest = Transform2D(0.867699, -0.49709, 0.49709, 0.867699, 122.0901, -2e-06)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/FarThigh/FarShin" unique_id=1180748375]
+z_index = -3
+position = Vector2(66.613884, -6.750912)
+rotation = -1.5056602
+scale = Vector2(0.68008, 0.7235481)
+texture = ExtResource("22_far_shin")
+
+[node name="FarFoot" type="Bone2D" parent="Skeleton2D/Root/FarThigh/FarShin" unique_id=1327968160]
+position = Vector2(151.2118, 8e-06)
+rest = Transform2D(1, 0, 0, 1, 151.2118, 8e-06)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/FarThigh/FarShin/FarFoot" unique_id=1197231102]
+z_index = -2
+position = Vector2(25.102224, 15.489734)
+rotation = -1.5250071
+scale = Vector2(0.5174443, 0.55517584)
+texture = ExtResource("23_far_foot")
+
+[node name="FarFootTip" type="Bone2D" parent="Skeleton2D/Root/FarThigh/FarShin/FarFoot" unique_id=875614220]
+position = Vector2(70.576004, 0.1709615)
+rotation = -1.9529699
+rest = Transform2D(1, 0, 0, 1, 80, 0)
+
+[node name="NearThigh" type="Bone2D" parent="Skeleton2D/Root" unique_id=983863876]
+position = Vector2(28, 48)
+rotation = 1.2445759
+scale = Vector2(0.9999999, 0.9999999)
+rest = Transform2D(0.23162, 0.972806, -0.972806, 0.23162, 28, 48)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/NearThigh" unique_id=649773702]
+z_index = 5
+position = Vector2(42.569923, -5.507006)
+rotation = -1.3537554
+scale = Vector2(0.688, 0.82758623)
+texture = ExtResource("18_near_thigh")
+
+[node name="NearShin" type="Bone2D" parent="Skeleton2D/Root/NearThigh" unique_id=1047453247]
+position = Vector2(134.2609, 0)
+rotation = -0.25700924
+scale = Vector2(0.9999994, 0.9999994)
+rest = Transform2D(0.999947, 0.010266, -0.010266, 0.999947, 129.5222, -4e-06)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/NearThigh/NearShin" unique_id=751119511]
+z_index = 6
+position = Vector2(52.623238, 5.264886)
+rotation = -1.4618442
+scale = Vector2(0.65952194, 0.75549126)
+texture = ExtResource("19_near_shin")
+
+[node name="NearFoot" type="Bone2D" parent="Skeleton2D/Root/NearThigh/NearShin" unique_id=376939967]
+position = Vector2(157.9272, 4e-06)
+rest = Transform2D(1, 0, 0, 1, 157.9272, 4e-06)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/Root/NearThigh/NearShin/NearFoot" unique_id=787922326]
+z_index = 7
+position = Vector2(19.250467, 27.539476)
+rotation = -1.2772948
+scale = Vector2(0.4616991, 0.48441666)
+texture = ExtResource("20_near_foot")
+
+[node name="NearFootTip" type="Bone2D" parent="Skeleton2D/Root/NearThigh/NearShin/NearFoot" unique_id=309011613]
+position = Vector2(57.28026, 17.845387)
+rest = Transform2D(1, 0, 0, 1, 80, 0)
+
+[node name="ShieldBone" type="Bone2D" parent="Skeleton2D/Root" unique_id=1416460461]
+position = Vector2(-111.5, 2.7000008)
+rotation = 1.5707964
+rest = Transform2D(0, 1, -1, 0, -111.5, 2.7)
+
+[node name="ShieldMount" type="Marker2D" parent="Skeleton2D/Root/ShieldBone" unique_id=767389100]
+
+[node name="ShieldArt" type="Sprite2D" parent="Skeleton2D/Root/ShieldBone" unique_id=816939420]
+z_index = -15
+position = Vector2(64.44815, 111.85)
+rotation = -1.5707964
+scale = Vector2(0.5, 0.50385)
+texture = ExtResource("24_shield")
+
+[node name="ShieldTip" type="Bone2D" parent="Skeleton2D/Root/ShieldBone" unique_id=939895817]
+position = Vector2(42.000008, 145)
+rest = Transform2D(1, 0, 0, 1, 300, 0)
+
+[node name="Targets" type="Node2D" parent="." unique_id=1572162138]
+z_index = 100
+
+[node name="FarHandTarget" type="Area2D" parent="Targets" unique_id=1297727441]
+position = Vector2(-183.3, 26.3)
+script = ExtResource("2_target")
+target_color = Color(0.98, 0.62, 0.2, 0.92)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/FarHandTarget" unique_id=731581386]
+position = Vector2(-2, 0)
+shape = SubResource("CircleShape2D_target")
+
+[node name="NearHandTarget" type="Area2D" parent="Targets" unique_id=395565431]
+position = Vector2(135, 15)
+script = ExtResource("2_target")
+target_color = Color(0.12, 0.68, 0.95, 0.92)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/NearHandTarget" unique_id=57418920]
+shape = SubResource("CircleShape2D_target")
+
+[node name="FarFootTarget" type="Area2D" parent="Targets" unique_id=272937583]
+position = Vector2(-104.7, 308.6)
+script = ExtResource("2_target")
+target_color = Color(0.62, 0.38, 0.92, 0.92)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/FarFootTarget" unique_id=1364538023]
+position = Vector2(-3, 1)
+shape = SubResource("CircleShape2D_target")
+
+[node name="NearFootTarget" type="Area2D" parent="Targets" unique_id=1550928655]
+position = Vector2(158, 307)
+rotation = 0.28721672
+script = ExtResource("2_target")
+target_color = Color(0.18, 0.76, 0.4, 0.92)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/NearFootTarget" unique_id=2089349136]
+shape = SubResource("CircleShape2D_target")
+
+[node name="ShieldTarget" type="Area2D" parent="Targets" unique_id=1371190436]
+position = Vector2(-230, 65)
+script = ExtResource("2_target")
+target_color = Color(0.12, 0.82, 0.78, 0.92)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/ShieldTarget" unique_id=78911957]
+shape = SubResource("CircleShape2D_target")
+
+[node name="NearKneePole" type="Area2D" parent="Targets" unique_id=1617011366]
+position = Vector2(-10, 175)
+script = ExtResource("2_target")
+target_color = Color(1, 0.35, 0.72, 0.92)
+target_radius = 14.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/NearKneePole" unique_id=502934925]
+shape = SubResource("CircleShape2D_target")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1895064552]

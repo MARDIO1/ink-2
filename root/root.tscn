@@ -1,10 +1,10 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://dr0gftbpnddda"]
 
-[ext_resource type="Script" path="res://root/src/root.gd" id="1_root"]
+[ext_resource type="Script" uid="uid://m887ouaqaa8q" path="res://root/src/root.gd" id="1_root"]
 
-[node name="Root" type="Node"]
+[node name="Root" type="Node" unique_id=1977969148]
 script = ExtResource("1_root")
 
-[node name="Level" type="Node2D" parent="."]
+[node name="Level" type="Node2D" parent="." unique_id=961708237]
 
-[node name="UI" type="CanvasLayer" parent="."]
+[node name="UI" type="CanvasLayer" parent="." unique_id=1009684291]

@@ -5,7 +5,7 @@ extends CanvasLayer
 @onready var world = $".."
 @onready var label: Label = $Stats
 @onready var forces = $ForceDebug
-@onready var damage = $"../PhysicsRuntime"
+@onready var damage = $"../SimulationRuntime"
 ## 1% low 帧率的滚动采样窗口，单位秒；增大后统计更平稳、响应更慢。
 @export var low_window: float = 10.0
 var elapsed: float = 0.5
