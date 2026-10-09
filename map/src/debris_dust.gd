@@ -1,7 +1,7 @@
 extends Node
 ## 纯视觉灰尘层：显示从物理世界降级的碎片，并在短时间后移除。
-## 灰尘不在 world.bodies 中，不碰撞、不受破坏，也不继承原刚体的线速度或角速度。
-## 本脚本仅模拟竖直重力、阻尼和淡出；贴图内容不变时只更新蓝图变换。
+## 灰尘不在 world.bodies 中，不碰撞、不受破坏；可接收分片后的爆炸初速度。
+## 本脚本模拟初速度、竖直重力、阻尼和淡出；贴图内容不变时只更新蓝图变换。
 ## PixelRenderer 延迟创建，解析成功前暂停寿命计时，超时后丢弃积压项。
 
 ## 灰尘寿命（秒）；到期后释放对应蓝图。
@@ -48,7 +48,7 @@ func spawn(entries: Array) -> void:
 		var pos: Vector2 = e.get("position", Vector2.ZERO)
 		var rot: float = e.get("rotation", 0.0)
 		_items.append({"id": id, "shape": shape, "pos": pos, "rot": rot,
-			"vel": Vector2.ZERO, "life": lifetime})
+			"vel": e.get("velocity", Vector2.ZERO), "life": lifetime})
 		if _renderer != null:
 			_renderer.sync_blueprint(id, shape, Transform2D(rot, pos))
 

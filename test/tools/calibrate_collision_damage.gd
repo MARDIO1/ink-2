@@ -2,7 +2,7 @@ extends "res://test/test_collision_damage.gd"
 ## 真主场景和真 PD 动作；只观测不同系数的删除计划，保持碰撞几何相同。
 
 class Probe:
-	extends "res://map/src/collision_damage.gd"
+	extends "res://map/src/impact_damage.gd"
 	var scales: Array[float] = [0.01, 0.011, 0.012, 0.013, 0.015, 0.02, 0.1]
 	var apply: bool = false
 	var peaks: Dictionary = {}
@@ -12,13 +12,13 @@ class Probe:
 	var approach: float = 0.0
 	var applied_pixels: Dictionary = {}
 
-	func calculate(world, player_body: PBody = null, protected_bodies: Array = []) -> Dictionary:
+	func calculate(world, contacts: Array, player_body: PBody = null, protected_bodies: Array = []) -> Dictionary:
 		if apply:
-			var result: Dictionary = super.calculate(world, player_body, protected_bodies)
+			var result: Dictionary = super.calculate(world, contacts, player_body, protected_bodies)
 			for pixels in result.removals.get(target, {}).values():
 				applied_pixels.merge(pixels, true)
 			return result
-		for contact in _contacts(world):
+		for contact in contacts:
 			if (contact.a == hand and contact.b == target) or (contact.b == hand and contact.a == target):
 				approach = maxf(approach, contact.approach)
 				# ⚠️ 现行 API：_lanes() 已并入 _impact()（返回的 impulse 就是每条 lane 的冲量）。
@@ -27,7 +27,7 @@ class Probe:
 					impulse = maxf(impulse, lane["impulse"])
 		for scale in scales:
 			damage_scale = scale
-			var result: Dictionary = super.calculate(world, player_body, protected_bodies)
+			var result: Dictionary = super.calculate(world, contacts, player_body, protected_bodies)
 			var count: int = 0
 			var depth: int = 0
 			for pixels in result.removals.get(target, {}).values():
@@ -52,11 +52,12 @@ func _scenario(slam: bool, apply: bool = false) -> void:
 	scene.auto_step = false
 	if slam:
 		scene.get_node("Player").position = Vector2(0, 180)
-	var probe = scene.get_node("CollisionDamage")
+	var controller = scene.get_node("PhysicsRuntime")
+	var probe = controller.get_node("ImpactDamage")
 	probe.set_script(Probe)
 	probe.apply = apply
 	root.add_child(scene)
-	probe.set_physics_process(false)
+	controller.set_physics_process(false)
 	var hand = scene.get_node("Player/Arm/Hand/HandControl")
 	hand.set_physics_process(false)
 	scene.get_node("Player/PlayerInput").set_physics_process(false)
@@ -85,7 +86,7 @@ func _scenario(slam: bool, apply: bool = false) -> void:
 		hand._target_override = scene.get_node("Player").body.com_world() + offset
 		hand._grip_override = slam
 		hand._physics_process(1.0 / 60.0)
-		probe._physics_process(1.0 / 60.0)
+		controller._physics_process(1.0 / 60.0)
 	if apply:
 		var removed: int = original_pixels - probe.target.shapes[0].pixel_count()
 		var depth: int = 0

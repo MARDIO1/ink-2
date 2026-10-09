@@ -1,0 +1,14 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="1_mat"]
+
+[resource]
+script = ExtResource("1_mat")
+display_name = "red"
+id = 8
+color = Color(0.86, 0.08, 0.06, 1)
+density = 1.0
+friction = 0.5
+restitution = 0.0
+compress_strength = 50.0
+shear_strength = 15.0

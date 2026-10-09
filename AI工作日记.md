@@ -984,6 +984,41 @@ gym 场景 headless 空跑 --quit-after 150：exit 0，无 ERROR
 - 没给 gym 专门摆器材（箱子/斜坡/可抓墙）—— 现在用的是 main.tscn 的真地图；要独立器材说一声。
 - 没 commit。
 
+## 2026-10-09 红墨复用裂纹接口与闭环
+
+- 红墨触发改为“现有删除计划实际破坏红像素”，删除前生成下一固定步事件；移除独立碰撞阈值、
+  接触邻域点火、旧形状前沿引用、固定自体半预算和额外 burst_speed。保留 physics_runtime.tscn。
+- 爆炸共享每次查询的候选、AABB 入点裁剪与引擎 DDA；同刚体内壁可受力。
+  批量分片后按命中位置给存活碎片累计线/角冲量；小碎片降级灰尘也接收爆炸初速度。
+- 普通 `commit()` 仍立即提交灰尘，游戏固定步只在爆炸事务中延后到冲量结算完，CCD 旧回归保留。
+- 新闭环：红墨 15/15、普通伤害 41/41、CCD/碎片 41/41；窗口真实碰撞与渲染 600 帧，
+  1% low 68.21 FPS、最慢 22.04 ms、峰值物理 13.14 ms。截图模式另跑以免导出开销污染性能测量。
+- 薄炮尾会被打断，当前验证炮弹前冲与炮管碎片后退，未验证完整炮管稳定后坐；
+  1% low 达标也不代表所有单帧均超过 50 FPS。窗口/CCD 退出还有资源泄漏警告未定位。
+- 详见 test/doc/红墨验收.md；保留最后一次 F1 现场，清理本轮生成的中间探针日志。没 commit。
+
+## 2026-10-09 红墨大炮验收边界
+
+- F1 低帧记录门槛由硬编码 24 FPS 改成导出的 `low_frame_fps`，默认 50 FPS（20 ms 帧预算）。
+- 明确当前射线只给外部命中刚体施加冲量，并排除了红墨所在源刚体，因此炮弹可能前进但炮身没有后坐；
+  自体那一半预算只是裂纹伤害，不是物理反冲。
+- Noita 的 `ConfigExplosion` 将材料破坏的 `ray_energy` 与刚体抛射的
+  `physics_throw_enabled / physics_explosion_power` 分离。后续大炮实现按同样边界设计：
+  射线只负责材料破坏，半径候选只收集一次，每个刚体只结算一次冲量，炮身获得炮弹冲量的反向配对。
+- 没 commit。
+
+## 2026-10-09 红墨性能探针与首轮修复
+
+- 保留 `map/physics_runtime.tscn` 的三节点装配，没有把职责重新塞回单脚本。
+- 复用 F1 低帧日志：`PhysicsRuntime` 现在分开记录普通伤害、墨水观察/结算、统一分片和渲染同步；
+  `rules.RedInk` 记录前沿像素、爆炸数、射线/命中数、射线查询与伤害路径耗时。
+- 新增 `test/tools/profile_red_ink.gd`，用 33×33 红块、32 射线、真实 `fracture_pixels` 连跑 8 tick。
+- 基准定位到 `Query.raycast(..., radius=1)` 的加粗射线会逐像素扫包围盒：修为 `radius=0` 的体素 DDA 细射线。
+  首 tick 射线查询约从 17.9 ms 降到 1.1 ms；8 tick 平均红规则约从 18.7 ms 降到 3.8 ms。
+  后半段因破坏产生约 33 个刚体，射线查询仍升至约 4.8 ms，F1 已能继续观察该增长。
+- `test_red_ink.gd` 3/3、`test_collision_damage.gd` 41/41 通过；主场景 headless 120 帧无新解析错误。
+- 没 commit。
+
 
 ## 2026-10-07 17:05 — 手臂曲线（只画不物理）：Arm 下挂 Line2D + 三次贝塞尔
 
@@ -1625,4 +1660,32 @@ canvas 的 `PenSlider` 也一样（同一个主题）。要对齐就得往主题
 - 分片是引擎直接建的 `PBody`，没有节点包装 → 不进 `INK_GROUP`，F5 存关卡不会把它写进 tscn；
   和碰撞破坏产生的碎片是同一条既有路径。
 - 退出时 `2 resources still in use` 的提示是既有的（本轮没碰）。
+- 没 commit。
+
+## 2026-10-09 07:44 — 物理总调度拆分与红墨第一版
+
+### 结构
+- 删除原先全责过大的 `map/src/collision_damage.gd`，改为：
+  `map/src/physics_step.gd`（引擎参数、固定步、接触读取、统一提交）和
+  `map/src/impact_damage.gd`（碰撞伤害、射入路径、裂纹）。
+- 新增 `map/physics_runtime.tscn` 统一装配 `PhysicsStep + ImpactDamage + RedInk`；
+  主地图和资产地图只实例化该场景。颜色规则按 `observe_contacts/resolve` 接口自动发现，
+  以后黄墨、蓝墨只需各自脚本和场景子节点，不必再改总调度。
+
+### 红墨
+- 新增材质 8 和色表入口；高速接触且冲量过阈值时触发。
+- 每个物理 tick 消耗一层四邻域红像素，传播倍率导出且默认 `0.9`；活跃像素数量自然叠加，
+  密集块偏爆炸、细长摆放偏燃料。
+- 每个活跃刚体合并发出 32 条均匀射线；只取每条射线的首个外部刚体，直接施加现有刚体冲量，
+  并通过 `ImpactDamage.apply_impulse_damage()` 复用当前伤害/裂纹算法；一半射线预算用于源刚体自损，
+  分片使用现有 `burst_speed` 获得向外初速度。删除计划仍在固定步末统一分片。
+
+### 验收
+- `test_collision_damage.gd`：41 checks / 0 failures / exit 0。
+- `test_red_ink.gd`：3 checks / 0 failures / exit 0（触发、外部动量、下一 tick 邻格传播）。
+- Godot 编辑器扫描没有新脚本解析错误；会撞到当前玩家分支既有的
+  `SubViewport.add_body_node` 运行期错误。
+- `tools/validate_project.ps1` 被既有缺失文件
+  `addons/pixel_destruction/gpu/destruction.glsl` 阻塞。
+- `test_ink.gd` 仍因既有 `BottledInk/Liquid` 路径失效而卡住，本轮已停止进程，未修改该旧验收。
 - 没 commit。

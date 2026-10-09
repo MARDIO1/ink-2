@@ -14,7 +14,7 @@ func _run() -> void:
 	root.add_child(scene)
 	var feet = scene.get_node("Player/PlayerInput")
 	var hand = scene.get_node("Player/Arm/Hand/HandControl")
-	var damage = scene.get_node("CollisionDamage")
+	var damage = scene.get_node("PhysicsRuntime")
 	if grip:
 		await process_frame
 		await process_frame

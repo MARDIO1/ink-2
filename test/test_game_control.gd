@@ -9,7 +9,7 @@ func _run() -> void:
 	await process_frame
 	var hand = scene.get_node("Player/Arm/Hand/HandControl")
 	var feet = scene.get_node("Player/PlayerInput")
-	var damage = scene.get_node("CollisionDamage")
+	var damage = scene.get_node("PhysicsRuntime")
 	hand.set_physics_process(false)
 	feet.set_physics_process(false)
 	damage.set_physics_process(false)

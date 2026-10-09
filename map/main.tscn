@@ -10,7 +10,7 @@
 [ext_resource type="Script" uid="uid://dcqnoa67srpgu" path="res://actor/player/src/player_camera.gd" id="8_camera"]
 [ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="9_player_mat"]
 [ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="10_hand_mat"]
-[ext_resource type="Script" uid="uid://dujchjtyhoikf" path="res://map/src/collision_damage.gd" id="11_damage"]
+[ext_resource type="PackedScene" path="res://map/physics_runtime.tscn" id="11_runtime"]
 [ext_resource type="Resource" path="res://Ink/asset/grey1.tres" id="14_grey1"]
 [ext_resource type="Resource" path="res://Ink/asset/invisible.tres" id="19_invisible"]
 [ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="18_highlight"]
@@ -69,8 +69,7 @@ position = Vector2(-128, 90)
 
 [node name="debugHUD" parent="." instance=ExtResource("20_debughud")]
 
-[node name="CollisionDamage" type="Node" parent="." unique_id=1398976209]
-script = ExtResource("11_damage")
+[node name="PhysicsRuntime" parent="." unique_id=1398976209 instance=ExtResource("11_runtime")]
 
 [node name="Creative" type="Node" parent="."]
 script = ExtResource("17_creative")

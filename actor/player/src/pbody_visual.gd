@@ -2,9 +2,7 @@
 extends "res://addons/pixel_destruction/nodes/pixel_sprite_2d.gd"
 
 
-## 只画**父刚体认的**形状（PixelBody2D.collect_shapes()）。引擎默认的 _collect() 是
-## duck-typing 收兄弟里所有有 build_shape() 的节点 —— Player 下的 Arm（手，rect_size 4x4）
-## 因此会被画成 16 个黑像素。物理认什么就画什么，两边不再分叉。
+## 使用父刚体的形状集合，避免把嵌套的 Arm/Hand 画进玩家主体。
 func _collect() -> Array:
 	var p := get_parent()
 	if p == null or not p.has_method("collect_shapes"):

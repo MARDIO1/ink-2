@@ -5,7 +5,7 @@ extends CanvasLayer
 @onready var world = $".."
 @onready var label: Label = $Stats
 @onready var forces = $ForceDebug
-@onready var damage = $"../CollisionDamage"
+@onready var damage = $"../PhysicsRuntime"
 ## 1% low 帧率的滚动采样窗口，单位秒；增大后统计更平稳、响应更慢。
 @export var low_window: float = 10.0
 var elapsed: float = 0.5
@@ -15,11 +15,13 @@ var history_time: float = 0.0
 var previous_tick: int = 0
 
 #region 低帧记录
-## F1 开关；只写低于 24 FPS 的帧，不查询额外接触、不复制像素地图。
+## F1 开关；默认只写低于 50 FPS 的帧，不查询额外接触、不复制像素地图。
 var low_log: FileAccess = null
 var log_path: String = ""
 var log_cost_us: int = 0
 var logged_frames: int = 0
+## 低于该帧率才写入 F1 日志；50 FPS 对应 20 ms 的整帧预算。
+@export_range(1.0, 240.0, 1.0) var low_frame_fps: float = 50.0
 ## 连续达到该帧耗时时保存现场并退出；用于避免物理追帧把实例拖到无法关闭。
 @export var hang_frame_ms: float = 500.0
 @export_range(1, 10, 1) var hang_frames: int = 2
@@ -52,7 +54,7 @@ func _record_low_frame(tick: int, duration_us: int, physics_profile: Dictionary,
 	var game_us: int = duration_us - log_cost_us
 	var previous_cost: int = log_cost_us
 	log_cost_us = 0
-	if duration_us <= 1000000.0 / 24.0:
+	if duration_us <= 1000000.0 / low_frame_fps:
 		return
 	var start: int = Time.get_ticks_usec()
 	var bodies: Array = []
