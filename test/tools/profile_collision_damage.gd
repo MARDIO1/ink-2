@@ -39,7 +39,7 @@ class ProfileForces:
 		draw_us += Time.get_ticks_usec() - start
 ## 磁盘真实画布、固定抓点和180步抬举动作。每项消融单独启动新进程。
 class Profile:
-	extends "res://map/src/simulation_runtime.gd"
+	extends "res://root/src/simulation_runtime.gd"
 	var no_damage: bool = false
 	var no_contacts: bool = false
 	var contact_us: int = 0

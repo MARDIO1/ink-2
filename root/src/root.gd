@@ -7,7 +7,7 @@ extends Node
 ## 「回主菜单」= 重新进 root（`ui/esc` / `ui/hud` 都走这条），第一屏又是主菜单。
 ## ⚠️ 成品 UI 必须等关卡挂好再挂：`ui/hud` 的 `_ready` 只抓一次玩家的 `InkHealth`，
 ##    先挂 UI 再选关卡，墨水条会永远停在占位。
-## 关卡里放什么见 `doc/文件组织.md`：世界（PixelWorld）+ 道具 + 玩家 + 相机 + 碰撞伤害 + 创造模式。
+## 关卡里放什么见 `doc/文件组织.md`：世界（PixelWorld）+ 道具 + 玩家 + 相机 + SimulationRuntime 实例 + 创造模式。
 
 @export var menu_scene: PackedScene = preload("res://ui/menu/menu.tscn")
 @export var level_select_scene: PackedScene = preload("res://ui/level_select/level_select.tscn")

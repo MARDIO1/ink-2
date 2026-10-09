@@ -4,7 +4,7 @@ extends Node
 
 #region 依赖
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
-const DebrisDust = preload("res://map/src/debris_dust.gd")
+const DebrisDust = preload("res://root/src/debris_dust.gd")
 const Query = preload("res://addons/pixel_destruction/physics/query.gd")
 const ANCHOR_TAG: String = "static_anchor_points"
 #endregion

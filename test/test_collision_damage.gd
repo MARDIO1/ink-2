@@ -1,7 +1,7 @@
 extends SceneTree
 
-const ImpactDamage = preload("res://map/src/impact_damage.gd")
-const PhysicsStep = preload("res://map/src/physics_step.gd")
+const ImpactDamage = preload("res://root/src/impact_damage.gd")
+const PhysicsStep = preload("res://root/src/physics_step.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")

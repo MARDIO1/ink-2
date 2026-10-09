@@ -11,7 +11,7 @@
 - **面板内容**：FPS / 1% low（`low_window` 秒滚动窗）/ CPU ms / 子步数 / 手与脚的功率与力 / Q 状态。
 - **力箭头**（`force_debug.gd`）：接触冲量按固定步累加，手 P、手 D、脚 AD、跳跃、重力、
   约束余项分别上色（顶部两行是图例）。`enabled` 由 Tab 同步；`force_scale` 只影响画面。
-  `map/src/physics_step.gd` 用 `get_node_or_null("../debugHUD/ForceDebug")` 拿它做 profiling。
+  `root/src/physics_step.gd` 用 `get_node_or_null("../debugHUD/ForceDebug")` 拿它做 profiling。
 - **F1 低帧录制**：`res://test/low_frames_<时间戳>_<usec>.jsonl`，默认只记低于 50 FPS
   （帧耗大于 20 ms）的帧，门槛由 `low_frame_fps` 导出参数调整。
   每行含 bodies / joints / 物理与力的 profile（录的时候同时打开 damage/forces 的 profile）。

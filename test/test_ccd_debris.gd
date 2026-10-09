@@ -3,7 +3,7 @@ extends SceneTree
 ##
 ##   godot --headless --path . --script res://test/test_ccd_debris.gd
 ##
-## 背景（实测，见 map/doc/CCD与小碎片.md）：
+## 背景（实测，见 root/doc/CCD与小碎片.md）：
 ##   帧时间 = 子步数 x 每子步代价，两个乘数都只跟**一个**最快的刚体有关 ——
 ##   876 矩形（真实地图规模）下一个 2x2 的碎片以 40000 px/s 飞过 = 334 子步 = 593 ms/固定步。
 ## 这份闸门守的是「那件事不会再发生」，以及「别用穿模以外的方式换帧时间」。

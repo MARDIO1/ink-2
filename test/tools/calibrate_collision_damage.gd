@@ -2,7 +2,7 @@ extends "res://test/test_collision_damage.gd"
 ## 真主场景和真 PD 动作；只观测不同系数的删除计划，保持碰撞几何相同。
 
 class Probe:
-	extends "res://map/src/impact_damage.gd"
+	extends "res://root/src/impact_damage.gd"
 	var scales: Array[float] = [0.01, 0.011, 0.012, 0.013, 0.015, 0.02, 0.1]
 	var apply: bool = false
 	var peaks: Dictionary = {}
