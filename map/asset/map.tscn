@@ -11,15 +11,17 @@
 [ext_resource type="Resource" path="res://actor/nail/asset/nail.tres" id="9_a3oua"]
 [ext_resource type="Script" path="res://actor/player/src/player_camera.gd" id="9_x6104"]
 [ext_resource type="PackedScene" path="res://actor/canvas/canvas.tscn" id="10_2u5ph"]
+[ext_resource type="Resource" path="res://Ink/asset/red.tres" id="10_a3oua"]
 [ext_resource type="PackedScene" path="res://actor/player/player.tscn" id="12_k68an"]
 [ext_resource type="Script" path="res://actor/canvas/src/canvas.gd" id="12_vk6ij"]
 [ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="14_f842d"]
 [ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="14_y3waj"]
 [ext_resource type="Script" path="res://debug/hud/src/debug_hud.gd" id="16_h4bjy"]
+[ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="16_runtime"]
 [ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="17_51wry"]
 [ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="18_726wg"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="19_6nj1v"]
-[ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="16_runtime"]
+[ext_resource type="Script" path="res://root/src/simulation_runtime.gd" id="19_vk6ij"]
 
 [sub_resource type="Image" id="Image_lv7uo"]
 data = {
@@ -75,13 +77,13 @@ ccd_ignore_mass = 100.0
 min_fragment_pixels = 5
 debris_max_mass = 20.0
 debris_min_speed = 20.0
-materials = Array[ExtResource("2_lv7uo")]([ExtResource("3_rikni"), ExtResource("4_a3oua"), ExtResource("5_vk6ij"), ExtResource("6_f842d"), ExtResource("7_h4bjy"), ExtResource("8_b3i6i"), ExtResource("9_a3oua")])
+materials = Array[ExtResource("2_lv7uo")]([ExtResource("3_rikni"), ExtResource("4_a3oua"), ExtResource("5_vk6ij"), ExtResource("6_f842d"), ExtResource("7_h4bjy"), ExtResource("8_b3i6i"), ExtResource("9_a3oua"), ExtResource("10_a3oua")])
 densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0, 0.0, 1.0])
 voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
-position = Vector2(458.72552, 43.454086)
+position = Vector2(519.4542, -1.1101608)
 process_callback = 0
 script = ExtResource("9_x6104")
 
@@ -102,8 +104,7 @@ canvas_size = Vector2i(2048, 1024)
 active = false
 
 [node name="Player" type="Node2D" parent="." unique_id=1427605215 groups=["player"] instance=ExtResource("12_k68an")]
-position = Vector2(564.6447, -0.62264633)
-rotation = -0.002626022
+position = Vector2(207, 54.5)
 script = ExtResource("14_f842d")
 can_sleep = false
 
@@ -111,14 +112,14 @@ can_sleep = false
 visible = false
 script = ExtResource("16_h4bjy")
 
-[node name="SimulationRuntime" parent="." unique_id=1398976209 instance=ExtResource("16_runtime")]
+[node name="SimulationRuntime" type="Node" parent="." unique_id=1398976209 instance=ExtResource("16_runtime")]
 process_physics_priority = 1
+script = ExtResource("19_vk6ij")
 
 [node name="Creative" type="Node" parent="." unique_id=233836758]
 process_physics_priority = 15
 script = ExtResource("17_51wry")
 baked_map_path = "res://map/asset/map.png"
-edit_snapshot_path = "res://map/asset/map.edit.res"
 
 [node name="Ink8" type="Node2D" parent="." unique_id=1349397075 groups=["ink_item"]]
 position = Vector2(-512, -256)
@@ -134,8 +135,7 @@ paint = SubResource("Image_lv7uo")
 [node name="Monsters" type="Node2D" parent="." unique_id=2086146663]
 
 [node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1905620244]
-position = Vector2(564.6447, -0.62264633)
-rotation = -0.002626022
+position = Vector2(207, 54.5)
 
 [node name="InkSaved4" type="Node2D" parent="." unique_id=757825359 groups=["ink_item"]]
 position = Vector2(-512, -256)
@@ -171,7 +171,7 @@ source = 3
 paint = SubResource("Image_vk6ij")
 
 [node name="Ink17" type="Node2D" parent="." unique_id=953893761 groups=["ink_item"]]
-position = Vector2(-512.001, -255.99182)
+position = Vector2(-511.8874, -255.99107)
 script = ExtResource("18_726wg")
 
 [node name="@Node2D@2333" type="Node2D" parent="Ink17" unique_id=1291672173]

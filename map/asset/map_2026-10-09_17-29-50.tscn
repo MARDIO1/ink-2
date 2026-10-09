@@ -16,7 +16,7 @@
 [ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="14_3d847"]
 [ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="15_wbwfn"]
 [ext_resource type="Script" path="res://debug/hud/src/debug_hud.gd" id="16_nvo3r"]
-[ext_resource type="Script" path="res://map/src/collision_damage.gd" id="17_84n4e"]
+[ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="17_84n4e"]
 [ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="18_663ib"]
 [ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="19_fl1js"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="20_7qesi"]
@@ -93,9 +93,8 @@ can_sleep = false
 visible = false
 script = ExtResource("16_nvo3r")
 
-[node name="CollisionDamage" type="Node" parent="." unique_id=1398976209]
+[node name="SimulationRuntime" parent="." unique_id=1398976209 instance=ExtResource("17_84n4e")]
 process_physics_priority = 1
-script = ExtResource("17_84n4e")
 
 [node name="Creative" type="Node" parent="." unique_id=233836758]
 process_physics_priority = 15

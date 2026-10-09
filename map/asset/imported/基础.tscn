@@ -12,7 +12,7 @@
 [ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/canvas.tscn" id="10_2u5ph"]
 [ext_resource type="PackedScene" uid="uid://1n64fxhxd3hf" path="res://actor/player/player.tscn" id="12_k68an"]
 [ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="14_y3waj"]
-[ext_resource type="Script" uid="uid://dujchjtyhoikf" path="res://map/src/collision_damage.gd" id="16_eghok"]
+[ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="16_eghok"]
 [ext_resource type="Script" uid="uid://dvtycwuj0keul" path="res://debug/creative/src/creative.gd" id="17_51wry"]
 [ext_resource type="Script" uid="uid://msw52rtj66lr" path="res://actor/ink_item/src/ink_item.gd" id="18_726wg"]
 [ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="19_6nj1v"]
@@ -69,9 +69,8 @@ position = Vector2(182.91914, 144.00046)
 
 [node name="debugHUD" parent="." unique_id=1042695355 instance=ExtResource("14_y3waj")]
 
-[node name="CollisionDamage" type="Node" parent="." unique_id=1398976209]
+[node name="SimulationRuntime" parent="." unique_id=1398976209 instance=ExtResource("16_eghok")]
 process_physics_priority = 1
-script = ExtResource("16_eghok")
 
 [node name="Creative" type="Node" parent="." unique_id=233836758]
 process_physics_priority = 15
