@@ -33,7 +33,8 @@ extends Sprite2D
 ##      域会缩到脸上，位置整个错掉；
 ##   ④ 框内所有"不是外面"的格子都算容器 —— 于是不透明的身体块被并进来，
 ##      得到一个**没有洞的实心瓶身**（PBF 的 solidMask 支持任意形状，见引擎侧说明）。
-##      可画区域 = 框内**属于③那个分量**的格子（见 _draw）。
+##      可画区域 = 框内**属于③那个分量**的格子，再**向外扩一格**塞到线稿下面
+##      （不扩就会在斜线稿旁边留 1~2 px 的缝，见 ④.5）。
 ##
 ## ## 边界：墨水不进物理像素
 ##
@@ -452,7 +453,55 @@ func _build_container(src_tex: Texture2D) -> void:
 			# 贴到瓶壁下面；瓶肚是另一个空腔，照旧不出墨水。
 			_draw[gy * _gw + gx] = 1 if (is_container and owned > 0) else 0
 
-	# ⑤ 脸部留空 —— 见 face_rect 的说明
+	# ④.5 可画区域**向外扩一格**（8 邻域），把墨塞到线稿**下面**去。
+	#
+	# ⚠️⚠️ 为什么必须扩：线稿是**斜的**（肩线那种），一格 2x2 里可能**只有线稿像素**、
+	#    一个空腔像素都没有 —— 那一格就不在 _draw 里，墨于是停在线稿内侧 1 格。
+	#    实测（真窗口截图，逐物理像素量）：肩线两侧各留 **1.5 ~ 2.3 px** 的缝，
+	#    就是"流体和线框之间有缝隙"。扩一格后墨压到线稿下面，而线稿画在墨上面，看不出来。
+	# ⚠️ 只扩到**不含别的空腔像素**的格子：瓶肚/眼睛是别的空腔分量，墨不能灌进去。
+	var grown := PackedByteArray()
+	grown.resize(_gw * _gh)
+	for gy in _gh:
+		for gx in _gw:
+			var i3 := gy * _gw + gx
+			if _draw[i3] != 0:
+				grown[i3] = 1
+				continue
+			var foreign := false
+			for sy in cell_px:
+				var yy := lo.y + gy * cell_px + sy
+				if yy > hi.y:
+					break
+				for sx in cell_px:
+					var xx := lo.x + gx * cell_px + sx
+					if xx > hi.x:
+						break
+					var ci := comp[yy * w + xx]
+					if ci >= 0 and ci != best:
+						foreign = true
+						break
+				if foreign:
+					break
+			if foreign:
+				continue
+			var touch := false
+			for oy: int in [-1, 0, 1]:
+				for ox: int in [-1, 0, 1]:
+					var nx: int = gx + ox
+					var ny: int = gy + oy
+					if nx < 0 or nx >= _gw or ny < 0 or ny >= _gh:
+						continue
+					if _draw[ny * _gw + nx] != 0:
+						touch = true
+						break
+				if touch:
+					break
+			if touch:
+				grown[i3] = 1
+	_draw = grown
+
+	# ⑤ 脸部留空 —— 见 face_rect 的说明（放在外扩**之后**，手动矩形才有最终发言权）
 	_carve_face(lo)
 
 	# 流体：域 = 容器外接框，掩码 = 容器。
@@ -506,6 +555,33 @@ func _carve_face(lo: Vector2i) -> void:
 
 
 #region 上色
+## 本格、左右邻、上邻、上斜邻里有墨就算"湿"。
+##
+## ⚠️⚠️ 为什么湿判据要外扩：墨是**按格**从流体的 ink 场里取的，而 PBF 的粒子不会稳定地
+##    待在贴墙那一格里 —— 只按本格判，贴墙就会留 1~2 px 的缝（用户口径："两侧还有一点缝隙"）。
+##    外扩之后墨永远贴到 _draw 的边界（也就是线稿下面），而 _draw 本身已经排除了瓶肚/眼睛。
+## ⚠️ 方向是**不对称**的：只看**同层与上一层**，不看下一层 —— 否则液面会被整体抬高 1 格
+##    （2 px），那是个看得出来的系统性偏移。
+## ⚠️⚠️ 流体的索引是 **x*ny + y**（x 主序，见 fluid_pbf.gd 文件头），而贴图是**行主序**。
+##    拿同一个 i 去查 ink 等于把整张图**转置** —— 症状是"一道斜杠贯穿瓶身"（下满的液面
+##    被映射成右满），看起来像"液面在横着乱晃"。两套索引必须显式换算，不能靠"它们应该一样"。
+func _wet_neighborhood(gx: int, gy: int) -> bool:
+	if _fluid.ink[gx * _gh + gy] != 0:
+		return true
+	if gx > 0 and _fluid.ink[(gx - 1) * _gh + gy] != 0:
+		return true
+	if gx + 1 < _gw and _fluid.ink[(gx + 1) * _gh + gy] != 0:
+		return true
+	if gy > 0:
+		if _fluid.ink[gx * _gh + gy - 1] != 0:
+			return true
+		if gx > 0 and _fluid.ink[(gx - 1) * _gh + gy - 1] != 0:
+			return true
+		if gx + 1 < _gw and _fluid.ink[(gx + 1) * _gh + gy - 1] != 0:
+			return true
+	return false
+
+
 ## 容器 -> RGBA8。每格只有两种颜色（墨 / 玻璃），容器外透明。
 ##
 ## ⚠️ 只在**真的变了**的格子上写 4 个字节：3540 格逐格写 4 字节是 1.4 万次写入，
@@ -528,22 +604,18 @@ func _render() -> void:
 		for gx in gw:
 			var i := gy * gw + gx
 			var o := i * 4
-			# ⚠️⚠️ 流体的索引是 **x*ny + y**（x 主序，见 fluid_pbf.gd 文件头），
-			#    而贴图是**行主序**。拿同一个 i 去查 ink 等于把整张图**转置** ——
-			#    症状是**一道斜杠贯穿瓶身**（下满的液面被映射成右满），
-			#    而且看起来像"液面在横着乱晃 / 粒子动得太快"。
-			#    两套索引必须显式换算，不能靠"它们应该一样"。
-			var fi := gx * gh + gy
 			if _container[i] == 0:
 				if _pixels[o + 3] != 0:
 					_pixels[o] = 0; _pixels[o + 1] = 0; _pixels[o + 2] = 0; _pixels[o + 3] = 0
 					changed = true
 				continue
-			# ⚠️ 必须显式标 bool：_fluid 是 Object，_fluid.ink[fi] 是 Variant，
+			# ⚠️ 必须显式标 bool：_fluid 是 Object，_fluid.ink[...] 是 Variant，
 			#    写成 var wet := ... 会 "Cannot infer the type of wet"。
 			# ⚠️ 要 **两张掩码都过**：_draw 管"这里该不该出墨水"（线稿/洞上不画），
-			#    _container 那半边已经由 fi 对应的 ink 本身保证了。
-			var wet: bool = _draw[i] != 0 and _fluid.ink[fi] != 0
+			#    流体的 ink 场管"这一格有没有液体"（_container 那半边由它自己保证）。
+			# ⚠️⚠️ 湿判据要**外扩**（见 _wet_neighborhood）：PBF 的粒子不会稳定地待在
+			#    贴墙那一格里，只按本格判就留 1~2 px 的缝（实测：肩线两侧"还有一点缝隙"）。
+			var wet: bool = _draw[i] != 0 and _wet_neighborhood(gx, gy)
 			var r := ir if wet else gr
 			var g := ig if wet else gg
 			var b := ib if wet else gb
