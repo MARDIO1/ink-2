@@ -22,6 +22,7 @@ const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")
 const PixelChunk := preload("res://addons/pixel_destruction/core/pixel_chunk.gd")
+const HullFit := preload("res://addons/pixel_destruction/core/hull_fit.gd")
 
 
 ## 一次射线/最近点查询的结果。字段名对齐 Teardown 的多返回值。
@@ -56,11 +57,27 @@ static func raycast(origin: Vector2, dir: Vector2, max_dist: float,
 	# ⚠️ 至少要留 1 像素的厚度：轴对齐的射线（比如纯水平）会让包围盒在另一轴上
 	# **宽度为 0**，而 Rect2.intersects 对零面积的矩形一律返回 false ——
 	# 于是所有水平/垂直射线都会静默打空。
+	#
+	# ⚠️⚠️ 墓碑：这里曾经是
+	#        lo = origin - pad;  hi = origin + d * max_dist + pad
+	#        bounds = Rect2(Vector2(minf(lo.x, hi.x), minf(lo.y, hi.y)), Vector2(absf(hi-lo)...))
+	#    —— 那是**两个端点各自加 pad 再取 min**，只有在方向分量为正时碰巧等于线段的包围盒。
+	#    方向分量为负（朝上或朝左）时，min 取到的是**终点**那一侧，再配上正的高度，
+	#    框就整个滑到射线外面：**起点自己落在了框外**。偏移量恰好是 2*pad。
+	#
+	#    症状极其隐蔽：只有朝上/朝左的射线会漏，而且只漏**离起点 2*pad 以内**的目标 ——
+	#    radius=0 时是 2 像素（肉眼几乎看不出来），radius=6 时是 12 像素。
+	#    这正是 HANDOFF「待核实」里挂了很久的那条：**「Query.raycast 在实心地面上也
+	#    返回不到命中 —— 未解释」**（贴着地面朝上/斜向射，起点就在被排除的那一段里）。
+	#    闸门：tests/validation_hull.gd 的 300 条随机射线与"绕过粗筛"的参照对拍。
+	#
+	#    现在按**线段**算：包围盒 = [min(起点,终点) - pad, max(起点,终点) + pad]。
 	var pad := Vector2(maxf(radius, 1.0), maxf(radius, 1.0))
-	var lo := origin - pad
-	var hi := origin + d * max_dist + pad
-	var bounds := Rect2(Vector2(minf(lo.x, hi.x), minf(lo.y, hi.y)),
-		Vector2(maxf(absf(hi.x - lo.x), 1.0), maxf(absf(hi.y - lo.y), 1.0)))
+	var far := origin + d * max_dist
+	var bounds := Rect2(
+		Vector2(minf(origin.x, far.x), minf(origin.y, far.y)) - pad,
+		Vector2(absf(far.x - origin.x), absf(far.y - origin.y)) + pad * 2.0)
+	bounds.size = Vector2(maxf(bounds.size.x, 1.0), maxf(bounds.size.y, 1.0))
 	best.distance = max_dist
 	for b: PBody in _candidates(bounds, reject):
 		var h := _ray_vs_body(b, origin, d, max_dist, radius)
@@ -182,11 +199,30 @@ static func clear_filters() -> void:
 
 static func _ray_vs_body(b: PBody, origin: Vector2, d: Vector2, max_dist: float,
 		radius: float) -> Hit:
-	if radius > 0.0:
-		return _swept_circle_vs_body(b, origin, d, max_dist, radius)
 	# 转到刚体局部系：像素坐标就活在这里
 	var lo := b.to_local(origin)
 	var ld := d.rotated(-b.rotation)
+	# ---- 凸包预剔除（**保守**，见 HullFit.segment_hits）----
+	#
+	# 挡掉"射线穿过 AABB、但离物体本体还远"的刚体，免得为它们白跑一遍 DDA。
+	# 收益主要来自**旋转过的**刚体：AABB 是按外接半径膨胀的轴对齐盒子，
+	# 一块 100x8 的板转 45 度就是 76x76 —— 射线擦着那个空盒子过时，DDA 会老老实实走几十格。
+	#
+	# ⚠️⚠️ **机会主义**：只在凸包**已经算过**时才用（cached_local_hull 不会触发重算）。
+	#    现算一次凸包的代价随形状尺寸走（768x100 的地面实测 5.05 ms），而它一条射线
+	#    只省下约 0.2 ms；地形每擦一笔就作废一次 -> "为了剔除而现算"是净亏，
+	#    而且亏在射线那一帧。算过就用（编辑器抓手 / 调试叠加层 / 游戏层调过 px.hull()），
+	#    没算过就退化成 AABB —— **结果完全一样，只有快慢不同**（凸包是保守外接）。
+	#
+	# ⚠️⚠️ eps 必须把**加粗射线的半径**算进去：细射线（radius=0）的判定是"线段碰到凸包"，
+	#    而粗射线会命中"离线段 radius + 半个像素对角以内"的像素。少给一点就是
+	#    **静默漏命中** —— 比慢难查得多（症状是"子弹偶尔穿过去"）。
+	#    +1.5 = 0.7071（像素对角的一半）+ 余量，宁可多算。
+	var hull := b.cached_local_hull()
+	if not hull.is_empty() and not HullFit.segment_hits(hull, lo, lo + ld * max_dist, radius + 1.5):
+		return _hit_none()
+	if radius > 0.0:
+		return _swept_circle_vs_body(b, origin, d, max_dist, radius)
 	var best := _hit_none()
 	var best_t := max_dist
 	for s in b.shapes:

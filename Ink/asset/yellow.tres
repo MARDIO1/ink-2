@@ -1,0 +1,9 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="1_mat"]
+
+[resource]
+script = ExtResource("1_mat")
+display_name = "yellow"
+id = 9
+color = Color(0.95, 0.72, 0.08, 1)

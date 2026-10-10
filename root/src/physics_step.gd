@@ -1,4 +1,5 @@
 extends Node
+signal body_fractured(world, body, pieces: Array)
 ## 物理引擎边界：只负责配置、推进、查询接触和应用通用物理效果。
 ## 本脚本不知道墨水、颜色、伤害规则或任何具体玩法类型。
 
@@ -267,7 +268,8 @@ func commit(physics, removals: Dictionary, bursts: Dictionary = {},
 		replacements[body] = result.fragments.duplicate()
 		if result.body_alive:
 			replacements[body].append(body)
-		else:
+		body_fractured.emit(physics, body, replacements[body])
+		if not result.body_alive:
 			for shape in body.shapes:
 				shape.owner_body = null
 			body.shapes.clear()

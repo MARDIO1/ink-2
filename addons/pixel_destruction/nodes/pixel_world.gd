@@ -428,7 +428,6 @@ func _preheat() -> void:
 			# 这两个正是擦除路径上最重的两个函数的首次调用
 			GreedyRects.decompose(s, 64)
 			Destruction.touches_boundary(s, probe)
-			Destruction.apply_damage_and_split_gpu(s, Destruction.Damage.circle(Vector2.ZERO, 1.0), 25.0)
 
 
 ## 把一个 PixelBody2D 子节点烘焙进**当前世界**，返回造出来的 PBody。

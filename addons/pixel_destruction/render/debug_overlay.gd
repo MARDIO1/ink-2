@@ -18,6 +18,7 @@ extends Node2D
 @export_group("显示内容")
 @export var show_obbs := true              ## 碰撞矩形（贪心分解的结果，物理实际用的形状）
 @export var show_aabbs := false            ## 刚体 AABB（宽相用的粗包围盒）
+@export var show_hulls := false            ## 凸包（多边形碰撞箱拟合：比 AABB 紧，跟着刚体转）
 @export var show_swept_aabbs := false      ## 扫掠 AABB（含本步位移，CCD 用）
 @export var show_contacts := true          ## 接触点 + 法向
 @export var show_velocity := false         ## 线速度矢量
@@ -30,6 +31,7 @@ extends Node2D
 @export_group("外观")
 @export var obb_color := Color(0.3, 0.9, 1.0, 0.9)
 @export var aabb_color := Color(0.5, 0.5, 0.5, 0.5)
+@export var hull_color := Color(1.0, 0.85, 0.2, 0.8)
 @export var swept_color := Color(1.0, 0.6, 0.2, 0.4)
 @export var contact_color := Color(1.0, 0.25, 0.25, 1.0)
 @export var velocity_color := Color(0.4, 1.0, 0.4, 0.9)
@@ -163,16 +165,30 @@ func _draw() -> void:
 		if show_awake:
 			col = awake_color if b.awake else asleep_color
 
-		# ---- AABB / 扫掠 AABB ----
+		# ---- AABB / 凸包 / 扫掠 AABB ----
 		if show_aabbs:
 			draw_rect(b.aabb, aabb_color, false, u)
+		if show_hulls:
+			_draw_hull(b, hull_color, u)
 		if show_swept_aabbs:
 			draw_rect(b.swept_aabb, swept_color, false, u)
 
-		# ---- 碰撞矩形（物理真正用的形状）----
+		# ---- 碰撞体（物理真正用的形状）----
+		#
+		# ⚠️ 这里读的是 **Rapier 里真的在用的形状**（world.fetch_polys -> op 44），
+		#    不是 GDScript 侧另算一份。拟合之后碰撞体是**凸多边形**（斜边是直的），
+		#    照 b.rects 画会画出一堆轴对齐矩形 —— 那是**另一套形状**，
+		#    比不画更糟（会把人引到"碰撞体还是矩形"的错误结论上）。
+		#    走矩形那条路时读回来的就是矩形（4 个角），同一段代码两条路都对。
 		if show_obbs:
-			for r: Rect2 in b.rects:
-				_draw_obb(b, r, col, u)
+			for poly: PackedVector2Array in world.fetch_polys(b):
+				if poly.size() < 3:
+					continue
+				var pts := PackedVector2Array()
+				for p: Vector2 in poly:
+					pts.append(b.to_world(p))
+				pts.append(pts[0])
+				draw_polyline(pts, col, u)
 
 		# ---- 质心 ----
 		if show_com and not b.is_static:
@@ -202,11 +218,18 @@ func _draw() -> void:
 				HORIZONTAL_ALIGNMENT_LEFT, -1, font_size - 2, col)
 
 	# ---- 接触点 + 法向 ----
+	#
+	# ⚠️ 数据源换过一次：以前遍历 `world.manifolds`（GDScript 宽相装配的对象数组）。
+	#    宽相/求解交给 Rapier 之后 `manifolds` **永远是空的** —— 这个开关于是**静默失效**
+	#    （勾着也什么都不画，而它是 docs/manual/nodes.md 里写明的功能）。
+	#    现在走 Rapier 的接触导出：对数取 last_contacts，每个点自带世界系位置与法向。
 	if show_contacts:
-		for m in world.manifolds:
-			for p in m.points:
-				draw_circle(p.position, 2.5 * u, contact_color)
-				draw_line(p.position, p.position + m.normal * contact_normal_len,
+		for i in world.last_contacts:
+			var g: Dictionary = world.contact_info(i)
+			for pt: Dictionary in g.get("points", []):
+				var pos: Vector2 = pt["position"]
+				draw_circle(pos, 2.5 * u, contact_color)
+				draw_line(pos, pos + (pt["normal"] as Vector2) * contact_normal_len,
 					contact_color, 1.5 * u)
 
 	# ---- 统计（贴在屏幕左上角，跟着相机走）----
@@ -226,6 +249,18 @@ func _draw_obb(b, r: Rect2, col: Color, width := 1.0) -> void:
 		b.to_world(r.position + Vector2(0, r.size.y)),
 	])
 	draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), col, width)
+
+
+## 凸包（多边形碰撞箱拟合）—— 和 _draw_obb 同一个道理：**必须按刚体位姿画**。
+## 画成轴对齐的框会骗人，而凸包存在的意义恰恰是"它不是轴对齐的"。
+func _draw_hull(b, col: Color, width := 1.0) -> void:
+	var h: PackedVector2Array = b.world_hull()
+	if h.size() < 3:
+		return
+	# 顶点列表不含首点，画环要自己接上
+	var pts := PackedVector2Array(h)
+	pts.append(h[0])
+	draw_polyline(pts, col, width)
 
 
 func _draw_arrow_head(tip: Vector2, dir: Vector2, col: Color, width := 1.5) -> void:
@@ -264,8 +299,7 @@ func _draw_stats(bodies: Array, font: Font, frame: Dictionary, y0: float) -> flo
 			awake += 1
 	var lines := PackedStringArray([
 		"刚体 %d（动态 %d，清醒 %d，休眠 %d）" % [bodies.size(), dyn, awake, dyn - awake],
-		"流形 %d  接触点 %d  子步 %d" % [
-			world.manifolds.size(), world.last_contacts, world.last_substeps],
+		"接触对 %d  子步 %d" % [world.last_contacts, world.last_substeps],
 		"总动量 (%.1f, %.1f)  总角动量 %.1f  总动能 %.1f" % [
 			world.total_momentum().x, world.total_momentum().y,
 			world.total_angular_momentum(world.center_of_mass_world()),

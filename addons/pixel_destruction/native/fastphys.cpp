@@ -48,9 +48,6 @@ static GDExtensionInterfaceVariantGetPtrConstructor g_get_ctor = nullptr;
 static GDExtensionInterfacePackedByteArrayOperatorIndex g_pba_index = nullptr;
 static GDExtensionInterfacePackedByteArrayOperatorIndexConst g_pba_index_const = nullptr;
 static GDExtensionPtrConstructor g_pba_copy_ctor = nullptr;
-static GDExtensionPtrConstructor g_pba_default_ctor = nullptr;
-static GDExtensionInterfaceVariantGetPtrBuiltinMethod g_get_builtin = nullptr;
-static GDExtensionPtrBuiltInMethod g_pba_resize = nullptr;
 
 // ---- Variant <-> 内置类型 的官方转换接口 ----
 // 这是纯 C API 里最关键的一组：没有它就得自己去猜 Variant 的内存布局。
@@ -63,22 +60,12 @@ static GDExtensionInterfaceVariantGetPtrDestructor g_get_destructor = nullptr;
 static GDExtensionTypeFromVariantConstructorFunc g_pba_from_variant = nullptr;
 static GDExtensionVariantFromTypeConstructorFunc g_pba_to_variant = nullptr;
 static GDExtensionPtrDestructor g_pba_destructor = nullptr;
-static GDExtensionTypeFromVariantConstructorFunc g_int_from_variant = nullptr;
-static GDExtensionPtrDestructor g_int_destructor = nullptr;
 
 // 内置类型值的暂存空间（PackedByteArray 实际只有 8 字节，给足余量）
 struct TypeStorage { alignas(16) unsigned char buf[64]; };
 
 struct SN { alignas(16) unsigned char buf[64]; };
-static SN g_sn_class, g_sn_parent, g_sn_method;
-static SN g_sn_ret, g_sn_a0, g_sn_a1, g_sn_a2, g_sn_a3;
-static SN g_sn_bp;          // 方法名 broadphase
-static SN g_sn_sv, g_sn_sv0, g_sn_sv1, g_sn_sv2, g_sn_svret, g_sn_cw;
-static SN g_sn_bp0, g_sn_bp1, g_sn_bp2, g_sn_bp3;
-static SN g_sn_bpret;
-static SN g_sn_resize;      // PackedByteArray.resize 的 StringName
-// PackedByteArray.resize 的 hash —— 从 extension_api.json 里取，不能瞎猜
-static const int64_t PBA_RESIZE_HASH = 848867239;
+static SN g_sn_parent;
 // ⚠️ PropertyInfo 里的 class_name / hint_string **不能给 nullptr** ——
 // Godot 会根据它们构造 PropertyInfo，空指针会直接段错误。
 // 之前那次 signal 11 就是这里：注册方法时没有任何输出就崩了。
@@ -154,6 +141,19 @@ alignas(16) static unsigned char g_str_empty_hint[64];
 //  40  joint_set_softness(u32 jid, f64 freq, f64 damping)  关节求解软度（Hz + 阻尼比）
 //  41  world_set_joint_solver(i32 iters, i32 warmstart, f64 coeff)  世界级关节求解参数
 //  42  body_set_solver_iterations(u32 id, u32 n)       局部约束岛追加迭代
+//  43  body_fit_polys(u32 id, i32 n_rects, f32[n*4] rects, f64 friction, f64 mass, f32 dev_tol)
+//                                                  -> i32 n_polys
+//      **凸多边形碰撞体**（Noita 式拟合）：原生侧把精确覆盖的矩形拟合成凸多边形
+//      （斜边拉直、锯齿拉平），建碰撞体，并按 mass/多边形面积 反算密度。
+//      拟合算法与浮点纪律见 rapier_bridge/src/lib.rs 的"像素形状 -> 凸多边形碰撞体"一节。
+//      ⚠️ 与 op 5（body_set_rects）是**互斥**的两条路：谁最后被调用谁生效
+//         （两者都会先清空旧碰撞体）。PWorld 按矩形数预算二选一。
+//  44  body_get_polys(u32 id, i32 cap)            -> cap 够时：[i32 n_polys][每个 i32 count + 顶点 f32 对]
+//                                                    cap 不够时：只写 [i32 需要的字节数]
+//      **读回真的在用的碰撞体形状**（可视化 / 闸门用）。问物理要真相，不另算一份。
+//  46  body_get_inertia(u32 id)                   -> f64（Rapier 侧角惯量，诊断用）
+//  45  body_get_mass(u32 id)                      -> f64（Rapier 侧质量）
+//      判据用：拟合后的碰撞体面积 >= 像素面积，密度按质量反算 —— 两边质量不许分叉。
 //  （35~37 曾用于"鼠标关节"抓取，已删除 —— 见 rapier_bridge/src/lib.rs 的墓碑注释）
 
 typedef void *RPWorld;
@@ -167,6 +167,14 @@ struct RapierApi {
 	uint32_t (*body_new)(RPWorld, int32_t, double, double, double) = nullptr;
 	void (*body_remove)(RPWorld, uint32_t) = nullptr;
 	void (*body_set_rects)(RPWorld, uint32_t, const float *, int32_t, double) = nullptr;
+	// 凸多边形碰撞体（Noita 式的像素拟合结果）。签名与 rapier_bridge 的 rb_body_set_polys 一一对应。
+	// 凸多边形碰撞体（Noita 式拟合）：给矩形集合，原生侧拟合成多边形再建碰撞体。
+	int32_t (*body_fit_polys)(RPWorld, uint32_t, const float *, int32_t, double, double, float) = nullptr;
+	// 读回当前碰撞体形状（可视化/闸门用）。返回写入或需要的字节数。
+	int32_t (*body_get_polys)(RPWorld, uint32_t, uint8_t *, int32_t) = nullptr;
+	// Rapier 侧的质量（密度补偿的判据）
+	double (*body_get_mass)(RPWorld, uint32_t) = nullptr;
+	double (*body_get_inertia)(RPWorld, uint32_t) = nullptr;
 	void (*body_set_pose)(RPWorld, uint32_t, double, double, double) = nullptr;
 	void (*body_set_vel)(RPWorld, uint32_t, double, double, double) = nullptr;
 	int32_t (*body_get_state)(RPWorld, uint32_t, double *) = nullptr;
@@ -247,6 +255,10 @@ static bool load_rapier() {
 	RP_GET(body_new, "rb_body_new")
 	RP_GET(body_remove, "rb_body_remove")
 	RP_GET(body_set_rects, "rb_body_set_rects")
+	RP_GET(body_fit_polys, "rb_body_fit_polys")
+	RP_GET(body_get_polys, "rb_body_get_polys")
+	RP_GET(body_get_mass, "rb_body_get_mass")
+	RP_GET(body_get_inertia, "rb_body_get_inertia")
 	RP_GET(body_set_pose, "rb_body_set_pose")
 	RP_GET(body_set_vel, "rb_body_set_vel")
 	RP_GET(body_get_state, "rb_body_get_state")
@@ -305,6 +317,7 @@ struct CmdRd {
 	int32_t i32() { int32_t v = 0; if (i + 4 > n) { ok = false; return 0; } std::memcpy(&v, p + i, 4); i += 4; return v; }
 	uint32_t u32() { return (uint32_t)i32(); }
 	double f64() { double v = 0; if (i + 8 > n) { ok = false; return 0; } std::memcpy(&v, p + i, 8); i += 8; return v; }
+	float f32() { float v = 0; if (i + 4 > n) { ok = false; return 0; } std::memcpy(&v, p + i, 4); i += 4; return v; }
 	int64_t i64() { int64_t v = 0; if (i + 8 > n) { ok = false; return 0; } std::memcpy(&v, p + i, 8); i += 8; return v; }
 	// 定长裸字节段。失败返回 nullptr 且 ok = false —— 调用方**必须**查 ok 再解引用。
 	const uint8_t *bytes(size_t count) {
@@ -312,6 +325,14 @@ struct CmdRd {
 		const uint8_t *q = p + i;
 		i += count;
 		return q;
+	}
+	// i32 批量段（op 43 的多边形顶点数数组）。与 f32s 同一个理由：一次 memcpy。
+	bool i32s(size_t count, std::vector<int32_t> &dst) {
+		dst.resize(count);
+		if (i + count * 4 > n) { ok = false; return false; }
+		if (count > 0) std::memcpy(dst.data(), p + i, count * 4);
+		i += count * 4;
+		return true;
 	}
 	bool f32s(size_t count, std::vector<float> &dst) {
 		dst.resize(count);
@@ -378,6 +399,66 @@ static void run_rapier_cmd(RapierInstance *inst, const uint8_t *in, size_t in_n,
 				bool got = r.f32s((size_t)cnt * 4, rect_scratch);
 				double fr = r.f64();
 				if (got) g_rap.body_set_rects(W, id, rect_scratch.data(), cnt, fr);
+				break;
+			}
+			case 43: {
+				// body_fit_polys(u32 id, i32 n_rects, f32[n*4] rects, f64 friction, f64 mass, f32 dev_tol)
+				//   -> i32 n_polys（拟合出来的多边形个数，诊断用）
+				//
+				// 原生侧把**精确覆盖的矩形**拟合成凸多边形（Noita 式：斜边是直的），
+				// 再建 Rapier 的凸多边形碰撞体，并按 mass/多边形面积 反算密度
+				// （见 rb_body_fit_polys 的说明）。GDScript 只给矩形，不自己拟合 ——
+				// 碎片路径一次几百个刚体，GDScript 侧拟合会卡（实测 ~35us/矩形）。
+				uint32_t id = r.u32();
+				int32_t cnt = r.i32();
+				if (cnt < 0) cnt = 0;
+				bool got = r.f32s((size_t)cnt * 4, rect_scratch);
+				double fr = r.f64();
+				double ms = r.f64();
+				float tol = r.f32();
+				// ⚠️⚠️ **不往结果段写任何东西**：子步这条命令流的结果段是按
+				//    "每个刚体 48 字节状态"精确开出来的（PWorld 的 n_state*48），
+				//    这里多写 4 字节就会让**后面所有状态读回整体偏移 4 字节** ——
+				//    症状是"角速度突然变成 1000"这种完全对不上的物理量，
+				//    而 written > out_cap 那行警告是唯一的指纹（实测抓到过）。
+				//    诊断信息请走 op 44（读回碰撞体形状），别在这条流里塞。
+				if (got) g_rap.body_fit_polys(W, id, rect_scratch.data(), cnt, fr, ms, tol);
+				break;
+			}
+			case 46: {
+				// body_get_inertia(u32 id) -> f64（Rapier 侧的角惯量，诊断用）
+				uint32_t id = r.u32();
+				double v = 0.0;
+				if (g_rap.body_get_inertia) v = g_rap.body_get_inertia(W, id);
+				w.f64(v);
+				break;
+			}
+			case 45: {
+				// body_get_mass(u32 id) -> f64（Rapier 侧的质量）
+				// 判据用：拟合后的碰撞体面积 >= 像素面积，密度必须按质量反算 ——
+				// 两边质量一旦分叉，所有"按 mass 算力"的地方都会错（抓取限力等）。
+				uint32_t id = r.u32();
+				double m = 0.0;
+				if (g_rap.body_get_mass) m = g_rap.body_get_mass(W, id);
+				w.f64(m);
+				break;
+			}
+			case 44: {
+				// body_get_polys(u32 id, i32 cap) -> 结果段：[i32 n_polys][每个 i32 count + count x (f32 x,y)]
+				// cap 不够时原生把**需要的字节数**报回来（与 PixelRaster.decompose 同一条规矩）。
+				uint32_t id = r.u32();
+				int32_t cap = r.i32();
+				if (cap < 0) cap = 0;
+				std::vector<uint8_t> tmp((size_t)cap);
+				int32_t need = g_rap.body_get_polys(W, id, tmp.empty() ? nullptr : tmp.data(), cap);
+				// ⚠️ 协议：cap 不够时**只写**"需要多少字节"（4 字节），调用方按它精确重开一次；
+				//    cap 够时写**块本身**（need 字节，不再重复写 need）。
+				//    第一版两边都写了 -> 结果段比 cap 多 4 字节，被 written > out_cap 抓住。
+				if (need <= cap && need > 0) {
+					w.raw(tmp.data(), (size_t)need);
+				} else {
+					w.i32(need);
+				}
 				break;
 			}
 			case 6: { uint32_t id = r.u32(); double x = r.f64(), y = r.f64(), rot = r.f64();
@@ -2086,7 +2167,6 @@ extern "C" __declspec(dllexport) GDExtensionBool gdextension_init(
 	g_object_set_instance = (GDExtensionInterfaceObjectSetInstance)p_get_proc_address("object_set_instance");
 	g_str_new = (GDExtensionInterfaceStringNewWithUtf8Chars)p_get_proc_address("string_new_with_utf8_chars");
 	g_get_ctor = (GDExtensionInterfaceVariantGetPtrConstructor)p_get_proc_address("variant_get_ptr_constructor");
-	g_get_builtin = (GDExtensionInterfaceVariantGetPtrBuiltinMethod)p_get_proc_address("variant_get_ptr_builtin_method");
 	g_get_to_type = (GDExtensionInterfaceGetVariantToTypeConstructor)p_get_proc_address("get_variant_to_type_constructor");
 	g_get_from_type = (GDExtensionInterfaceGetVariantFromTypeConstructor)p_get_proc_address("get_variant_from_type_constructor");
 	g_get_destructor = (GDExtensionInterfaceVariantGetPtrDestructor)p_get_proc_address("variant_get_ptr_destructor");
@@ -2119,8 +2199,7 @@ extern "C" __declspec(dllexport) GDExtensionBool gdextension_init(
 	g_str_new((GDExtensionUninitializedStringPtr)g_str_empty_hint, "");
 	// PackedByteArray 的构造索引 1 = 拷贝构造
 	g_pba_copy_ctor = g_get_ctor(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY, 1);
-	g_pba_default_ctor = g_get_ctor(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY, 0);
-	if (!g_pba_copy_ctor || !g_pba_default_ctor) { printf("[FastPhys] 拿不到 PackedByteArray 构造函数\n"); return 0; }
+	if (!g_pba_copy_ctor) { printf("[FastPhys] 拿不到 PackedByteArray 构造函数\n"); return 0; }
 	// ⚠️ 这里曾经解析并检查 PackedByteArray.resize —— 那是手写后端用来"现造输出数组"的。
 	//    RapierPhys 的输出走"按模板拷贝"（C++ 侧 resize 一个 PackedByteArray 实测段错误），
 	//    不需要它。删掉内核后这段检查还在，导致扩展**整个加载失败** ——
@@ -2133,14 +2212,12 @@ extern "C" __declspec(dllexport) GDExtensionBool gdextension_init(
 	g_pba_from_variant = g_get_to_type(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY);
 	g_pba_to_variant = g_get_from_type(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY);
 	g_pba_destructor = g_get_destructor(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY);
-	g_int_from_variant = g_get_to_type(GDEXTENSION_VARIANT_TYPE_INT);
-	g_int_destructor = g_get_destructor(GDEXTENSION_VARIANT_TYPE_INT);
 	// ⚠️ variant_get_ptr_destructor 对 POD 类型（int/float…）返回 **null** —— 它们没有析构函数。
 	// 所以可空项要分开判断，不能一起当"必需"。
-	if (!g_pba_from_variant || !g_pba_to_variant || !g_pba_destructor || !g_int_from_variant) {
-		printf("[FastPhys] Variant 转换函数解析失败: from=%p to=%p dtor=%p int_from=%p\n",
+	if (!g_pba_from_variant || !g_pba_to_variant || !g_pba_destructor) {
+		printf("[FastPhys] Variant 转换函数解析失败: from=%p to=%p dtor=%p\n",
 			(void *)g_pba_from_variant, (void *)g_pba_to_variant,
-			(void *)g_pba_destructor, (void *)g_int_from_variant);
+			(void *)g_pba_destructor);
 		return 0;
 	}
 	r_initialization->minimum_initialization_level = GDEXTENSION_INITIALIZATION_SCENE;

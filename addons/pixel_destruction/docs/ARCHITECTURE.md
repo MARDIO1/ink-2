@@ -5,7 +5,11 @@
 ```
 PBody                        world.bodies[]
   ├─ shapes:  PixelShape[]   像素数据（chunk 稀疏表）
-  ├─ rects:   Rect2[]        贪心分解出的碰撞矩形（局部空间）
+  ├─ rects:   Rect2[]        贪心分解出的碰撞矩形（局部空间，**精确覆盖**：面积和 == 像素数）
+│                           —— 这是**输入**，不是最终碰撞形状
+├─ polys:   Vector2[][]    **Rapier 里真的在用的**碰撞体形状（惰性读回，见下）
+  ├─ aabb:    Rect2          世界 AABB（每子步维护，宽相/粗筛用）
+  ├─ world_hull()            世界凸包（**与 AABB 并列的包围体**，惰性：谁问谁付）
   ├─ local_com / mass / inertia
   └─ position / rotation / velocity
         │
@@ -81,8 +85,8 @@ float32/float64 边界换来的，见 [PRECISION.md](PRECISION.md)。
 
 ```
 world.fracture(body, damage, burst_speed)
-  ├─ 优先 GPU：apply_damage_and_split_gpu()  一次 dispatch 同时做破坏 + 分量标注
-  ├─ 回退 CPU：apply_damage() + split()
+  ├─ 连通性：Destruction.split()（原生 PixelRaster op 3，缺扩展时退回 GDScript 参照实现）
+  ├─ 破坏：apply_damage()（keep 掩码按 chunk 合并）
   ├─ 最大的那块留在原 Body（保持引用与 id 稳定）
   └─ 其余每块 spawn 成新 Body（带上 burst_speed 的初速度）
 ```
@@ -93,6 +97,13 @@ world.fracture(body, damage, burst_speed)
 ## 扩展点
 
 - 想换碰撞形状：`greedy_rects.gd` 换成别的分解方式即可，物理层只吃 `rects`。
+- **默认的碰撞形状是"拟合出来的凸多边形"，不是 `rects` 本身**：`rects` 是精确覆盖的输入，
+  原生侧（`rb_body_fit_polys`）把它拟合成凸多边形（斜边拉直、锯齿拉平、块数更少）再交给 Rapier。
+  `world.poly_colliders = false` 可以关掉（回到精确矩形）。
+  ⚠️ 要**可视化/判定**就用 `px.colliders(body)`（读回 Rapier 的真相），
+  别照 `rects` 画 —— 那是两份会分叉的真相。
+- 想要"紧的包围体"：`hull_fit.gd`（凸包，与 AABB 并列）。
+  ⚠️ 它是**包围体**，不是碰撞形状 —— 凹形状的凹角会被填平，别拿它去替换 `rects`。
 - 想换渲染：`PixelRenderer` 是唯一与渲染相关的模块，替换它不影响物理。
-- 想换求解器：`solver.gd` 的接口是 `prepare / solve / store_warm`，
-  照这个接口换实现即可（`solve_batch.gd` 就是一个 SoA 变体）。
+- 想换求解器：求解**整体在 Rapier 里**（`native/rapier_bridge`），GDScript 侧没有求解代码。
+  要换就把桥接层换掉（`gdext/fastphys.cpp` 的命令流协议是唯一的接口）。

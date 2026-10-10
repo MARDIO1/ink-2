@@ -249,6 +249,16 @@ func _fracture_preserving_remainders(world, body, plan: Dictionary,
 	physics.min_fragment_thickness = 0.0
 	physics.min_fragment_pixels_downgrade = 0
 	var result: Dictionary = world.fracture_pixels_and_sync(body, plan, 0.0, false, anchors)
+	var runtime = world.get_node_or_null("SimulationRuntime/PhysicsStep")
+	if runtime != null:
+		var pieces: Array = result.fragments.duplicate()
+		if result.body_alive:
+			pieces.append(body)
+		runtime.body_fractured.emit(physics, body, pieces)
+	if not result.body_alive:
+		for shape in body.shapes:
+			shape.owner_body = null
+		body.shapes.clear()
 	physics.min_fragment_thickness = old_min_thickness
 	physics.min_fragment_pixels_downgrade = old_min_pixels
 	return result

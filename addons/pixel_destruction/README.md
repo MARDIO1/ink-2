@@ -187,15 +187,15 @@ physics/            物理核心（与渲染/应用层完全解耦）
   grab.gd           鼠标拖动（**策略层**：每子步算一个限力，不是求解器约束）
   sweep.gd          精确 OBB 扫掠（保守推进），连续碰撞
   collide.gd        OBB-OBB 的 SAT（几何工具，sweep 在用）
-  solver.gd         求解参数与流形结构（求解本身在 Rapier 里）
 
 core/               像素与破坏
   pixel_bits.gd     位运算工具
   pixel_chunk.gd    8x8 像素块 + 占用位掩码
   pixel_shape.gd    ★ 稀疏像素集合（chunk 表），碰撞形状的源头
+  shape_ops.gd      形状级操作（创建/切分/合并/相邻/最近点/按材质查询）
   greedy_rects.gd   像素团 -> 矩形分解
   mass_props.gd     质量/惯量/质心
-  destruction.gd    ★ 破坏：Damage 描述 + 连通性分裂（CPU/GPU 双路径）
+  destruction.gd    ★ 破坏：Damage 描述 + 连通性分裂（走原生 PixelRaster，缺扩展时退回 GDScript 参照实现）
   brush.gd          画笔/擦除的像素级操作
   pixel_editor.gd   应用层编辑（笔画 -> 多个 Body）
   pixel_scale.gd    "一个体素在屏幕上多大"
@@ -204,15 +204,18 @@ nodes/              节点层（像用 Godot 内置引擎一样用本引擎）
   pixel_world.gd    ★ 世界容器：烘焙子节点、每帧推进一次物理
   pixel_body_2d.gd  刚体（对标 RigidBody2D）：可拖动、可继承、带编辑器抓手
   pixel_shape_2d.gd 形状子节点（对标 CollisionShape2D）：一个刚体可挂多个
+  pixel_shape_polygon_2d.gd 多边形形状子节点（点集 -> 像素形状）
   pixel_joint_2d.gd 关节（节点位置 = 锚点 A；body_a/body_b 留空 = 静态世界）
   pixel_sprite_2d.gd 渲染子节点（对标 Sprite2D）
   pixel_material.gd 材质资源（颜色 + 密度 + 强度一份数据）
 
 render/             可选
   pixel_renderer.gd 每个 Body 一张 ImageTexture 的 Sprite2D
+  pixel_shading.gd  逐像素着色（体积感），渲染/精灵共用
+  debug_overlay.gd  调试叠加层（接触点 / OBB / 统计）
 
-gpu/                可选
-  gpu_destruction.gd  用 RenderingDevice 做破坏 + 分量标注
+fluid/              可选
+  fluid_pbf.gd      ★ PBF 粒子流体（纯视觉；本文件是语义真源，原生实现与它逐位对拍）
 
 native/             可选（GDExtension 源码 + .gdextension 模板）
 examples/           最小可运行示例
@@ -240,7 +243,8 @@ docs/               架构与精度纪律
 | **查询** | `raycast(origin, dir, max_dist, radius?)` **像素级精确** · `closest_point(origin, max_dist)` · `query_reject_body(body)` · `query_require(mask)` · `query_include(mask)` · `query_clear_filters()` |
 | **标签** | `set_tag(body, tag, value?)` · `has_tag` · `tag_value` · `remove_tag` · `list_tags` · `find_body(tag)` · `find_bodies(tag)` · `find_shapes(tag)` |
 | **刚体辅助** | `set_gravity_scale` · `set_velocity` · `set_angular_velocity` · `set_active` · `is_active` · `velocity_at` · `center_of_mass` · `bounds` · `is_broken` |
-| **形状辅助** | `shape_body` · `shape_bounds/size/voxels` · `shape_material_at(shape, world_point)` · `shape_material_at_index` · `set_shape_density` · `split_shape` · `merge_shape` · `is_shape_touching` · `is_shape_disconnected` · `shape_closest_point` · `create_shape` · `clear_shape` · `copy_shape_content` · `draw_shape_box` |
+| **包围体** | `bounds(body)`（AABB，最便宜）· `hull(body)`（**凸包**，跟着刚体转所以更紧）· `hull_contains(body, world_point)` |
+| **形状辅助** | `shape_body` · `shape_bounds/size/voxels` · `shape_hull(shape)`（形状局部坐标的凸包） · `shape_material_at(shape, world_point)` · `shape_material_at_index` · `set_shape_density` · `split_shape` · `merge_shape` · `is_shape_touching` · `is_shape_disconnected` · `shape_closest_point` · `create_shape` · `clear_shape` · `copy_shape_content` · `draw_shape_box` |
 
 字段：`world`（底层 `PWorld`，想直接调底层接口时用）、
 `auto_step`、`auto_render`。
@@ -304,8 +308,11 @@ Rapier 没有这个旋钮）、`rp_max_linear_velocity`、`min_fragment_pixels`�
 `angular_velocity` / `mass` / `inertia` / `inv_mass` / `inv_inertia` /
 `local_com` / `awake` / `sleep_timer`。
 
-几何：`shapes`（PixelShape 数组）/ `rects`（贪心分解出的 Rect2 数组）/
-`aabb` / `swept_aabb` / `bounding_radius()`。
+几何：`shapes`（PixelShape 数组）/ `rects`（贪心分解出的 Rect2 数组，**精确覆盖**）/
+`polys`（**惰性**读回：Rapier 里真的在用的碰撞体形状）/
+`aabb` / `swept_aabb` / `bounding_radius()` /
+**`local_hull()` / `world_hull()` / `hull_contains(p)`**（凸包 —— 与 AABB 并列的另一种包围体，
+跟着刚体转所以更紧；**惰性**：第一次问才现算，形状一改就作废）。
 
 碰撞过滤：`collision_layer`（默认 1）/ `collision_mask`（默认全 1）——
 语义同 Godot，**双方都得同意**才碰；`layer = 0` 表示不在任何层（幽灵）。
@@ -352,16 +359,25 @@ Destruction.split(shape, min_pixels) -> Array        # 按连通性切块
 `native/` 里是宽相 + 窄相 + 求解器的 C++ 实现。**这是唯一实现** ——
 GDScript 那一份已经删除，缺扩展时引擎会响亮地报错（不再静默回退）。
 
-构建：
+构建：**两个动态库**，缺一个的症状都是"物理完全不动"（不是报错）。
 
 ```bash
+# ① 物理桥接层（Rust + Rapier）
+cd addons/pixel_destruction/native/rapier_bridge
+cargo build --release
+cp target/release/rapier_bridge.dll ..          # fastphys.dll 运行时 LoadLibrary 它
+
+# ② GDExtension 入口
 cd addons/pixel_destruction/native
-g++ -O2 -std=c++17 -ffp-contract=off -shared -static-libgcc -static-libstdc++ \
+g++ -O2 -std=c++17 -ffp-contract=off -shared -static \
     -I<gdextension_interface.h 所在目录> -o fastphys.dll fastphys.cpp
 ```
 
 ⚠️ **`-ffp-contract=off` 不能省** —— 少了它编译器会把浮点乘加融合成 FMA，
-与 GDScript 路径立刻分叉（见 [docs/PRECISION.md](docs/PRECISION.md)）。
+与 GDScript 参照实现立刻分叉（见 [docs/PRECISION.md](docs/PRECISION.md)）。
+
+⚠️ **用 `-static`，不要用 `-static-libgcc -static-libstdc++`** —— 后者漏掉
+winpthread，部署到 Godot 里加载会报**错误 126**（同样是"没有报错信息的失败"）。
 
 这个 DLL 里有两个类：`RapierPhys`（物理）与 `PixelRaster`（栅格化 + 矩形分解）。
 后者**不依赖 Rapier 桥接**，所以 `rapier_bridge.dll` 没加载时它照样能用。

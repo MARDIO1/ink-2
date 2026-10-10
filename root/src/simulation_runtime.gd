@@ -48,6 +48,8 @@ func _discover_extensions() -> void:
 		if child == _physics:
 			continue
 		_extensions.append(child)
+		if child.has_method("observe_fracture") and not _physics.body_fractured.is_connected(child.observe_fracture):
+			_physics.body_fractured.connect(child.observe_fracture)
 		if child.has_method("service_name"):
 			var name: StringName = child.service_name()
 			if not name.is_empty():

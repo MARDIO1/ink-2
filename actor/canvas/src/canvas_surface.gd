@@ -68,6 +68,10 @@ func _input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	var yellow = yellow_rule()
+	if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
+		yellow.extend(self, _mouse_point())
+		return
 	if _selecting:
 		_update_selection()
 	elif _shaping:
@@ -100,6 +104,10 @@ var _shape_delta := 0
 ## 当前工具；切换时中断正在进行的笔画或形状。
 @export var tool: Tool = Tool.HAND:
 	set(value):
+		if is_node_ready() and not Engine.is_editor_hint():
+			var yellow = yellow_rule()
+			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
+				yellow.cancel()
 		if _selecting:
 			_cancel_selection()
 		if _shaping:
@@ -134,6 +142,16 @@ func _is_nail(color: Color) -> bool:
 
 
 func _on_mouse_button(button: InputEventMouseButton) -> void:
+	var yellow = yellow_rule()
+	if button.button_index == MOUSE_BUTTON_LEFT and yellow != null:
+		if not button.pressed and yellow.drawing != null and yellow.drawing.source_surface == self:
+			yellow.finish(self, _mouse_point())
+			return
+		if button.pressed and ink_material_id() == InkPalette.YELLOW.id and tool == Tool.BRUSH:
+			yellow.begin(self, _mouse_point())
+			return
+		if button.pressed and ink_material_id() == InkPalette.YELLOW.id and tool in [Tool.RECT, Tool.CIRCLE, Tool.BUCKET]:
+			return
 	if button.button_index == MOUSE_BUTTON_MIDDLE:
 		_painting = false
 		if button.pressed:
@@ -195,6 +213,9 @@ func _stroke_color():
 		Tool.NAIL:
 			return nail_color()
 	return null
+
+func yellow_rule():
+	return get_node_or_null("../../SimulationRuntime/YellowInk")
 
 
 func _continue_stroke() -> void:
@@ -325,6 +346,9 @@ func _reset() -> void:
 #refund = true：把画布上剩的墨水还回瓶子（"重绘"按钮）。
 #refund = false：这些墨水已经随固化变成刚体带走了，不能再还。
 func clear(refund := true) -> void:
+	var yellow = yellow_rule()
+	if refund and yellow != null:
+		yellow.clear_drafts(self)
 	if refund:
 		_refund_all_ink()
 	else:
@@ -705,6 +729,11 @@ func undo_last_edit() -> bool:
 	_painting = false
 	_cancel_undo_step()
 	var step: Dictionary = _undo_steps.pop_back()
+	if step.has("yellow"):
+		var yellow = yellow_rule()
+		if yellow != null:
+			yellow.undo(step.yellow, self)
+		return true
 	for pixel: Vector2i in step:
 		_set_pixel_raw(pixel, step[pixel])
 	black_texture.update(black_image)

@@ -192,6 +192,467 @@ pub extern "C" fn rb_body_set_rects(w: *mut World, id: u32, rects: *const f32, c
     }
 }
 
+
+
+// ==================== 像素形状 -> 凸多边形碰撞体（Noita 式拟合）====================
+//
+// 这一节把引擎的**精确覆盖矩形**（GreedyRects / PixelRaster op 2 的输出）拟合成
+// **凸多边形**再交给 Rapier：斜边是直的（锯齿被拉平），块数远少于矩形。
+//
+// 为什么拟合在**这里**而不是 GDScript：碎片路径一次建几百个刚体，每个都要拟合一回。
+// GDScript 实测 ~35 us/矩形（300 个碎片 = 40+ ms 卡顿），这里 ~1 us/矩形。
+// GDScript 那份（src/core/poly_fit.gd）保留为**参照实现**，
+// 闸门 tests/validation_poly_native.gd 逐位对拍（与矩形分解 op 2 同一个规矩）。
+//
+// ⚠️ 浮点纪律：点用 **f32** 存（对应 GDScript 的 Vector2）、叉积/面积用 **f64** 算
+//    （对应 GDScript 的标量表达式）。两边的比较、求和顺序也必须一样 —— 否则
+//    "并哪一块"这种离散选择会分叉，逐位对拍就成了同义反复。
+
+#[derive(Clone, Copy)]
+struct FitRect {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+}
+
+impl FitRect {
+    fn x1(&self) -> f32 {
+        self.x + self.w
+    }
+    fn y1(&self) -> f32 {
+        self.y + self.h
+    }
+    /// 面积用 f64 累加（GDScript 侧同样是 f64 表达式）。
+    fn area(&self) -> f64 {
+        self.w as f64 * self.h as f64
+    }
+}
+
+fn fit_cross(o: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f64 {
+    (a.0 as f64 - o.0 as f64) * (b.1 as f64 - o.1 as f64)
+        - (a.1 as f64 - o.1 as f64) * (b.0 as f64 - o.0 as f64)
+}
+
+/// Andrew 单调链 —— 与 HullFit.of_points 同一条规则：丢掉共线点、不重复首点。
+fn fit_hull(points: &[(f32, f32)]) -> Vec<(f32, f32)> {
+    let n = points.len();
+    if n < 3 {
+        return points.to_vec();
+    }
+    let mut pts = points.to_vec();
+    // Vector2 的 operator< ：先 x 后 y（Godot vector2.h）
+    pts.sort_by(|a, b| {
+        if a.0 != b.0 {
+            a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+        } else {
+            a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
+        }
+    });
+    let mut uniq: Vec<(f32, f32)> = Vec::with_capacity(n);
+    for p in pts {
+        if let Some(last) = uniq.last() {
+            if *last == p {
+                continue;
+            }
+        }
+        uniq.push(p);
+    }
+    let n = uniq.len();
+    if n < 3 {
+        return uniq;
+    }
+    let mut lower: Vec<(f32, f32)> = Vec::with_capacity(n);
+    for &p in uniq.iter() {
+        while lower.len() >= 2
+            && fit_cross(lower[lower.len() - 2], lower[lower.len() - 1], p) <= 0.0
+        {
+            lower.pop();
+        }
+        lower.push(p);
+    }
+    let mut upper: Vec<(f32, f32)> = Vec::with_capacity(n);
+    for &p in uniq.iter().rev() {
+        while upper.len() >= 2
+            && fit_cross(upper[upper.len() - 2], upper[upper.len() - 1], p) <= 0.0
+        {
+            upper.pop();
+        }
+        upper.push(p);
+    }
+    let mut out: Vec<(f32, f32)> = Vec::with_capacity(lower.len() + upper.len());
+    for i in 0..lower.len().saturating_sub(1) {
+        out.push(lower[i]);
+    }
+    for i in 0..upper.len().saturating_sub(1) {
+        out.push(upper[i]);
+    }
+    out
+}
+
+/// 有向面积（鞋带）。与 HullFit.signed_area 同序：f64 累加，最后 * 0.5。
+fn fit_signed_area(poly: &[(f32, f32)]) -> f64 {
+    let n = poly.len();
+    if n < 3 {
+        return 0.0;
+    }
+    let mut s = 0.0f64;
+    for i in 0..n {
+        let a = poly[i];
+        let b = poly[(i + 1) % n];
+        s += a.0 as f64 * b.1 as f64 - b.0 as f64 * a.1 as f64;
+    }
+    s * 0.5
+}
+
+fn fit_area(poly: &[(f32, f32)]) -> f64 {
+    fit_signed_area(poly).abs()
+}
+
+/// 包围盒长边 —— 偏离判据的分母（幻影面积 / 长边 ≈ 平均厚度）。
+fn fit_long_side(poly: &[(f32, f32)]) -> f64 {
+    let mut lo_x = f64::INFINITY;
+    let mut lo_y = f64::INFINITY;
+    let mut hi_x = f64::NEG_INFINITY;
+    let mut hi_y = f64::NEG_INFINITY;
+    for p in poly {
+        let x = p.0 as f64;
+        let y = p.1 as f64;
+        if x < lo_x {
+            lo_x = x;
+        }
+        if y < lo_y {
+            lo_y = y;
+        }
+        if x > hi_x {
+            hi_x = x;
+        }
+        if y > hi_y {
+            hi_y = y;
+        }
+    }
+    (hi_x - lo_x).max(hi_y - lo_y)
+}
+
+struct FitOut {
+    polys: Vec<Vec<(f32, f32)>>,
+    pixel_area: f64,
+    poly_area: f64,
+    max_dev: f64,
+}
+
+fn fit_rects_to_polys(rects: &[FitRect], dev_tol: f64) -> FitOut {
+    const CELL: f64 = 32.0;
+    let n = rects.len();
+    let mut out = FitOut {
+        polys: Vec::new(),
+        pixel_area: 0.0,
+        poly_area: 0.0,
+        max_dev: 0.0,
+    };
+    for r in rects {
+        out.pixel_area += r.area();
+    }
+    if n == 0 {
+        return out;
+    }
+    // ① 规范顺序：按 (y, x)（结果必须是矩形集合的纯函数）
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| {
+        let ra = &rects[a];
+        let rb = &rects[b];
+        if ra.y != rb.y {
+            ra.y.partial_cmp(&rb.y).unwrap_or(std::cmp::Ordering::Equal)
+        } else {
+            ra.x.partial_cmp(&rb.x).unwrap_or(std::cmp::Ordering::Equal)
+        }
+    });
+    // ② 空间哈希（插入顺序 = 规范顺序，邻居的枚举顺序因此确定）
+    let cell_of = |v: f32| -> i32 { (v as f64 / CELL).floor() as i32 };
+    let mut buckets: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+    for &i in &order {
+        let r = &rects[i];
+        let c0x = cell_of(r.x);
+        let c0y = cell_of(r.y);
+        let c1x = cell_of(r.x1());
+        let c1y = cell_of(r.y1());
+        for cy in c0y..=c1y {
+            for cx in c0x..=c1x {
+                buckets.entry((cx, cy)).or_default().push(i);
+            }
+        }
+    }
+    let touches = |a: &FitRect, b: &FitRect| -> bool {
+        a.x as f64 <= b.x as f64 + b.w as f64
+            && b.x as f64 <= a.x as f64 + a.w as f64
+            && a.y as f64 <= b.y as f64 + b.h as f64
+            && b.y as f64 <= a.y as f64 + a.h as f64
+    };
+    // 与 box 相接的未分配矩形（顺序 = 桶里数组的顺序 = 规范顺序）
+    let neighbors = |buckets: &HashMap<(i32, i32), Vec<usize>>,
+                     used: &[bool],
+                     box_: &FitRect|
+     -> Vec<usize> {
+        let mut out: Vec<usize> = Vec::new();
+        let c0x = cell_of(box_.x - 1.0);
+        let c0y = cell_of(box_.y - 1.0);
+        let c1x = cell_of(box_.x1() + 1.0);
+        let c1y = cell_of(box_.y1() + 1.0);
+        for cy in c0y..=c1y {
+            for cx in c0x..=c1x {
+                if let Some(arr) = buckets.get(&(cx, cy)) {
+                    for &i in arr {
+                        if used[i] || out.contains(&i) {
+                            continue;
+                        }
+                        if touches(box_, &rects[i]) {
+                            out.push(i);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    };
+    let mut used = vec![false; n];
+    for &start in &order {
+        if used[start] {
+            continue;
+        }
+        used[start] = true;
+        let r0 = rects[start];
+        let mut part_pts: Vec<(f32, f32)> = vec![
+            (r0.x, r0.y),
+            (r0.x1(), r0.y),
+            (r0.x1(), r0.y1()),
+            (r0.x, r0.y1()),
+        ];
+        let mut part_area = r0.area();
+        let mut part_box = r0;
+        let mut poly: Vec<(f32, f32)> = Vec::new();
+        let mut frontier: Vec<usize> = neighbors(&buckets, &used, &part_box);
+        loop {
+            let mut grew = false;
+            for k in 0..frontier.len() {
+                let j = frontier[k];
+                if used[j] {
+                    continue;
+                }
+                let r2 = rects[j];
+                if !touches(&part_box, &r2) {
+                    continue;
+                }
+                let mut mpts = part_pts.clone();
+                mpts.push((r2.x, r2.y));
+                mpts.push((r2.x1(), r2.y));
+                mpts.push((r2.x1(), r2.y1()));
+                mpts.push((r2.x, r2.y1()));
+                let cand = fit_hull(&mpts);
+                if cand.len() < 3 {
+                    continue;
+                }
+                let merged_area = part_area + r2.area();
+                let dev = (fit_area(&cand) - merged_area) / fit_long_side(&cand).max(1.0);
+                if dev > dev_tol {
+                    continue;
+                }
+                part_pts = cand.clone();
+                part_area = merged_area;
+                part_box = FitRect {
+                    x: part_box.x.min(r2.x),
+                    y: part_box.y.min(r2.y),
+                    w: part_box.x1().max(r2.x1()) - part_box.x.min(r2.x),
+                    h: part_box.y1().max(r2.y1()) - part_box.y.min(r2.y),
+                };
+                poly = cand;
+                used[j] = true;
+                frontier.retain(|&v| v != j);
+                for k2 in neighbors(&buckets, &used, &r2) {
+                    if !frontier.contains(&k2) {
+                        frontier.push(k2);
+                    }
+                }
+                grew = true;
+                break;
+            }
+            if !grew {
+                break;
+            }
+        }
+        if poly.len() < 3 {
+            poly = fit_hull(&part_pts);
+        }
+        if poly.len() < 3 {
+            continue;
+        }
+        let dev = (fit_area(&poly) - part_area) / fit_long_side(&poly).max(1.0);
+        if dev > out.max_dev {
+            out.max_dev = dev;
+        }
+        out.poly_area += fit_area(&poly);
+        out.polys.push(poly);
+    }
+    out
+}
+
+/// 把矩形集合拟合成凸多边形碰撞体（Noita 式），并**直接从质量定密度**。
+///
+/// 返回拟合出来的多边形个数（诊断用）。
+///
+/// ⚠️ 密度为什么在这里定，而不是让 GDScript 推 op 34：拟合出来的多边形面积
+///    >= 像素面积（幻影），推"材质密度"会让 Rapier 的质量比 GDScript 的 mass
+///    大出幻影那一份（薄形状能差 2 倍 —— 而所有按 mass 算的力都会跟着错）。
+///    这里按 **质量 / 多边形总面积** 反算密度，于是两边的**总质量一致**
+///    （惯量分布略有差异：多边形 vs 像素，可接受）。
+#[no_mangle]
+pub extern "C" fn rb_body_fit_polys(
+    w: *mut World,
+    id: u32,
+    rects: *const f32,
+    count: i32,
+    friction: f64,
+    mass: f64,
+    dev_tol: f32,
+) -> i32 {
+    let Some(w) = (unsafe { wref(w) }) else { return 0 };
+    if rects.is_null() || count <= 0 {
+        return 0;
+    }
+    let Some(&h) = w.map.get(&id) else { return 0 };
+    let raw = unsafe { std::slice::from_raw_parts(rects, (count as usize) * 4) };
+    let mut rs: Vec<FitRect> = Vec::with_capacity(count as usize);
+    for i in 0..count as usize {
+        rs.push(FitRect {
+            x: raw[i * 4],
+            y: raw[i * 4 + 1],
+            w: raw[i * 4 + 2],
+            h: raw[i * 4 + 3],
+        });
+    }
+    let fit = fit_rects_to_polys(&rs, dev_tol as f64);
+    let old: Vec<ColliderHandle> = w.bodies[h].colliders().iter().copied().collect();
+    w.contacts_dirty = true;
+    for c in old {
+        w.colliders.remove(c, &mut w.islands, &mut w.bodies, &mut w.soft, true);
+    }
+    let mut pts: Vec<Vector> = Vec::new();
+    for p in &fit.polys {
+        pts.clear();
+        pts.reserve(p.len());
+        for &(x, y) in p {
+            pts.push(Vector::new(x, y));
+        }
+        if let Some(builder) = ColliderBuilder::convex_hull(&pts) {
+            w.colliders
+                .insert_with_parent(builder.friction(friction as f32), h, &mut w.bodies);
+        }
+    }
+    if fit.poly_area > 0.0 && mass > 0.0 {
+        let d = (mass / fit.poly_area) as Real;
+        let cols: Vec<ColliderHandle> = w.bodies[h].colliders().iter().copied().collect();
+        for c in cols {
+            w.colliders[c].set_density(d);
+        }
+        if let Some(rb) = w.bodies.get_mut(h) {
+            rb.recompute_mass_properties_from_colliders(&w.colliders);
+        }
+    }
+    fit.polys.len() as i32
+}
+
+/// Rapier 侧的质量 —— 给"密度补偿"当判据用。
+///
+/// ⚠️ 为什么要有它：拟合出来的碰撞体面积 >= 像素面积（幻影），所以密度必须按
+///    **质量 / 多边形面积** 反算。反算错了不会报错，只会让两边质量静默分叉
+///    （所有按 mass 算的力都跟着错）—— 所以闸门要能**量**到 Rapier 的质量。
+#[no_mangle]
+pub extern "C" fn rb_body_get_mass(w: *mut World, id: u32) -> f64 {
+    let Some(w) = (unsafe { wref(w) }) else { return 0.0 };
+    match w.map.get(&id) {
+        Some(&h) => w.bodies[h].mass() as f64,
+        None => 0.0,
+    }
+}
+
+/// Rapier 侧的角惯量（绕刚体原点）—— 与 rb_body_get_mass 配套的诊断量。
+#[no_mangle]
+pub extern "C" fn rb_body_get_inertia(w: *mut World, id: u32) -> f64 {
+    let Some(w) = (unsafe { wref(w) }) else { return 0.0 };
+    match w.map.get(&id) {
+        Some(&h) => {
+            let mp = w.bodies[h].mass_properties();
+            mp.local_mprops.principal_inertia() as f64
+        }
+        None => 0.0,
+    }
+}
+
+/// 读回一个刚体**当前**的碰撞体形状（凸多边形 / 矩形都按多边形给）—— 可视化与闸门用。
+///
+/// out 布局（小端）：[0] i32 n_polys，然后每个多边形 i32 count + count x (f32 x, f32 y)。
+/// 返回**写入/需要的字节数**（> out_cap 表示不够，调用方按它重开一次再调）。
+///
+/// ⚠️ 这是"**问物理要真相**"：读的是 Rapier 里真的在用的形状，而不是 GDScript 侧
+///    另算一份 —— 那样可视化会和碰撞体悄悄分叉（本仓库为"调试可视化画错"栽过：
+///    它比没有可视化更糟，会把人引到错误方向）。
+#[no_mangle]
+pub extern "C" fn rb_body_get_polys(w: *mut World, id: u32, out: *mut u8, out_cap: i32) -> i32 {
+    let Some(w) = (unsafe { wref(w) }) else { return 0 };
+    let Some(&h) = w.map.get(&id) else { return 0 };
+    let cols: Vec<ColliderHandle> = w.bodies[h].colliders().iter().copied().collect();
+    let mut counts: Vec<usize> = Vec::with_capacity(cols.len());
+    let mut need = 4usize;
+    for c in &cols {
+        let n = match w.colliders[*c].shape().as_typed_shape() {
+            TypedShape::Cuboid(_) => 4,
+            TypedShape::ConvexPolygon(p) => p.points().len(),
+            _ => 0,
+        };
+        counts.push(n);
+        need += 4 + n * 8;
+    }
+    if out.is_null() || (out_cap as usize) < need {
+        return need as i32;
+    }
+    unsafe {
+        let dst = std::slice::from_raw_parts_mut(out, need);
+        let put_i32 = |d: &mut [u8], off: usize, v: i32| {
+            d[off..off + 4].copy_from_slice(&v.to_le_bytes());
+        };
+        let put_f32 = |d: &mut [u8], off: usize, v: f32| {
+            d[off..off + 4].copy_from_slice(&v.to_le_bytes());
+        };
+        put_i32(dst, 0, cols.len() as i32);
+        let mut off = 4usize;
+        for (i, c) in cols.iter().enumerate() {
+            let col = &w.colliders[*c];
+            let t = col.translation();
+            put_i32(dst, off, counts[i] as i32);
+            off += 4;
+            match col.shape().as_typed_shape() {
+                TypedShape::Cuboid(cu) => {
+                    let hx = cu.half_extents.x;
+                    let hy = cu.half_extents.y;
+                    for (sx, sy) in [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
+                        put_f32(dst, off, t.x + hx * sx);
+                        put_f32(dst, off + 4, t.y + hy * sy);
+                        off += 8;
+                    }
+                }
+                TypedShape::ConvexPolygon(p) => {
+                    for v in p.points() {
+                        put_f32(dst, off, t.x + v.x);
+                        put_f32(dst, off + 4, t.y + v.y);
+                        off += 8;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    need as i32
+}
+
 #[no_mangle]
 pub extern "C" fn rb_body_set_pose(w: *mut World, id: u32, x: f64, y: f64, rot: f64) {
     let Some(w) = (unsafe { wref(w) }) else { return };
