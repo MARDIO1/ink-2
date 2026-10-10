@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://ui/menu/title_fx/demo.gd" id="1_demo"]
+[ext_resource type="Texture2D" path="res://ui/menu/asset/title.png" id="2_title"]
+[ext_resource type="Texture2D" path="res://ui/menu/asset/paper.png" id="3_paper"]
+
+[node name="TitleRippleDemo" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_demo")
+title_texture = ExtResource("2_title")
+paper_texture = ExtResource("3_paper")
+auto_quit = true
