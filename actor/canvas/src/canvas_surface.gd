@@ -396,7 +396,7 @@ func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 
 
 ## 笔触直径，单位 px；圆形笔刷，绘制和擦除使用同一尺寸。
-## 奇数直径铺得准：1 = 单像素，3 = 3px 宽，5 = 5px 宽……偶数会落到上一档奇数。
+## 1 = 单像素；偶数直径按半整数半径铺（见 `_stamp`）。
 @export var brush_size := 7:
 	set(value):
 		brush_size = maxi(1, value)
@@ -761,14 +761,6 @@ var _pending_ink := {}
 		if value:
 			_refund_all_ink()           # 先把画布上的墨还给瓶子，之后画布上的墨算免费
 		ink_free = value
-
-
-## 画布上还挂着多少墨水（所有墨水加起来）。
-func total_ink_px() -> int:
-	var total := 0
-	for count in ink_px_by_material.values():
-		total += count
-	return total
 
 
 ## 某墨水在画布上有多少像素。

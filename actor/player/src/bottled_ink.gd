@@ -10,11 +10,10 @@ extends Sprite2D
 ##
 ## ## ⚠️ 本节点画在线稿**下面**（z_index = -1）
 ##
-## 所以三件事必须同时成立，少一件就看不见墨水：
+## 所以两件事必须同时成立，少一件就看不见墨水：
 ##   1. 本节点的 z_index < Visual 的（见 player.tscn）；
 ##   2. Visual 的**瓶身填充（材质 5）必须是透明的** —— 它是 58x34 的实心块，
-##      不透明就会把墨水整个盖住（见 player.tscn 里 Visual.palette 的第 6 项）；
-##   3. 空瓶时那块地方由本节点的**玻璃色**补上，否则角色看起来是漏的。
+##      不透明就会把墨水整个盖住（见 player.tscn 里 Visual.palette 的第 6 项）。
 ## 黑线稿（材质 2）在线稿层，永远压在墨水上面 —— 所以脸不会被淹掉。
 ##
 ## ## 容器 = 整个瓶身（含身体块），不是"被围住的透明像素"
@@ -26,10 +25,16 @@ extends Sprite2D
 ## 现在分四步（见 _build_container）：
 ##   ① 从四边泛洪出"外面"（只走透明像素）；
 ##   ② "被围住的透明像素" = 里面那些；
-##   ③ 取②里**最大连通分量**的外接框 —— 这一步是为了**排除头/瓶盖**：
-##      头部的线稿空腔和身体是连着的，不框住的话墨水会灌进脑袋；
+##   ③ 取②里**面积最大**的连通分量的外接框 —— 实测它就是整个瓶身内部的**外圈**
+##      （颈→肩→两侧→瓶底），外接框正好把瓶盖/瓶顶那圈空腔挡在外面；
+##      ⚠️⚠️ **瓶肚不画**（用户口径：墨水不该出现在瓶肚/脸那一片）。瓶肚是被它自己的线稿
+##      圈出来的**第二个**空腔（实测 1248 px ≈ 最大者的 87%），既不是域、也不进可画；
+##      ⚠️⚠️ 也试过把域改成"与材质 5（瓶身填充）重叠最多"，**是错的**：材质 5 只覆盖瓶肚，
+##      域会缩到脸上，位置整个错掉；
 ##   ④ 框内所有"不是外面"的格子都算容器 —— 于是不透明的身体块被并进来，
 ##      得到一个**没有洞的实心瓶身**（PBF 的 solidMask 支持任意形状，见引擎侧说明）。
+##      可画区域 = 框内**属于③那个分量**的格子，再**向外扩一格**塞到线稿下面
+##      （不扩就会在斜线稿旁边留 1~2 px 的缝，见 ④.5）。
 ##
 ## ## 边界：墨水不进物理像素
 ##
@@ -140,6 +145,8 @@ var _applied_scale := -1.0
 var _src_tex: Texture2D = null
 ## 容器缓存键。剪影贴图和外接框不变就不重算。
 var _container_key := ""
+## 抖动 uniform 的缓存键（剪影尺寸 / 容器原点 / cell_px）—— 这三样不变就不重设。
+var _wobble_key := ""
 
 # ---- 容器 / 流体 ----
 var _fluid = null
@@ -147,6 +154,9 @@ var _fluid = null
 var _grid_origin := Vector2i.ZERO
 var _gw := 0
 var _gh := 0
+## 墨水**贴图**的尺寸 = 流体网格每边多一格（见 _render 里"边界不能和线稿重合"的说明）。
+var _tex_w := 0
+var _tex_h := 0
 ## 1 = 容器内。长度 _gw * _gh。**这张是给模拟用的**（fluid.solid_mask）。
 var _container := PackedByteArray()
 ## 1 = 该格可以画墨水。长度 _gw * _gh。
@@ -157,6 +167,7 @@ var _container := PackedByteArray()
 ##   · 渲染要的是"不盖住线稿"：那些格子**不该出墨水**，否则脸会被淹掉
 ##     （线稿虽然画在上面能挡住，但墨水会从线稿**边缘**糊出来一圈）。
 ## 甜甜圈形状的容器同理：中间的洞在模拟里连通、在画面上留空。
+## 判据 = 格里有**③那个分量**（瓶身外圈）的像素 —— 瓶肚是另一个空腔，照旧不画。
 var _draw := PackedByteArray()
 ## 烘出来的图（每帧重填）
 var _img: Image = null
@@ -205,13 +216,35 @@ func _sync_visual() -> void:
 	#    再被 scale 映射出去，所以屏幕上的落点是 **scale*offset**，不是 offset。
 	#    直接给 mask.offset + 框原点会让它被放大 cell_px 倍 —— 症状是**整层错位**
 	#    （cell_px=2 时偏出 (4,23)）。
-	offset = (_mask.offset + Vector2(_grid_origin)) / float(cell_px)
+	# ⚠️⚠️ 贴图比流体网格**每边多一格**（_tex_w/_tex_h），所以 offset 要往回挪**一格**：
+	#    墨的边界必须落在**线稿里面**，不能和线稿的边重合 —— 见 _render 的说明。
+	offset = (_mask.offset + Vector2(_grid_origin)) / float(cell_px) - Vector2.ONE
 	scale = Vector2(cell_px, cell_px)
+	_sync_wobble_uniforms()
 	_fill = _health.ratio() if _health != null and _health.has_method("ratio") else 1.0
 	visible = _fluid != null
 	if not visible:
 		return
 	_fluid.set_fill_ratio(_fill)
+
+
+## 墨层要跟线框**同相位**抖：把"剪影的像素空间"喂给 player_liquid_wobble.gdshader。
+##
+## ⚠️⚠️ 为什么不能像 Visual 那样用默认值：本节点的贴图只是**瓶身内部那块子矩形**
+##    （_gw x _gh 格），还被 scale=cell_px 放大过 —— UV 与 Visual 不是一套。
+##    shader 拿这三个值把 UV 映回剪影像素空间再算位移，两边才会同相（见那个 shader 的注释）。
+func _sync_wobble_uniforms() -> void:
+	var mat := material as ShaderMaterial
+	if mat == null or _src_tex == null:
+		return
+	var key := "%s|%s|%d" % [str(_src_tex.get_size()), str(_grid_origin), cell_px]
+	if key == _wobble_key:
+		return
+	_wobble_key = key
+	mat.set_shader_parameter("visual_size", _src_tex.get_size())
+	# 贴图比网格每边多一格 —— shader 里 UV->剪影像素的映射要把这一格算进去。
+	mat.set_shader_parameter("grid_origin", Vector2(_grid_origin) - Vector2(cell_px, cell_px))
+	mat.set_shader_parameter("cell_px", float(cell_px))
 
 
 ## 跑一步流体。
@@ -321,9 +354,6 @@ func _build_container(src_tex: Texture2D) -> void:
 		if py + 1 < h:
 			_push_out(outside, stack, rgba, p + w)
 
-	# ①.5 渲染掩码（**原生分辨率**）—— 见 _build_render_mask 的说明
-	var rmask := _build_render_mask(rgba, outside, w, h)
-
 	# ② 被围住的**透明**像素（老 _build_interior 的那一步）
 	var cavity := PackedByteArray()
 	cavity.resize(n)
@@ -331,16 +361,24 @@ func _build_container(src_tex: Texture2D) -> void:
 		if outside[i] == 0 and rgba[i * 4 + 3] == 0:
 			cavity[i] = 1
 
-	# ③ 取最大连通分量的外接框 —— 用来**排除头和瓶盖**（它们的空腔和身体是连着的）
-	var seen := PackedByteArray()
-	seen.resize(n)
+	# ③ 被围空腔的连通分量。**域与可画都只取面积最大的那个** —— 实测它就是整个瓶身内部的
+	#    **外圈**（颈→肩→两侧→瓶底），外接框正好把瓶盖/瓶顶那圈空腔挡在外面。
+	# ⚠️⚠️ **瓶肚不画**：它是被自己的线稿圈出来的**第二个**空腔（实测 1248 px ≈ 最大者的
+	#    87%），墨水不该出现在瓶肚/脸那一片（用户口径）。
+	# ⚠️ 也**别**把域改成"与材质 5（瓶身填充）重叠最多"（试过，错的）：材质 5 只覆盖瓶肚，
+	#    域会缩到脸上、位置整个错掉。
+	var comp := PackedInt32Array()
+	comp.resize(n)
+	comp.fill(-1)
+	var best := -1
 	var best_area := 0
 	var lo := Vector2i(1 << 30, 1 << 30)
 	var hi := Vector2i(-(1 << 30), -(1 << 30))
+	var cid := 0
 	for i in n:
-		if cavity[i] == 0 or seen[i] != 0:
+		if cavity[i] == 0 or comp[i] >= 0:
 			continue
-		seen[i] = 1
+		comp[i] = cid
 		stack.clear()
 		stack.append(i)
 		var area := 0
@@ -361,15 +399,17 @@ func _build_container(src_tex: Texture2D) -> void:
 				if nx < 0 or nx >= w or ny < 0 or ny >= h:
 					continue
 				var q := ny * w + nx
-				if cavity[q] == 0 or seen[q] != 0:
+				if cavity[q] == 0 or comp[q] >= 0:
 					continue
-				seen[q] = 1
+				comp[q] = cid
 				stack.append(q)
 		if area > best_area:
 			best_area = area
+			best = cid
 			lo = clo
 			hi = chi
-	if best_area == 0:
+		cid += 1
+	if best < 0:
 		push_warning("BottledInk：剪影里没有被围住的空腔，墨水层不启用。")
 		return
 
@@ -396,8 +436,7 @@ func _build_container(src_tex: Texture2D) -> void:
 	for gy in _gh:
 		for gx in _gw:
 			var inside := 0
-			var clear := 0
-			var reach := 0
+			var owned := 0
 			var total := 0
 			for sy in cell_px:
 				var yy := lo.y + gy * cell_px + sy
@@ -410,18 +449,65 @@ func _build_container(src_tex: Texture2D) -> void:
 					total += 1
 					if outside[yy * w + xx] == 0:
 						inside += 1
-					if rgba[(yy * w + xx) * 4 + 3] == 0:
-						clear += 1
-					if rmask[yy * w + xx] != 0:
-						reach += 1
+					if comp[yy * w + xx] == best:
+						owned += 1
 			# 并集：任意一个源像素在容器里，整格就是容器 —— 见上面④的说明
 			var is_container := total > 0 and inside > 0
 			_container[gy * _gw + gx] = 1 if is_container else 0
 			# 模拟掩码管"能不能流过去"，这张管"画不画" —— 见 _draw 的说明。
-			# 取并集：只要格里有透明像素就允许出墨水，墨水于是能贴到瓶壁下面。
-			_draw[gy * _gw + gx] = 1 if (is_container and reach > 0) else 0
+			# 取并集：只要格里有③那个分量（瓶身外圈）的像素就允许出墨水 —— 墨水于是能
+			# 贴到瓶壁下面；瓶肚是另一个空腔，照旧不出墨水。
+			_draw[gy * _gw + gx] = 1 if (is_container and owned > 0) else 0
 
-	# ⑤ 脸部留空 —— 见 face_rect 的说明
+	# ④.5 可画区域**向外扩一格**（8 邻域），把墨塞到线稿**下面**去。
+	#
+	# ⚠️⚠️ 为什么必须扩：线稿是**斜的**（肩线那种），一格 2x2 里可能**只有线稿像素**、
+	#    一个空腔像素都没有 —— 那一格就不在 _draw 里，墨于是停在线稿内侧 1 格。
+	#    实测（真窗口截图，逐物理像素量）：肩线两侧各留 **1.5 ~ 2.3 px** 的缝，
+	#    就是"流体和线框之间有缝隙"。扩一格后墨压到线稿下面，而线稿画在墨上面，看不出来。
+	# ⚠️ 只扩到**不含别的空腔像素**的格子：瓶肚/眼睛是别的空腔分量，墨不能灌进去。
+	var grown := PackedByteArray()
+	grown.resize(_gw * _gh)
+	for gy in _gh:
+		for gx in _gw:
+			var i3 := gy * _gw + gx
+			if _draw[i3] != 0:
+				grown[i3] = 1
+				continue
+			var foreign := false
+			for sy in cell_px:
+				var yy := lo.y + gy * cell_px + sy
+				if yy > hi.y:
+					break
+				for sx in cell_px:
+					var xx := lo.x + gx * cell_px + sx
+					if xx > hi.x:
+						break
+					var ci := comp[yy * w + xx]
+					if ci >= 0 and ci != best:
+						foreign = true
+						break
+				if foreign:
+					break
+			if foreign:
+				continue
+			var touch := false
+			for oy: int in [-1, 0, 1]:
+				for ox: int in [-1, 0, 1]:
+					var nx: int = gx + ox
+					var ny: int = gy + oy
+					if nx < 0 or nx >= _gw or ny < 0 or ny >= _gh:
+						continue
+					if _draw[ny * _gw + nx] != 0:
+						touch = true
+						break
+				if touch:
+					break
+			if touch:
+				grown[i3] = 1
+	_draw = grown
+
+	# ⑤ 脸部留空 —— 见 face_rect 的说明（放在外扩**之后**，手动矩形才有最终发言权）
 	_carve_face(lo)
 
 	# 流体：域 = 容器外接框，掩码 = 容器。
@@ -442,9 +528,11 @@ func _build_container(src_tex: Texture2D) -> void:
 	_fluid.set_fill_ratio(_fill)
 	_fluid.snap_fill(0.0, 1.0)
 	# 贴图：尺寸跟着容器走，重建（不是 update —— update 不接受尺寸变化）
-	_img = Image.create_empty(_gw, _gh, false, Image.FORMAT_RGBA8)
+	_tex_w = _gw + 2
+	_tex_h = _gh + 2
+	_img = Image.create_empty(_tex_w, _tex_h, false, Image.FORMAT_RGBA8)
 	_pixels = PackedByteArray()
-	_pixels.resize(_gw * _gh * 4)
+	_pixels.resize(_tex_w * _tex_h * 4)
 	_tex = ImageTexture.create_from_image(_img)
 	texture = _tex
 
@@ -457,109 +545,8 @@ func _push_out(reached: PackedByteArray, stack: PackedInt32Array,
 	stack.append(idx)
 
 
-## 把脸部矩形从 _draw 里挖掉。**只影响渲染**，_container（模拟）一个字都不动。
-## 渲染掩码 —— **在原生分辨率（源像素）上算**，不是格子。
-##
-## ⚠️⚠️ 为什么必须是原生分辨率：cell_px=2 时一像素粗的线稿只盖住**半格**。
-##    在格子空间里它既不能算"挡住"（判"整格透明"会把瓶身中段整片挡掉），
-##    也不能算"不挡"（判"有透明像素就算"则眼睛内部照漏）。**线稿能当障碍这件事，
-##    只在原生分辨率上成立。**
-##
-## 两步走（顺序是契约）：
-##   ① 从**图像四边**泛洪**不透明**像素 —— 得到"和画面外沿连着的线稿"：
-##      瓶身外轮廓 + 瓶壁 + 肩线 + 瓶盖（这些都连得到）。
-##      **脸的眼睛和嘴连不到** —— 它们是瓶身内部的孤岛。
-##   ② 从"紧挨着①的那些透明像素"泛洪**透明**像素 —— 得到可出墨水的区域。
-##      因为种子来自①，脸周围的透明像素会被填到，而**线稿围起来的空腔**
-##      （眼睛内部）没有种子，永远走不到 -> 不出墨水。
-## ⚠️ 反过来做（只从容器外沿找透明种子）是不行的：瓶壁是不透明的，
-##    瓶身内部的透明像素挨不到"外面"，一个种子都没有。
-func _build_render_mask(rgba: PackedByteArray, outside: PackedByteArray,
-		w: int, h: int) -> PackedByteArray:
-	var wall := PackedByteArray()
-	wall.resize(w * h)
-	var stack := PackedInt32Array()
-	for x in w:
-		_push_opaque(rgba, wall, stack, x)
-		_push_opaque(rgba, wall, stack, (h - 1) * w + x)
-	for y in h:
-		_push_opaque(rgba, wall, stack, y * w)
-		_push_opaque(rgba, wall, stack, y * w + w - 1)
-	while not stack.is_empty():
-		var sp := stack.size() - 1
-		var p := stack[sp]
-		stack.resize(sp)
-		var px := p % w
-		var py := p / w
-		if px > 0:
-			_push_opaque(rgba, wall, stack, p - 1)
-		if px + 1 < w:
-			_push_opaque(rgba, wall, stack, p + 1)
-		if py > 0:
-			_push_opaque(rgba, wall, stack, p - w)
-		if py + 1 < h:
-			_push_opaque(rgba, wall, stack, p + w)
-	var m := PackedByteArray()
-	m.resize(w * h)
-	stack.clear()
-	# 种子：透明像素，且四邻里有一个"①的线稿"或"外面"。
-	#
-	# ⚠️⚠️ 两条缺一不可，各管一半：
-	#    · **挨着线稿**：瓶身下半段的透明像素在瓶壁**后面**，挨不到"外面" ——
-	#      只有靠这条才能起头。
-	#    · **挨着外面**：瓶子的颈部（瓶盖线和肩线之间那一段）在贴图里
-	#      **两边根本没有线稿**（瓶壁到那里断了），不靠这条就一个种子都没有 ——
-	#      症状是"可画 410 格"而中间 15 行整片空着。
-	#    · 眼睛内部两条都不占（围它的线稿既没连到画面外沿、也不挨着外面）-> 走不到 ✓
-	for p in w * h:
-		if rgba[p * 4 + 3] != 0:
-			continue
-		var px2 := p % w
-		var py2 := p / w
-		var seed := false
-		if px2 > 0:
-			seed = wall[p - 1] != 0 or outside[p - 1] != 0
-		if not seed and px2 + 1 < w:
-			seed = wall[p + 1] != 0 or outside[p + 1] != 0
-		if not seed and py2 > 0:
-			seed = wall[p - w] != 0 or outside[p - w] != 0
-		if not seed and py2 + 1 < h:
-			seed = wall[p + w] != 0 or outside[p + w] != 0
-		if seed:
-			_push_clear(rgba, m, stack, p)
-	while not stack.is_empty():
-		var sp2 := stack.size() - 1
-		var q := stack[sp2]
-		stack.resize(sp2)
-		var qx := q % w
-		var qy := q / w
-		if qx > 0:
-			_push_clear(rgba, m, stack, q - 1)
-		if qx + 1 < w:
-			_push_clear(rgba, m, stack, q + 1)
-		if qy > 0:
-			_push_clear(rgba, m, stack, q - w)
-		if qy + 1 < h:
-			_push_clear(rgba, m, stack, q + w)
-	return m
-
-
-func _push_opaque(rgba: PackedByteArray, seen: PackedByteArray,
-		stack: PackedInt32Array, p: int) -> void:
-	if seen[p] != 0 or rgba[p * 4 + 3] == 0:
-		return
-	seen[p] = 1
-	stack.append(p)
-
-
-func _push_clear(rgba: PackedByteArray, m: PackedByteArray,
-		stack: PackedInt32Array, p: int) -> void:
-	if m[p] != 0 or rgba[p * 4 + 3] != 0:
-		return
-	m[p] = 1
-	stack.append(p)
-
-
+## 把脸部矩形从 _draw 里挖掉（手动后备：`face_rect` 默认是空矩形 = 关，正常由 ③ 的空腔判据自动挡）。
+## **只影响渲染**，_container（模拟）一个字都不动。
 func _carve_face(lo: Vector2i) -> void:
 	if face_rect.size.x <= 0 or face_rect.size.y <= 0:
 		return
@@ -572,20 +559,47 @@ func _carve_face(lo: Vector2i) -> void:
 			_draw[gy * _gw + gx] = 0
 
 
-func _count_nonzero(a: PackedByteArray) -> int:
-	var c := 0
-	for v in a:
-		if v != 0:
-			c += 1
-	return c
 #endregion
 
 
 #region 上色
+## 本格、左右邻、上邻、上斜邻里有墨就算"湿"。
+##
+## ⚠️⚠️ 为什么湿判据要外扩：墨是**按格**从流体的 ink 场里取的，而 PBF 的粒子不会稳定地
+##    待在贴墙那一格里 —— 只按本格判，贴墙就会留 1~2 px 的缝（用户口径："两侧还有一点缝隙"）。
+##    外扩之后墨永远贴到 _draw 的边界（也就是线稿下面），而 _draw 本身已经排除了瓶肚/眼睛。
+## ⚠️ 方向是**不对称**的：只看**同层与上一层**，不看下一层 —— 否则液面会被整体抬高 1 格
+##    （2 px），那是个看得出来的系统性偏移。
+## ⚠️⚠️ 流体的索引是 **x*ny + y**（x 主序，见 fluid_pbf.gd 文件头），而贴图是**行主序**。
+##    拿同一个 i 去查 ink 等于把整张图**转置** —— 症状是"一道斜杠贯穿瓶身"（下满的液面
+##    被映射成右满），看起来像"液面在横着乱晃"。两套索引必须显式换算，不能靠"它们应该一样"。
+func _wet_neighborhood(gx: int, gy: int) -> bool:
+	if _fluid.ink[gx * _gh + gy] != 0:
+		return true
+	if gx > 0 and _fluid.ink[(gx - 1) * _gh + gy] != 0:
+		return true
+	if gx + 1 < _gw and _fluid.ink[(gx + 1) * _gh + gy] != 0:
+		return true
+	if gy > 0:
+		if _fluid.ink[gx * _gh + gy - 1] != 0:
+			return true
+		if gx > 0 and _fluid.ink[(gx - 1) * _gh + gy - 1] != 0:
+			return true
+		if gx + 1 < _gw and _fluid.ink[(gx + 1) * _gh + gy - 1] != 0:
+			return true
+	return false
+
+
 ## 容器 -> RGBA8。每格只有两种颜色（墨 / 玻璃），容器外透明。
 ##
 ## ⚠️ 只在**真的变了**的格子上写 4 个字节：3540 格逐格写 4 字节是 1.4 万次写入，
 ##    每帧都做是白烧。先比一个字节、变了才写。
+##
+## ⚠️⚠️ 循环走的是**贴图格**（_tex_w x _tex_h，比流体网格每边多一格），外围那一圈
+##    **复制紧邻的边缘格**。为什么要多这一圈：墨层的边界**不能和线稿的边重合** ——
+##    屏幕缩放不是整数（本机 1.524），两个精灵在同一个小数坐标上各画各的，边界那一个
+##    物理像素谁都不覆盖，看上去就是"两侧还有缝隙"。多一圈之后墨的边落到线稿**里面**
+##    （被线稿盖住），重合消失。实测：细缝从 1 物理 px 降到 0。
 func _render() -> void:
 	if _fluid == null or _img == null:
 		return
@@ -598,28 +612,28 @@ func _render() -> void:
 	var gb := int(glass_color.b * 255.0)
 	var ga := int(glass_color.a * 255.0)
 	var changed := false
-	var gw := _gw
-	var gh := _gh
-	for gy in gh:
-		for gx in gw:
-			var i := gy * gw + gx
+	var gw := _tex_w
+	var gh := _tex_h
+	for ty in gh:
+		for tx in gw:
+			var i := ty * gw + tx
 			var o := i * 4
-			# ⚠️⚠️ 流体的索引是 **x*ny + y**（x 主序，见 fluid_pbf.gd 文件头），
-			#    而贴图是**行主序**。拿同一个 i 去查 ink 等于把整张图**转置** ——
-			#    症状是**一道斜杠贯穿瓶身**（下满的液面被映射成右满），
-			#    而且看起来像"液面在横着乱晃 / 粒子动得太快"。
-			#    两套索引必须显式换算，不能靠"它们应该一样"。
-			var fi := gx * gh + gy
-			if _container[i] == 0:
+			# 外围一圈映射到最近的边缘格（复制），见函数头。
+			var gx: int = clampi(tx - 1, 0, _gw - 1)
+			var gy: int = clampi(ty - 1, 0, _gh - 1)
+			var ci := gy * _gw + gx
+			if _container[ci] == 0:
 				if _pixels[o + 3] != 0:
 					_pixels[o] = 0; _pixels[o + 1] = 0; _pixels[o + 2] = 0; _pixels[o + 3] = 0
 					changed = true
 				continue
-			# ⚠️ 必须显式标 bool：_fluid 是 Object，_fluid.ink[fi] 是 Variant，
+			# ⚠️ 必须显式标 bool：_fluid 是 Object，_fluid.ink[...] 是 Variant，
 			#    写成 var wet := ... 会 "Cannot infer the type of wet"。
 			# ⚠️ 要 **两张掩码都过**：_draw 管"这里该不该出墨水"（线稿/洞上不画），
-			#    _container 那半边已经由 fi 对应的 ink 本身保证了。
-			var wet: bool = _draw[i] != 0 and _fluid.ink[fi] != 0
+			#    流体的 ink 场管"这一格有没有液体"（_container 那半边由它自己保证）。
+			# ⚠️⚠️ 湿判据要**外扩**（见 _wet_neighborhood）：PBF 的粒子不会稳定地待在
+			#    贴墙那一格里，只按本格判就留 1~2 px 的缝（实测：肩线两侧"还有一点缝隙"）。
+			var wet: bool = _draw[ci] != 0 and _wet_neighborhood(gx, gy)
 			var r := ir if wet else gr
 			var g := ig if wet else gg
 			var b := ib if wet else gb
@@ -632,7 +646,7 @@ func _render() -> void:
 				changed = true
 	if not changed:
 		return
-	_img = Image.create_from_data(_gw, _gh, false, Image.FORMAT_RGBA8, _pixels)
+	_img = Image.create_from_data(_tex_w, _tex_h, false, Image.FORMAT_RGBA8, _pixels)
 	_tex.update(_img)
 #endregion
 

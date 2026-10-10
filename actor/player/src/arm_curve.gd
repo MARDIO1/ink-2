@@ -10,9 +10,7 @@ extends Line2D
 ## ⚠️ TILE 模式下 **线的粗细 = 贴图高度**，`width` 被忽略 —— 所以这张小图必须按
 ##    `width` 生成高度，否则就是一条 1px 的线（肉眼等于看不见）。
 ## 性能：每帧两次 `com_world()` + 一次两点赋值，无查询、无分配。
-##
-## ⚠️ `points` 用**世界坐标**：`top_level` 在 `_ready` 里打开（父节点 `Arm` 的节点变换是静态的，
-##    不打开就会跟着一个不动的原点走）。粗细 / 颜色 / 端点圆头在场景里设。
+## 粗细 / 颜色 / 端点圆头在场景里设。
 
 @export var body_path := NodePath("../../../..")  ## 身体（Player，持有 PBody 的节点）
 @export var hand_path := NodePath("../..")        ## 手

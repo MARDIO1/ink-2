@@ -12,7 +12,6 @@ var player_body = null
 func _ready() -> void:
 	# PixelWorld 在优先级 10 推进；相机随后读取最终物理位置供本帧渲染。
 	process_physics_priority = 20
-	position = Vector2(-116.0, 212.0)
 #endregion
 
 

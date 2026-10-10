@@ -4,7 +4,6 @@
 [ext_resource type="PackedScene" path="res://ui/components/ink_card.tscn" id="2_card"]
 [ext_resource type="PackedScene" path="res://ui/components/ink_meter.tscn" id="3_meter"]
 [ext_resource type="PackedScene" path="res://ui/components/ink_dialog.tscn" id="4_dialog"]
-[ext_resource type="PackedScene" path="res://root/root.tscn" id="5_75adw"]
 
 [node name="UIResourcePreview" type="Control" unique_id=1099691808]
 layout_mode = 3
@@ -113,5 +112,3 @@ size_flags_vertical = 3
 
 [node name="Dialog" parent="SafeArea/Layout/Columns/Right" unique_id=1485975588 instance=ExtResource("4_dialog")]
 layout_mode = 2
-
-[node name="Root" parent="." unique_id=690913733 instance=ExtResource("5_75adw")]

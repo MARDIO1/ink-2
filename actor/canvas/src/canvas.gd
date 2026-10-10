@@ -255,7 +255,7 @@ func _place_controls() -> void:
 #region 右侧面板：墨水选择 + 笔刷粗细
 ## 右侧面板离画布右边缘多远。
 @export var side_panel_gap := 24.0
-## 笔刷粗细条最大直径（步长 1；偶数直径会落到下一档奇数，见 canvas_surface）。
+## 笔刷粗细条最大直径（步长 1，任意直径都铺得准，见 canvas_surface）。
 @export_range(1, 65, 1) var brush_size_max := 33
 
 var _side_panel: Control = null
