@@ -44,7 +44,7 @@ const MAX_EDIT_HISTORY := 128
 ## 保底 PNG：存关卡的同时存一张整图（黑=空、颜色=材质 id），现在只当参考图，没有节点读它。
 @export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
 ## 自动保存的未固化画布像素；路径存放在关卡本体，避免实例子节点属性被场景打包忽略。
-@export_file("*.res", "*.tres") var edit_snapshot_path := ""
+@export_file("*.snapshot", "*.png", "*.res", "*.tres") var edit_snapshot_path := ""
 ## F2 退出编辑器时覆盖保存当前地图；自动测试可关闭它来避免重复打包超大地图。
 @export var auto_save_on_exit := true
 ## 每次完成绘图、小怪编辑或撤销后，覆盖保存当前地图。
@@ -154,9 +154,12 @@ func _bind_paths_to_current_level() -> void:
 		return
 	map_path = current_path
 	baked_map_path = current_path.get_basename() + ".png"
+	var native_snapshot := current_path.get_basename() + ".edit.snapshot"
 	var png_snapshot := current_path.get_basename() + ".edit.png"
 	var legacy_snapshot := current_path.get_basename() + ".edit.res"
-	if FileAccess.file_exists(png_snapshot):
+	if FileAccess.file_exists(native_snapshot):
+		edit_snapshot_path = native_snapshot
+	elif FileAccess.file_exists(png_snapshot):
 		edit_snapshot_path = png_snapshot
 	elif FileAccess.file_exists(legacy_snapshot):
 		edit_snapshot_path = legacy_snapshot
@@ -1607,8 +1610,8 @@ func _run_edit_auto_save(revision: int) -> void:
 		return
 	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface") if _map_canvas != null else null
 	if surface != null and surface.has_method("save_ink"):
-		# PNG 对稀疏地图通常只有几十 KB；旧的 Image .res 往往有 12–16 MB。
-		var snapshot_path := map_path.get_basename() + ".edit.png"
+		# 内容仍是 PNG 压缩数据，但 .snapshot 不会和编辑器的 PNG 导入线程争抢文件。
+		var snapshot_path := map_path.get_basename() + ".edit.snapshot"
 		if surface.save_ink(snapshot_path) != OK:
 			return
 		edit_snapshot_path = snapshot_path

@@ -75,7 +75,7 @@ func _run() -> void:
 	valid = valid and editor_player.body.aabb.get_center().distance_to(editor_center) < 0.01
 	var autosave_path := "res://test/.creative_autosave.tmp.tscn"
 	var autosave_absolute := ProjectSettings.globalize_path(autosave_path)
-	var snapshot_path := "res://test/.creative_autosave.tmp.edit.png"
+	var snapshot_path := "res://test/.creative_autosave.tmp.edit.snapshot"
 	var snapshot_absolute := ProjectSettings.globalize_path(snapshot_path)
 	if FileAccess.file_exists(autosave_path):
 		DirAccess.remove_absolute(autosave_absolute)
@@ -99,8 +99,9 @@ func _run() -> void:
 	restored_creative._record_edit({"type": &"autosave_probe"})
 	await create_timer(0.12).timeout
 	valid = valid and FileAccess.file_exists(autosave_path)
-	var snapshot := Image.load_from_file(snapshot_absolute)
-	valid = valid and snapshot != null and snapshot.get_pixel(20, 20).a > 0.5
+	var snapshot := Image.new()
+	var snapshot_error := snapshot.load_png_from_buffer(FileAccess.get_file_as_bytes(snapshot_path))
+	valid = valid and snapshot_error == OK and snapshot.get_pixel(20, 20).a > 0.5
 	var saved_scene := ResourceLoader.load(
 		autosave_path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE
 	) as PackedScene

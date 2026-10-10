@@ -863,7 +863,9 @@ func _refund_all_ink() -> void:
 ## 保存 CPU 像素缓冲，包含颜色、透明度和尺寸；不读取 GPU，不触发固化。
 func save_ink(path: String) -> Error:
 	var error: Error
-	if path.get_extension().to_lower() == "png":
+	if path.get_extension().to_lower() == "snapshot":
+		error = _save_snapshot(path)
+	elif path.get_extension().to_lower() == "png":
 		error = black_image.save_png(ProjectSettings.globalize_path(path))
 	else:
 		error = ResourceSaver.save(black_image, path)
@@ -872,6 +874,30 @@ func save_ink(path: String) -> Error:
 	else:
 		push_error("Canvas save failed: %s (%d)" % [path, error])
 	return error
+
+
+## 编辑快照使用 PNG 压缩数据，但故意不用 .png 扩展名。Godot 编辑器会持续监视并
+## 导入 res:// 下的 PNG，自动保存恰好撞上导入线程时 Windows 会返回 ERR_FILE_CANT_WRITE。
+## 未注册的 .snapshot 不进入导入流水线，并通过同目录临时文件避免中途写坏快照。
+func _save_snapshot(path: String) -> Error:
+	var absolute := ProjectSettings.globalize_path(path)
+	var temporary := absolute + ".tmp"
+	DirAccess.make_dir_recursive_absolute(absolute.get_base_dir())
+	var file := FileAccess.open(temporary, FileAccess.WRITE)
+	if file == null:
+		return FileAccess.get_open_error()
+	file.store_buffer(black_image.save_png_to_buffer())
+	file.flush()
+	file.close()
+	if FileAccess.file_exists(path):
+		var remove_error := DirAccess.remove_absolute(absolute)
+		if remove_error != OK:
+			DirAccess.remove_absolute(temporary)
+			return remove_error
+	var rename_error := DirAccess.rename_absolute(temporary, absolute)
+	if rename_error != OK:
+		DirAccess.remove_absolute(temporary)
+	return rename_error
 
 
 ## 保存整张透明 PNG：黑=空、颜色=材质 id。
@@ -889,7 +915,13 @@ func load_ink(path: String) -> Error:
 		push_error("Canvas file missing: " + path)
 		return ERR_FILE_NOT_FOUND
 	var image: Image
-	if path.get_extension().to_lower() == "png":
+	if path.get_extension().to_lower() == "snapshot":
+		image = Image.new()
+		var load_error := image.load_png_from_buffer(FileAccess.get_file_as_bytes(path))
+		if load_error != OK:
+			push_error("Canvas snapshot decode failed: %s (%d)" % [path, load_error])
+			return load_error
+	elif path.get_extension().to_lower() == "png":
 		image = Image.load_from_file(ProjectSettings.globalize_path(path))
 	else:
 		image = ResourceLoader.load(path, "Image", ResourceLoader.CACHE_MODE_IGNORE) as Image
