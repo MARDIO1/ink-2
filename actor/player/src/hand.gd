@@ -341,10 +341,6 @@ func clear_target_override() -> void:
 
 func set_grip(closed: bool) -> void:
 	_grip_override = closed
-
-
-func clear_grip_override() -> void:
-	_grip_override = null
 #endregion
 
 

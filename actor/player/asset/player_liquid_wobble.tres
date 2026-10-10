@@ -1,0 +1,15 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://actor/player/asset/player_liquid_wobble.gdshader" id="1_shader"]
+
+[resource]
+resource_local_to_scene = true
+shader = ExtResource("1_shader")
+shader_parameter/visual_size = Vector2(68, 87)
+shader_parameter/grid_origin = Vector2(0, 0)
+shader_parameter/cell_px = 1.0
+shader_parameter/breath_period = 2.6
+shader_parameter/breath_x = 0.016
+shader_parameter/breath_y = 0.022
+shader_parameter/wobble_fps = 5.0
+shader_parameter/wobble_pixels = 0.55

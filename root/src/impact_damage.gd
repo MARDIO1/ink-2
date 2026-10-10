@@ -202,7 +202,7 @@ func _impact(points: Array) -> Dictionary:
 			last = maxf(last, point.position.dot(tangent))
 	var width: int = maxi(1, ceili(last - first))
 	return {"position": position / total, "normal": normal, "dist": dist / total,
-		"impulse": total / float(width), "total_impulse": total, "width": width}
+		"impulse": total / float(width), "total_impulse": total}
 #endregion
 
 #region 像素路径
@@ -351,8 +351,4 @@ func apply_impulse_damage(world, body: PBody, origin: Vector2, direction: Vector
 	_damage_side(world, body, path, attacker_material, impulse, player_body, protected_bodies, result,
 		origin, direction.normalized(), hash(Vector3(origin.x, origin.y, impulse)))
 
-
-## 预留剪切入口；暂不消费切向摩擦冲量。
-func calculate_shear() -> void:
-	pass
 #endregion

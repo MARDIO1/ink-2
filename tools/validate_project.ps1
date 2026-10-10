@@ -17,14 +17,12 @@ $textFiles = Get-ChildItem -LiteralPath $root -Recurse -File |
         $_.Extension -in @('.gd', '.tscn', '.tres', '.godot')
     }
 
-$pattern = 'res://[^"''\s\)\]]+'
+$pattern = 'res://[^"''\s\)\]`]+'
+# 运行时才生成的 res:// 引用（磁盘上没有也不该报错）。res://test/* 的 .png/.json/.jsonl/.tres/.gdextension
+# 已由下面的通用规则放行，这里只列通用规则盖不住的。
 $runtimeGenerated = @(
-    'res://test/canvas_capture.tres',
     'res://map/asset/baked_map.png',
-    'res://test/transport_probe/probe.gdextension',
-    'res://test/transport_probe/pworld_probe.gd',
-    'res://test/bottom_grip_preview.png',
-    'res://test/bottom_grip_frames.json'
+    'res://test/transport_probe/pworld_probe.gd'
 )
 foreach ($file in $textFiles) {
     $text = Get-Content -Raw -Encoding UTF8 -LiteralPath $file.FullName
@@ -70,6 +68,8 @@ if ($config -notmatch 'config/features=PackedStringArray\("4\.7"') {
 }
 
 if ($errors.Count -gt 0) {
+    # Write-Error 在 Stop 偏好下第一条就抛异常，后面的错误永远看不到。
+    $ErrorActionPreference = 'Continue'
     $errors | ForEach-Object { Write-Error $_ }
     exit 1
 }

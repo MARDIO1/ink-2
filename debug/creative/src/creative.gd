@@ -221,7 +221,6 @@ func _enter() -> void:
 	_body.gravity_scale = 0.0
 	_body.linear_velocity = Vector2.ZERO
 	_body.angular_velocity = 0.0
-	var canvas := get_node_or_null(canvas_path)
 	_show_canvas(_canvas, false)
 	_show_canvas(_map_canvas, true)
 	# 地图编辑器有独立的屏幕固定工具栏和四向扩展按钮。
