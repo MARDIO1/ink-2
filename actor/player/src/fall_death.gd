@@ -1,5 +1,5 @@
 extends Node
-## 掉落死亡：玩家连续下落超过阈值时显示"已死亡"，倒计时后回到最近出生点。
+## 掉落死亡：玩家连续下落超过阈值时显示"已死亡"，倒计时后回到最近的出生点或复活点。
 ## 挂在 Player 节点下作为子节点；通过 PlayerInput.support 判断是否着地。
 
 #region 配置
@@ -7,8 +7,10 @@ extends Node
 @export var fall_death_threshold := 1000.0
 ## 死亡后多少秒重生。
 @export var respawn_delay := 3.0
-## 出生点 Marker2D 的名字前缀（支持 PlayerSpawn / PlayerSpawn2 等多个）。
-const SPAWN_PREFIX := "PlayerSpawn"
+const PLAYER_SPAWN_NAME := "PlayerSpawn"
+const PLAYER_SPAWN_GROUP := &"player_spawn"
+const RESPAWN_POINT_PREFIX := "RespawnPoint"
+const RESPAWN_POINT_GROUP := &"respawn_point"
 #endregion
 
 
@@ -96,7 +98,7 @@ func _respawn() -> void:
 	_death_layer.visible = false
 	_peak_y = INF
 
-	var spawn := _find_nearest_spawn()
+	var spawn := _find_respawn_target()
 	if spawn == null or _body == null:
 		return
 
@@ -119,28 +121,47 @@ func _respawn() -> void:
 #endregion
 
 
-#region 出生点查找
-## 找离玩家最近的出生点 Marker2D（名字以 PlayerSpawn 开头）。
-func _find_nearest_spawn() -> Marker2D:
-	var root := _player
+#region 复活点查找
+## 在唯一出生点 PlayerSpawn 和全部 RespawnPoint 中统一计算距离，自动选择
+## 离死亡位置最近的目标。旧地图的 PlayerSpawn2 等也兼容为复活点。
+func _find_respawn_target() -> Marker2D:
+	var root: Node = _player
 	while root.get_parent() != null and root.get_parent().name != "Level":
 		root = root.get_parent()
 	var best: Marker2D = null
 	var best_dist := INF
-	for s in _collect_spawns(root):
-		var d: float = s.global_position.distance_to(_player.global_position)
+	var death_position: Vector2 = _body.com_world() if _body != null else _player.global_position
+	var candidates := _collect_respawn_points(root)
+	var player_spawn := _find_player_spawn(root)
+	if player_spawn != null:
+		candidates.append(player_spawn)
+	for s in candidates:
+		var d: float = s.global_position.distance_to(death_position)
 		if d < best_dist:
 			best_dist = d
 			best = s
 	return best
 
 
-## 递归收集 root 下所有出生点 Marker2D。
-func _collect_spawns(root: Node) -> Array:
+func _find_player_spawn(root: Node) -> Marker2D:
+	if root is Marker2D and (root.is_in_group(PLAYER_SPAWN_GROUP) or String(root.name) == PLAYER_SPAWN_NAME):
+		return root as Marker2D
+	for child in root.get_children():
+		var found := _find_player_spawn(child)
+		if found != null:
+			return found
+	return null
+
+
+func _collect_respawn_points(root: Node) -> Array:
 	var result: Array = []
 	for child in root.get_children():
-		if child is Marker2D and String(child.name).begins_with(SPAWN_PREFIX):
-			result.append(child)
-		result.append_array(_collect_spawns(child))
+		if child is Marker2D:
+			var child_name := String(child.name)
+			var legacy_respawn := child_name.begins_with(PLAYER_SPAWN_NAME) and child_name != PLAYER_SPAWN_NAME
+			if child.is_in_group(RESPAWN_POINT_GROUP) \
+			or child_name.begins_with(RESPAWN_POINT_PREFIX) or legacy_respawn:
+				result.append(child)
+		result.append_array(_collect_respawn_points(child))
 	return result
 #endregion

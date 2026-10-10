@@ -41,9 +41,13 @@ func _on_level_chosen(path: String) -> void:
 	if _loading_level:
 		return
 	_loading_level = true
-	var request_error := ResourceLoader.load_threaded_request(path, "PackedScene", true)
+	# Do not fan scene dependencies out to worker sub-threads. Several levels depend
+	# on native/custom resources that are safe to load in the background loader but
+	# fail intermittently when Godot parses their dependency graph concurrently.
+	var request_error := ResourceLoader.load_threaded_request(path, "PackedScene", false)
 	if request_error != OK:
 		_loading_level = false
+		_restore_level_select_after_failure(path)
 		push_error("Root: 无法开始加载关卡 %s (%d)" % [path, request_error])
 		return
 	var status := ResourceLoader.load_threaded_get_status(path)
@@ -54,10 +58,19 @@ func _on_level_chosen(path: String) -> void:
 		if status == ResourceLoader.THREAD_LOAD_LOADED else null
 	_loading_level = false
 	if scene == null:
+		_restore_level_select_after_failure(path)
 		push_error("Root: 加载关卡失败 %s" % path)
 		return
 	load_level(scene)
 	_set_screen(ui_scene.instantiate())
+
+
+func _restore_level_select_after_failure(path: String) -> void:
+	if ui_root.get_child_count() == 0:
+		return
+	var screen := ui_root.get_child(0)
+	if screen.has_method(&"show_load_failed"):
+		screen.call(&"show_load_failed", path)
 
 
 ## 换屏：`UI` 容器里的旧屏整棵释放，挂上新的那一屏。

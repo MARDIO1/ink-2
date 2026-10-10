@@ -16,8 +16,8 @@ const DEBUG_HUD_GROUP := "debug_hud"
 ## 同树时的显式路径；找不到就按组找。
 @export var debug_hud_path: NodePath = ^"../debugHUD"
 
-@onready var bottle_fill: TextureProgressBar = $Root/BottleFill
-@onready var ink_meter: Label = $Root/InkMeter
+@onready var bottle_fill: TextureProgressBar = $Root/HealthUI/BottleFill
+@onready var ink_meter: Label = $Root/HealthUI/InkMeter
 var debug_hud = null
 
 var _health = null

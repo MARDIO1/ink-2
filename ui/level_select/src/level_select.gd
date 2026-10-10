@@ -36,12 +36,32 @@ func _ready() -> void:
 		button.theme_type_variation = &"PrimaryButton"
 		button.custom_minimum_size = BUTTON_SIZE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		button.pressed.connect(level_chosen.emit.bind(path))
+		button.pressed.connect(_on_level_button_pressed.bind(path, button))
 		list.add_child(button)
 	if list.get_child_count() == 0:
 		push_error("关卡选择：%s 下没找到关卡（根级有 %s 的 .tscn）" % [LEVEL_DIR, PLAYER_NODE])
 		return
 	(list.get_child(0) as Button).grab_focus()
+
+
+func _on_level_button_pressed(path: String, selected_button: Button) -> void:
+	# 大地图载入期间立即给出反馈，并禁止重复提交载入请求。
+	for child in list.get_children():
+		if child is Button:
+			(child as Button).disabled = true
+	selected_button.text = "%s（加载中…）" % path.get_file().get_basename()
+	level_chosen.emit(path)
+
+
+func show_load_failed(path: String) -> void:
+	for child in list.get_children():
+		if child is Button:
+			var button := child as Button
+			button.disabled = false
+			button.text = button.tooltip_text.get_file().get_basename()
+			if button.tooltip_text == path:
+				button.text += "（加载失败，请重试）"
+				button.grab_focus()
 
 
 ## `res://map` 下所有真关卡的路径，已排序。

@@ -10,6 +10,10 @@ signal map_saved(path: String)
 const HEALTH_UI_GROUP := &"health_ui"
 const MONSTER_CONTAINER_NAME := &"Monsters"
 const PLAYER_SPAWN_NAME := &"PlayerSpawn"
+const PLAYER_SPAWN_GROUP := &"player_spawn"
+const RESPAWN_POINT_PREFIX := "RespawnPoint"
+const RESPAWN_POINT_GROUP := &"respawn_point"
+const PLAY_CANVAS_GROUP := &"play_canvas"
 const MONSTER_MODE_NONE := -1
 const MONSTER_MODE_DELETE := -2
 const MONSTER_MODE_ADJUST := -3
@@ -17,21 +21,42 @@ const DIALOGUE_MODE_PLACE := -4
 const DIALOGUE_MODE_DELETE := -5
 const TEXT_MODE_PLACE := -6
 const TEXT_MODE_DELETE := -7
+const LAYOUT_MODE_MOVE_SPAWN := -8
+const LAYOUT_MODE_PLACE_RESPAWN := -9
+const LAYOUT_MODE_MOVE_RESPAWN := -10
+const LAYOUT_MODE_PLACE_CANVAS := -11
+const LAYOUT_MODE_MOVE_CANVAS := -12
+const CONTROL_MODE := -13
+const LAYOUT_MODES := [
+	LAYOUT_MODE_MOVE_SPAWN,
+	LAYOUT_MODE_PLACE_RESPAWN,
+	LAYOUT_MODE_MOVE_RESPAWN,
+	LAYOUT_MODE_PLACE_CANVAS,
+	LAYOUT_MODE_MOVE_CANVAS,
+]
 const MONSTER_SCALE_STEP := 0.1
 const MONSTER_MIN_SCALE := 0.35
 const MONSTER_MAX_SCALE := 2.5
+const TEXT_SCALE_STEP := 0.1
+const TEXT_MIN_SCALE := 0.35
+const TEXT_MAX_SCALE := 3.0
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 const DialogueTriggerScript := preload("res://debug/creative/src/dialogue_trigger.gd")
 const MapTextScript := preload("res://ui/map_text/map_text_label.gd")
+const MapPlacementOverlayScript := preload("res://debug/creative/src/map_placement_overlay.gd")
+const PlayCanvasScene := preload("res://actor/canvas/canvas.tscn")
+const InkPalette := preload("res://Ink/src/ink_palette.gd")
 const MAP_TEXT_FONT_PATH := "res://ui/map_text/asset/Muyao-Softbrush.ttf"
 const MONSTER_SCENES: Array[PackedScene] = [
 	preload("res://actor/monster/bomb_side.tscn"),
+	preload("res://actor/monster/little_soldier.tscn"),
 ]
 const MONSTER_KINDS := [
 	MapMonsterScript.Kind.BOMB_SIDE,
+	MapMonsterScript.Kind.LITTLE_SOLDIER,
 ]
-const MONSTER_NAMES := ["炸弹狂侧面"]
-const MONSTER_NODE_NAMES := ["BombSide"]
+const MONSTER_NAMES := ["炸弹狂侧面", "小兵"]
+const MONSTER_NODE_NAMES := ["BombSide", "LittleSoldier"]
 const EDITOR_THEME := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const MAX_EDIT_HISTORY := 128
 
@@ -68,6 +93,14 @@ var active := false
 var _player = null
 var _body = null
 var _spawn_point: Marker2D = null
+var _layout_overlay = null
+var _layout_buttons: Dictionary = {}
+var _layout_status_label: Label = null
+var _layout_drag_target = null
+var _layout_drag_offset := Vector2.ZERO
+var _layout_drag_start := Vector2.ZERO
+var _layout_drag_start_scale := Vector2.ONE
+var _selected_control_target = null
 var _canvas = null
 var _map_canvas = null
 var _saved_layer := 1
@@ -136,6 +169,8 @@ func _ready() -> void:
 		_map_canvas.dev_save_enabled = false   # 大地图的 F5 只走导出
 		if _map_canvas.has_signal("tool_changed"):
 			_map_canvas.tool_changed.connect(_on_canvas_tool_changed)
+		if _map_canvas.has_signal("editor_control_requested"):
+			_map_canvas.editor_control_requested.connect(select_control_tool)
 		var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
 		if surface != null and surface.has_signal("edit_committed"):
 			surface.edit_committed.connect(_on_canvas_edit_committed)
@@ -198,13 +233,27 @@ func _handle_editor_input(event: InputEvent) -> bool:
 	and event.ctrl_pressed and event.keycode == KEY_Z:
 		undo_last_edit()
 		return true
+	elif active and event is InputEventKey and event.pressed and not event.echo \
+	and event.keycode == KEY_F:
+		select_control_tool()
+		return true
+	elif active and event is InputEventKey and event.pressed and not event.echo \
+	and event.keycode == KEY_CAPSLOCK:
+		_toggle_monster_palette_panel()
+		return true
 	elif active and event.is_action_pressed("canvas_save"):
 		export_map()
 		return true
-	elif active and _monster_mode == MONSTER_MODE_ADJUST \
+	elif active and (LAYOUT_MODES.has(_monster_mode) or _monster_mode == CONTROL_MODE) \
+	and event is InputEventMouseButton:
+		return _handle_layout_mouse_button(event as InputEventMouseButton)
+	elif active and (LAYOUT_MODES.has(_monster_mode) or _monster_mode == CONTROL_MODE) \
+	and event is InputEventMouseMotion:
+		return _handle_layout_mouse_motion(event as InputEventMouseMotion)
+	elif active and (_monster_mode == MONSTER_MODE_ADJUST or _monster_mode == MONSTER_MODE_NONE) \
 	and event is InputEventMouseButton:
 		return _handle_monster_adjust_button(event as InputEventMouseButton)
-	elif active and _monster_mode == MONSTER_MODE_ADJUST \
+	elif active and (_monster_mode == MONSTER_MODE_ADJUST or _monster_mode == MONSTER_MODE_NONE) \
 	and event is InputEventMouseMotion:
 		return _handle_monster_adjust_motion(event as InputEventMouseMotion)
 	elif active and _monster_mode != MONSTER_MODE_NONE \
@@ -225,7 +274,16 @@ func _handle_editor_input(event: InputEvent) -> bool:
 		elif _monster_mode == TEXT_MODE_DELETE:
 			remove_map_text_at(world_position)
 		else:
-			place_monster(_monster_mode, world_position)
+			var placed := place_monster(_monster_mode, world_position)
+			if placed != null:
+				# 放置后自动退出放置模式，选中并直接进入拖动，方便立即调整位置。
+				_monster_mode = MONSTER_MODE_NONE
+				_set_selected_monster(placed)
+				_dragging_monster = true
+				_drag_offset = placed.global_position - world_position
+				_drag_start_position = placed.global_position
+				_drag_start_scale = placed.scale
+				_update_monster_buttons()
 		return true
 	return false
 
@@ -243,6 +301,29 @@ func _handle_monster_adjust_button(event: InputEventMouseButton) -> bool:
 		var direction := 1.0 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0
 		_resize_selected_monster(direction * MONSTER_SCALE_STEP)
 		return true
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		if not event.pressed:
+			return false
+		if get_viewport().gui_get_hovered_control() != null:
+			return false
+		var world_pos := _event_world_position(event)
+		var target := _find_monster_at(world_pos)
+		if target == null:
+			return false
+		if target == _selected_monster:
+			_set_selected_monster(null)
+		var container := _ensure_monster_container()
+		var removed := {
+			"type": &"monster_delete",
+			"id": str(target.get("editor_id")),
+			"kind": int(target.get("kind")),
+			"position": target.global_position,
+			"scale": target.scale,
+		}
+		container.remove_child(target)
+		target.queue_free()
+		_record_edit(removed)
+		return true
 	if event.button_index != MOUSE_BUTTON_LEFT:
 		return false
 	if event.pressed:
@@ -251,7 +332,8 @@ func _handle_monster_adjust_button(event: InputEventMouseButton) -> bool:
 		var monster := _find_monster_at(_event_world_position(event))
 		_set_selected_monster(monster)
 		if monster == null:
-			return true
+			# 默认模式下点击空白不拦截，让地图画布正常绘画。
+			return _monster_mode == MONSTER_MODE_ADJUST
 		_dragging_monster = true
 		_drag_offset = monster.global_position - _event_world_position(event)
 		_drag_start_position = monster.global_position
@@ -324,6 +406,7 @@ func _enter() -> void:
 		_map_canvas.set_map_editor_mode(true)
 	if _monster_palette != null:
 		_monster_palette.visible = true
+	_refresh_layout_overlay()
 	_refresh_dialogue_trigger_visuals()
 	_set_ink_free(true)
 	if _player != null:
@@ -345,6 +428,8 @@ func _ensure_editor_resources() -> void:
 	_build_save_directory_dialog()
 	_build_map_save_window()
 	_ensure_spawn_point()
+	_migrate_legacy_respawn_points()
+	_build_layout_overlay()
 	_editor_ui_ready = true
 
 
@@ -361,6 +446,8 @@ func _load_edit_snapshot_if_needed() -> void:
 
 func _exit() -> void:
 	set_physics_process(false)
+	if _layout_drag_target != null:
+		_finish_layout_drag()
 	_cancel_dialogue_input()
 	_cancel_text_input()
 	if _body != null:
@@ -383,10 +470,13 @@ func _exit() -> void:
 	if _canvas != null and _canvas.has_method("activate_hand_tool"):
 		_canvas.activate_hand_tool()
 	_monster_mode = MONSTER_MODE_NONE
+	_cancel_layout_drag()
 	_set_selected_monster(null)
 	_update_monster_buttons()
 	if _monster_palette != null:
 		_monster_palette.visible = false
+	if _layout_overlay != null:
+		_layout_overlay.visible = false
 	_refresh_dialogue_trigger_visuals()
 	_set_ink_free(false)
 	if _player != null:
@@ -398,44 +488,51 @@ func _exit() -> void:
 	print("CREATIVE off")
 
 
-## 旧地图没有出生点时补建一个持久化标记；已有标记也始终校准到
-## 游玩模式可绘画画布的中心。
+## 出生点与游玩画布互相独立。旧地图没有出生点时只补建一次，之后绝不
+## 因画布移动而自动改写；编辑器也只提供“移动出生点”，不提供新增入口。
 func _ensure_spawn_point() -> Marker2D:
 	if is_instance_valid(_spawn_point):
-		_center_spawn_on_play_canvas(_spawn_point)
 		return _spawn_point
 	var level := _level_root()
 	if level == null:
 		return null
 	_spawn_point = level.get_node_or_null(NodePath(String(PLAYER_SPAWN_NAME))) as Marker2D
 	if _spawn_point != null:
-		_center_spawn_on_play_canvas(_spawn_point)
+		_spawn_point.add_to_group(PLAYER_SPAWN_GROUP, true)
 		return _spawn_point
 	_spawn_point = Marker2D.new()
 	_spawn_point.name = PLAYER_SPAWN_NAME
 	level.add_child(_spawn_point)
-	_center_spawn_on_play_canvas(_spawn_point)
+	_spawn_point.global_position = _initial_spawn_position()
+	_spawn_point.global_rotation = 0.0
+	_spawn_point.add_to_group(PLAYER_SPAWN_GROUP, true)
 	_spawn_point.owner = level
 	return _spawn_point
 
 
-func _center_spawn_on_play_canvas(spawn: Marker2D) -> void:
-	if spawn == null:
-		return
+func _initial_spawn_position() -> Vector2:
+	if _player != null:
+		return _player.global_position
 	if _canvas != null:
-		var canvas_center: Vector2 = _canvas.to_global(Vector2(_canvas.canvas_size) * 0.5)
-		var player_body = _body if _body != null else (_player.get("body") if _player != null else null)
-		var local_bounds := Rect2()
-		var has_bounds := false
-		if player_body != null:
-			for shape in player_body.shapes:
-				var shape_rect := Rect2(shape.local_aabb())
-				local_bounds = local_bounds.merge(shape_rect) if has_bounds else shape_rect
-				has_bounds = true
-		spawn.global_position = canvas_center - (local_bounds.get_center() if has_bounds else Vector2.ZERO)
-	else:
-		spawn.global_position = _player.global_position if _player != null else Vector2.ZERO
-	spawn.global_rotation = 0.0
+		return _canvas.to_global(Vector2(_canvas.canvas_size) * 0.5)
+	return Vector2.ZERO
+
+
+## 旧版本用 PlayerSpawn2、PlayerSpawn3 表示复活点。保留唯一 PlayerSpawn，
+## 其余旧标记迁移到独立复活点组，避免死亡逻辑再把出生点与复活点混用。
+func _migrate_legacy_respawn_points() -> void:
+	var level := _level_root()
+	if level == null:
+		return
+	for node in _collect_nodes_recursive(level):
+		if not node is Marker2D or node == _spawn_point:
+			continue
+		var marker := node as Marker2D
+		if marker.is_in_group(RESPAWN_POINT_GROUP) or String(marker.name).begins_with(RESPAWN_POINT_PREFIX):
+			marker.add_to_group(RESPAWN_POINT_GROUP, true)
+		elif String(marker.name).begins_with(String(PLAYER_SPAWN_NAME)):
+			marker.name = _unique_level_node_name(RESPAWN_POINT_PREFIX)
+			marker.add_to_group(RESPAWN_POINT_GROUP, true)
 
 
 func _reset_player_to_spawn() -> void:
@@ -469,11 +566,13 @@ func _show_canvas(canvas, on: bool) -> void:
 func _play_canvases() -> Array:
 	var result: Array = []
 	if _canvas != null:
+		if not _canvas.is_in_group(PLAY_CANVAS_GROUP):
+			_canvas.add_to_group(PLAY_CANVAS_GROUP, true)
 		result.append(_canvas)
 	var level := _level_root()
 	if level == null:
 		return result
-	for canvas in get_tree().get_nodes_in_group(&"play_canvas"):
+	for canvas in get_tree().get_nodes_in_group(PLAY_CANVAS_GROUP):
 		if canvas != _map_canvas and level.is_ancestor_of(canvas) and not result.has(canvas):
 			result.append(canvas)
 	return result
@@ -506,6 +605,297 @@ func _restore_health_ui() -> void:
 #endregion
 
 
+#region 出生点、复活点与游玩画布布局
+func _build_layout_overlay() -> void:
+	if _layout_overlay != null:
+		return
+	_layout_overlay = MapPlacementOverlayScript.new()
+	_layout_overlay.name = "MapPlacementOverlay"
+	_layout_overlay.z_index = 1000
+	add_child(_layout_overlay)
+	_refresh_layout_overlay()
+
+
+func _refresh_layout_overlay(selected = null) -> void:
+	if _layout_overlay == null:
+		return
+	_layout_overlay.visible = active
+	_layout_overlay.call("configure", _ensure_spawn_point(), _respawn_points(), _play_canvases(), selected)
+	_update_layout_status()
+
+
+func _update_layout_status() -> void:
+	if _layout_status_label == null:
+		return
+	_layout_status_label.text = "出生点 1 个　复活点 %d 个　游玩画布 %d 块" % [
+		_respawn_points().size(),
+		_play_canvases().size(),
+	]
+	if _monster_mode == CONTROL_MODE:
+		_layout_status_label.text += "\n操纵：%s" % _control_target_name(_selected_control_target)
+
+
+func _collect_nodes_recursive(root: Node) -> Array:
+	var result: Array = []
+	for child in root.get_children():
+		result.append(child)
+		result.append_array(_collect_nodes_recursive(child))
+	return result
+
+
+func _unique_level_node_name(prefix: String) -> String:
+	var level := _level_root()
+	if level == null:
+		return prefix
+	var suffix := 1
+	var candidate := prefix
+	while level.get_node_or_null(NodePath(candidate)) != null:
+		suffix += 1
+		candidate = "%s%d" % [prefix, suffix]
+	return candidate
+
+
+func _respawn_points() -> Array:
+	var result: Array = []
+	var level := _level_root()
+	if level == null:
+		return result
+	for node in _collect_nodes_recursive(level):
+		if node is Marker2D and node != _spawn_point \
+		and (node.is_in_group(RESPAWN_POINT_GROUP) or String(node.name).begins_with(RESPAWN_POINT_PREFIX)):
+			if not node.is_in_group(RESPAWN_POINT_GROUP):
+				node.add_to_group(RESPAWN_POINT_GROUP, true)
+			result.append(node)
+	return result
+
+
+func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
+	if _monster_mode == CONTROL_MODE \
+	and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		if not event.pressed or get_viewport().gui_get_hovered_control() != null:
+			return false
+		var target = _pick_control_target(_event_world_position(event), true)
+		if target == null:
+			target = _selected_control_target
+		if target == null:
+			return false
+		_selected_control_target = target
+		var direction := 1.0 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0
+		return _resize_control_target(target, direction)
+	if event.button_index != MOUSE_BUTTON_LEFT:
+		return false
+	if event.pressed:
+		if get_viewport().gui_get_hovered_control() != null:
+			return false
+		var world_position := _event_world_position(event)
+		match _monster_mode:
+			CONTROL_MODE:
+				_selected_control_target = _pick_control_target(world_position)
+				_begin_layout_drag(_selected_control_target, world_position)
+			LAYOUT_MODE_PLACE_RESPAWN:
+				place_respawn_point(world_position)
+				return true
+			LAYOUT_MODE_PLACE_CANVAS:
+				place_play_canvas(world_position)
+				return true
+			LAYOUT_MODE_MOVE_SPAWN:
+				_begin_layout_drag(_pick_spawn_point(world_position), world_position)
+			LAYOUT_MODE_MOVE_RESPAWN:
+				_begin_layout_drag(_pick_respawn_point(world_position), world_position)
+			LAYOUT_MODE_MOVE_CANVAS:
+				_begin_layout_drag(_pick_play_canvas(world_position), world_position)
+		return true
+	if _layout_drag_target != null:
+		_finish_layout_drag()
+		return true
+	return false
+
+
+func _handle_layout_mouse_motion(event: InputEventMouseMotion) -> bool:
+	if _layout_drag_target == null:
+		return false
+	_layout_drag_target.global_position = _event_world_position(event) + _layout_drag_offset
+	_refresh_layout_overlay(_layout_drag_target)
+	return true
+
+
+func _begin_layout_drag(target, world_position: Vector2) -> void:
+	_cancel_layout_drag()
+	if target == null:
+		_refresh_layout_overlay()
+		return
+	_layout_drag_target = target
+	_layout_drag_offset = target.global_position - world_position
+	_layout_drag_start = target.global_position
+	_layout_drag_start_scale = target.scale
+	_refresh_layout_overlay(target)
+
+
+func _finish_layout_drag() -> void:
+	var target = _layout_drag_target
+	_layout_drag_target = null
+	if is_instance_valid(target) and not target.global_position.is_equal_approx(_layout_drag_start):
+		_record_edit({
+			"type": &"object_transform",
+			"target": target,
+			"old_position": _layout_drag_start,
+			"old_scale": _layout_drag_start_scale,
+		})
+	_refresh_layout_overlay(_selected_control_target if _monster_mode == CONTROL_MODE else null)
+
+
+func _cancel_layout_drag() -> void:
+	_layout_drag_target = null
+	_layout_drag_offset = Vector2.ZERO
+	_layout_drag_start = Vector2.ZERO
+	_layout_drag_start_scale = Vector2.ONE
+
+
+func _pick_control_target(world_position: Vector2, resizable_only := false):
+	var candidates := [
+		_find_monster_at(world_position),
+		_find_map_text_at(world_position),
+	]
+	if not resizable_only:
+		candidates.append_array([
+			_find_dialogue_trigger_at(world_position),
+			_pick_spawn_point(world_position),
+			_pick_respawn_point(world_position),
+			_pick_play_canvas(world_position),
+		])
+	for candidate in candidates:
+		if is_instance_valid(candidate):
+			return candidate
+	return null
+
+
+func _resize_control_target(target, direction: float) -> bool:
+	if not is_instance_valid(target):
+		return false
+	var minimum := MONSTER_MIN_SCALE
+	var maximum := MONSTER_MAX_SCALE
+	var step := MONSTER_SCALE_STEP
+	if target is Label and target.is_in_group(MapTextScript.GROUP):
+		minimum = TEXT_MIN_SCALE
+		maximum = TEXT_MAX_SCALE
+		step = TEXT_SCALE_STEP
+	elif not target.is_in_group(MapMonsterScript.GROUP):
+		return false
+	var old_scale: Vector2 = target.scale
+	var next_scale := clampf(old_scale.x + direction * step, minimum, maximum)
+	if is_equal_approx(next_scale, old_scale.x):
+		return true
+	target.scale = Vector2.ONE * next_scale
+	_record_edit({
+		"type": &"object_transform",
+		"target": target,
+		"old_position": target.global_position,
+		"old_scale": old_scale,
+	})
+	_refresh_layout_overlay(_selected_control_target)
+	return true
+
+
+func _control_target_name(target) -> String:
+	if not is_instance_valid(target):
+		return "单击对象后拖动；在怪物或文本上滚轮缩放"
+	if target.is_in_group(MapMonsterScript.GROUP):
+		return "怪物"
+	if target is Label and target.is_in_group(MapTextScript.GROUP):
+		return "文本"
+	if target.is_in_group(DialogueTriggerScript.GROUP):
+		return "对话触发点"
+	if target == _spawn_point:
+		return "出生点"
+	if target.is_in_group(RESPAWN_POINT_GROUP):
+		return "复活点"
+	if target.is_in_group(PLAY_CANVAS_GROUP):
+		return "游玩画布"
+	return str(target.name)
+
+
+func _layout_pick_radius() -> float:
+	var inverse := get_viewport().get_canvas_transform().affine_inverse()
+	return maxf(12.0, (inverse * Vector2(28.0, 0.0)).distance_to(inverse * Vector2.ZERO))
+
+
+func _pick_spawn_point(world_position: Vector2) -> Marker2D:
+	var spawn := _ensure_spawn_point()
+	if spawn != null and spawn.global_position.distance_to(world_position) <= _layout_pick_radius():
+		return spawn
+	return null
+
+
+func _pick_respawn_point(world_position: Vector2) -> Marker2D:
+	var nearest: Marker2D = null
+	var nearest_distance := _layout_pick_radius()
+	for point in _respawn_points():
+		var distance: float = point.global_position.distance_to(world_position)
+		if distance <= nearest_distance:
+			nearest = point
+			nearest_distance = distance
+	return nearest
+
+
+func _pick_play_canvas(world_position: Vector2) -> Node2D:
+	var canvases := _play_canvases()
+	for index in range(canvases.size() - 1, -1, -1):
+		var canvas = canvases[index]
+		if Rect2(Vector2.ZERO, Vector2(canvas.get("canvas_size"))).has_point(canvas.to_local(world_position)):
+			return canvas
+	return null
+
+
+func place_respawn_point(world_position: Vector2, record_undo := true) -> Marker2D:
+	var level := _level_root()
+	if level == null:
+		return null
+	var point := Marker2D.new()
+	point.name = _unique_level_node_name(RESPAWN_POINT_PREFIX)
+	level.add_child(point)
+	point.global_position = world_position
+	point.add_to_group(RESPAWN_POINT_GROUP, true)
+	point.owner = level
+	if record_undo:
+		_record_edit({"type": &"respawn_place", "target": point})
+	_refresh_layout_overlay(point)
+	return point
+
+
+func place_play_canvas(world_position: Vector2, record_undo := true) -> Node2D:
+	var level := _level_root()
+	if level == null:
+		return null
+	var canvas = PlayCanvasScene.instantiate()
+	if canvas == null:
+		return null
+	canvas.name = _unique_level_node_name("PlayCanvas")
+	level.add_child(canvas)
+	canvas.add_to_group(PLAY_CANVAS_GROUP, true)
+	if _canvas != null:
+		canvas.set("canvas_size", _canvas.get("canvas_size"))
+	canvas.global_position = world_position - Vector2(canvas.get("canvas_size")) * 0.5
+	canvas.visible = false
+	canvas.set("active", false)
+	canvas.owner = level
+	if canvas.has_method("set_ink_free"):
+		canvas.call("set_ink_free", true)
+	if record_undo:
+		_record_edit({"type": &"play_canvas_place", "target": canvas})
+	_refresh_layout_overlay(canvas)
+	return canvas as Node2D
+
+
+func _undo_placed_layout_node(target: Node) -> bool:
+	if not is_instance_valid(target) or target.get_parent() == null:
+		return false
+	target.get_parent().remove_child(target)
+	target.queue_free()
+	_refresh_layout_overlay()
+	return true
+#endregion
+
+
 #region 小怪放置
 func _build_monster_palette() -> void:
 	if _monster_palette != null:
@@ -527,15 +917,16 @@ func _build_monster_palette() -> void:
 	palette_toggle.name = "PaletteToggle"
 	palette_toggle.anchor_left = 1.0
 	palette_toggle.anchor_right = 1.0
-	palette_toggle.offset_left = -424.0
+	palette_toggle.offset_left = -96.0
 	# 避开右上角现有的日志、ESC 等按钮。
-	palette_toggle.offset_top = 80.0
-	palette_toggle.offset_right = -352.0
-	palette_toggle.offset_bottom = 124.0
-	palette_toggle.text = "收起"
+	palette_toggle.offset_top = 85.0
+	palette_toggle.offset_right = -16.0
+	palette_toggle.offset_bottom = 129.0
+	palette_toggle.text = "工具\nCapslock"
 	palette_toggle.tooltip_text = "收起 / 展开右侧地图编辑工具栏"
 	palette_toggle.focus_mode = Control.FOCUS_NONE
 	palette_toggle.theme = EDITOR_THEME
+	palette_toggle.add_theme_font_size_override("font_size", 15)
 	palette_toggle.pressed.connect(_toggle_monster_palette_panel)
 	root.add_child(palette_toggle)
 	_monster_palette_toggle = palette_toggle
@@ -545,8 +936,8 @@ func _build_monster_palette() -> void:
 	panel.anchor_left = 1.0
 	panel.anchor_right = 1.0
 	panel.anchor_bottom = 1.0
-	panel.offset_left = -344.0
-	panel.offset_top = 16.0
+	panel.offset_left = -592.0
+	panel.offset_top = 134.0
 	panel.offset_right = -16.0
 	# 三列紧凑排布，并始终贴合视口底部，避免按钮落到地面/窗口外。
 	panel.offset_bottom = -16.0
@@ -561,17 +952,71 @@ func _build_monster_palette() -> void:
 	margin.add_theme_constant_override("margin_top", 12)
 	margin.add_theme_constant_override("margin_right", 12)
 	margin.add_theme_constant_override("margin_bottom", 12)
-	panel.add_child(margin)
+	var scroll := ScrollContainer.new()
+	scroll.name = "Scroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_child(scroll)
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(margin)
 	var column := VBoxContainer.new()
 	column.name = "VBox"
 	column.add_theme_constant_override("separation", 8)
 	margin.add_child(column)
 
+	var color_title := Label.new()
+	color_title.name = "ColorTitle"
+	color_title.text = "色盘"
+	color_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	color_title.theme_type_variation = &"TitleLabel"
+	column.add_child(color_title)
+	var color_grid := GridContainer.new()
+	color_grid.name = "ColorGrid"
+	color_grid.columns = 4
+	color_grid.add_theme_constant_override("h_separation", 18)
+	color_grid.add_theme_constant_override("v_separation", 12)
+	column.add_child(color_grid)
+	for index in InkPalette.ink_count():
+		var color := InkPalette.color_at(index)
+		var color_style := StyleBoxFlat.new()
+		color_style.bg_color = color
+		color_style.corner_radius_top_left = 32
+		color_style.corner_radius_top_right = 32
+		color_style.corner_radius_bottom_left = 32
+		color_style.corner_radius_bottom_right = 32
+		color_style.border_width_left = 2
+		color_style.border_width_top = 2
+		color_style.border_width_right = 2
+		color_style.border_width_bottom = 2
+		color_style.border_color = Color(0.035, 0.031, 0.024, 1.0)
+		var color_button := Button.new()
+		color_button.name = "Ink%dButton" % index
+		color_button.custom_minimum_size = Vector2(64.0, 64.0)
+		color_button.tooltip_text = InkPalette.ink_name(index)
+		color_button.focus_mode = Control.FOCUS_NONE
+		color_button.add_theme_stylebox_override("normal", color_style)
+		color_button.add_theme_stylebox_override("hover", color_style)
+		color_button.add_theme_stylebox_override("pressed", color_style)
+		color_button.pressed.connect(_select_editor_ink.bind(index))
+		color_grid.add_child(color_button)
+	var color_separator := HSeparator.new()
+	column.add_child(color_separator)
+
 	var title := Label.new()
+	title.name = "MonsterTitle"
 	title.text = "小怪放置"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.theme_type_variation = &"TitleLabel"
 	column.add_child(title)
+	var monster_hint_label := Label.new()
+	monster_hint_label.name = "MonsterHint"
+	monster_hint_label.text = "左键选中拖动 · 滚轮缩放 · 右键删除"
+	monster_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	monster_hint_label.add_theme_font_size_override("font_size", 14)
+	monster_hint_label.add_theme_color_override("font_color", Color(0.35, 0.3, 0.2, 0.8))
+	column.add_child(monster_hint_label)
 	var monster_grid := GridContainer.new()
 	monster_grid.name = "MonsterGrid"
 	monster_grid.columns = 3
@@ -593,16 +1038,6 @@ func _build_monster_palette() -> void:
 		monster_grid.add_child(button)
 		_monster_buttons.append(button)
 
-	_adjust_monster_button = Button.new()
-	_adjust_monster_button.name = "AdjustMonsterButton"
-	_adjust_monster_button.text = "调整小怪"
-	_adjust_monster_button.tooltip_text = "单击选中，拖动调整位置；滚轮调整大小"
-	_adjust_monster_button.toggle_mode = true
-	_adjust_monster_button.focus_mode = Control.FOCUS_NONE
-	_adjust_monster_button.custom_minimum_size = Vector2(96.0, 44.0)
-	_adjust_monster_button.pressed.connect(select_monster_tool.bind(MONSTER_MODE_ADJUST))
-	monster_grid.add_child(_adjust_monster_button)
-
 	_reset_monster_scale_button = Button.new()
 	_reset_monster_scale_button.name = "ResetMonsterScaleButton"
 	_reset_monster_scale_button.text = "恢复原始大小"
@@ -612,19 +1047,10 @@ func _build_monster_palette() -> void:
 	_reset_monster_scale_button.pressed.connect(_reset_selected_monster_scale)
 	monster_grid.add_child(_reset_monster_scale_button)
 
-	_delete_monster_button = Button.new()
-	_delete_monster_button.name = "DeleteMonsterButton"
-	_delete_monster_button.text = "删除小怪"
-	_delete_monster_button.tooltip_text = "选择后单击地图中的小怪进行删除"
-	_delete_monster_button.toggle_mode = true
-	_delete_monster_button.focus_mode = Control.FOCUS_NONE
-	_delete_monster_button.custom_minimum_size = Vector2(96.0, 44.0)
-	_delete_monster_button.pressed.connect(select_monster_tool.bind(MONSTER_MODE_DELETE))
-	monster_grid.add_child(_delete_monster_button)
-
 	var separator := HSeparator.new()
 	column.add_child(separator)
 	var dialogue_title := Label.new()
+	dialogue_title.name = "DialogueTitle"
 	dialogue_title.text = "对话触发点"
 	dialogue_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	dialogue_title.theme_type_variation = &"TitleLabel"
@@ -659,6 +1085,7 @@ func _build_monster_palette() -> void:
 	var text_separator := HSeparator.new()
 	column.add_child(text_separator)
 	var text_title := Label.new()
+	text_title.name = "TextTitle"
 	text_title.text = "文本放置"
 	text_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text_title.theme_type_variation = &"TitleLabel"
@@ -698,6 +1125,51 @@ func _build_monster_palette() -> void:
 	stop_button.pressed.connect(select_monster_tool.bind(MONSTER_MODE_NONE))
 	text_grid.add_child(stop_button)
 
+	var layout_separator := HSeparator.new()
+	column.add_child(layout_separator)
+	var layout_title := Label.new()
+	layout_title.name = "LayoutTitle"
+	layout_title.text = "出生、复活与画布"
+	layout_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	layout_title.theme_type_variation = &"TitleLabel"
+	column.add_child(layout_title)
+	var layout_grid := GridContainer.new()
+	layout_grid.name = "LayoutGrid"
+	layout_grid.columns = 3
+	layout_grid.add_theme_constant_override("h_separation", 6)
+	layout_grid.add_theme_constant_override("v_separation", 6)
+	column.add_child(layout_grid)
+	var layout_tools := [
+		[LAYOUT_MODE_PLACE_RESPAWN, "PlaceRespawnButton", "新增复活点", "单击地图新增橙色复活点"],
+		[LAYOUT_MODE_MOVE_RESPAWN, "MoveRespawnButton", "移动复活点", "拖动橙色标记调整复活位置"],
+		[LAYOUT_MODE_PLACE_CANVAS, "PlacePlayCanvasButton", "新增画布", "单击地图新增一块与主游玩画布同尺寸的画布"],
+		[LAYOUT_MODE_MOVE_CANVAS, "MovePlayCanvasButton", "移动画布", "拖动画布边框调整游玩画布位置"],
+	]
+	for tool in layout_tools:
+		var layout_button := Button.new()
+		layout_button.name = str(tool[1])
+		layout_button.text = str(tool[2])
+		layout_button.tooltip_text = str(tool[3])
+		layout_button.toggle_mode = true
+		layout_button.focus_mode = Control.FOCUS_NONE
+		layout_button.custom_minimum_size = Vector2(96.0, 44.0)
+		layout_button.pressed.connect(select_monster_tool.bind(int(tool[0])))
+		layout_grid.add_child(layout_button)
+		_layout_buttons[int(tool[0])] = layout_button
+	var stop_layout_button := Button.new()
+	stop_layout_button.name = "StopLayoutButton"
+	stop_layout_button.text = "停止布局"
+	stop_layout_button.focus_mode = Control.FOCUS_NONE
+	stop_layout_button.custom_minimum_size = Vector2(96.0, 44.0)
+	stop_layout_button.pressed.connect(select_monster_tool.bind(MONSTER_MODE_NONE))
+	layout_grid.add_child(stop_layout_button)
+
+	_layout_status_label = Label.new()
+	_layout_status_label.name = "LayoutStatus"
+	_layout_status_label.text = "出生点 1 个；复活点和画布可新增"
+	_layout_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(_layout_status_label)
+
 	_monster_status_label = Label.new()
 	_monster_status_label.name = "MonsterStatus"
 	_monster_status_label.text = "未选中小怪"
@@ -708,30 +1180,33 @@ func _build_monster_palette() -> void:
 	hint.text = "放置：左键单击　对话：Enter 下一句　Ctrl+Z 撤销"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(hint)
+	panel.visible = false
 
 
 func _toggle_monster_palette_panel() -> void:
 	if _monster_palette_panel == null or _monster_palette_toggle == null:
 		return
 	_monster_palette_panel.visible = not _monster_palette_panel.visible
-	_monster_palette_toggle.text = "收起" if _monster_palette_panel.visible else "工具"
+	_monster_palette_toggle.text = "关闭" if _monster_palette_panel.visible else "工具\nCapslock"
 	_monster_palette_toggle.tooltip_text = (
 		"收起右侧地图编辑工具栏" if _monster_palette_panel.visible
 		else "展开右侧地图编辑工具栏"
 	)
-	# 收起后按钮贴在屏幕右边，展开后回到面板左侧，始终可点击。
-	if _monster_palette_panel.visible:
-		_monster_palette_toggle.offset_left = -424.0
-		_monster_palette_toggle.offset_right = -352.0
-	else:
-		_monster_palette_toggle.offset_left = -96.0
-		_monster_palette_toggle.offset_right = -16.0
+	# 展开和收起时都固定在屏幕最右侧，不再横跨画布中央区域。
+	_monster_palette_toggle.offset_left = -96.0
+	_monster_palette_toggle.offset_right = -16.0
+
+
+func _select_editor_ink(index: int) -> void:
+	if _map_canvas != null and _map_canvas.has_method("select_ink"):
+		_map_canvas.call("select_ink", index)
 
 
 func select_monster_tool(mode: int) -> void:
 	if mode != MONSTER_MODE_NONE and mode != MONSTER_MODE_DELETE and mode != MONSTER_MODE_ADJUST \
 	and mode != DIALOGUE_MODE_PLACE and mode != DIALOGUE_MODE_DELETE \
 	and mode != TEXT_MODE_PLACE and mode != TEXT_MODE_DELETE \
+	and mode != CONTROL_MODE and not LAYOUT_MODES.has(mode) \
 	and not MONSTER_KINDS.has(mode):
 		mode = MONSTER_MODE_NONE
 	elif mode == _monster_mode:
@@ -744,7 +1219,18 @@ func select_monster_tool(mode: int) -> void:
 		_syncing_canvas_tool = false
 	if mode != MONSTER_MODE_ADJUST:
 		_set_selected_monster(null)
+	if not LAYOUT_MODES.has(mode):
+		_cancel_layout_drag()
+	if mode != CONTROL_MODE:
+		_selected_control_target = null
 	_update_monster_buttons()
+	_refresh_layout_overlay()
+
+
+func select_control_tool() -> void:
+	if _monster_mode == CONTROL_MODE:
+		return
+	select_monster_tool(CONTROL_MODE)
 
 
 func _update_monster_buttons() -> void:
@@ -764,13 +1250,18 @@ func _update_monster_buttons() -> void:
 		_place_text_button.set_pressed_no_signal(_monster_mode == TEXT_MODE_PLACE)
 	if _delete_text_button != null:
 		_delete_text_button.set_pressed_no_signal(_monster_mode == TEXT_MODE_DELETE)
+	for mode in _layout_buttons:
+		(_layout_buttons[mode] as Button).set_pressed_no_signal(_monster_mode == int(mode))
+	_update_layout_status()
 
 
 func _on_canvas_tool_changed(_tool: int) -> void:
 	if _syncing_canvas_tool or _monster_mode == MONSTER_MODE_NONE:
 		return
 	_monster_mode = MONSTER_MODE_NONE
+	_cancel_layout_drag()
 	_update_monster_buttons()
+	_refresh_layout_overlay()
 
 
 func place_monster(
@@ -1375,6 +1866,15 @@ func undo_last_edit() -> bool:
 				false,
 				str(edit.get("id", ""))
 			) != null
+		&"layout_move", &"object_transform":
+			var target = edit.get("target")
+			if is_instance_valid(target):
+				target.global_position = edit.get("old_position", target.global_position)
+				target.scale = edit.get("old_scale", target.scale)
+				_refresh_layout_overlay()
+				changed = true
+		&"respawn_place", &"play_canvas_place":
+			changed = _undo_placed_layout_node(edit.get("target"))
 	if changed:
 		_queue_edit_auto_save()
 	return changed

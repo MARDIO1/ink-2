@@ -68,11 +68,9 @@ func _run() -> void:
 	var hand: Node = restored_level.get_node("Player/Arm/Hand/HandControl")
 	valid = valid and restored_level != original_level and bool(restored_creative.active)
 	var editor_player: Node = restored_level.get_node("Player")
-	var editor_canvas: Node = restored_level.get_node("SmallCanvas")
-	var editor_center: Vector2 = editor_canvas.to_global(
-		Vector2(editor_canvas.canvas_size) * 0.5
-	)
-	valid = valid and editor_player.body.aabb.get_center().distance_to(editor_center) < 0.01
+	var editor_spawn := restored_level.get_node_or_null("PlayerSpawn") as Marker2D
+	valid = valid and editor_spawn != null
+	valid = valid and editor_player.body.position.distance_to(editor_spawn.global_position) < 0.01
 	var autosave_path := "res://test/.creative_autosave.tmp.tscn"
 	var autosave_absolute := ProjectSettings.globalize_path(autosave_path)
 	var snapshot_path := "res://test/.creative_autosave.tmp.edit.snapshot"
@@ -125,17 +123,15 @@ func _run() -> void:
 	restored_creative.auto_save_on_exit = false
 	restored_creative.auto_save_edits = false
 	var player: Node = restored_level.get_node("Player")
+	var play_canvas: Node = restored_level.get_node("SmallCanvas")
+	var play_canvas_position: Vector2 = play_canvas.global_position
 	player.body.position += Vector2(300.0, 120.0)
 	restored_creative.set_active(false)
 	valid = valid and bool(hand.enabled)
 	valid = valid and int(restored_level.get_node("SmallCanvas/CanvasSurface").tool) == 0
 	var spawn: Marker2D = restored_level.get_node_or_null("PlayerSpawn") as Marker2D
 	valid = valid and spawn != null and player.body.position.distance_to(spawn.global_position) < 0.01
-	var play_canvas: Node = restored_level.get_node("SmallCanvas")
-	var expected_center: Vector2 = play_canvas.to_global(
-		Vector2(play_canvas.canvas_size) * 0.5
-	)
-	valid = valid and player.body.aabb.get_center().distance_to(expected_center) < 0.01
+	valid = valid and play_canvas.global_position.is_equal_approx(play_canvas_position)
 	var grab_target = _first_nonliving_body(restored_level)
 	valid = valid and grab_target != null
 	if grab_target != null:

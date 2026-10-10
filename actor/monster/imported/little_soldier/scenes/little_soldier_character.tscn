@@ -1,0 +1,486 @@
+[gd_scene format=3 uid="uid://dglhcl2iuwojr"]
+
+[ext_resource type="Script" uid="uid://crqr6etmjqdry" path="res://actor/monster/imported/little_soldier/scripts/little_soldier_rig.gd" id="1_rig"]
+[ext_resource type="Script" uid="uid://pfddnh515w0o" path="res://actor/monster/imported/little_soldier/scripts/ik_target.gd" id="2_target"]
+[ext_resource type="Texture2D" uid="uid://bx5yc2oay5ycm" path="res://actor/monster/imported/little_soldier/assets/parts/body.png" id="3_body"]
+[ext_resource type="Texture2D" uid="uid://nrf3kmhac3ls" path="res://actor/monster/imported/little_soldier/assets/parts/left_arm.png" id="4_left_arm"]
+[ext_resource type="Texture2D" uid="uid://ogofx6e4h3v4" path="res://actor/monster/imported/little_soldier/assets/parts/right_arm.png" id="5_right_arm"]
+[ext_resource type="Texture2D" uid="uid://dwa5eoc66k2yd" path="res://actor/monster/imported/little_soldier/assets/parts/left_leg.png" id="6_left_leg"]
+[ext_resource type="Texture2D" uid="uid://bntr3h205bd4c" path="res://actor/monster/imported/little_soldier/assets/parts/right_leg.png" id="7_right_leg"]
+[ext_resource type="Texture2D" uid="uid://dmvu1ygys2o66" path="res://actor/monster/imported/little_soldier/assets/parts/masks/body_mask.png" id="8_body_mask"]
+[ext_resource type="Texture2D" uid="uid://c7va8q7nv280j" path="res://actor/monster/imported/little_soldier/assets/parts/masks/left_arm_mask.png" id="9_left_arm_mask"]
+[ext_resource type="Texture2D" uid="uid://cfwrf7v5r117s" path="res://actor/monster/imported/little_soldier/assets/parts/masks/right_arm_mask.png" id="10_right_arm_mask"]
+[ext_resource type="Texture2D" uid="uid://cet15q08x27fd" path="res://actor/monster/imported/little_soldier/assets/parts/masks/left_leg_mask.png" id="11_left_leg_mask"]
+[ext_resource type="Texture2D" uid="uid://bkjde84wvue2b" path="res://actor/monster/imported/little_soldier/assets/parts/masks/right_leg_mask.png" id="12_right_leg_mask"]
+[ext_resource type="Shader" uid="uid://de64k8vrisqsy" path="res://actor/monster/imported/little_soldier/shaders/part_occlusion.gdshader" id="13_occlusion"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_body"]
+resource_local_to_scene = true
+shader = ExtResource("13_occlusion")
+shader_parameter/mask_count = 1
+shader_parameter/mask_0 = ExtResource("10_right_arm_mask")
+shader_parameter/mask_0_inv_x = Vector2(0.5906289, -0.20440772)
+shader_parameter/mask_0_inv_y = Vector2(0.20440772, 0.5906289)
+shader_parameter/mask_0_inv_origin = Vector2(-35.416092, 43.990803)
+shader_parameter/mask_1_inv_x = Vector2(0, 0)
+shader_parameter/mask_1_inv_y = Vector2(0, 0)
+shader_parameter/mask_1_inv_origin = Vector2(0, 0)
+shader_parameter/mask_2_inv_x = Vector2(0, 0)
+shader_parameter/mask_2_inv_y = Vector2(0, 0)
+shader_parameter/mask_2_inv_origin = Vector2(0, 0)
+shader_parameter/mask_3_inv_x = Vector2(0, 0)
+shader_parameter/mask_3_inv_y = Vector2(0, 0)
+shader_parameter/mask_3_inv_origin = Vector2(0, 0)
+shader_parameter/mask_4_inv_x = Vector2(0, 0)
+shader_parameter/mask_4_inv_y = Vector2(0, 0)
+shader_parameter/mask_4_inv_origin = Vector2(0, 0)
+shader_parameter/mask_5_inv_x = Vector2(0, 0)
+shader_parameter/mask_5_inv_y = Vector2(0, 0)
+shader_parameter/mask_5_inv_origin = Vector2(0, 0)
+shader_parameter/mask_6_inv_x = Vector2(0, 0)
+shader_parameter/mask_6_inv_y = Vector2(0, 0)
+shader_parameter/mask_6_inv_origin = Vector2(0, 0)
+shader_parameter/mask_7_inv_x = Vector2(0, 0)
+shader_parameter/mask_7_inv_y = Vector2(0, 0)
+shader_parameter/mask_7_inv_origin = Vector2(0, 0)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_left_arm"]
+resource_local_to_scene = true
+shader = ExtResource("13_occlusion")
+shader_parameter/mask_count = 2
+shader_parameter/mask_0 = ExtResource("10_right_arm_mask")
+shader_parameter/mask_0_inv_x = Vector2(0.5906289, -0.20440772)
+shader_parameter/mask_0_inv_y = Vector2(0.20440772, 0.5906289)
+shader_parameter/mask_0_inv_origin = Vector2(-35.416092, 43.990803)
+shader_parameter/mask_1 = ExtResource("8_body_mask")
+shader_parameter/mask_1_inv_x = Vector2(0.62499994, 0)
+shader_parameter/mask_1_inv_y = Vector2(0, 0.62499994)
+shader_parameter/mask_1_inv_origin = Vector2(0, 73.99999)
+shader_parameter/mask_2_inv_x = Vector2(0, 0)
+shader_parameter/mask_2_inv_y = Vector2(0, 0)
+shader_parameter/mask_2_inv_origin = Vector2(0, 0)
+shader_parameter/mask_3_inv_x = Vector2(0, 0)
+shader_parameter/mask_3_inv_y = Vector2(0, 0)
+shader_parameter/mask_3_inv_origin = Vector2(0, 0)
+shader_parameter/mask_4_inv_x = Vector2(0, 0)
+shader_parameter/mask_4_inv_y = Vector2(0, 0)
+shader_parameter/mask_4_inv_origin = Vector2(0, 0)
+shader_parameter/mask_5_inv_x = Vector2(0, 0)
+shader_parameter/mask_5_inv_y = Vector2(0, 0)
+shader_parameter/mask_5_inv_origin = Vector2(0, 0)
+shader_parameter/mask_6_inv_x = Vector2(0, 0)
+shader_parameter/mask_6_inv_y = Vector2(0, 0)
+shader_parameter/mask_6_inv_origin = Vector2(0, 0)
+shader_parameter/mask_7_inv_x = Vector2(0, 0)
+shader_parameter/mask_7_inv_y = Vector2(0, 0)
+shader_parameter/mask_7_inv_origin = Vector2(0, 0)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_left_leg"]
+resource_local_to_scene = true
+shader = ExtResource("13_occlusion")
+shader_parameter/mask_count = 4
+shader_parameter/mask_0 = ExtResource("10_right_arm_mask")
+shader_parameter/mask_0_inv_x = Vector2(0.5906289, -0.20440772)
+shader_parameter/mask_0_inv_y = Vector2(0.20440772, 0.5906289)
+shader_parameter/mask_0_inv_origin = Vector2(-35.416092, 43.990803)
+shader_parameter/mask_1 = ExtResource("8_body_mask")
+shader_parameter/mask_1_inv_x = Vector2(0.62499994, 0)
+shader_parameter/mask_1_inv_y = Vector2(0, 0.62499994)
+shader_parameter/mask_1_inv_origin = Vector2(0, 73.99999)
+shader_parameter/mask_2 = ExtResource("9_left_arm_mask")
+shader_parameter/mask_2_inv_x = Vector2(0.61272734, 0.12324845)
+shader_parameter/mask_2_inv_y = Vector2(-0.12324845, 0.61272734)
+shader_parameter/mask_2_inv_origin = Vector2(43.676052, 41.933857)
+shader_parameter/mask_3 = ExtResource("12_right_leg_mask")
+shader_parameter/mask_3_inv_x = Vector2(1, 0)
+shader_parameter/mask_3_inv_y = Vector2(0, 1)
+shader_parameter/mask_3_inv_origin = Vector2(-46, -55)
+shader_parameter/mask_4_inv_x = Vector2(0, 0)
+shader_parameter/mask_4_inv_y = Vector2(0, 0)
+shader_parameter/mask_4_inv_origin = Vector2(0, 0)
+shader_parameter/mask_5_inv_x = Vector2(0, 0)
+shader_parameter/mask_5_inv_y = Vector2(0, 0)
+shader_parameter/mask_5_inv_origin = Vector2(0, 0)
+shader_parameter/mask_6_inv_x = Vector2(0, 0)
+shader_parameter/mask_6_inv_y = Vector2(0, 0)
+shader_parameter/mask_6_inv_origin = Vector2(0, 0)
+shader_parameter/mask_7_inv_x = Vector2(0, 0)
+shader_parameter/mask_7_inv_y = Vector2(0, 0)
+shader_parameter/mask_7_inv_origin = Vector2(0, 0)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_right_leg"]
+resource_local_to_scene = true
+shader = ExtResource("13_occlusion")
+shader_parameter/mask_count = 3
+shader_parameter/mask_0 = ExtResource("10_right_arm_mask")
+shader_parameter/mask_0_inv_x = Vector2(0.5906289, -0.20440772)
+shader_parameter/mask_0_inv_y = Vector2(0.20440772, 0.5906289)
+shader_parameter/mask_0_inv_origin = Vector2(-35.416092, 43.990803)
+shader_parameter/mask_1 = ExtResource("8_body_mask")
+shader_parameter/mask_1_inv_x = Vector2(0.62499994, 0)
+shader_parameter/mask_1_inv_y = Vector2(0, 0.62499994)
+shader_parameter/mask_1_inv_origin = Vector2(0, 73.99999)
+shader_parameter/mask_2 = ExtResource("9_left_arm_mask")
+shader_parameter/mask_2_inv_x = Vector2(0.61272734, 0.12324845)
+shader_parameter/mask_2_inv_y = Vector2(-0.12324845, 0.61272734)
+shader_parameter/mask_2_inv_origin = Vector2(43.676052, 41.933857)
+shader_parameter/mask_3 = ExtResource("11_left_leg_mask")
+shader_parameter/mask_3_inv_x = Vector2(0.62499994, 0)
+shader_parameter/mask_3_inv_y = Vector2(0, 0.62499994)
+shader_parameter/mask_3_inv_origin = Vector2(43.999996, -27.999996)
+shader_parameter/mask_4_inv_x = Vector2(0, 0)
+shader_parameter/mask_4_inv_y = Vector2(0, 0)
+shader_parameter/mask_4_inv_origin = Vector2(0, 0)
+shader_parameter/mask_5_inv_x = Vector2(0, 0)
+shader_parameter/mask_5_inv_y = Vector2(0, 0)
+shader_parameter/mask_5_inv_origin = Vector2(0, 0)
+shader_parameter/mask_6_inv_x = Vector2(0, 0)
+shader_parameter/mask_6_inv_y = Vector2(0, 0)
+shader_parameter/mask_6_inv_origin = Vector2(0, 0)
+shader_parameter/mask_7_inv_x = Vector2(0, 0)
+shader_parameter/mask_7_inv_y = Vector2(0, 0)
+shader_parameter/mask_7_inv_origin = Vector2(0, 0)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_target"]
+radius = 18.0
+
+[sub_resource type="Animation" id="Animation_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/Root:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/Root/BodyBone:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Targets/LeftHandTarget:position")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(-137.6, 0)]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Targets/RightHandTarget:position")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(137.6, 6.4)]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Skeleton2D/Root/LeftLeg:position")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(-44.8, 0)]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Skeleton2D/Root/RightLeg:position")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(38.4, 0)]
+}
+tracks/6/type = "value"
+tracks/6/imported = false
+tracks/6/enabled = true
+tracks/6/path = NodePath("Targets/LeftFootTarget:position")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(-86.4, 118.4)]
+}
+tracks/7/type = "value"
+tracks/7/imported = false
+tracks/7/enabled = true
+tracks/7/path = NodePath("Targets/RightFootTarget:position")
+tracks/7/interp = 1
+tracks/7/loop_wrap = true
+tracks/7/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(76.8, 124.8)]
+}
+
+[sub_resource type="Animation" id="Animation_walk"]
+resource_name = "walk"
+length = 1.0
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/Root:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, -6), Vector2(0, 0), Vector2(0, -6), Vector2(0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/Root/BodyBone:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [-0.04, 0.0, 0.04, 0.0, -0.04]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Targets/LeftHandTarget:position")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(-64.7, 13.7), Vector2(-130, 3.6), Vector2(-183.3, -35.45), Vector2(-130, 3.6), Vector2(-64.7, 13.7)]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Targets/RightHandTarget:position")
+tracks/3/interp = 2
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(57.3, 21.4), Vector2(127.8, 10.6), Vector2(185.3, -31.6), Vector2(127.8, 10.6), Vector2(57.3, 21.4)]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Skeleton2D/Root/LeftLeg:position")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(-44.8, 0), Vector2(-44.8, 0), Vector2(-44.8, 0), Vector2(-44.8, 0), Vector2(-44.8, 0), Vector2(-44.8, 0), Vector2(-44.8, 0), Vector2(-44.8, 0), Vector2(-44.8, 0)]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Targets/LeftFootTarget:position")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(-105.0, 114.7), Vector2(-95.8, 116.6), Vector2(-86.4, 118.4), Vector2(-77.0, 120), Vector2(-67.5, 121.35), Vector2(-77.0, 120), Vector2(-86.4, 118.4), Vector2(-95.8, 116.6), Vector2(-105.0, 114.7)]
+}
+tracks/6/type = "value"
+tracks/6/imported = false
+tracks/6/enabled = true
+tracks/6/path = NodePath("Skeleton2D/Root/RightLeg:position")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = {
+"times": PackedFloat32Array(0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(38.4, 0), Vector2(38.4, 0), Vector2(38.4, 0), Vector2(38.4, 0), Vector2(38.4, 0), Vector2(38.4, 0), Vector2(38.4, 0), Vector2(38.4, 0), Vector2(38.4, 0)]
+}
+tracks/7/type = "value"
+tracks/7/imported = false
+tracks/7/enabled = true
+tracks/7/path = NodePath("Targets/RightFootTarget:position")
+tracks/7/interp = 1
+tracks/7/loop_wrap = true
+tracks/7/keys = {
+"times": PackedFloat32Array(0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(96.5, 121.33), Vector2(86.7, 123.16), Vector2(76.8, 124.8), Vector2(66.9, 126.24), Vector2(57.0, 127.47), Vector2(66.9, 126.24), Vector2(76.8, 124.8), Vector2(86.7, 123.16), Vector2(96.5, 121.33)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_main"]
+_data = {
+&"RESET": SubResource("Animation_reset"),
+&"walk": SubResource("Animation_walk")
+}
+
+[node name="LittleSoldier" type="CanvasGroup" unique_id=1577519235]
+texture_filter = 1
+fit_margin = 8.0
+script = ExtResource("1_rig")
+
+[node name="Skeleton2D" type="Skeleton2D" parent="." unique_id=286733137]
+
+[node name="Root" type="Bone2D" parent="Skeleton2D" unique_id=578024709]
+rest = Transform2D(1, 0, 0, 1, 0, 0)
+
+[node name="BodyBone" type="Bone2D" parent="Skeleton2D/Root" unique_id=1514379545]
+rest = Transform2D(1, 0, 0, 1, 0, 0)
+
+[node name="BodyOcclusionMask" type="Sprite2D" parent="Skeleton2D/Root/BodyBone" unique_id=774448922]
+visible = false
+position = Vector2(0, -118.4)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("8_body_mask")
+
+[node name="BodyArt" type="Sprite2D" parent="Skeleton2D/Root/BodyBone" unique_id=2102342239]
+z_index = 31
+material = SubResource("ShaderMaterial_body")
+position = Vector2(0, -118.4)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("3_body")
+
+[node name="LeftArm" type="Bone2D" parent="Skeleton2D/Root/BodyBone" unique_id=2140777885]
+position = Vector2(-76.8, -124.8)
+rotation = -0.19849849
+rest = Transform2D(1, 0, 0, 1, -76.8, -124.8)
+
+[node name="LeftArmOcclusionMask" type="Sprite2D" parent="Skeleton2D/Root/BodyBone/LeftArm" unique_id=616285284]
+visible = false
+position = Vector2(-26.2, 70.8)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("9_left_arm_mask")
+
+[node name="LeftArmArt" type="Sprite2D" parent="Skeleton2D/Root/BodyBone/LeftArm" unique_id=2116704631]
+z_index = 21
+material = SubResource("ShaderMaterial_left_arm")
+position = Vector2(-26.2, 70.8)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("4_left_arm")
+
+[node name="RightArm" type="Bone2D" parent="Skeleton2D/Root/BodyBone" unique_id=130410610]
+position = Vector2(70.4, -128)
+rotation = 0.3331827
+rest = Transform2D(1, 0, 0, 1, 70.4, -128)
+
+[node name="RightArmOcclusionMask" type="Sprite2D" parent="Skeleton2D/Root/BodyBone/RightArm" unique_id=1052127701]
+visible = false
+position = Vector2(32, 73.6)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("10_right_arm_mask")
+
+[node name="RightArmArt" type="Sprite2D" parent="Skeleton2D/Root/BodyBone/RightArm" unique_id=426424964]
+z_index = 41
+position = Vector2(32, 73.6)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("5_right_arm")
+
+[node name="LeftLeg" type="Bone2D" parent="Skeleton2D/Root" unique_id=5552436]
+position = Vector2(-44.8, 0)
+rest = Transform2D(1, 0, 0, 1, -44.8, 0)
+
+[node name="LeftLegOcclusionMask" type="Sprite2D" parent="Skeleton2D/Root/LeftLeg" unique_id=531370000]
+visible = false
+position = Vector2(-25.6, 44.8)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("11_left_leg_mask")
+
+[node name="LeftLegArt" type="Sprite2D" parent="Skeleton2D/Root/LeftLeg" unique_id=1795578146]
+z_index = 1
+material = SubResource("ShaderMaterial_left_leg")
+position = Vector2(-25.6, 44.8)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("6_left_leg")
+
+[node name="RightLeg" type="Bone2D" parent="Skeleton2D/Root" unique_id=111329332]
+position = Vector2(38.4, 0)
+rest = Transform2D(1, 0, 0, 1, 38.4, 0)
+
+[node name="RightLegOcclusionMask" type="Sprite2D" parent="Skeleton2D/Root/RightLeg" unique_id=915819892]
+visible = false
+position = Vector2(7.5999985, 55)
+texture = ExtResource("12_right_leg_mask")
+
+[node name="RightLegArt" type="Sprite2D" parent="Skeleton2D/Root/RightLeg" unique_id=300740752]
+z_index = 11
+material = SubResource("ShaderMaterial_right_leg")
+position = Vector2(7.5999985, 55)
+texture = ExtResource("7_right_leg")
+
+[node name="Targets" type="Node2D" parent="." unique_id=988699560]
+z_index = 100
+
+[node name="LeftHandTarget" type="Area2D" parent="Targets" unique_id=32789808]
+position = Vector2(-137.6, 0)
+script = ExtResource("2_target")
+target_color = Color(0.95, 0.42, 0.16, 0.95)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/LeftHandTarget" unique_id=1451121154]
+position = Vector2(-91.399994, 21)
+shape = SubResource("CircleShape2D_target")
+
+[node name="RightHandTarget" type="Area2D" parent="Targets" unique_id=357201889]
+position = Vector2(137.6, 6.4)
+script = ExtResource("2_target")
+target_color = Color(0.08, 0.62, 0.95, 0.95)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/RightHandTarget" unique_id=626657722]
+position = Vector2(121.399994, 57.6)
+shape = SubResource("CircleShape2D_target")
+
+[node name="LeftFootTarget" type="Area2D" parent="Targets" unique_id=1015734718]
+position = Vector2(-86.4, 118.4)
+script = ExtResource("2_target")
+target_color = Color(0.62, 0.28, 0.92, 0.95)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/LeftFootTarget" unique_id=1579510957]
+shape = SubResource("CircleShape2D_target")
+
+[node name="RightFootTarget" type="Area2D" parent="Targets" unique_id=1994450624]
+position = Vector2(76.8, 124.8)
+script = ExtResource("2_target")
+target_color = Color(0.05, 0.68, 0.42, 0.95)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Targets/RightFootTarget" unique_id=880748641]
+shape = SubResource("CircleShape2D_target")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=655759834]
+libraries/ = SubResource("AnimationLibrary_main")
+autoplay = &"walk"

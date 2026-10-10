@@ -27,11 +27,14 @@ func _run() -> void:
 	var surface: Area2D = map_canvas.get_node("CanvasSurface")
 	var play_tool_grid := small_canvas.get_node("WorkbenchUI/Buttons/Grid") as GridContainer
 	var play_tool_buttons := small_canvas.get_node("WorkbenchUI/Buttons") as Control
-	var play_toolbar_valid: bool = play_tool_grid.columns == 3 \
-		and play_tool_buttons.offset_top == 116.0 \
-		and play_tool_grid.get_node("Brush").position.y == 0.0
+	var play_toolbar_valid: bool = play_tool_grid.columns == 2 \
+		and play_tool_buttons.position == Vector2(-42.0, 160.0) \
+		and play_tool_grid.get_node("Brush").position.y == 0.0 \
+		and not play_tool_grid.get_node("Nail").visible \
+		and (small_canvas.get_node("WorkbenchUI/Buttons/Hand") as Button).size \
+			.is_equal_approx(Vector2(52.0, 52.0))
 	valid = valid and play_toolbar_valid
-	print("[CreativeEditor] play toolbar three columns/top preserved: ",
+	print("[CreativeEditor] PPT play toolbar proportions/top preserved: ",
 		"PASS" if play_toolbar_valid else "FAIL")
 	var health_ui: Array[Node] = get_nodes_in_group("health_ui")
 	var exit_button: TextureButton = game_ui.get_node("Hud/Root/ExitButton")
@@ -58,7 +61,8 @@ func _run() -> void:
 	valid = valid and map_canvas.visible and map_canvas.active
 	valid = valid and map_canvas.get("_screen_fixed")
 	valid = valid and (map_canvas.get_node("WorkbenchUI/Buttons/Grid") as GridContainer).columns == 2
-	valid = valid and not map_canvas.get_node("WorkbenchUI/Buttons/Grid/Hand").visible
+	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons/Hand").visible
+	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons/Grid/Brush").visible
 	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons/Grid/ExpandCanvas").visible
 	var expand_window := map_canvas.get_node_or_null("ExpandCanvasWindow") as Window
 	valid = valid and expand_window != null
@@ -84,7 +88,7 @@ func _run() -> void:
 		and expand_window.get_node_or_null("Content/Column/Inputs/TopAmount") is SpinBox
 		and expand_window.get_node_or_null("Content/Column/Inputs/BottomAmount") is SpinBox
 	) else "FAIL")
-	valid = valid and map_canvas.get_node("WorkbenchUI/ResizePanel").visible
+	valid = valid and not map_canvas.get_node("WorkbenchUI/ResizePanel").visible
 	valid = valid and not map_canvas.has_node("WorkbenchUI/ResizePanel/Grid/Left")
 	valid = valid and not map_canvas.has_node("WorkbenchUI/ResizePanel/Grid/Right")
 	valid = valid and not map_canvas.has_node("WorkbenchUI/ResizePanel/Grid/Up")
@@ -100,18 +104,28 @@ func _run() -> void:
 	valid = valid and monster_palette.visible
 	var palette_toggle := monster_palette.get_node("Root/PaletteToggle") as Button
 	var palette_panel := monster_palette.get_node("Root/Panel") as PanelContainer
-	var palette_toggle_valid: bool = palette_toggle.visible and palette_panel.visible \
+	var palette_toggle_valid: bool = palette_toggle.visible and not palette_panel.visible \
 		and palette_toggle.offset_top == 80.0 and palette_toggle.offset_bottom == 124.0
 	palette_toggle.pressed.emit()
-	palette_toggle_valid = palette_toggle_valid and not palette_panel.visible and palette_toggle.text == "工具"
+	palette_toggle_valid = palette_toggle_valid and palette_panel.visible and palette_toggle.text == "关闭" \
+		and palette_panel.offset_right == -16.0 and palette_toggle.offset_right == -16.0
 	palette_toggle.pressed.emit()
-	palette_toggle_valid = palette_toggle_valid and palette_panel.visible and palette_toggle.text == "收起"
+	palette_toggle_valid = palette_toggle_valid and not palette_panel.visible and palette_toggle.text == "工具"
 	valid = valid and palette_toggle_valid
 	print("[CreativeEditor] right palette toggle: ", "PASS" if palette_toggle_valid else "FAIL")
-	var monster_grid := monster_palette.get_node("Root/Panel/Margin/VBox/MonsterGrid") as GridContainer
-	var dialogue_grid := monster_palette.get_node("Root/Panel/Margin/VBox/DialogueGrid") as GridContainer
-	var text_grid := monster_palette.get_node("Root/Panel/Margin/VBox/TextGrid") as GridContainer
+	var palette_content := "Root/Panel/Scroll/Margin/VBox/"
+	var monster_grid := monster_palette.get_node(palette_content + "MonsterGrid") as GridContainer
+	var dialogue_grid := monster_palette.get_node(palette_content + "DialogueGrid") as GridContainer
+	var text_grid := monster_palette.get_node(palette_content + "TextGrid") as GridContainer
+	var layout_grid := monster_palette.get_node(palette_content + "LayoutGrid") as GridContainer
 	valid = valid and monster_grid.columns == 3 and dialogue_grid.columns == 3 and text_grid.columns == 3
+	valid = valid and layout_grid.columns == 3
+	valid = valid and not layout_grid.has_node("MoveSpawnButton")
+	valid = valid and layout_grid.has_node("PlaceRespawnButton")
+	valid = valid and layout_grid.has_node("MoveRespawnButton")
+	valid = valid and layout_grid.has_node("PlacePlayCanvasButton")
+	valid = valid and layout_grid.has_node("MovePlayCanvasButton")
+	valid = valid and not layout_grid.has_node("PlaceSpawnButton")
 	valid = valid and not monster_grid.has_node("BombSideButton")
 	valid = valid and monster_grid.has_node("AdjustMonsterButton")
 	valid = valid and monster_grid.has_node("ResetMonsterScaleButton")
@@ -354,7 +368,7 @@ func _run() -> void:
 	map_canvas.canvas_expand_step = 16
 	var old_size: Vector2i = map_canvas.canvas_size
 	var old_position: Vector2 = map_canvas.position
-	var old_ink: int = surface.total_ink_px()
+	var old_ink: int = _total_ink_px(surface)
 	surface.write_pixel(Vector2i(5, 6), Color.BLACK)
 	surface.nail_layer.add(Vector2i(7, 8))
 	surface.refresh()
@@ -364,7 +378,7 @@ func _run() -> void:
 	valid = valid and map_canvas.position == old_position - Vector2(16, 0)
 	valid = valid and surface.black_image.get_pixel(21, 6).a > 0.5
 	valid = valid and surface.nail_layer.nails.has(Vector2i(23, 8))
-	valid = valid and surface.total_ink_px() == old_ink
+	valid = valid and _total_ink_px(surface) == old_ink
 
 	# 四边在一次操作中扩展；左、上新增区域补偿节点位置，旧内容世界坐标保持不变。
 	old_size = map_canvas.canvas_size
@@ -375,13 +389,13 @@ func _run() -> void:
 	valid = valid and map_canvas.position == old_position - Vector2(3, 7)
 	valid = valid and surface.black_image.get_pixel(24, 13).a > 0.5
 	valid = valid and surface.nail_layer.nails.has(Vector2i(26, 15))
-	valid = valid and surface.total_ink_px() == old_ink
+	valid = valid and _total_ink_px(surface) == old_ink
 	print("[CreativeEditor] four-side canvas expansion: ", "PASS" if (
 		map_canvas.canvas_size == old_size + Vector2i(8, 18)
 		and map_canvas.position == old_position - Vector2(3, 7)
 		and surface.black_image.get_pixel(24, 13).a > 0.5
 		and surface.nail_layer.nails.has(Vector2i(26, 15))
-		and surface.total_ink_px() == old_ink
+		and _total_ink_px(surface) == old_ink
 	) else "FAIL")
 
 	# 即使当前处于编辑模式，保存出来的场景也必须以正常游玩布局启动。
@@ -459,3 +473,10 @@ func _run() -> void:
 	game_ui.queue_free()
 	await process_frame
 	quit(0 if valid else 1)
+
+
+func _total_ink_px(surface: Node) -> int:
+	var total := 0
+	for count in surface.ink_px_by_material.values():
+		total += int(count)
+	return total

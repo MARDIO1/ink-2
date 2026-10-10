@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="1_monster"]
+[ext_resource type="PackedScene" path="res://actor/monster/imported/little_soldier/scenes/little_soldier_character.tscn" id="2_visual"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hitbox"]
+size = Vector2(120, 200)
+
+[node name="LittleSoldier" type="Node2D" groups=["map_monster"]]
+z_index = 1000
+script = ExtResource("1_monster")
+kind = 1
+display_name = "小兵"
+editor_pick_radius = 250.0
+hit_radius = 120.0
+
+[node name="Visual" parent="." instance=ExtResource("2_visual")]
+position = Vector2(0, -120)
+scale = Vector2(0.5, 0.5)
+
+[node name="Hitbox" type="Area2D" parent="."]
+monitoring = true
+monitorable = true
+collision_layer = 0
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hitbox"]
+position = Vector2(0, -100)
+shape = SubResource("RectangleShape2D_hitbox")
