@@ -50,6 +50,10 @@ const MAX_EDIT_HISTORY := 128
 ## 每次完成绘图、小怪编辑或撤销后，覆盖保存当前地图。
 @export var auto_save_edits := true
 @export_range(0.05, 2.0, 0.05) var auto_save_delay := 0.3
+## 编辑快照很小，可以快速保存；完整场景等用户停止操作后再落盘，避免连续编辑反复打包整关。
+@export_range(0.1, 30.0, 0.1) var full_auto_save_delay := 5.0
+## 烘焙图目前只作参考、运行时没有节点读取。按需开启，默认避免保存时再次遍历整张地图。
+@export var save_preview_on_export := false
 ## 掉出画布的固化实体无需每个物理帧扫描；低频批处理可显著降低大地图开销。
 @export_range(0.1, 2.0, 0.05) var outside_cleanup_interval := 0.35
 ## 上帝位移速度，单位 px/s。
@@ -1603,6 +1607,9 @@ func _queue_edit_auto_save() -> void:
 	_auto_save_revision += 1
 	var revision := _auto_save_revision
 	get_tree().create_timer(auto_save_delay).timeout.connect(_run_edit_auto_save.bind(revision))
+	get_tree().create_timer(maxf(full_auto_save_delay, auto_save_delay)).timeout.connect(
+		_run_full_edit_auto_save.bind(revision)
+	)
 
 
 func _run_edit_auto_save(revision: int) -> void:
@@ -1616,6 +1623,11 @@ func _run_edit_auto_save(revision: int) -> void:
 			return
 		edit_snapshot_path = snapshot_path
 		surface.saved_ink_path = snapshot_path
+
+
+func _run_full_edit_auto_save(revision: int) -> void:
+	if revision != _auto_save_revision or not active or not auto_save_edits:
+		return
 	export_map_to(map_path, false)
 
 
@@ -1676,10 +1688,11 @@ func export_map_to(save_path: String, prepare_canvas := true) -> Error:
 		return ERR_INVALID_PARAMETER
 	if prepare_canvas and _map_canvas != null:
 		_map_canvas.generate()       # 先把画布上剩的墨水固化，一个像素都不丢
-		var bake_error: Error = _map_canvas.bake_png(baked_map_path)
-		if bake_error != OK:
-			push_error("Map preview save failed: %s (%d)" % [baked_map_path, bake_error])
-			return bake_error
+		if save_preview_on_export:
+			var bake_error: Error = _map_canvas.bake_png(baked_map_path)
+			if bake_error != OK:
+				push_error("Map preview save failed: %s (%d)" % [baked_map_path, bake_error])
+				return bake_error
 		var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
 		if surface != null:
 			surface.saved_ink_path = ""

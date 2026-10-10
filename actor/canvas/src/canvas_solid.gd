@@ -11,6 +11,7 @@ const INK_GROUP := "ink_item"
 ## 生物实体标记；玩家、手、NPC 都带它，反向栅格化时跳过。
 const LIVING_TAG := "living"
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
+const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 ## 世界里真正的刚体节点类型；只认它，别靠"有没有 body 属性"认刚体。
@@ -189,8 +190,21 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		#anchors 收下刚体上的钉子像素，摘完由引擎决定残留分片还算不算静态。
 		var plan: Dictionary = {}
 		var anchors: Dictionary = {}
-		pixels += _sample_body(surface, body, plan, anchors)
-		if keep_bodies or plan.is_empty():
+		var fully_inside := canvas_rect.encloses(body.aabb)
+		var needs_plan := not keep_bodies and not fully_inside
+		if needs_plan:
+			_collect_nail_anchors(world, body, anchors)
+		pixels += _sample_body(surface, body, plan, needs_plan)
+		if keep_bodies:
+			continue
+		# 完整落在画布内的刚体无需走昂贵的 fracture/split；采样后整体移除即可。
+		if fully_inside:
+			_remove_all_nails(world, body)
+			world.remove_body_node(node)
+			if is_instance_valid(node):
+				node.queue_free()
+			continue
+		if plan.is_empty():
 			continue
 		var result: Dictionary = _fracture_preserving_remainders(world, body, plan, anchors)
 		fragments += result.fragments.size()
@@ -226,7 +240,8 @@ func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
 		var body = node.get("body")
 		var plan: Dictionary = {}
 		var anchors: Dictionary = {}
-		removed += _sample_body_rect(surface, body, clipped, plan, anchors)
+		_collect_nail_anchors(world, body, anchors)
+		removed += _sample_body_rect(surface, body, clipped, plan)
 		if plan.is_empty():
 			continue
 		var result: Dictionary = _fracture_preserving_remainders(world, body, plan, anchors)
@@ -328,21 +343,18 @@ func _write_body_node(body_node, body, owner: Node) -> void:
 		shape_node.owner = owner
 
 
-func _sample_body_rect(surface, body, local_rect: Rect2i, plan: Dictionary,
-		anchors: Dictionary) -> int:
+func _sample_body_rect(surface, body, local_rect: Rect2i, plan: Dictionary) -> int:
 	var sampled := 0
+	var selection_bounds := _selection_bounds_in_body(surface, body, local_rect)
 	for shape in body.shapes:
-		var rect: Rect2i = shape.local_aabb()
+		# 只检查框选区域映射到刚体局部坐标后的范围；大型地面不再因一个小框而整块扫描。
+		var rect: Rect2i = shape.local_aabb().intersection(selection_bounds)
 		for y in range(rect.position.y, rect.end.y):
 			for x in range(rect.position.x, rect.end.x):
 				var material: int = shape.get_pixel(x, y)
 				if material == 0:
 					continue
 				var shape_pixel := Vector2i(x, y)
-				if material == InkPalette.nail_material_id():
-					if not anchors.has(shape):
-						anchors[shape] = {}
-					anchors[shape][shape_pixel] = true
 				var world_point: Vector2 = body.to_world(Vector2(x + 0.5, y + 0.5))
 				var local: Vector2 = surface.to_local(world_point)
 				var target := Vector2i((local - Vector2(0.5, 0.5)).round())
@@ -359,46 +371,89 @@ func _sample_body_rect(surface, body, local_rect: Rect2i, plan: Dictionary,
 	return sampled
 
 
+func _selection_bounds_in_body(surface, body, local_rect: Rect2i) -> Rect2i:
+	var corners := [
+		Vector2(local_rect.position),
+		Vector2(local_rect.end.x, local_rect.position.y),
+		Vector2(local_rect.position.x, local_rect.end.y),
+		Vector2(local_rect.end),
+	]
+	var first: Vector2 = body.to_local(surface.to_global(corners[0]))
+	var minimum := first
+	var maximum := first
+	for i in range(1, corners.size()):
+		var point: Vector2 = body.to_local(surface.to_global(corners[i]))
+		minimum = minimum.min(point)
+		maximum = maximum.max(point)
+	var from := Vector2i(floori(minimum.x), floori(minimum.y)) - Vector2i.ONE
+	var to := Vector2i(ceili(maximum.x), ceili(maximum.y)) + Vector2i.ONE
+	return Rect2i(from, to - from)
+
+
 ## 删掉挂在这个刚体上、锚点像素已经被摘掉的钉子外观。
 ## Nail 是世界的子节点而不是刚体的子节点，刚体没了它不会跟着没。
 func _free_nails(world, body) -> void:
-	var alive: Dictionary = {}
-	for shape in body.shapes:
-		var rect: Rect2i = shape.local_aabb()
-		for y in range(rect.position.y, rect.end.y):
-			for x in range(rect.position.x, rect.end.x):
-				if shape.get_pixel(x, y) == InkPalette.nail_material_id():
-					alive[Vector2i(x, y)] = true
 	for child in world.get_children():
-		if child is Nail and child.get("body") == body and not alive.has(child.get("pixel")):
+		if not child is Nail or child.get("body") != body:
+			continue
+		var point: Vector2i = child.get("pixel")
+		var alive := false
+		for shape in body.shapes:
+			if shape.get_pixel(point.x, point.y) == InkPalette.nail_material_id():
+				alive = true
+				break
+		if not alive:
 			child.queue_free()
+
+
+func _remove_all_nails(world, body) -> void:
+	for child in world.get_children():
+		if child is Nail and child.get("body") == body:
+			child.queue_free()
+
+
+func _collect_nail_anchors(world, body, anchors: Dictionary) -> void:
+	for child in world.get_children():
+		if not child is Nail or child.get("body") != body:
+			continue
+		var point: Vector2i = child.get("pixel")
+		for shape in body.shapes:
+			if shape.get_pixel(point.x, point.y) != InkPalette.nail_material_id():
+				continue
+			if not anchors.has(shape):
+				anchors[shape] = {}
+			anchors[shape][point] = true
+			break
 
 
 ## 把一个刚体**落在画布里的**像素按材质颜色写回画布，返回写进画布的像素数。
 ## `plan`（{shape: {Vector2i: true}}）收下画布内的全部像素（含钉子），调用方据此把它们从刚体上摘掉；
 ## `anchors`（同上分组）收下刚体上的全部钉子像素，供摘除后的分片判定静态。
-func _sample_body(surface, body, plan: Dictionary, anchors: Dictionary) -> int:
+func _sample_body(surface, body, plan: Dictionary, collect_plan := true) -> int:
 	var written := 0
 	for shape in body.shapes:
-		var rect: Rect2i = shape.local_aabb()
-		for y in range(rect.position.y, rect.end.y):
-			for x in range(rect.position.x, rect.end.x):
-				var material: int = shape.get_pixel(x, y)
-				if material == 0:
-					continue
-				if material == InkPalette.nail_material_id():
-					if not anchors.has(shape):
-						anchors[shape] = {}
-					anchors[shape][Vector2i(x, y)] = true
+		# 按占用 chunk 遍历真实像素，跳过 AABB 内的大量空白。
+		for key in shape.chunks:
+			var chunk = shape.chunks[key]
+			var occupied: int = chunk.occ
+			var base_x: int = PixelShape.key_x(key) * Bits.SIZE
+			var base_y: int = PixelShape.key_y(key) * Bits.SIZE
+			while occupied != 0:
+				var index: int = Bits.first_bit_index(occupied)
+				occupied &= occupied - 1
+				var x: int = base_x + index % Bits.SIZE
+				var y: int = base_y + (index >> 3)
+				var material: int = chunk.mat[index]
 				var world_point: Vector2 = body.to_world(Vector2(x + 0.5, y + 0.5))
 				var local: Vector2 = surface.to_local(world_point)
 				var target := Vector2i((local - Vector2(0.5, 0.5)).round())
 				#画布外的像素不算：留在世界里继续当刚体，不从这块刚体上摘。
 				if not _inside_canvas(surface, target):
 					continue
-				if not plan.has(shape):
-					plan[shape] = {}
-				plan[shape][Vector2i(x, y)] = true
+				if collect_plan:
+					if not plan.has(shape):
+						plan[shape] = {}
+					plan[shape][Vector2i(x, y)] = true
 				#钉子不回收进画布（color = null），但画布内的那部分一样从刚体上摘走。
 				var color = _canvas_color(surface, material)
 				if color == null:

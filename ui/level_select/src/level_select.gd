@@ -72,12 +72,15 @@ static func _scan(dir_path: String, found: PackedStringArray) -> void:
 
 ## 真关卡的判据：场景里有一个叫 `Player` 的节点。只看结构，不实例化、不进游戏。
 static func _has_player(path: String) -> bool:
-	var scene := load(path) as PackedScene
-	if scene == null:
-		push_error("关卡选择：%s 不是场景" % path)
+	# 关卡列表只需要判断节点名。逐行读取并在找到 Player 后立即停止，避免为了显示
+	# 菜单就把每个大型地图完整解析进 ResourceLoader 缓存。
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_error("关卡选择：无法读取 %s" % path)
 		return false
-	var state := scene.get_state()
-	for i in state.get_node_count():
-		if String(state.get_node_name(i)) == PLAYER_NODE:
+	var marker := 'name="%s"' % PLAYER_NODE
+	while not file.eof_reached():
+		var line := file.get_line()
+		if line.begins_with("[node ") and line.contains(marker):
 			return true
 	return false

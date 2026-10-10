@@ -84,6 +84,7 @@ func _run() -> void:
 	restored_creative.map_path = autosave_path
 	restored_creative.auto_save_edits = true
 	restored_creative.auto_save_delay = 0.05
+	restored_creative.full_auto_save_delay = 0.05
 	var pixel_world: Node = restored_level
 	var map_surface: Node = restored_level.get_node("MapCanvas/CanvasSurface")
 	var map_canvas: Node = restored_level.get_node("MapCanvas")
