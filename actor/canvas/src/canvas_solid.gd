@@ -192,7 +192,7 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		pixels += _sample_body(surface, body, plan, anchors)
 		if keep_bodies or plan.is_empty():
 			continue
-		var result: Dictionary = world.fracture_pixels_and_sync(body, plan, 0.0, false, anchors)
+		var result: Dictionary = _fracture_preserving_remainders(world, body, plan, anchors)
 		fragments += result.fragments.size()
 		_free_nails(world, body)
 		#整个刚体都在画布里 -> 引擎已经把它删了，节点跟着走；还剩像素的刚体留在世界里。
@@ -229,7 +229,7 @@ func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
 		removed += _sample_body_rect(surface, body, clipped, plan, anchors)
 		if plan.is_empty():
 			continue
-		var result: Dictionary = world.fracture_pixels_and_sync(body, plan, 0.0, false, anchors)
+		var result: Dictionary = _fracture_preserving_remainders(world, body, plan, anchors)
 		_free_nails(world, body)
 		if not result.body_alive and is_instance_valid(node):
 			node.queue_free()
@@ -271,6 +271,35 @@ func sync_serializable_bodies(world) -> void:
 			world._body_nodes[index] = body_node
 		_write_body_node(body_node, body, world)
 	world.realign_body_nodes()
+
+
+## 画布回收属于编辑操作，留在画布外的像素必须继续作为可编辑实体存在。
+## 战斗运行时会把过薄或过小的碎片降级成短命灰尘；这里若沿用该策略，
+## 回收一条细线的中段会让线的一端直接消失。仅在同步碎裂期间关闭降级，
+## 随后恢复运行时参数，避免改变正常碰撞/破坏策略。
+func _fracture_preserving_remainders(world, body, plan: Dictionary,
+		anchors: Dictionary) -> Dictionary:
+	var physics = world.get("world")
+	if physics == null:
+		return world.fracture_pixels_and_sync(body, plan, 0.0, false, anchors)
+	var old_min_thickness: float = physics.min_fragment_thickness
+	var old_min_pixels: int = physics.min_fragment_pixels_downgrade
+	physics.min_fragment_thickness = 0.0
+	physics.min_fragment_pixels_downgrade = 0
+	var result: Dictionary = world.fracture_pixels_and_sync(body, plan, 0.0, false, anchors)
+	var runtime = world.get_node_or_null("SimulationRuntime/PhysicsStep")
+	if runtime != null:
+		var pieces: Array = result.fragments.duplicate()
+		if result.body_alive:
+			pieces.append(body)
+		runtime.body_fractured.emit(physics, body, pieces)
+	if not result.body_alive:
+		for shape in body.shapes:
+			shape.owner_body = null
+		body.shapes.clear()
+	physics.min_fragment_thickness = old_min_thickness
+	physics.min_fragment_pixels_downgrade = old_min_pixels
+	return result
 
 
 func _write_body_node(body_node, body, owner: Node) -> void:

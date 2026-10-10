@@ -98,11 +98,17 @@ func clear_canvas() -> void:
 ## 墨水固化成实体（原 E 键）。
 func generate() -> void:
 	solid.solidify(surface, world, _map_editor_mode)
+	var yellow = surface.yellow_rule()
+	if yellow != null:
+		yellow.solidify(surface)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 
 ## 画布范围内的实体重采样回墨水。
 func return_to_canvas() -> void:
+	var yellow = surface.yellow_rule()
+	if yellow != null:
+		yellow.reclaim(surface)
 	solid.rasterize(surface, world)
 
 

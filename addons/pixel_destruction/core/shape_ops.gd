@@ -25,8 +25,16 @@ static func create(body = null, ref = null) -> PixelShape:
 
 
 ## 清空所有像素（形状对象本身保留）。
+##
+## ⚠️⚠️ 显式 touch() 不是多余的：本文件里这三个函数都是**绕过 set_pixel 的批量改动**，
+##    而 local_aabb() / local_hull() 的缓存按 revision 判新鲜度。
+##    以前只有"挂了刚体"的形状才会 bump（rebuild 里顺带做的），
+##    **没挂刚体的形状会静默返回旧的包围体** —— 凸包过期方向是"比物体大"
+##    （不会漏命中，但编辑器里画着一个已经不存在的轮廓），AABB 过期则是老问题：
+##    形状与碰撞箱错位。语义就是 touch() 的那句："内容变了，但不知道哪里。"
 static func clear(shape: PixelShape) -> void:
 	shape.chunks.clear()
+	shape.touch()
 	var ob = shape.owner_body
 	if ob != null:
 		ob.rebuild(ob.shapes)
@@ -39,11 +47,13 @@ static func copy_content(src: PixelShape, dst: PixelShape) -> void:
 	for k in src.chunks:
 		dst.chunks[k] = (src.chunks[k] as PixelChunk).clone()
 	dst.density_scale = src.density_scale
+	dst.touch()          # 见 clear() 的说明：绕过 set_pixel 的批量改动必须自己 bump
 
 
 ## 把 src 的像素**并进** dst（保留 dst 原有的）。同一 chunk 内按位取并集，
 ## 只覆盖 src 新增的那些位。
 static func union_into(src: PixelShape, dst: PixelShape) -> void:
+	var changed := false
 	for k in src.chunks:
 		var sc: PixelChunk = src.chunks[k]
 		if sc.occ == 0:
@@ -51,6 +61,7 @@ static func union_into(src: PixelShape, dst: PixelShape) -> void:
 		var dc: PixelChunk = dst.chunks.get(k)
 		if dc == null:
 			dst.chunks[k] = sc.clone()
+			changed = true
 			continue
 		var bits := sc.occ & ~dc.occ
 		while bits != 0:
@@ -58,6 +69,10 @@ static func union_into(src: PixelShape, dst: PixelShape) -> void:
 			bits &= bits - 1
 			dc.occ |= 1 << i
 			dc.mat[i] = sc.mat[i]
+			changed = true
+	# 只在真的并进了东西时 bump（见 clear() 的说明）——空并集不该让渲染器白重建一遍
+	if changed:
+		dst.touch()
 
 
 ## 把形状挂到刚体上（会从原刚体上摘下来）。

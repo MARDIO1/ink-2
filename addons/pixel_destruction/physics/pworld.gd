@@ -7,7 +7,6 @@ extends RefCounted
 
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Collide := preload("res://addons/pixel_destruction/physics/collide.gd")
-const Solver := preload("res://addons/pixel_destruction/physics/solver.gd")
 
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
@@ -52,7 +51,6 @@ var terminal_speed := 650.0
 var max_angular_velocity := 1000.0
 var fixed_dt := 1.0 / 60.0
 var max_substeps := 4
-var solver := Solver.new()
 
 var sleeping_enabled := true
 var sleep_linear := 6.0
@@ -460,6 +458,30 @@ var min_fragment_pixels_downgrade := 0
 # 精确覆盖与矩形上限不可兼得，宁可多几个矩形也不要幻影碰撞体。
 var max_rects_per_shape := 0
 
+## ---- 碰撞体多边形拟合（Noita 式）----
+##
+## 默认把**矩形集合拟合成凸多边形**再交给 Rapier：斜边是**直的**（锯齿被拉平）、
+## 块数远少于矩形（实心地面 1 个、圆盘 1 个、平滑斜坡 4 个、楼梯 1 个）。
+##
+## ⚠️ 代价是**幻影**：凸包会把凹处填平，碰撞体比像素厚一点（上限 = poly_dev_tol）。
+##    这是**有意的取舍**（Noita 也这么做：像素只是真源，交给 Box2D 的是凸形状）。
+##    与 max_rects_per_shape 那条注释不冲突：那条管的是"矩形上限被顶到时怎么近似"，
+##    这条管的是"要不要用多边形当碰撞体"—— 想要逐像素精确就把它设 false。
+## ⚠️ 关掉（false）= 回到"一堆轴对齐矩形"，8 条逐位基准跑的就是那条路。
+var poly_colliders := true
+## 偏离容差（像素）：碰撞体允许比像素表面"厚"多少。
+## 1 像素的台阶会被拉成斜线；12 像素的锯齿不会被填平（洞也不会被封死）。
+## 判据与实测见 src/core/poly_fit.gd 与 tests/validation_poly.gd。
+## ⚠️ 默认 1.0 而不是 2.0：判据是**平均**厚度，深而窄的凹口会被低估
+##    （实测"墙+洞"在 2.0 时会封掉半个洞）。详见 poly_fit.gd 的说明。
+var poly_dev_tol := 1.0
+## 矩形数超过它就**不拟合**，退回精确矩形。
+##
+## ⚠️ 为什么要有这条闸：拟合是 O(矩形数 x 邻居数)，而且每次几何变化都要重算整块。
+##    768x100 的高频锯齿地形有 769 个矩形 —— 那种形状拟合出来的块数几乎不减少
+##    （高频锯齿本来就不是凸的），却要付整趟拟合的钱。默认 256 是实测的拐点。
+var poly_max_rects := 256
+
 
 ## ---- 剖面计数（默认关）----
 ## 教训：只统计**累计耗时**会漏掉"每个阶段都不慢、整帧很慢"这类问题
@@ -469,19 +491,18 @@ var max_rects_per_shape := 0
 var profile_enabled := false
 var profile_counts: Dictionary = {}
 
-var manifolds: Array = []
-
-## 本次子步流形走"打包数据"还是"对象数组"——**整个子步只有一个判断点**。
+## ⚠️ 墓碑：这里原来有 `var manifolds: Array` 与 `var _packed_manifolds := false`。
 ##
-## ⚠️ 这个字段的由来是一个真实事故：最初三处消费者各自判断 @@use_native_solve@@，
-## 但 @@_broadphase_native@@ 看的是它、@@_solve@@ 看的却是它**且** @@grabs.is_empty()@@。
-## 结果按住拖动时：宽相跳过了对象装配（manifolds 置空），求解器却因为"有抓取"
-## 退回对象路径 —— 拿到空数组、**所有接触约束消失**，表现为
-## "拖动一个方块，其它方块全部掉穿地面"（只有被抓的那个还被抓取约束吊着）。
+## 它们是「GDScript 宽相把接触装配成对象数组、再由 GDScript 求解器消费」那套路径的
+## 产物。宽相 / 求解交给 Rapier 之后：
+##   · `manifolds` **从来没被填过**（唯一的读者是 debug_overlay 的一个空循环）；
+##   · `_packed_manifolds` 只剩声明（宽相里确实判过一次，但那条路已经不存在了）。
+## 两个都已删除。这段留着是因为它记的教训仍然有效：
 ##
-## 现在一律读这个字段，并且它在 @@_broadphase@@ 里**只算一次**，
-## 所以同一子步内宽相 / 唤醒 / 求解 / 休眠看到的是同一个值，不可能再分叉。
-var _packed_manifolds := false
+##   最初三处消费者各自判断 @@use_native_solve@@，而且宽相与求解看的口径还不一样 ——
+##   按住拖动时宽相跳过对象装配、求解器却因为「有抓取」退回对象路径，拿到空数组，
+##   于是**所有接触约束消失**（症状：拖动一个方块，其它方块全部掉穿地面）。
+##   **同一子步内「走哪条路」只能有一个真源** —— 以后新增开关别再让两个地方各判一次。
 
 
 var grabs: Array = []
@@ -513,6 +534,22 @@ var material_density := PackedFloat32Array()
 ## ⚠️ Rapier 的接触系数由**两个碰撞体合成**（CoefficientCombineRule，默认 Average）：
 ##    地面 0.8 + 箱子 0.2 -> 接触处 0.5。所以"让某个材质说了算"要两边设同一个值。
 var material_friction := PackedFloat32Array()
+
+## op 5（重建碰撞体）给**新**碰撞体设的初始摩擦系数。
+##
+## ⚠️ 它原来叫 `solver.global_friction` —— 求解内核整体删除后，它是 Solver 里
+##    **唯一**还有读者的参数（op 5 的命令流尾巴带着它），所以搬到这里。
+##    默认 0.5 = Rapier 自己的默认值；重建之后每体的 b.friction 会紧跟着重推一次
+##    （见「新碰撞体的摩擦/恢复回到 Rapier 默认」那一段）。
+var global_friction := 0.5
+
+## 允许的穿透深度（像素）——**判据用的容差，不是求解参数**。
+##
+## ⚠️ 它原来是 Solver 的求解参数（穿透修正 / 推测接触的配套）。求解交给 Rapier
+##    之后它不再参与任何计算，但「盒子不能陷进地面」这条判据需要一个**引擎侧**的
+##    阈值：在测试里硬编码数值正是开发日志记过的坑（test_parallel 把「不该陷过 1.0」
+##    写死，参数一调就误报）。所以留成 PWorld 的常量，判据读它。
+const PENETRATION_SLOP := 1.0
 var material_restitution := PackedFloat32Array()
 # ⚠️ 这里曾经有个 _friction_fn 缓存字段，**已删除** —— 见 friction_callable()。
 # ⚠️ 这里曾经有个 _restitution_fn 缓存字段，**已删除** —— 见 restitution_callable()。
@@ -968,6 +1005,36 @@ static func _rp_f32(b: PackedByteArray, v: float) -> void:
 	b.resize(n + 4)
 	b.encode_float(n, v)
 
+## Rapier 侧的**质量** —— 判据用（-1 = 拿不到）。
+##
+## ⚠️ 为什么必须能读到它：碰撞体拟合之后面积 >= 像素面积（幻影），密度得按
+##    "质量 / 多边形面积"反算。反算错了**不会报错**，只会让两边质量静默分叉，
+##    而所有按 mass 算的力（抓取限力、灰尘判据…）都会跟着错。
+func rp_body_mass(b: PBody) -> float:
+	if not _rp_ensure() or b.rapier_id <= 0:
+		return -1.0
+	var cmds := PackedByteArray()
+	_rp_u8(cmds, 45)
+	_rp_u32(cmds, b.rapier_id)
+	var res := _rp_send(cmds, 8)
+	if res.size() < 12:
+		return -1.0
+	return res.decode_double(4)
+
+
+## Rapier 侧的**角惯量**（-1 = 拿不到）—— 与 rp_body_mass 配套的判据。
+func rp_body_inertia(b: PBody) -> float:
+	if not _rp_ensure() or b.rapier_id <= 0:
+		return -1.0
+	var cmds := PackedByteArray()
+	_rp_u8(cmds, 46)
+	_rp_u32(cmds, b.rapier_id)
+	var res := _rp_send(cmds, 8)
+	if res.size() < 12:
+		return -1.0
+	return res.decode_double(4)
+
+
 ## 原生（Rapier）侧的刚体数 —— **诊断用**。
 ##
 ## ⚠️ 为什么必须有它：GDScript 侧的 bodies.size() 与 Rapier 侧的刚体数是**两个数**，
@@ -984,6 +1051,66 @@ func rp_body_count() -> int:
 	if res.size() < 8:
 		return -1
 	return res.decode_s32(4)
+
+
+## 读回一个刚体**真的在用**的碰撞体形状（凸多边形；走矩形那条路时是 4 个角的矩形）。
+##
+## ⚠️ 这是**问物理要真相**（op 44），不是 GDScript 侧另算一份 —— 那样可视化会和
+##    碰撞体悄悄分叉（本仓库为"调试可视化画错"栽过：它比没有可视化更糟）。
+## 结果按 rects_rev 缓存：形状没变就不再问（每问一次是一次 _rp_send，约 2.8 us）。
+## 用途：调试叠加层 / 门面的 colliders()。编辑器抓手不走这条路（那里不跑物理）。
+func fetch_polys(b: PBody) -> Array:
+	if b.polys_rev == b.rects_rev:
+		return b.polys
+	b.polys_rev = b.rects_rev
+	b.polys = []
+	if not _rp_ensure() or b.rapier_id <= 0:
+		return b.polys
+	# ⚠️ 第一趟给一个**宽裕**的 cap（4096 字节 ≈ 500 个顶点）：绝大多数刚体一次就够。
+	#    别用 cap = 0 去"探大小" —— 那会让原生侧写出 4 字节而 cap 是 0，
+	#    触发 "结果段越界" 的假警告（那是命令流错位的指纹，留着会把真问题淹掉）。
+	var probe := PackedByteArray()
+	_rp_u8(probe, 44)
+	_rp_u32(probe, b.rapier_id)
+	_rp_i32(probe, 4096)
+	var res := _rp_send(probe, 4096)
+	if res.size() < 8:
+		return b.polys
+	var need: int = res.decode_s32(4)
+	if need <= 0:
+		return b.polys
+	if need <= 4096:
+		# 一趟就成了：payload 就是块本身（off = 4 是协议头的 written）
+		return _read_polys(b, res, 4)
+	# 太大了：按 need 精确重开一次（payload = 块本身）
+	var cmds := PackedByteArray()
+	_rp_u8(cmds, 44)
+	_rp_u32(cmds, b.rapier_id)
+	_rp_i32(cmds, need)
+	var res2 := _rp_send(cmds, need)
+	if res2.size() < 4 + need:
+		return b.polys
+	return _read_polys(b, res2, 4)
+
+
+## 把 op 44 的结果段解析成多边形（off 是 payload 起点）。
+func _read_polys(b: PBody, res: PackedByteArray, start: int) -> Array:
+	var off := start
+	var np: int = res.decode_s32(off)
+	off += 4
+	for i in np:
+		var cnt: int = res.decode_s32(off)
+		off += 4
+		if cnt < 3:
+			off += cnt * 8
+			continue
+		var poly := PackedVector2Array()
+		poly.resize(cnt)
+		for k in cnt:
+			poly[k] = Vector2(res.decode_float(off), res.decode_float(off + 4))
+			off += 8
+		b.polys.append(poly)
+	return b.polys
 
 
 func _rp_send(cmds: PackedByteArray, out_cap: int) -> PackedByteArray:
@@ -1231,9 +1358,18 @@ func _substep_rapier(dt: float) -> void:
 			_rp_f64(cmds, b.gravity_scale)
 			b._rp_gravity_scale = b.gravity_scale
 		if b._rp_rects_rev != b.rects_rev:
-			_rp_u8(cmds, 5)
-			_rp_u32(cmds, b.rapier_id)
-			_rp_i32(cmds, b.rects.size())
+			# ⚠️ 两条路**互斥**（都会先清空旧碰撞体），二选一由 poly_colliders / poly_max_rects 决定：
+			#   · op 43：矩形 -> **凸多边形**（原生侧拟合，Noita 式）
+			#   · op 5 ：矩形 -> Rapier cuboid（精确，逐像素不差）
+			var as_polys: bool = poly_colliders and b.rects.size() <= poly_max_rects
+			if as_polys:
+				_rp_u8(cmds, 43)
+				_rp_u32(cmds, b.rapier_id)
+				_rp_i32(cmds, b.rects.size())
+			else:
+				_rp_u8(cmds, 5)
+				_rp_u32(cmds, b.rapier_id)
+				_rp_i32(cmds, b.rects.size())
 			# ⚠️ 整段**先 resize 一次**，再逐字段 encode_float —— 不要每个字段都走 _rp_f32。
 			#    _rp_f32 每次都 `resize(size+4)` + `encode_float`：1200 个矩形 = 4800 次
 			#    resize（每次都动整个缓冲区）+ 4800 次编码。实测（1200 / 4000 个矩形）：
@@ -1249,15 +1385,26 @@ func _substep_rapier(dt: float) -> void:
 				cmds.encode_float(off + 8, r.size.x)
 				cmds.encode_float(off + 12, r.size.y)
 				off += 16
-			_rp_f64(cmds, solver.global_friction)
+			_rp_f64(cmds, global_friction)
+			if as_polys:
+				_rp_f64(cmds, b.mass)
+				_rp_f32(cmds, poly_dev_tol)
 			b._rp_rects_rev = b.rects_rev
+			b.polys_rev = -1          # 形状变了：读回的碰撞体形状作废
 			# ⚠️ 重建碰撞体 = Rapier 侧的分组回到**默认全 1**（新碰撞体不会继承旧分组）。
 			#    把镜像打回"未推送"，让下面那段重新推一次 —— 否则"擦掉一块地形"
 			#    就会让那个刚体的层/掩码静默失效（子弹又开始打中它）。
 			b._rp_layer = -1
 			b._rp_mask = -1
-			# ⚠️ 同理：新碰撞体的密度也回到 Rapier 默认的 1.0，必须重推。
-			b._rp_density = -1.0
+			if as_polys:
+				# ⚠️⚠️ 多边形这条路**不推密度**：op 43 已经按 mass/多边形面积 反算好了。
+				#    多边形面积 >= 像素面积（幻影），推"材质密度"会让 Rapier 的质量比
+				#    b.mass 大出幻影那一份（薄形状能差 2 倍）。把镜像写成"与 b.density
+				#    一致"，下面那段 op 34 就不会再去覆盖它。
+				b._rp_density = b.density
+			else:
+				# ⚠️ 矩形那条路：新碰撞体的密度回到 Rapier 默认的 1.0，必须重推。
+				b._rp_density = -1.0
 			# ⚠️ 同理：新碰撞体的摩擦/恢复系数也回到 Rapier 默认（0.5 / 0.0），必须重推。
 			b._rp_friction = -1.0
 			b._rp_restitution = -1.0
@@ -2216,11 +2363,11 @@ class Contact:
 ##
 ## ## 为什么不用求解器的 normal_impulse
 ##
-## 第一版是遍历流形取 Solver.Point.normal_impulse。那在**默认配置下完全空转**：
-## 默认 use_native_solve && use_native_broadphase → _packed_manifolds = true →
-## _broadphase_native() 把 manifolds 置空，冲量留在 C++ 里且**不回写**。
-## 于是遍历的是一个空数组，Contact.impulse 永远是近似值、tangent_impulse 恒为 0，
-## 而且不报任何错。
+## 第一版是遍历流形取 Solver.Point.normal_impulse。那在 native 路径下完全空转：
+## 宽相把 manifolds 置空，冲量留在 C++ 里且**不回写** —— 于是遍历的是一个空数组，
+## Contact.impulse 永远是近似值、tangent_impulse 恒为 0，而且不报任何错。
+## （那条路径连同 manifolds 字段一起删掉了；这段留着是因为教训仍然有效：
+##   **「读一个没人填的容器」不会有任何报错**。）
 ##
 ## 现在这个算法**对两条路径都成立** —— 它只看速度，不关心冲量是在哪算的。
 ## 顺便还解决了近似值的最大毛病（偏心撞击高估，因为忽略转动项）：
@@ -2589,14 +2736,6 @@ func fracture(body: PBody, damage, burst_speed: float = 40.0) -> Array:
 		floori(dmg_bounds.position.x), floori(dmg_bounds.position.y),
 		ceili(dmg_bounds.size.x) + 1, ceili(dmg_bounds.size.y) + 1)
 	for s in body.shapes:
-		# 优先走 GPU：一次 dispatch 同时完成破坏 + 分量标注
-		var accel: Dictionary = Destruction.apply_damage_and_split_gpu(s, damage, min_fragment_pixels)
-		if not accel.is_empty():
-			removed += int(accel["removed"])
-			for p in accel["parts"]:
-				parts.append(p)
-			continue
-		# CPU 回退路径
 		# ⚠️⚠️ 判据必须在 apply_damage **之前**取！
 		#    挖完之后，洞的边缘像素天然邻接空像素 —— 那时再问"碰到边界了吗"
 		#    永远返回 true，跳过永远不生效（我第一版就是这么写的，
@@ -2704,8 +2843,6 @@ func fracture(body: PBody, damage, burst_speed: float = 40.0) -> Array:
 		# 传 false 会让每个碎片白跑一次全量连通性标注（~14 ms/个）。
 		add_body(frag, [parts[i]], Callable(), true)
 		spawned.append(frag)
-	if not spawned.is_empty():
-		solver.clear_warm()
 	return spawned
 
 
@@ -3188,7 +3325,7 @@ func enforce_body_budget() -> int:
 ##
 ## ⚠️ 顺序不能反：必须**先** extract（此时像素还在），**再** fracture（它会把像素删掉）。
 ##    反过来就什么都捡不到了。
-func detach(body: PBody, damage, burst_speed: float = 40.0) -> Array:
+func detach(body: PBody, damage) -> Array:
 	# ① 先捡：把"将被命中"的像素收集出来
 	var extracted: Array = []
 	for s in body.shapes:

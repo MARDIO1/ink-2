@@ -8,6 +8,7 @@ extends RefCounted
 const MassProps := preload("res://addons/pixel_destruction/core/mass_props.gd")
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")
 const GreedyRects := preload("res://addons/pixel_destruction/core/greedy_rects.gd")
+const HullFit := preload("res://addons/pixel_destruction/core/hull_fit.gd")
 
 var id := -1
 var position := Vector2.ZERO      # Body 原点（世界坐标）
@@ -36,7 +37,15 @@ var inv_mass := 0.0
 var inv_inertia := 0.0
 var local_com := Vector2.ZERO     # 质心（Body 局部坐标，像素单位）
 
-var rects: Array = []             # Array[Rect2]，局部空间碰撞矩形（贪心分解结果）
+var rects: Array = []             # Array[Rect2]，局部空间碰撞矩形（贪心分解结果，**精确覆盖**）
+## 碰撞体**真的在用**的凸多边形（局部空间，Array[PackedVector2Array]）—— **惰性**读回。
+##
+## ⚠️ 它不是"另算一份"：由 PWorld.fetch_polys() 走 op 44 从 Rapier 读回来，
+##    所以走矩形那条路时这里就是矩形（4 个角）。可视化必须用这个，
+##    否则叠加层画的形状和碰撞体不是一回事。
+## 形状一变（rects_rev）就作废；polys_rev == -1 表示"还没读过"。
+var polys: Array = []
+var polys_rev := -1
 var shapes: Array = []            # Array[PixelShape]，局部空间像素数据
 var is_static := false
 ## **冻结**（可逆）—— 与 is_static 的区别：静态是"天生不动"，冻结是"暂时不动，状态留着"。
@@ -612,6 +621,78 @@ func _rect_world_aabb(local_rect: Rect2) -> Rect2:
 	var ex := absf(h.x * cos(rotation)) + absf(h.y * sin(rotation))
 	var ey := absf(h.x * sin(rotation)) + absf(h.y * cos(rotation))
 	return Rect2(c - Vector2(ex, ey), Vector2(ex, ey) * 2.0)
+
+
+## ---------- 凸包（多边形碰撞箱拟合）—— **与 aabb 并列**的另一种包围体 ----------
+##
+## AABB 是轴对齐的，刚体一转它就按外接半径膨胀（100x8 的板转 45 度 -> 76x76 的空盒子）。
+## 凸包跟着刚体一起转，筛起来是紧的 —— 代价是判定 O(顶点数)，比"两个区间相交"贵。
+##
+## ⚠️⚠️ 为什么**惰性**，而不是像 aabb 那样在 update_aabb() 里一起算：
+##    update_aabb() 是**每子步对每个动态刚体**都跑的（PWorld 里那一圈），
+##    而凸包要逐顶点做旋转。3000 个碎片的压力场景下，那是一条纯粹白烧的开销 ——
+##    而绝大多数项目根本不问凸包。所以这里"谁问谁付"：
+##    读的时候按 (位置, 旋转, rects_rev) 判一次新鲜度，三者都没变就直接返回缓存。
+##    ⚠️ 三个判据缺一不可：凸包同时依赖**形状**（rects）和**位姿**。
+##    （只查 rects_rev 会在刚体移动后返回旧凸包；只查位姿会在破坏后返回旧凸包 ——
+##      两种都是静默错，而且错的方向是"包围体不对"，很难往缓存上想。）
+var _hull_local := PackedVector2Array()
+var _hull_local_rev := -1
+var _hull_world := PackedVector2Array()
+var _hull_world_rev := -1
+var _hull_world_pos := Vector2(INF, INF)
+var _hull_world_rot := INF
+
+
+## 局部空间的凸包。
+## ⚠️ 来源是 **rects**（与 aabb 同一个来源）：贪心分解是**精确覆盖**，
+##    所以它逐点等于像素集的凸包；用了 decompose_proxy() 的刚体会跟着变大（那是代理的体积）。
+func local_hull() -> PackedVector2Array:
+	if _hull_local_rev == rects_rev:
+		return _hull_local
+	_hull_local = HullFit.hull_of_rects(rects)
+	_hull_local_rev = rects_rev
+	return _hull_local
+
+
+## **已经算好的**局部凸包；没算过（或形状改过）时返回空数组 —— **绝不触发重算**。
+##
+## 给"剔除"这类**不值得为它付冷启动代价**的地方用（Query.raycast 就是）：
+## 算过就用，没算过就退化成 AABB。语义是"缓存探针"，不是"取凸包"。
+##
+## ⚠️⚠️ 为什么查询不能直接调 local_hull()：算一次的代价随**形状尺寸**走
+##    （768x100 的地面实测 5.05 ms，见 tests/bench_hull.gd），而它一次只省下
+##    "这条射线少走几十格 DDA"（约 0.2 ms）。地形每被擦一笔就作废一次 ——
+##    于是"为了剔除而现算"在破坏类玩法里是**净亏**，而且亏在射线那一帧（掉帧）。
+##    契约：剔除**只影响快慢**，不影响结果（凸包是保守外接）。
+func cached_local_hull() -> PackedVector2Array:
+	return _hull_local if _hull_local_rev == rects_rev else PackedVector2Array()
+
+
+## 世界空间的凸包。**包围体，不是碰撞形状** —— 凹形状的凹角会被填平，别拿它去碰撞。
+## 用途：查询粗筛（Query.raycast）、调试可视化、游戏层要"比 AABB 紧的轮廓"。
+func world_hull() -> PackedVector2Array:
+	if _hull_world_rev == rects_rev and _hull_world_pos == position \
+			and _hull_world_rot == rotation:
+		return _hull_world
+	var lh := local_hull()
+	var c := cos(rotation)
+	var s := sin(rotation)
+	var out := PackedVector2Array()
+	out.resize(lh.size())
+	for i in lh.size():
+		var p := lh[i]
+		out[i] = Vector2(position.x + p.x * c - p.y * s, position.y + p.x * s + p.y * c)
+	_hull_world = out
+	_hull_world_rev = rects_rev
+	_hull_world_pos = position
+	_hull_world_rot = rotation
+	return _hull_world
+
+
+## 世界坐标点在凸包内吗（**保守**：凸包比像素集大，返回 true 不代表那里真有像素）。
+func hull_contains(world_point: Vector2) -> bool:
+	return HullFit.contains(world_hull(), world_point)
 
 
 ## 休眠判据：质心线速度 + **最快点**的表面速度（|ω| * 包围半径）。

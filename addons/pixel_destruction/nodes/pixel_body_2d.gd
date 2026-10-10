@@ -22,6 +22,7 @@ extends Node2D
 
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
+const HullFit := preload("res://addons/pixel_destruction/core/hull_fit.gd")
 
 enum Source { RECT, CIRCLE, TEXTURE }
 
@@ -154,15 +155,27 @@ func _draw() -> void:
 		draw_circle(c, radius, col, false, 1.0)
 		draw_circle(Vector2.ZERO, 1.5, col)
 	elif aabb.size.x > 0 and aabb.size.y > 0:
-		# RECT / TEXTURE / PAINT：外接矩形就是形状的边界，画它是对的。
+		# RECT / TEXTURE / PAINT：画**凸包**（多边形碰撞箱拟合），不画外接矩形。
 		#
-		# （TEXTURE/PAINT 的真实轮廓要逐像素描边才准，代价太高 ——
-		#   外接框作为抓手够用，而且不会误导：它不是"形状本身"，只是范围。）
-		var p := Vector2(aabb.position)
-		var sz := Vector2(aabb.size)
-		draw_rect(Rect2(p, sz), col, false, 1.0)
-		# 原点在左上角：明确标出来（半径恒为 1.5，永远是圆）
-		draw_circle(p, 1.5, col)
+		# ⚠️ 这里以前画的是外接矩形。对 TEXTURE/PAINT 这类不规则轮廓，矩形框和真实形状
+		#    差得很远（一个斜切方块，框比本体大一倍），看起来就是"抓手和像素对不上"。
+		#    凸包与像素集**紧贴**且**保守**（像素一定在凸包内），所以它不会骗人。
+		#    RECT 的凸包就是那个矩形本身，画出来与以前一致。
+		#
+		# ⚠️ 必须走缓存：_draw() 每次画布重绘都跑，而凸包要扫形状的块。
+		var hull := _gizmo_hull()
+		if hull.size() >= 3:
+			var pts := PackedVector2Array(hull)
+			pts.append(hull[0])          # 顶点列表不含首点，画环要自己接上
+			draw_polyline(pts, col, 1.0)
+			# 原点在左上角：明确标出来（半径恒为 1.5，永远是圆）
+			draw_circle(Vector2(aabb.position), 1.5, col)
+		else:
+			# 兜底（空形状算不出凸包）：至少画个外接，节点还选得中、拖得动
+			var p := Vector2(aabb.position)
+			var sz := Vector2(aabb.size)
+			draw_rect(Rect2(p, sz), col, false, 1.0)
+			draw_circle(p, 1.5, col)
 
 
 ## 节点 scale 的绝对值。
@@ -254,6 +267,31 @@ func _gizmo_aabb() -> Rect2i:
 	return _aabb_cache
 
 
+## 抓手凸包的缓存。与 _gizmo_aabb() 同一套失效点（invalidate_gizmo）。
+##
+## ⚠️ 比 AABB 更值得缓存：AABB 是 O(1) 读缓存，而凸包要扫形状的块再做一次单调链
+##    （Ground 是 1248 块），而 _draw() 每次画布重绘都跑 —— 编辑器拖动时会很烫。
+##
+## ⚠️ 多形状时取的是**并集的凸包**（各形状凸包的顶点再求一次凸包）：
+##    并集一定被它包住，这正是"包围体"要的性质；两个形状离得远时它确实会变大，
+##    但那是并集的真实外接，不是算错。
+var _gizmo_hull_cache := PackedVector2Array()
+var _gizmo_hull_valid := false
+
+
+func _gizmo_hull() -> PackedVector2Array:
+	if not _gizmo_hull_valid:
+		var pts := PackedVector2Array()
+		for s in collect_shapes():
+			var sh := s as PixelShape
+			if sh == null or sh.is_empty():
+				continue
+			pts.append_array(sh.local_hull())
+		_gizmo_hull_cache = HullFit.of_points(pts)
+		_gizmo_hull_valid = true
+	return _gizmo_hull_cache
+
+
 ## 有没有形状子节点（与 collect_shapes 的判据保持一致：鸭子类型，不认类型）。
 func _has_shape_child() -> bool:
 	for c in get_children():
@@ -268,6 +306,7 @@ func invalidate_gizmo() -> void:
 	#    而重建形状可能要几万次 set_pixel。
 	#    形状只在**自身属性**或 **scale** 变化时失效（见 setter 与 _notification）。
 	_aabb_valid = false
+	_gizmo_hull_valid = false
 	queue_redraw()
 	# 形状变了，兄弟里的渲染节点也要重建贴图（它是子节点，位置由节点变换自动跟随，
 	# 只有**内容**要人来通知）

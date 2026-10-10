@@ -8,6 +8,9 @@ extends RefCounted
 
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")
 const PixelChunk := preload("res://addons/pixel_destruction/core/pixel_chunk.gd")
+# ⚠️ HullFit 反过来**不能** preload 本文件（那就成环，编辑器会无声段错误）。
+#    所以它那边的 shape 参数是鸭子类型，这里可以放心 preload 它。
+const HullFit := preload("res://addons/pixel_destruction/core/hull_fit.gd")
 # ⚠️ **绝对不要**在这里 preload destruction.gd。
 # destruction.gd 已经 preload 了本文件，再加一条反向 preload 就成环 ——
 # GDScript 运行时能容忍，但**编辑器的脚本扫描器会无限递归然后无声段错误**
@@ -139,10 +142,9 @@ func mark_dirty_key(k: int) -> void:
 ##    表现是形状与碰撞体错位（用户报过两次，两次都很像"只差一点点"）。
 ##
 ##    当前唯一的调用方 PWorld.fracture() 传的是 dmg_rect ——
-##    damage.bounds() 向外取整 +1；而 make_keep_mask（CPU）和
-##    destruction.glsl（GPU）都只在 damage.hits(像素中心) 为真时删除，
-##    hits 的范围恰好就是 bounds()，所以"被删像素 ⊆ dmg_rect"是**可证的**。
-##    两条路径都逐行核过，不是"看起来差不多"。
+##    damage.bounds() 向外取整 +1；而 make_keep_mask 只在 damage.hits(像素中心)
+##    为真时删除，hits 的范围恰好就是 bounds()，所以"被删像素 ⊆ dmg_rect"是**可证的**。
+##    逐行核过，不是"看起来差不多"。
 ##
 ## 用法见 PWorld.fracture()。
 func mark_dirty_range(rect: Rect2i) -> void:
@@ -443,6 +445,39 @@ func local_aabb() -> Rect2i:
 	else:
 		_aabb_cache = Rect2i(min_x, min_y, max_x - min_x, max_y - min_y)
 	return _aabb_cache
+
+
+## 凸包缓存（**与 local_aabb() 并列的另一种包围体**，见 HullFit）。
+##
+## ⚠️⚠️ 失效判据必须是 revision（**内容版本**），**不能**跟 AABB 一样挂在 _bounds_rev 上。
+##    这两者不等价，而且反例一点都不刁钻 —— 一个"平顶"的菱形：
+##        (0,50) (50,0) (60,0) (110,50) (60,100) (50,100)
+##    擦掉 (50,0)：AABB 的顶边**一个像素都不动**（顶边是 (60,0) 撑着的），
+##    但凸包少了一个顶点。挂在 _bounds_rev 上就会**静默返回旧凸包** ——
+##    过期方向是"比物体大"，所以不会漏命中，但会白筛，而且**可视化会骗人**
+##    （编辑器里画着一个已经被削掉的角）。见 tests/validation_hull.gd 的对应断言。
+##
+##    代价：内容一改就作废（包括只改 aux 的那种）。可以接受 —— 它是**惰性**的，
+##    没人调 local_hull() 就一次都不算，而 AABB 是渲染器每帧都要问的。
+var _hull_cache := PackedVector2Array()
+var _hull_rev := -1
+
+
+## 凸包（多边形碰撞箱拟合）—— **和 local_aabb() 并列**的另一种包围体。
+##
+## 比 AABB 紧：它跟着刚体一起转，所以"100x8 的木板转 45 度"不会膨胀成一个 76x76 的空盒子。
+## 代价是判定比"两个区间相交"贵一点（O(顶点数) vs O(1)）。
+##
+## ⚠️ 它是**包围体**，不是碰撞形状：凹形状的凹角会被填平，拿去碰撞会多出幻影体积
+##    （见 GreedyRects 顶部那段）。这里的用途只有三个：查询粗筛、可视化、游戏层要轮廓。
+## ⚠️ **惰性**：与 local_aabb() 的调用节奏不同 —— 没人问就不算。
+##    第一次调用是 O(块数)，之后按 revision 复用（形状改过才会重算）。
+func local_hull() -> PackedVector2Array:
+	if _hull_rev == revision:
+		return _hull_cache
+	_hull_cache = HullFit.fit(self)
+	_hull_rev = revision
+	return _hull_cache
 
 
 ## 这次改动**是否可能**改变 AABB。只有缓存本身是新鲜的，才敢回答"不会变"。

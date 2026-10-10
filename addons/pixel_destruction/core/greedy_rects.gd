@@ -555,10 +555,10 @@ static func _greedy(words: PackedInt64Array, wq: int, w: int, h: int, horizontal
 		var rh := 1
 		if horizontal_first:
 			rw = _run_right(words, wq, w, x, y)
-			rh = _extend_down_bits(words, wq, w, h, x, y, rw)
+			rh = _extend_down_bits(words, wq, h, x, y, rw)
 		else:
-			rh = _run_down(words, wq, w, h, x, y)
-			rw = _extend_right_bits(words, wq, w, h, x, y, rh)
+			rh = _run_down(words, wq, h, x, y)
+			rw = _extend_right_bits(words, wq, w, x, y, rh)
 		# ⚠️ 清零用**位掩码**：rh x ceil(rw/64) 次 AND。
 		#    全宽矩形是 100 x 12 = **1200 次**，而字节版是 76800 次赋值。
 		#
@@ -630,7 +630,7 @@ static func _run_right(words: PackedInt64Array, wq: int, w: int, x: int, y: int)
 
 
 ## 从 (x, y) 起，同一列里连续有多少个占用格。O(h)。
-static func _run_down(words: PackedInt64Array, wq: int, w: int, h: int, x: int, y: int) -> int:
+static func _run_down(words: PackedInt64Array, wq: int, h: int, x: int, y: int) -> int:
 	var rh := 1
 	var wi := y * wq + (x >> 6)
 	var bit := 1 << (x & 63)
@@ -640,7 +640,7 @@ static func _run_down(words: PackedInt64Array, wq: int, w: int, h: int, x: int, 
 
 
 ## 在 y..y+rh-1 每一行上，从 x 起都要有 rw 个占用格。返回能向下扩几行。
-static func _extend_down_bits(words: PackedInt64Array, wq: int, w: int, h: int, x: int, y: int, rw: int) -> int:
+static func _extend_down_bits(words: PackedInt64Array, wq: int, h: int, x: int, y: int, rw: int) -> int:
 	var rh := 1
 	var end := x + rw
 	while y + rh < h:
@@ -666,7 +666,7 @@ static func _extend_down_bits(words: PackedInt64Array, wq: int, w: int, h: int, 
 ## 每一行从 x 起的连续占用长度取**最小值** —— 等价于逐列检查所有 rh 行。
 ##
 ## ⚠️ 不要逐列循环：那样是 768 x rh 次迭代。这里每行一次 O(1) 的 _run_right。
-static func _extend_right_bits(words: PackedInt64Array, wq: int, w: int, h: int, x: int, y: int, rh: int) -> int:
+static func _extend_right_bits(words: PackedInt64Array, wq: int, w: int, x: int, y: int, rh: int) -> int:
 	var best := w - x
 	for j in rh:
 		var r := _run_right(words, wq, w, x, y + j)
@@ -798,21 +798,3 @@ static func _merge_pass_ref(rects: Array) -> Array:
 			out.append(a)
 		rects = out
 	return rects
-
-
-## 在候选表里找第一个"下标 > cursor 且还没被用掉"的 j。
-## 候选表正常情况下只有 1 项（键是尺寸 + 位置的完整标识），所以这基本就是一次字典查找。
-static func _merge_candidate(idx: Dictionary, used: Array, key: Vector4, cursor: int) -> int:
-	var list = idx.get(key)
-	if list == null:
-		return -1
-	for j: int in list:
-		if j > cursor and not used[j]:
-			return j
-	return -1
-
-
-## 像素空间的矩形应当整数值。判据是"转 int 再转回来"：小数（含负数、NaN）
-## 一定不相等，所以它只会**多**退回旧实现，不会漏判。
-static func _is_int_rect(r: Rect2) -> bool:
-	return r.position == Vector2(Vector2i(r.position)) and r.size == Vector2(Vector2i(r.size))

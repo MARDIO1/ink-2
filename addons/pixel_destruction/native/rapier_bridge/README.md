@@ -48,8 +48,9 @@ cargo run --release --bin smoke  # 冒烟：拼接地面滑行 + 角接触 + 睡
 1. **`rb_body_set_rects` 是替换语义** —— 它先清空该刚体的**全部**碰撞体，再加新的。
    一个 body 有 N 个矩形时必须**一次调用发完**；分 N 次调用只会留下最后一段。
    （第一版就这么错的：60 段地面变成 1 段，方块直接掉出世界 3822 px。）
-2. `rb_body_get_state` 的 `out` 需要 **6 个 f64**：`x, y, rot, vx, vy, angvel`；
-   `rb_contact_get` 需要 **7 个 f64**：`id_a, id_b, nx, ny, px, py, dist`。
+2. `rb_body_get_state` 的 `out` 需要 **6 个 f64**：`x, y, rot, vx, vy, angvel`。
+   （旧接口 `rb_contact_get` 要 7 个 f64 —— 它**已删除**，替代品是
+   `rb_contact_get_points`，见 `src/lib.rs` 里的墓碑说明。）
 
 ## Godot 侧怎么调
 

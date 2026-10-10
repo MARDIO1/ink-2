@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://map/main.tscn" id="1"]
+[ext_resource type="Script" path="res://map/src/yellow_hand_slingshot.gd" id="2"]
+
+[node name="HandSlingshot" instance=ExtResource("1")]
+auto_step = false
+
+[node name="Player" parent="." index="5"]
+position = Vector2(0, 54)
+
+[node name="SlingSetup" type="Node2D" parent="."]
+script = ExtResource("2")

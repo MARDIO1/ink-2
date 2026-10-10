@@ -12,12 +12,14 @@ const MATCH_TOLERANCE: float = 0.05
 const BLACK := preload("res://Ink/asset/black.tres")
 const GREY := preload("res://Ink/asset/grey1.tres")
 const RED := preload("res://Ink/asset/red.tres")
+const YELLOW = preload("res://Ink/asset/yellow.tres")
 ## 钉子**不是墨水**：它有自己的贴图，只是借像素材质存一个 id。
 const NAIL := preload("res://actor/nail/asset/nail.tres")
 const INKS: Array = [
 	{"name": "黑墨", "material": BLACK},
 	{"name": "灰墨", "material": GREY},
 	{"name": "红墨", "material": RED},
+	{"name": "黄墨", "material": YELLOW},
 ]
 #endregion
 

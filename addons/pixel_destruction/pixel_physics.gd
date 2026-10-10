@@ -11,7 +11,9 @@ extends Node2D
 ##   · 材质颜色在 `PixelRenderer.palette`、密度在 `PWorld.material_density` —— 两张表要手动同步；
 ##   · 破坏会**增删刚体**，渲染层必须跟着 prune，否则残留幽灵贴图；
 ##   · 破坏的坐标是 **Shape 局部像素空间**，而游戏逻辑手里是世界坐标；
-##   · `manifolds` 有三个消费者（求解/唤醒/休眠），走不走原生路径必须**全步一致**；
+##   · 同一子步里「走哪条路」的判断只能有一个真源（`manifolds` 那三个消费者
+##     口径不一致时，拖动一个方块会让其它方块全部掉穿地面 —— 那条路径与字段都已删除，
+##     教训见 PWorld 里的墓碑）；
 ##   · 外力是持久累加器，忘了 `clear_forces()` 就会越加越大。
 ##
 ## 门面把这些一次性收口：**一个世界、一张材质表、一套世界坐标、一份内部标志**。
@@ -774,6 +776,39 @@ func bounds(body: PBody) -> Rect2:
 	return body.aabb
 
 
+## 刚体的**世界坐标凸包**（多边形碰撞箱拟合）—— **与 bounds() 并列**的另一种包围体。
+##
+## 比 bounds() 紧：AABB 是轴对齐的，刚体一转就按外接半径膨胀（100x8 的板转 45 度
+## 就是 76x76 的空盒子）；凸包跟着刚体一起转。判定贵一点（O(顶点数) vs O(1)），
+## 所以"能粗筛就粗筛"的地方仍然该先用 bounds()。
+##
+## 返回：世界坐标顶点，**不含首点**（不开环）。空刚体返回空数组。
+##
+## ⚠️ 它是**包围体，不是碰撞形状**：凹形状（L 形墙、楼梯）的凹角会被填平，
+##    拿它去碰撞会多出看不见的体积。物理真正用的是碰撞矩形（`body.rects`）。
+func hull(body: PBody) -> PackedVector2Array:
+	return body.world_hull()
+
+
+## 世界坐标点是否落在刚体的凸包内（**保守**：凸包比像素集大，
+## 返回 true **不代表**那个点上有像素 —— 要精确判定用 material_at()）。
+func hull_contains(body: PBody, world_point: Vector2) -> bool:
+	return body.hull_contains(world_point)
+
+
+## 刚体**真的在用**的碰撞体形状（世界坐标的凸多边形数组）。
+##
+## 引擎默认把像素拟合成的**凸多边形**交给 Rapier（斜边是直的：楼梯的锯齿会被拉成
+## 一条斜线），所以这里的多边形就是物理实际用的形状 —— 不是另算一份近似。
+## 走矩形那条路（`world.poly_colliders = false` 或矩形数超预算）时，返回的是
+## 每个碰撞矩形（4 个角）。
+##
+## ⚠️ 它是**惰性**读回（形状不变就复用缓存），可以每帧调；但**别在编辑器里调** ——
+##    编辑器不跑物理，刚体还没有 Rapier 身份，会返回空数组。
+func colliders(body: PBody) -> Array:
+	return world.fetch_polys(body)
+
+
 ## 是否已经被打碎（形状全空）。
 func is_broken(body: PBody) -> bool:
 	for s in body.shapes:
@@ -792,8 +827,14 @@ func shape_bounds(shape: PixelShape) -> Rect2i:
 	return shape.local_aabb()
 
 
-func shape_size(shape: PixelShape) -> Vector2i:
-	return shape.local_aabb().size
+## 形状的凸包（**形状局部像素坐标**）—— 与 shape_bounds() 并列的另一种包围体。
+##
+## ⚠️ 与 shape_bounds() 的缓存口径不同：那个跟着"内容版本"走，**每帧都问也便宜**；
+##    这个按 revision 作废，第一次调用要扫一遍块（768x100 地面约 1 万次行扫描），
+##    所以**别在每帧的热循环里对同一个没改过的形状反复调** —— 缓存会兜住，
+##    但形状一改就要重算。要世界坐标请用 hull(body)。
+func shape_hull(shape: PixelShape) -> PackedVector2Array:
+	return shape.local_hull()
 
 
 func shape_voxels(shape: PixelShape) -> int:
