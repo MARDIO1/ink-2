@@ -15,11 +15,15 @@ const MONSTER_MODE_DELETE := -2
 const MONSTER_MODE_ADJUST := -3
 const DIALOGUE_MODE_PLACE := -4
 const DIALOGUE_MODE_DELETE := -5
+const TEXT_MODE_PLACE := -6
+const TEXT_MODE_DELETE := -7
 const MONSTER_SCALE_STEP := 0.1
 const MONSTER_MIN_SCALE := 0.35
 const MONSTER_MAX_SCALE := 2.5
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 const DialogueTriggerScript := preload("res://debug/creative/src/dialogue_trigger.gd")
+const MapTextScript := preload("res://ui/map_text/map_text_label.gd")
+const MAP_TEXT_FONT_PATH := "res://ui/map_text/asset/Muyao-Softbrush.ttf"
 const MONSTER_SCENES: Array[PackedScene] = [
 	preload("res://actor/monster/bomb_side.tscn"),
 ]
@@ -36,7 +40,7 @@ const MAX_EDIT_HISTORY := 128
 @export var canvas_path: NodePath = ^"../SmallCanvas"
 ## 创造模式的大画布（铺满全图）；平时隐藏。
 @export var map_canvas_path: NodePath = ^"../MapCanvas"
-@export_file("*.tscn") var map_path: String = "res://map/asset/map.tscn"
+@export_file("*.tscn") var map_path: String = "res://map/1（终极版）.tscn"
 ## 保底 PNG：存关卡的同时存一张整图（黑=空、颜色=材质 id），现在只当参考图，没有节点读它。
 @export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
 ## 自动保存的未固化画布像素；路径存放在关卡本体，避免实例子节点属性被场景打包忽略。
@@ -46,6 +50,8 @@ const MAX_EDIT_HISTORY := 128
 ## 每次完成绘图、小怪编辑或撤销后，覆盖保存当前地图。
 @export var auto_save_edits := true
 @export_range(0.05, 2.0, 0.05) var auto_save_delay := 0.3
+## 掉出画布的固化实体无需每个物理帧扫描；低频批处理可显著降低大地图开销。
+@export_range(0.1, 2.0, 0.05) var outside_cleanup_interval := 0.35
 ## 上帝位移速度，单位 px/s。
 @export var fly_speed := 600.0
 ## 按住 Shift 的倍率。
@@ -67,6 +73,8 @@ var _saved_player_visible := true
 var _saved_health_ui_visibility := {}
 var _monster_container: Node2D = null
 var _monster_palette: CanvasLayer = null
+var _monster_palette_panel: PanelContainer = null
+var _monster_palette_toggle: Button = null
 var _monster_buttons: Array[Button] = []
 var _delete_monster_button: Button = null
 var _adjust_monster_button: Button = null
@@ -96,6 +104,19 @@ var _dialogue_lines_box: VBoxContainer = null
 var _dialogue_input_status: Label = null
 var _pending_dialogue_position := Vector2.ZERO
 var _next_dialogue_id := 1
+var _text_container: Node2D = null
+var _place_text_button: Button = null
+var _delete_text_button: Button = null
+var _text_window: Window = null
+var _text_input: TextEdit = null
+var _text_input_status: Label = null
+var _pending_text_position := Vector2.ZERO
+var _next_text_id := 1
+var _editor_ui_ready := false
+var _edit_snapshot_loaded := false
+var _map_text_font: Font = null
+var _outside_cleanup_elapsed := 0.0
+var _map_reload_in_progress := false
 #endregion
 
 
@@ -114,20 +135,11 @@ func _ready() -> void:
 		var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
 		if surface != null and surface.has_signal("edit_committed"):
 			surface.edit_committed.connect(_on_canvas_edit_committed)
-		if surface != null and not edit_snapshot_path.is_empty():
-			surface.saved_ink_path = edit_snapshot_path
-			surface.call_deferred("_restore_saved_ink")
 		if _map_canvas.has_signal("map_changed"):
 			_map_canvas.map_changed.connect(_on_map_changed)
-	# 部分导入地图没有预置 Monsters；本节点的 _ready 仍处在父场景装配子节点阶段，
-	# 此时 add_child 会失败。等一帧装配完成后再创建，放置函数本身也会在需要时重试。
-	call_deferred("_prepare_monster_container")
-	_build_monster_palette()
-	_build_dialogue_input_window()
-	_build_save_directory_dialog()
-	_build_map_save_window()
+	# 游戏启动时不读取十几 MB 的编辑快照，也不创建地图编辑专用窗口和字体。
+	# 这些资源只在首次进入地图编辑器时按需初始化。
 	_show_canvas(_map_canvas, false)
-	call_deferred("_ensure_spawn_point")
 
 
 ## 当前正在运行的关卡文件才是编辑器的基底。
@@ -142,8 +154,14 @@ func _bind_paths_to_current_level() -> void:
 		return
 	map_path = current_path
 	baked_map_path = current_path.get_basename() + ".png"
-	var current_snapshot := current_path.get_basename() + ".edit.res"
-	edit_snapshot_path = current_snapshot if FileAccess.file_exists(current_snapshot) else ""
+	var png_snapshot := current_path.get_basename() + ".edit.png"
+	var legacy_snapshot := current_path.get_basename() + ".edit.res"
+	if FileAccess.file_exists(png_snapshot):
+		edit_snapshot_path = png_snapshot
+	elif FileAccess.file_exists(legacy_snapshot):
+		edit_snapshot_path = legacy_snapshot
+	else:
+		edit_snapshot_path = ""
 
 
 ## 放置放在普通输入阶段处理，优先于地图画布的绘制/物件输入；
@@ -195,6 +213,10 @@ func _handle_editor_input(event: InputEvent) -> bool:
 			_open_dialogue_input(world_position)
 		elif _monster_mode == DIALOGUE_MODE_DELETE:
 			remove_dialogue_trigger_at(world_position)
+		elif _monster_mode == TEXT_MODE_PLACE:
+			_open_text_input(world_position)
+		elif _monster_mode == TEXT_MODE_DELETE:
+			remove_map_text_at(world_position)
 		else:
 			place_monster(_monster_mode, world_position)
 		return true
@@ -265,6 +287,8 @@ func _enter() -> void:
 	if not _skip_restore_on_enter and _reload_saved_map_for_editor():
 		return
 	_skip_restore_on_enter = false
+	_ensure_editor_resources()
+	_load_edit_snapshot_if_needed()
 	if _player == null:
 		push_error("Creative: 找不到 Player")
 		return
@@ -303,9 +327,35 @@ func _enter() -> void:
 	print("CREATIVE on")
 
 
+## 将游戏态完全不需要的编辑器 UI、容器和大字体延迟到第一次 F2。
+func _ensure_editor_resources() -> void:
+	if _editor_ui_ready:
+		return
+	_prepare_monster_container()
+	_build_monster_palette()
+	_build_dialogue_input_window()
+	_build_text_input_window()
+	_build_save_directory_dialog()
+	_build_map_save_window()
+	_ensure_spawn_point()
+	_editor_ui_ready = true
+
+
+func _load_edit_snapshot_if_needed() -> void:
+	if _edit_snapshot_loaded or edit_snapshot_path.is_empty() or _map_canvas == null:
+		return
+	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
+	if surface == null or not surface.has_method("load_ink"):
+		return
+	if surface.load_ink(edit_snapshot_path) == OK:
+		surface.saved_ink_path = edit_snapshot_path
+		_edit_snapshot_loaded = true
+
+
 func _exit() -> void:
 	set_physics_process(false)
 	_cancel_dialogue_input()
+	_cancel_text_input()
 	if _body != null:
 		_body.collision_layer = _saved_layer
 		_body.collision_mask = _saved_mask
@@ -448,18 +498,37 @@ func _build_monster_palette() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(root)
 
+	var palette_toggle := Button.new()
+	palette_toggle.name = "PaletteToggle"
+	palette_toggle.anchor_left = 1.0
+	palette_toggle.anchor_right = 1.0
+	palette_toggle.offset_left = -424.0
+	# 避开右上角现有的日志、ESC 等按钮。
+	palette_toggle.offset_top = 80.0
+	palette_toggle.offset_right = -352.0
+	palette_toggle.offset_bottom = 124.0
+	palette_toggle.text = "收起"
+	palette_toggle.tooltip_text = "收起 / 展开右侧地图编辑工具栏"
+	palette_toggle.focus_mode = Control.FOCUS_NONE
+	palette_toggle.theme = EDITOR_THEME
+	palette_toggle.pressed.connect(_toggle_monster_palette_panel)
+	root.add_child(palette_toggle)
+	_monster_palette_toggle = palette_toggle
+
 	var panel := PanelContainer.new()
 	panel.name = "Panel"
 	panel.anchor_left = 1.0
 	panel.anchor_right = 1.0
-	panel.offset_left = -224.0
+	panel.anchor_bottom = 1.0
+	panel.offset_left = -344.0
 	panel.offset_top = 16.0
 	panel.offset_right = -16.0
-	# 小怪编辑与对话触发点共用侧栏，完整内容超出时仍保持在屏幕内。
-	panel.offset_bottom = 700.0
+	# 三列紧凑排布，并始终贴合视口底部，避免按钮落到地面/窗口外。
+	panel.offset_bottom = -16.0
 	panel.theme = EDITOR_THEME
 	panel.theme_type_variation = &"OverlayPanel"
 	root.add_child(panel)
+	_monster_palette_panel = panel
 
 	var margin := MarginContainer.new()
 	margin.name = "Margin"
@@ -478,16 +547,25 @@ func _build_monster_palette() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.theme_type_variation = &"TitleLabel"
 	column.add_child(title)
+	var monster_grid := GridContainer.new()
+	monster_grid.name = "MonsterGrid"
+	monster_grid.columns = 3
+	monster_grid.add_theme_constant_override("h_separation", 6)
+	monster_grid.add_theme_constant_override("v_separation", 6)
+	column.add_child(monster_grid)
 	for index in MONSTER_NAMES.size():
+		# 炸弹狂侧面保留给旧地图加载与撤销恢复，但不再提供新放置入口。
+		if MONSTER_KINDS[index] == MapMonsterScript.Kind.BOMB_SIDE:
+			continue
 		var button := Button.new()
 		button.name = MONSTER_NODE_NAMES[index] + "Button"
 		button.text = MONSTER_NAMES[index]
 		button.tooltip_text = "选择后在地图上单击放置%s" % MONSTER_NAMES[index]
 		button.toggle_mode = true
 		button.focus_mode = Control.FOCUS_NONE
-		button.custom_minimum_size = Vector2(176.0, 38.0)
+		button.custom_minimum_size = Vector2(96.0, 44.0)
 		button.pressed.connect(select_monster_tool.bind(MONSTER_KINDS[index]))
-		column.add_child(button)
+		monster_grid.add_child(button)
 		_monster_buttons.append(button)
 
 	_adjust_monster_button = Button.new()
@@ -496,18 +574,18 @@ func _build_monster_palette() -> void:
 	_adjust_monster_button.tooltip_text = "单击选中，拖动调整位置；滚轮调整大小"
 	_adjust_monster_button.toggle_mode = true
 	_adjust_monster_button.focus_mode = Control.FOCUS_NONE
-	_adjust_monster_button.custom_minimum_size = Vector2(176.0, 38.0)
+	_adjust_monster_button.custom_minimum_size = Vector2(96.0, 44.0)
 	_adjust_monster_button.pressed.connect(select_monster_tool.bind(MONSTER_MODE_ADJUST))
-	column.add_child(_adjust_monster_button)
+	monster_grid.add_child(_adjust_monster_button)
 
 	_reset_monster_scale_button = Button.new()
 	_reset_monster_scale_button.name = "ResetMonsterScaleButton"
 	_reset_monster_scale_button.text = "恢复原始大小"
 	_reset_monster_scale_button.tooltip_text = "恢复当前选中小怪的原始大小"
 	_reset_monster_scale_button.focus_mode = Control.FOCUS_NONE
-	_reset_monster_scale_button.custom_minimum_size = Vector2(176.0, 34.0)
+	_reset_monster_scale_button.custom_minimum_size = Vector2(96.0, 44.0)
 	_reset_monster_scale_button.pressed.connect(_reset_selected_monster_scale)
-	column.add_child(_reset_monster_scale_button)
+	monster_grid.add_child(_reset_monster_scale_button)
 
 	_delete_monster_button = Button.new()
 	_delete_monster_button.name = "DeleteMonsterButton"
@@ -515,9 +593,9 @@ func _build_monster_palette() -> void:
 	_delete_monster_button.tooltip_text = "选择后单击地图中的小怪进行删除"
 	_delete_monster_button.toggle_mode = true
 	_delete_monster_button.focus_mode = Control.FOCUS_NONE
-	_delete_monster_button.custom_minimum_size = Vector2(176.0, 38.0)
+	_delete_monster_button.custom_minimum_size = Vector2(96.0, 44.0)
 	_delete_monster_button.pressed.connect(select_monster_tool.bind(MONSTER_MODE_DELETE))
-	column.add_child(_delete_monster_button)
+	monster_grid.add_child(_delete_monster_button)
 
 	var separator := HSeparator.new()
 	column.add_child(separator)
@@ -526,6 +604,12 @@ func _build_monster_palette() -> void:
 	dialogue_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	dialogue_title.theme_type_variation = &"TitleLabel"
 	column.add_child(dialogue_title)
+	var dialogue_grid := GridContainer.new()
+	dialogue_grid.name = "DialogueGrid"
+	dialogue_grid.columns = 3
+	dialogue_grid.add_theme_constant_override("h_separation", 6)
+	dialogue_grid.add_theme_constant_override("v_separation", 6)
+	column.add_child(dialogue_grid)
 
 	_place_dialogue_button = Button.new()
 	_place_dialogue_button.name = "PlaceDialogueTriggerButton"
@@ -533,9 +617,9 @@ func _build_monster_palette() -> void:
 	_place_dialogue_button.tooltip_text = "选择后单击地图，输入按顺序播放的多句文案"
 	_place_dialogue_button.toggle_mode = true
 	_place_dialogue_button.focus_mode = Control.FOCUS_NONE
-	_place_dialogue_button.custom_minimum_size = Vector2(176.0, 38.0)
+	_place_dialogue_button.custom_minimum_size = Vector2(96.0, 44.0)
 	_place_dialogue_button.pressed.connect(select_monster_tool.bind(DIALOGUE_MODE_PLACE))
-	column.add_child(_place_dialogue_button)
+	dialogue_grid.add_child(_place_dialogue_button)
 
 	_delete_dialogue_button = Button.new()
 	_delete_dialogue_button.name = "DeleteDialogueTriggerButton"
@@ -543,17 +627,51 @@ func _build_monster_palette() -> void:
 	_delete_dialogue_button.tooltip_text = "选择后单击 100×100 对话触发区域进行删除"
 	_delete_dialogue_button.toggle_mode = true
 	_delete_dialogue_button.focus_mode = Control.FOCUS_NONE
-	_delete_dialogue_button.custom_minimum_size = Vector2(176.0, 38.0)
+	_delete_dialogue_button.custom_minimum_size = Vector2(96.0, 44.0)
 	_delete_dialogue_button.pressed.connect(select_monster_tool.bind(DIALOGUE_MODE_DELETE))
-	column.add_child(_delete_dialogue_button)
+	dialogue_grid.add_child(_delete_dialogue_button)
+
+	var text_separator := HSeparator.new()
+	column.add_child(text_separator)
+	var text_title := Label.new()
+	text_title.text = "文本放置"
+	text_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text_title.theme_type_variation = &"TitleLabel"
+	column.add_child(text_title)
+	var text_grid := GridContainer.new()
+	text_grid.name = "TextGrid"
+	text_grid.columns = 3
+	text_grid.add_theme_constant_override("h_separation", 6)
+	text_grid.add_theme_constant_override("v_separation", 6)
+	column.add_child(text_grid)
+
+	_place_text_button = Button.new()
+	_place_text_button.name = "PlaceTextButton"
+	_place_text_button.text = "放置文本"
+	_place_text_button.tooltip_text = "选择后单击地图，输入要显示的手写文本"
+	_place_text_button.toggle_mode = true
+	_place_text_button.focus_mode = Control.FOCUS_NONE
+	_place_text_button.custom_minimum_size = Vector2(96.0, 44.0)
+	_place_text_button.pressed.connect(select_monster_tool.bind(TEXT_MODE_PLACE))
+	text_grid.add_child(_place_text_button)
+
+	_delete_text_button = Button.new()
+	_delete_text_button.name = "DeleteTextButton"
+	_delete_text_button.text = "删除文本"
+	_delete_text_button.tooltip_text = "选择后单击地图上的文本进行删除"
+	_delete_text_button.toggle_mode = true
+	_delete_text_button.focus_mode = Control.FOCUS_NONE
+	_delete_text_button.custom_minimum_size = Vector2(96.0, 44.0)
+	_delete_text_button.pressed.connect(select_monster_tool.bind(TEXT_MODE_DELETE))
+	text_grid.add_child(_delete_text_button)
 
 	var stop_button := Button.new()
 	stop_button.name = "StopMonsterToolButton"
 	stop_button.text = "停止放置"
 	stop_button.focus_mode = Control.FOCUS_NONE
-	stop_button.custom_minimum_size = Vector2(176.0, 34.0)
+	stop_button.custom_minimum_size = Vector2(96.0, 44.0)
 	stop_button.pressed.connect(select_monster_tool.bind(MONSTER_MODE_NONE))
-	column.add_child(stop_button)
+	text_grid.add_child(stop_button)
 
 	_monster_status_label = Label.new()
 	_monster_status_label.name = "MonsterStatus"
@@ -562,14 +680,33 @@ func _build_monster_palette() -> void:
 	column.add_child(_monster_status_label)
 
 	var hint := Label.new()
-	hint.text = "放置：左键单击\n对话：Enter 输入下一句\nCtrl+Z 撤销编辑操作"
+	hint.text = "放置：左键单击　对话：Enter 下一句　Ctrl+Z 撤销"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(hint)
+
+
+func _toggle_monster_palette_panel() -> void:
+	if _monster_palette_panel == null or _monster_palette_toggle == null:
+		return
+	_monster_palette_panel.visible = not _monster_palette_panel.visible
+	_monster_palette_toggle.text = "收起" if _monster_palette_panel.visible else "工具"
+	_monster_palette_toggle.tooltip_text = (
+		"收起右侧地图编辑工具栏" if _monster_palette_panel.visible
+		else "展开右侧地图编辑工具栏"
+	)
+	# 收起后按钮贴在屏幕右边，展开后回到面板左侧，始终可点击。
+	if _monster_palette_panel.visible:
+		_monster_palette_toggle.offset_left = -424.0
+		_monster_palette_toggle.offset_right = -352.0
+	else:
+		_monster_palette_toggle.offset_left = -96.0
+		_monster_palette_toggle.offset_right = -16.0
 
 
 func select_monster_tool(mode: int) -> void:
 	if mode != MONSTER_MODE_NONE and mode != MONSTER_MODE_DELETE and mode != MONSTER_MODE_ADJUST \
 	and mode != DIALOGUE_MODE_PLACE and mode != DIALOGUE_MODE_DELETE \
+	and mode != TEXT_MODE_PLACE and mode != TEXT_MODE_DELETE \
 	and not MONSTER_KINDS.has(mode):
 		mode = MONSTER_MODE_NONE
 	elif mode == _monster_mode:
@@ -598,6 +735,10 @@ func _update_monster_buttons() -> void:
 		_place_dialogue_button.set_pressed_no_signal(_monster_mode == DIALOGUE_MODE_PLACE)
 	if _delete_dialogue_button != null:
 		_delete_dialogue_button.set_pressed_no_signal(_monster_mode == DIALOGUE_MODE_DELETE)
+	if _place_text_button != null:
+		_place_text_button.set_pressed_no_signal(_monster_mode == TEXT_MODE_PLACE)
+	if _delete_text_button != null:
+		_delete_text_button.set_pressed_no_signal(_monster_mode == TEXT_MODE_DELETE)
 
 
 func _on_canvas_tool_changed(_tool: int) -> void:
@@ -959,6 +1100,195 @@ func _refresh_dialogue_trigger_visuals() -> void:
 			trigger._refresh_editor_visibility()
 
 
+#region 地图文本
+func _build_text_input_window() -> void:
+	if _text_window != null:
+		return
+	var window := Window.new()
+	window.name = "MapTextInput"
+	window.title = "放置地图文本"
+	window.size = Vector2i(560, 330)
+	window.min_size = Vector2i(440, 280)
+	window.transient = true
+	window.visible = false
+	window.theme = EDITOR_THEME
+	window.close_requested.connect(_cancel_text_input)
+	add_child(window)
+	window.hide()
+	_text_window = window
+
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	window.add_child(margin)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 10)
+	margin.add_child(column)
+	var help := Label.new()
+	help.text = "输入要写在地图上的文字；支持换行，显示时使用沐瑶软笔手写体。"
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(help)
+	_text_input = TextEdit.new()
+	_text_input.name = "TextInput"
+	_text_input.placeholder_text = "输入地图文本……"
+	_text_input.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_text_input.custom_minimum_size = Vector2(0, 150)
+	column.add_child(_text_input)
+	_text_input_status = Label.new()
+	_text_input_status.modulate = Color(0.75, 0.12, 0.08)
+	column.add_child(_text_input_status)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	actions.add_theme_constant_override("separation", 8)
+	column.add_child(actions)
+	var cancel := Button.new()
+	cancel.text = "取消"
+	cancel.pressed.connect(_cancel_text_input)
+	actions.add_child(cancel)
+	var confirm := Button.new()
+	confirm.text = "放置文本"
+	confirm.pressed.connect(_confirm_text_input)
+	actions.add_child(confirm)
+
+
+func _open_text_input(world_position: Vector2) -> void:
+	if not active or _text_window == null:
+		return
+	_pending_text_position = world_position
+	_text_input.text = ""
+	_text_input_status.text = ""
+	_text_window.popup_centered(Vector2i(560, 330))
+	_text_input.call_deferred("grab_focus")
+
+
+func _confirm_text_input() -> void:
+	var content := _text_input.text.strip_edges()
+	if content.is_empty():
+		_text_input_status.text = "请输入要放置的文字。"
+		return
+	place_map_text(_pending_text_position, content)
+	_text_window.hide()
+
+
+func _cancel_text_input() -> void:
+	if _text_window != null:
+		_text_window.hide()
+
+
+func _ensure_text_container() -> Node2D:
+	if is_instance_valid(_text_container):
+		return _text_container
+	var level := _level_root()
+	if level == null:
+		return null
+	_text_container = level.get_node_or_null("MapTexts") as Node2D
+	if _text_container == null:
+		_text_container = Node2D.new()
+		_text_container.name = "MapTexts"
+		level.add_child(_text_container)
+		_text_container.owner = level
+	return _text_container
+
+
+func place_map_text(
+	world_position: Vector2,
+	content: String,
+	record_undo := true,
+	text_id := ""
+) -> Label:
+	content = content.strip_edges()
+	if content.is_empty():
+		return null
+	var container := _ensure_text_container()
+	if container == null:
+		return null
+	var label := MapTextScript.new() as Label
+	label.name = "MapText"
+	label.text = content
+	if _map_text_font == null:
+		_map_text_font = load(MAP_TEXT_FONT_PATH) as Font
+	if _map_text_font != null:
+		label.add_theme_font_override("font", _map_text_font)
+	label.add_theme_font_size_override("font_size", 48)
+	label.add_theme_color_override("font_color", Color(0.035, 0.031, 0.024, 1.0))
+	label.add_theme_color_override("font_shadow_color", Color.TRANSPARENT)
+	# 地图文字始终盖在地面和固化墨迹上，避免被关卡实体遮住。
+	label.z_index = 20
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	if text_id.is_empty():
+		text_id = _new_text_id()
+	label.set("editor_id", text_id)
+	container.add_child(label, true)
+	label.global_position = world_position
+	label.reset_size()
+	var level := _level_root()
+	if level != null:
+		label.owner = level
+	if record_undo:
+		_record_edit({"type": &"text_place", "id": text_id})
+	return label
+
+
+func remove_map_text_at(world_position: Vector2) -> bool:
+	var label := _find_map_text_at(world_position)
+	if label == null:
+		return false
+	var removed := {
+		"type": &"text_delete",
+		"id": str(label.get("editor_id")),
+		"position": label.global_position,
+		"text": label.text,
+	}
+	label.get_parent().remove_child(label)
+	label.queue_free()
+	_record_edit(removed)
+	return true
+
+
+func _find_map_text_at(world_position: Vector2) -> Label:
+	var container := _ensure_text_container()
+	if container == null:
+		return null
+	for child in container.get_children():
+		if child is Label and child.is_in_group(MapTextScript.GROUP) \
+		and child.pick_rect().has_point(world_position):
+			return child as Label
+	return null
+
+
+func _new_text_id() -> String:
+	var container := _ensure_text_container()
+	while true:
+		var candidate := "text_%d" % _next_text_id
+		_next_text_id += 1
+		var used := false
+		if container != null:
+			for child in container.get_children():
+				if str(child.get("editor_id")) == candidate:
+					used = true
+					break
+		if not used:
+			return candidate
+	return ""
+
+
+func _remove_map_text_by_id(text_id: String) -> bool:
+	var container := _ensure_text_container()
+	if container == null or text_id.is_empty():
+		return false
+	for child in container.get_children():
+		if str(child.get("editor_id")) != text_id:
+			continue
+		container.remove_child(child)
+		child.queue_free()
+		return true
+	return false
+#endregion
+
+
 func _on_canvas_edit_committed() -> void:
 	if active:
 		_record_edit({"type": &"canvas"})
@@ -1008,6 +1338,15 @@ func undo_last_edit() -> bool:
 			changed = place_dialogue_trigger(
 				edit.get("position", Vector2.ZERO),
 				PackedStringArray(edit.get("lines", PackedStringArray())),
+				false,
+				str(edit.get("id", ""))
+			) != null
+		&"text_place":
+			changed = _remove_map_text_by_id(str(edit.get("id", "")))
+		&"text_delete":
+			changed = place_map_text(
+				edit.get("position", Vector2.ZERO),
+				str(edit.get("text", "")),
 				false,
 				str(edit.get("id", ""))
 			) != null
@@ -1089,7 +1428,9 @@ func _ensure_monster_container() -> Node2D:
 
 #region 上帝位移
 func _physics_process(delta: float) -> void:
-	if _map_canvas != null:
+	_outside_cleanup_elapsed += delta
+	if _map_canvas != null and _outside_cleanup_elapsed >= outside_cleanup_interval:
+		_outside_cleanup_elapsed = 0.0
 		_map_canvas.clear_solidified_bodies_outside_canvas()
 	if _body == null:
 		return
@@ -1266,7 +1607,8 @@ func _run_edit_auto_save(revision: int) -> void:
 		return
 	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface") if _map_canvas != null else null
 	if surface != null and surface.has_method("save_ink"):
-		var snapshot_path := map_path.get_basename() + ".edit.res"
+		# PNG 对稀疏地图通常只有几十 KB；旧的 Image .res 往往有 12–16 MB。
+		var snapshot_path := map_path.get_basename() + ".edit.png"
 		if surface.save_ink(snapshot_path) != OK:
 			return
 		edit_snapshot_path = snapshot_path
@@ -1278,18 +1620,40 @@ func _reload_saved_map_for_editor() -> bool:
 	var tree_root := get_tree().current_scene
 	if tree_root == null or not tree_root.has_method("load_level") or map_path.is_empty():
 		return false
+	if _map_reload_in_progress:
+		return true
 	# 自动保存会反复覆盖同一路径；忽略资源缓存才能恢复磁盘上的最新版本。
-	var packed := ResourceLoader.load(
-		map_path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE
-	) as PackedScene
+	# 后台读取避免 F2 在大地图上冻结主线程。
+	var error := ResourceLoader.load_threaded_request(
+		map_path, "PackedScene", true, ResourceLoader.CACHE_MODE_IGNORE
+	)
+	if error != OK:
+		push_warning("Creative: 无法开始恢复地图 %s (%d)" % [map_path, error])
+		return false
+	_map_reload_in_progress = true
+	_finish_threaded_map_reload.call_deferred(tree_root)
+	return true
+
+
+func _finish_threaded_map_reload(tree_root: Node) -> void:
+	var status := ResourceLoader.load_threaded_get_status(map_path)
+	while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		await get_tree().process_frame
+		status = ResourceLoader.load_threaded_get_status(map_path)
+	_map_reload_in_progress = false
+	var packed := ResourceLoader.load_threaded_get(map_path) as PackedScene \
+		if status == ResourceLoader.THREAD_LOAD_LOADED else null
 	if packed == null:
 		push_warning("Creative: 无法恢复已保存地图 %s" % map_path)
-		return false
+		_skip_restore_on_enter = true
+		_enter()
+		return
+	if not is_instance_valid(tree_root):
+		return
 	var level: Node = tree_root.load_level(packed)
 	var replacement := level.get_node_or_null(^"Creative")
 	if replacement != null:
 		replacement.call_deferred("_activate_restored_editor")
-	return true
 
 
 func _activate_restored_editor() -> void:

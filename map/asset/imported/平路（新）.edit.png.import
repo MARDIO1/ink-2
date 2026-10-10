@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bcsqgd26nrnok"
-path="res://.godot/imported/map_2026-10-09_16-37-31.png-b0c3c6747865aba05d55e37f08aac820.ctex"
+uid="uid://c3hnbe6omulo"
+path="res://.godot/imported/平路（新）.edit.png-da3d2134d7dec45aa01eaf60b5de9c29.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://map/asset/map_2026-10-09_16-37-31.png"
-dest_files=["res://.godot/imported/map_2026-10-09_16-37-31.png-b0c3c6747865aba05d55e37f08aac820.ctex"]
+source_file="res://map/asset/imported/平路（新）.edit.png"
+dest_files=["res://.godot/imported/平路（新）.edit.png-da3d2134d7dec45aa01eaf60b5de9c29.ctex"]
 
 [params]
 

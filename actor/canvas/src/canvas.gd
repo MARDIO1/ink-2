@@ -9,6 +9,10 @@ const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
 const InkPalette := preload("res://Ink/src/ink_palette.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
+const PLAY_TOOL_COLUMNS := 3
+const EDITOR_TOOL_COLUMNS := 2
+const TOOL_BUTTON_SIZE := 64.0
+const TOOL_BUTTON_GAP := 8.0
 
 @onready var surface = $CanvasSurface
 @onready var solid = $CanvasSolid
@@ -54,6 +58,7 @@ func _ready() -> void:
 	_workbench_home_transform = workbench.transform
 	surface.canvas_size = canvas_size
 	_place_controls()
+	_apply_workbench_column_layout()
 	set_brush_size(int(brush_panel.get_node("PenSlider").value))
 	surface.set_process_input(active)
 	set_process_input(active)
@@ -393,6 +398,7 @@ func set_map_editor_mode(on: bool) -> void:
 	_map_editor_mode = on
 	tool_grid.get_node("Hand").visible = not on
 	tool_grid.get_node("ExpandCanvas").visible = on
+	_apply_workbench_column_layout()
 	if on and _expand_canvas_window == null:
 		_build_expand_canvas_window()
 	if not on and _expand_canvas_window != null:
@@ -408,6 +414,17 @@ func set_map_editor_mode(on: bool) -> void:
 		set_tool(SurfaceScript.Tool.BRUSH)
 	set_screen_fixed(on)
 	_refresh_workbench_visibility()
+
+
+## 游玩画布使用三列，地图编辑画布沿用两列。只调整宽度与列数，
+## Toggle/Buttons 的顶部坐标不动，因此最上面一排的高度保持不变。
+func _apply_workbench_column_layout() -> void:
+	var columns: int = EDITOR_TOOL_COLUMNS if _map_editor_mode else PLAY_TOOL_COLUMNS
+	var width := columns * TOOL_BUTTON_SIZE + (columns - 1) * TOOL_BUTTON_GAP
+	tool_grid.columns = columns
+	tool_grid.offset_right = width
+	buttons.offset_right = buttons.offset_left + width
+	toggle_button.offset_right = toggle_button.offset_left + width
 
 
 ## 工具栏贴到玩家身体旁边。

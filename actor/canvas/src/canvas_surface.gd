@@ -21,13 +21,12 @@ func _ready() -> void:
 	black_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_resize()
-	if not saved_ink_path.is_empty():
-		call_deferred("_restore_saved_ink")
+	# 地图编辑快照由 Creative 在首次进入编辑器时按需恢复；游戏启动时不读盘。
 #endregion
 
 
 func _restore_saved_ink() -> void:
-	if not saved_ink_path.is_empty() and ResourceLoader.exists(saved_ink_path):
+	if not saved_ink_path.is_empty() and FileAccess.file_exists(saved_ink_path):
 		load_ink(saved_ink_path)
 
 
@@ -834,7 +833,11 @@ func _refund_all_ink() -> void:
 #region 画布复现文件
 ## 保存 CPU 像素缓冲，包含颜色、透明度和尺寸；不读取 GPU，不触发固化。
 func save_ink(path: String) -> Error:
-	var error: Error = ResourceSaver.save(black_image, path)
+	var error: Error
+	if path.get_extension().to_lower() == "png":
+		error = black_image.save_png(ProjectSettings.globalize_path(path))
+	else:
+		error = ResourceSaver.save(black_image, path)
 	if error == OK:
 		print("CANVAS saved: ", ProjectSettings.globalize_path(path))
 	else:
@@ -853,10 +856,14 @@ func save_png(path: String) -> Error:
 
 
 func load_ink(path: String) -> Error:
-	if not ResourceLoader.exists(path):
+	if not FileAccess.file_exists(path):
 		push_error("Canvas file missing: " + path)
 		return ERR_FILE_NOT_FOUND
-	var image: Image = ResourceLoader.load(path, "Image", ResourceLoader.CACHE_MODE_IGNORE) as Image
+	var image: Image
+	if path.get_extension().to_lower() == "png":
+		image = Image.load_from_file(ProjectSettings.globalize_path(path))
+	else:
+		image = ResourceLoader.load(path, "Image", ResourceLoader.CACHE_MODE_IGNORE) as Image
 	if image == null or image.is_empty():
 		push_error("Canvas file is not an Image: " + path)
 		return ERR_INVALID_DATA
@@ -865,10 +872,29 @@ func load_ink(path: String) -> Error:
 	black_image = image
 	black_image.convert(Image.FORMAT_RGBA8)
 	black_texture.update(black_image)
-	_rebuild_nails()
-	recount_ink_px()
+	_rebuild_loaded_metadata()
 	print("CANVAS loaded: ", ProjectSettings.globalize_path(path))
 	return OK
+
+
+## 读盘后一次遍历同时重建钉子和墨水账，避免大画布连续全图扫描两遍。
+func _rebuild_loaded_metadata() -> void:
+	nail_layer.clear()
+	ink_px_by_material = {}
+	_pending_ink = {}
+	var data := black_image.get_data()
+	var width := canvas_size.x
+	for index in range(canvas_size.x * canvas_size.y):
+		var at := index * 4
+		if data[at + 3] <= 127:
+			continue
+		var material_id := InkPalette.material_id_at_color(Color8(
+			data[at], data[at + 1], data[at + 2], data[at + 3]
+		))
+		if material_id == InkPalette.nail_material_id():
+			nail_layer.add(Vector2i(index % width, index / width))
+		elif InkPalette.is_ink(material_id):
+			ink_px_by_material[material_id] = ink_px_of(material_id) + 1
 
 
 #按像素重新数一遍画布自己的账 —— 读盘、以及怀疑账本漂了的时候用。

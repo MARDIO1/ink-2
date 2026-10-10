@@ -10,6 +10,7 @@ extends Control
 
 const LEVEL_DIR := "res://map"
 const PLAYER_NODE := "Player"
+const NON_LEVEL_SCENE := "res://map/main.tscn"
 ## 列表按钮宽度，避免被 CenterContainer 挤成一条。
 const BUTTON_SIZE := Vector2(340, 46)
 
@@ -63,7 +64,7 @@ static func _scan(dir_path: String, found: PackedStringArray) -> void:
 		if dir.current_is_dir():
 			if not entry.begins_with("."):
 				_scan(path, found)
-		elif entry.ends_with(".tscn") and _has_player(path):
+		elif entry.ends_with(".tscn") and path != NON_LEVEL_SCENE and _has_player(path):
 			found.append(path)
 		entry = dir.get_next()
 	dir.list_dir_end()

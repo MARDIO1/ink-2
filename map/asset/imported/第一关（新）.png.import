@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cjua4xy7yabvo"
-path="res://.godot/imported/test.png-844198dfa4909d583a86bdc825f2d31f.ctex"
+uid="uid://bxkedq8di8t66"
+path="res://.godot/imported/第一关（新）.png-67cb35d04b7e5f53f8c82457d0aa3747.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://map/asset/test.png"
-dest_files=["res://.godot/imported/test.png-844198dfa4909d583a86bdc825f2d31f.ctex"]
+source_file="res://map/asset/imported/第一关（新）.png"
+dest_files=["res://.godot/imported/第一关（新）.png-67cb35d04b7e5f53f8c82457d0aa3747.ctex"]
 
 [params]
 

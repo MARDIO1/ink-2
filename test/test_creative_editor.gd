@@ -25,6 +25,14 @@ func _run() -> void:
 	var small_canvas: Node2D = scene.get_node("SmallCanvas")
 	var map_canvas: Node2D = scene.get_node("MapCanvas")
 	var surface: Area2D = map_canvas.get_node("CanvasSurface")
+	var play_tool_grid := small_canvas.get_node("WorkbenchUI/Buttons/Grid") as GridContainer
+	var play_tool_buttons := small_canvas.get_node("WorkbenchUI/Buttons") as Control
+	var play_toolbar_valid: bool = play_tool_grid.columns == 3 \
+		and play_tool_buttons.offset_top == 116.0 \
+		and play_tool_grid.get_node("Brush").position.y == 0.0
+	valid = valid and play_toolbar_valid
+	print("[CreativeEditor] play toolbar three columns/top preserved: ",
+		"PASS" if play_toolbar_valid else "FAIL")
 	var health_ui: Array[Node] = get_nodes_in_group("health_ui")
 	var exit_button: TextureButton = game_ui.get_node("Hud/Root/ExitButton")
 	valid = valid and health_ui.size() == 3
@@ -49,6 +57,7 @@ func _run() -> void:
 	valid = valid and not small_canvas.visible and not small_canvas.active
 	valid = valid and map_canvas.visible and map_canvas.active
 	valid = valid and map_canvas.get("_screen_fixed")
+	valid = valid and (map_canvas.get_node("WorkbenchUI/Buttons/Grid") as GridContainer).columns == 2
 	valid = valid and not map_canvas.get_node("WorkbenchUI/Buttons/Grid/Hand").visible
 	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons/Grid/ExpandCanvas").visible
 	var expand_window := map_canvas.get_node_or_null("ExpandCanvasWindow") as Window
@@ -86,18 +95,34 @@ func _run() -> void:
 	valid = valid and player.visible
 	visibility_button.button_pressed = false
 
-	# 小怪栏提供大盾侧面、小兵和炸弹狂侧面；素材演示 UI / 呼吸缩放关闭，所有部件都在画布上方。
+	# 炸弹狂侧面保留旧地图兼容能力，但不再出现在小怪放置栏。
 	var monster_palette: CanvasLayer = creative.get_node("MonsterPalette")
 	valid = valid and monster_palette.visible
-	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/BombSideButton")
-	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/AdjustMonsterButton")
-	valid = valid and monster_palette.has_node("Root/Panel/Margin/VBox/ResetMonsterScaleButton")
-	var has_place_dialogue := monster_palette.has_node("Root/Panel/Margin/VBox/PlaceDialogueTriggerButton")
-	var has_delete_dialogue := monster_palette.has_node("Root/Panel/Margin/VBox/DeleteDialogueTriggerButton")
+	var palette_toggle := monster_palette.get_node("Root/PaletteToggle") as Button
+	var palette_panel := monster_palette.get_node("Root/Panel") as PanelContainer
+	var palette_toggle_valid: bool = palette_toggle.visible and palette_panel.visible \
+		and palette_toggle.offset_top == 80.0 and palette_toggle.offset_bottom == 124.0
+	palette_toggle.pressed.emit()
+	palette_toggle_valid = palette_toggle_valid and not palette_panel.visible and palette_toggle.text == "工具"
+	palette_toggle.pressed.emit()
+	palette_toggle_valid = palette_toggle_valid and palette_panel.visible and palette_toggle.text == "收起"
+	valid = valid and palette_toggle_valid
+	print("[CreativeEditor] right palette toggle: ", "PASS" if palette_toggle_valid else "FAIL")
+	var monster_grid := monster_palette.get_node("Root/Panel/Margin/VBox/MonsterGrid") as GridContainer
+	var dialogue_grid := monster_palette.get_node("Root/Panel/Margin/VBox/DialogueGrid") as GridContainer
+	var text_grid := monster_palette.get_node("Root/Panel/Margin/VBox/TextGrid") as GridContainer
+	valid = valid and monster_grid.columns == 3 and dialogue_grid.columns == 3 and text_grid.columns == 3
+	valid = valid and not monster_grid.has_node("BombSideButton")
+	valid = valid and monster_grid.has_node("AdjustMonsterButton")
+	valid = valid and monster_grid.has_node("ResetMonsterScaleButton")
+	var has_place_dialogue := dialogue_grid.has_node("PlaceDialogueTriggerButton")
+	var has_delete_dialogue := dialogue_grid.has_node("DeleteDialogueTriggerButton")
 	var dialogue_valid := has_place_dialogue and has_delete_dialogue
-	valid = valid and not monster_palette.has_node("Root/Panel/Margin/VBox/ShieldFrontButton")
-	valid = valid and not monster_palette.has_node("Root/Panel/Margin/VBox/BombManiacButton")
-	valid = valid and not monster_palette.has_node("Root/Panel/Margin/VBox/InkmanButton")
+	valid = valid and not monster_grid.has_node("ShieldFrontButton")
+	valid = valid and not monster_grid.has_node("BombManiacButton")
+	valid = valid and not monster_grid.has_node("InkmanButton")
+	valid = valid and text_grid.has_node("PlaceTextButton") and text_grid.has_node("DeleteTextButton")
+	valid = valid and palette_panel.anchor_bottom == 1.0 and palette_panel.offset_bottom == -16.0
 	var dialogue_window := creative.get_node_or_null("DialogueTriggerInput") as Window
 	dialogue_valid = dialogue_valid and dialogue_window != null
 	creative._open_dialogue_input(Vector2(760, 260))
@@ -124,6 +149,38 @@ func _run() -> void:
 	map_dialogue = dialogue_triggers.get_child(0) as Node2D
 	dialogue_valid = dialogue_valid and str(map_dialogue.get("editor_id")) == dialogue_id
 	valid = valid and dialogue_valid
+
+	# 地图文本使用沐瑶软笔字体，保存为地图节点；放置和删除都可撤销。
+	var text_window := creative.get_node_or_null("MapTextInput") as Window
+	var text_valid := text_window != null and not text_window.visible
+	var placed_text := creative.place_map_text(Vector2(900, 300), "手写地图文字") as Label
+	text_valid = text_valid and placed_text != null
+	var placed_text_id := ""
+	if placed_text != null:
+		text_valid = text_valid and placed_text.text == "手写地图文字"
+		text_valid = text_valid \
+			and placed_text.get_theme_font("font").resource_path.ends_with("Muyao-Softbrush.ttf")
+		text_valid = text_valid and placed_text.z_index == 20
+		placed_text_id = str(placed_text.get("editor_id"))
+	var removed_text: bool = creative.remove_map_text_at(Vector2(901, 301))
+	text_valid = text_valid and removed_text
+	var restored_deleted_text: bool = creative.undo_last_edit()
+	text_valid = text_valid and restored_deleted_text
+	var restored_text := scene.get_node_or_null("MapTexts/MapText") as Label
+	text_valid = text_valid and restored_text != null
+	if restored_text != null:
+		text_valid = text_valid and str(restored_text.get("editor_id")) == placed_text_id
+	# 运行时创建的文本必须能随整张地图打包，而不只是在当前编辑会话中可见。
+	var text_pack_probe := PackedScene.new()
+	text_valid = text_valid and text_pack_probe.pack(scene) == OK
+	var text_pack_copy := text_pack_probe.instantiate()
+	text_valid = text_valid and text_pack_copy.get_node_or_null("MapTexts/MapText") is Label
+	text_pack_copy.free()
+	var removed_placed_text: bool = creative.undo_last_edit()
+	text_valid = text_valid and removed_placed_text
+	text_valid = text_valid and scene.get_node_or_null("MapTexts/MapText") == null
+	valid = valid and text_valid
+	print("[CreativeEditor] three-column palette and map text: ", "PASS" if text_valid else "FAIL")
 
 	# 画一笔后放怪：两次撤销必须严格按时间顺序先撤怪、再撤画。
 	var undo_pixel := Vector2i(40, 40)

@@ -1,7 +1,7 @@
 extends SceneTree
 
 const ROOT_SCENE := preload("res://root/root.tscn")
-const MAP_SCENE := preload("res://map/asset/map.tscn")
+const MAP_SCENE := preload("res://map/1（终极版）.tscn")
 
 
 func _initialize() -> void:

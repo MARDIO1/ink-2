@@ -1,8 +1,8 @@
 extends SceneTree
 
 const ROOT_SCENE := preload("res://root/root.tscn")
-const MAP_SCENE := preload("res://map/asset/map.tscn")
-const ALTERNATE_MAP_PATH := "res://map/asset/imported/2.tscn"
+const MAP_SCENE := preload("res://map/main.tscn")
+const ALTERNATE_MAP_PATH := "res://map/asset/imported/平路（新）.tscn"
 
 
 func _initialize() -> void:
@@ -14,7 +14,7 @@ func _run() -> void:
 	root.add_child(app)
 	current_scene = app
 	await process_frame
-	# 没有显式 map_path 的导入地图也必须以自身为编辑基底，不能回落到默认 map.tscn。
+	# 每张保留地图都必须以自身为编辑基底，不能回落到其他关卡。
 	var alternate_scene := load(ALTERNATE_MAP_PATH) as PackedScene
 	var alternate_level: Node = app.load_level(alternate_scene)
 	await process_frame
@@ -24,18 +24,26 @@ func _run() -> void:
 	alternate_creative.auto_save_edits = false
 	var valid: bool = alternate_creative.map_path == ALTERNATE_MAP_PATH
 	valid = valid and alternate_creative.baked_map_path == ALTERNATE_MAP_PATH.get_basename() + ".png"
+	# 游戏态不应预建编辑器 UI，也不应读取大型画布快照。
+	valid = valid and alternate_creative.get_node_or_null("MonsterPalette") == null
+	valid = valid and not bool(alternate_creative.get("_edit_snapshot_loaded"))
 	var alternate_f2 := InputEventAction.new()
 	alternate_f2.action = &"creative"
 	alternate_f2.pressed = true
 	alternate_creative._input(alternate_f2)
-	await process_frame
-	await process_frame
+	for _frame in range(120):
+		await process_frame
+		var candidate := app.get_node("Level").get_child(0)
+		var candidate_creative := candidate.get_node_or_null("Creative")
+		if candidate != alternate_level and candidate_creative != null and candidate_creative.active:
+			break
 	var restored_alternate: Node = app.get_node("Level").get_child(0)
 	var restored_alternate_creative: Node = restored_alternate.get_node("Creative")
 	valid = valid and bool(restored_alternate_creative.active)
+	valid = valid and restored_alternate_creative.get_node_or_null("MonsterPalette") != null
+	valid = valid and bool(restored_alternate_creative.get("_edit_snapshot_loaded"))
 	valid = valid and restored_alternate_creative.map_path == ALTERNATE_MAP_PATH
-	# Ink21 是导入地图 2 独有节点；它仍在，证明 F2 重载的不是默认地图。
-	valid = valid and restored_alternate.has_node("Ink21")
+	valid = valid and restored_alternate.scene_file_path == ALTERNATE_MAP_PATH
 	restored_alternate_creative.auto_save_on_exit = false
 	restored_alternate_creative.auto_save_edits = false
 	restored_alternate_creative.set_active(false)
@@ -49,8 +57,12 @@ func _run() -> void:
 	f2.action = &"creative"
 	f2.pressed = true
 	creative._input(f2)
-	await process_frame
-	await process_frame
+	for _frame in range(120):
+		await process_frame
+		var candidate := app.get_node("Level").get_child(0)
+		var candidate_creative := candidate.get_node_or_null("Creative")
+		if candidate != original_level and candidate_creative != null and candidate_creative.active:
+			break
 	var restored_level: Node = app.get_node("Level").get_child(0)
 	var restored_creative: Node = restored_level.get_node("Creative")
 	var hand: Node = restored_level.get_node("Player/Arm/Hand/HandControl")
@@ -63,7 +75,7 @@ func _run() -> void:
 	valid = valid and editor_player.body.aabb.get_center().distance_to(editor_center) < 0.01
 	var autosave_path := "res://test/.creative_autosave.tmp.tscn"
 	var autosave_absolute := ProjectSettings.globalize_path(autosave_path)
-	var snapshot_path := "res://test/.creative_autosave.tmp.edit.res"
+	var snapshot_path := "res://test/.creative_autosave.tmp.edit.png"
 	var snapshot_absolute := ProjectSettings.globalize_path(snapshot_path)
 	if FileAccess.file_exists(autosave_path):
 		DirAccess.remove_absolute(autosave_absolute)
@@ -87,7 +99,7 @@ func _run() -> void:
 	restored_creative._record_edit({"type": &"autosave_probe"})
 	await create_timer(0.12).timeout
 	valid = valid and FileAccess.file_exists(autosave_path)
-	var snapshot := ResourceLoader.load(snapshot_path, "Image", ResourceLoader.CACHE_MODE_IGNORE) as Image
+	var snapshot := Image.load_from_file(snapshot_absolute)
 	valid = valid and snapshot != null and snapshot.get_pixel(20, 20).a > 0.5
 	var saved_scene := ResourceLoader.load(
 		autosave_path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE
@@ -98,6 +110,9 @@ func _run() -> void:
 		root.add_child(saved_level)
 		await process_frame
 		await process_frame
+		# 游戏态不会再读取编辑快照；首次进入编辑器时才按需恢复。
+		var saved_creative: Node = saved_level.get_node("Creative")
+		saved_creative._load_edit_snapshot_if_needed()
 		var saved_surface: Node = saved_level.get_node("MapCanvas/CanvasSurface")
 		valid = valid and saved_surface.is_solid(20, 20)
 		valid = valid and _nonliving_pixel_count(saved_level) == after_delete

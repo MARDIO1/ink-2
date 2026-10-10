@@ -15,6 +15,7 @@ extends Node
 
 @onready var level_root: Node = $Level
 @onready var ui_root: Node = $UI
+var _loading_level := false
 
 
 func _ready() -> void:
@@ -37,7 +38,21 @@ func _show_level_select() -> void:
 
 ## 第三屏：关卡 + 成品 UI。⚠️ 关卡先挂、UI 后挂（见文件头）。
 func _on_level_chosen(path: String) -> void:
-	var scene := load(path) as PackedScene
+	if _loading_level:
+		return
+	_loading_level = true
+	var request_error := ResourceLoader.load_threaded_request(path, "PackedScene", true)
+	if request_error != OK:
+		_loading_level = false
+		push_error("Root: 无法开始加载关卡 %s (%d)" % [path, request_error])
+		return
+	var status := ResourceLoader.load_threaded_get_status(path)
+	while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		await get_tree().process_frame
+		status = ResourceLoader.load_threaded_get_status(path)
+	var scene := ResourceLoader.load_threaded_get(path) as PackedScene \
+		if status == ResourceLoader.THREAD_LOAD_LOADED else null
+	_loading_level = false
 	if scene == null:
 		push_error("Root: 加载关卡失败 %s" % path)
 		return

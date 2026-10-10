@@ -1,6 +1,6 @@
-[gd_resource type="Theme" load_steps=17 format=3 uid="uid://co31d2rha8qdp"]
+[gd_resource type="Theme" format=3 uid="uid://co31d2rha8qdp"]
 
-[ext_resource type="Font" path="res://ui/theme/asset/ipix_ui_font.tres" id="1_ipix"]
+[ext_resource type="FontVariation" path="res://ui/theme/asset/ipix_ui_font.tres" id="1_ipix"]
 
 [sub_resource type="StyleBoxFlat" id="Disabled"]
 content_margin_left = 12.0
@@ -110,6 +110,36 @@ border_width_right = 2
 border_width_bottom = 2
 border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 
+[sub_resource type="StyleBoxEmpty" id="MenuActionFocus"]
+
+[sub_resource type="StyleBoxFlat" id="MenuActionHover"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.231373, 0.219608, 0.192157, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+expand_margin_left = 3.0
+expand_margin_top = 3.0
+expand_margin_right = 3.0
+expand_margin_bottom = 3.0
+
+[sub_resource type="StyleBoxFlat" id="MenuActionNormal"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.231373, 0.219608, 0.192157, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+
 [sub_resource type="StyleBoxFlat" id="Overlay"]
 content_margin_left = 24.0
 content_margin_top = 24.0
@@ -139,36 +169,6 @@ border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
 shadow_color = Color(0.0352941, 0.0313726, 0.0235294, 0.5)
 shadow_size = 2
 shadow_offset = Vector2(3, 3)
-
-[sub_resource type="StyleBoxFlat" id="MenuActionNormal"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.231373, 0.219608, 0.192157, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
-
-[sub_resource type="StyleBoxFlat" id="MenuActionHover"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.231373, 0.219608, 0.192157, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
-expand_margin_left = 3.0
-expand_margin_top = 3.0
-expand_margin_right = 3.0
-expand_margin_bottom = 3.0
-
-[sub_resource type="StyleBoxEmpty" id="MenuActionFocus"]
 
 [resource]
 default_font = ExtResource("1_ipix")
