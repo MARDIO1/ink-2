@@ -67,6 +67,7 @@ func _ready() -> void:
 	_refresh_workbench_visibility()
 	if not Engine.is_editor_hint():
 		_build_side_panel()
+		_build_shape_popup()
 		_bind_buttons()
 		surface.selection_delete_requested.connect(_delete_selection)
 		# 进入正常游戏时始终从“手”开始，不能继承地图保存时的画笔状态。
@@ -509,7 +510,7 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("Hand").pressed.connect(set_tool.bind(SurfaceScript.Tool.HAND))
 	tool_grid.get_node("Brush").pressed.connect(set_tool.bind(SurfaceScript.Tool.BRUSH))
 	tool_grid.get_node("Eraser").pressed.connect(set_tool.bind(SurfaceScript.Tool.ERASER))
-	tool_grid.get_node("Shape").pressed.connect(_select_shape_tool)
+	tool_grid.get_node("Shape").pressed.connect(_open_shape_popup)
 	tool_grid.get_node("Nail").pressed.connect(set_tool.bind(SurfaceScript.Tool.NAIL))
 	tool_grid.get_node("Bucket").pressed.connect(set_tool.bind(SurfaceScript.Tool.BUCKET))
 	tool_grid.get_node("SelectDelete").pressed.connect(set_tool.bind(SurfaceScript.Tool.SELECT_DELETE))
@@ -676,23 +677,51 @@ func _update_nail_visibility_tooltip(show_nails: bool) -> void:
 
 
 var _shape_tool: int = SurfaceScript.Tool.RECT
+var _shape_popup: PopupMenu
 var _temporary_eraser := false
 
 
-func _select_shape_tool() -> void:
-	if surface.tool == SurfaceScript.Tool.RECT:
-		_shape_tool = SurfaceScript.Tool.CIRCLE
-	elif surface.tool == SurfaceScript.Tool.CIRCLE:
-		_shape_tool = SurfaceScript.Tool.LINE
-	elif surface.tool == SurfaceScript.Tool.LINE:
-		_shape_tool = SurfaceScript.Tool.RECT
-	_apply_tool(_shape_tool)
+## 构建形状选择弹出菜单（矩形 / 圆形 / 直线）。
+func _build_shape_popup() -> void:
+	_shape_popup = PopupMenu.new()
+	_shape_popup.name = "ShapePopup"
+	_shape_popup.add_item("矩形", SurfaceScript.Tool.RECT)
+	_shape_popup.add_item("圆形", SurfaceScript.Tool.CIRCLE)
+	_shape_popup.add_item("直线", SurfaceScript.Tool.LINE)
+	_shape_popup.id_pressed.connect(_on_shape_picked)
+	_shape_popup.popup_hide.connect(_on_shape_popup_hide)
+	add_child(_shape_popup)
+
+
+## 点击形状按钮时在鼠标位置弹出三个选项。
+func _open_shape_popup() -> void:
+	if _shape_popup == null:
+		return
+	# 按钮在 Node2D 父级下 global_rect 不准，直接用鼠标视口坐标。
+	_shape_popup.position = Vector2i(get_viewport().get_mouse_position())
+	_shape_popup.reset_size()
+	_shape_popup.popup()
+
+
+## 选中某个形状后切换工具并更新按钮提示。
+func _on_shape_picked(id: int) -> void:
+	_shape_tool = id
+	_apply_tool(id)
+	_update_shape_tooltip(id)
+
+
+## 菜单关闭（未选择）时，按当前实际工具刷新按钮高亮，避免 Shape 按钮卡在 pressed。
+func _on_shape_popup_hide() -> void:
+	_apply_tool(surface.tool)
+
+
+func _update_shape_tooltip(tool: int) -> void:
 	var shape_name := "矩形"
-	if _shape_tool == SurfaceScript.Tool.CIRCLE:
+	if tool == SurfaceScript.Tool.CIRCLE:
 		shape_name = "圆形"
-	elif _shape_tool == SurfaceScript.Tool.LINE:
+	elif tool == SurfaceScript.Tool.LINE:
 		shape_name = "直线"
-	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（5/6/9）\n再次点击切换形状" % shape_name
+	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（5/6/9）\n点击按钮选择形状" % shape_name
 
 
 func _apply_tool(tool: int) -> void:
@@ -708,6 +737,8 @@ func _apply_tool(tool: int) -> void:
 	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
 	tool_grid.get_node("SelectDelete").set_pressed_no_signal(tool == SurfaceScript.Tool.SELECT_DELETE)
 	_sync_hand_enabled(tool)
+	if tool in [SurfaceScript.Tool.RECT, SurfaceScript.Tool.CIRCLE, SurfaceScript.Tool.LINE]:
+		_update_shape_tooltip(tool)
 	tool_changed.emit(tool)
 
 

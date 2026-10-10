@@ -10,6 +10,7 @@
 [ext_resource type="Script" uid="uid://c6otusd1181wl" path="res://actor/player/src/bottled_ink.gd" id="12_ink"]
 [ext_resource type="Script" uid="uid://dfa8tnl720dm" path="res://actor/player/src/ink_health.gd" id="13_health"]
 [ext_resource type="Material" path="res://actor/player/asset/player_breath_wobble.tres" id="14_wobble"]
+[ext_resource type="Script" path="res://actor/player/src/fall_death.gd" id="15_fall_death"]
 
 [sub_resource type="Image" id="Image_jqpk3"]
 data = {
@@ -64,5 +65,8 @@ script = ExtResource("13_health")
 [node name="PlayerInput" type="Node" parent="." unique_id=452559037]
 script = ExtResource("2_input")
 upright_stiffness = 500000000.0
+
+[node name="FallDeath" type="Node" parent="."]
+script = ExtResource("15_fall_death")
 
 [node name="Arm" parent="." unique_id=1691926357 instance=ExtResource("11_hand")]
