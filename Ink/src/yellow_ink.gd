@@ -4,10 +4,10 @@ extends Node2D
 const Palette = preload("res://Ink/src/ink_palette.gd")
 const Stroke = preload("res://actor/yellow/src/yellow_stroke.gd")
 ## 默认 7 px 支撑主角；较低阻尼保留弹弓的回弹能量。
-@export var stiffness_per_width: float = 10000.0
-@export var damping_ratio: float = 0.12
+@export var stiffness_per_width: float = 5000.0
+@export var damping_ratio: float = 0.0
 ## 劲度变软后仍保留约 200 px 的静态安全拉伸量。
-@export var safe_force_per_width: float = 2000000.0
+@export var safe_force_per_width: float = 1000000.0
 @export var wear_pixels_per_second: float = 15.0
 var drawing = null
 var strokes: Array = []
@@ -36,7 +36,7 @@ func begin(surface, point: Vector2) -> void:
 	drawing.preview = true
 	drawing.source_surface = surface
 	drawing.brush_width = surface.brush_size
-	drawing.path.append(surface.to_global(point.floor() + Vector2.ONE * 0.5))
+	drawing.path.append(_world.to_local(surface.to_global(point.floor() + Vector2.ONE * 0.5)))
 	_world.add_child(drawing)
 	drawing.queue_redraw()
 
@@ -46,7 +46,7 @@ func extend(surface, point: Vector2) -> void:
 	if not surface._inside(point):
 		cancel()
 		return
-	var p: Vector2 = surface.to_global(point)
+	var p: Vector2 = _world.to_local(surface.to_global(point))
 	if drawing.path[-1].distance_squared_to(p) >= 1.0:
 		drawing.path.append(p)
 		drawing.queue_redraw()
@@ -56,7 +56,7 @@ func finish(surface, point: Vector2) -> bool:
 		return false
 	var stroke = drawing
 	drawing = null
-	stroke.path.append(surface.to_global(point.floor() + Vector2.ONE * 0.5))
+	stroke.path.append(_world.to_local(surface.to_global(point.floor() + Vector2.ONE * 0.5)))
 	if not surface._inside(point) or not valid_anchor(surface, point) \
 	or not endpoint_legal(stroke.path[0]) or not endpoint_legal(stroke.path[-1]):
 		stroke.queue_free()
@@ -103,7 +103,7 @@ func valid_anchor(surface, point: Vector2) -> bool:
 		return false
 	var cell: Vector2i = Vector2i(point.floor())
 	return surface.material_at(cell.x, cell.y) == Palette.BLACK.id \
-		or not Stroke.find_anchor(_world.world, surface.to_global(point)).is_empty()
+		or not Stroke.find_anchor(_world.world, _world.to_local(surface.to_global(point))).is_empty()
 
 func solidify(surface) -> void:
 	for stroke in strokes.duplicate():
@@ -139,7 +139,7 @@ func reclaim(surface) -> void:
 			continue
 		var selected: Array[Vector2i] = []
 		for cell: Vector2i in stroke.cells:
-			if surface._inside(surface.to_local(stroke.to_global(Vector2(cell) + Vector2.ONE * 0.5))):
+			if surface._inside(surface.to_local(stroke.pixel_world(Vector2(cell) + Vector2.ONE * 0.5))):
 				selected.append(cell)
 		if selected.is_empty():
 			continue

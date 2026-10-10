@@ -11,12 +11,18 @@ const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_
 const LIVING_TAG := "living"
 
 #region 碰撞伤害
-## 累计世界结算器给出的伤害。
+## 累计世界结算器给出的伤害，作为调试统计；实际生命值同步交给 InkHealth。
 var collision_damage: float = 0.0
 
 
 func apply_collision_damage(amount: float) -> void:
-	collision_damage += maxf(amount, 0.0)
+	var damage: float = maxf(amount, 0.0)
+	collision_damage += damage
+	if damage <= 0.0:
+		return
+	var health := get_node_or_null("InkHealth")
+	if health != null:
+		health.damage(damage)
 #endregion
 
 

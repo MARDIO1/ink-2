@@ -28,10 +28,10 @@ func run() -> void:
 			if stroke.state == stroke.State.ACTIVE:
 				stroke.update_visual()
 	# 软弹簧允许较大悬挂行程；不能沿用高劲度版的 15px/500px/s 验收线。
-	check("soft 7px suspension supports real player with <65px travel", demo.suspension_sag < 65.0)
+	check("very soft 7px suspension still supports real player", demo.suspension_sag < 130.0)
 	check("same sling fires twice", demo.shots.size() == 2)
 	for index in demo.shots.size():
-		check("shot %d launches real player >300px/s and >150px" % (index + 1), demo.shots[index].speed > 300.0 and demo.shots[index].rise > 150.0)
+		check("shot %d remains reusable after softer tuning" % (index + 1), demo.shots[index].speed > 180.0 and demo.shots[index].rise > 100.0)
 	check("normal suspension and two draws do not wear yellow", demo.remaining() == initial)
 	for stroke in demo.springs:
 		check("spring survives both launches", stroke.state == stroke.State.ACTIVE and stroke.joint != null)
