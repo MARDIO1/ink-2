@@ -317,7 +317,8 @@ func _enter() -> void:
 	_body.linear_velocity = Vector2.ZERO
 	_body.angular_velocity = 0.0
 	var canvas := get_node_or_null(canvas_path)
-	_show_canvas(_canvas, false)
+	for play_canvas in _play_canvases():
+		_show_canvas(play_canvas, false)
 	_show_canvas(_map_canvas, true)
 	# 地图编辑器有独立的屏幕固定工具栏和四向扩展按钮。
 	if _map_canvas != null:
@@ -376,7 +377,8 @@ func _exit() -> void:
 	if auto_save_on_exit:
 		_save_current_map_overwrite()
 	_show_canvas(_map_canvas, false)
-	_show_canvas(_canvas, true)
+	for play_canvas in _play_canvases():
+		_show_canvas(play_canvas, true)
 	if _map_canvas != null:
 		_map_canvas.set_map_editor_mode(false)
 	if _canvas != null and _canvas.has_method("activate_hand_tool"):
@@ -464,9 +466,26 @@ func _show_canvas(canvas, on: bool) -> void:
 	canvas.active = on
 
 
+## 当前关卡中的普通游玩画布。主画布始终包含在内，额外画布通过 play_canvas 组加入。
+func _play_canvases() -> Array:
+	var result: Array = []
+	if _canvas != null:
+		result.append(_canvas)
+	var level := _level_root()
+	if level == null:
+		return result
+	for canvas in get_tree().get_nodes_in_group(&"play_canvas"):
+		if canvas != _map_canvas and level.is_ancestor_of(canvas) and not result.has(canvas):
+			result.append(canvas)
+	return result
+
+
 #创造模式画图不花墨水：两张画布都免账，免得切回去时账目错位。
 func _set_ink_free(free: bool) -> void:
-	for canvas in [_canvas, _map_canvas]:
+	var canvases := _play_canvases()
+	if _map_canvas != null:
+		canvases.append(_map_canvas)
+	for canvas in canvases:
 		if canvas != null:
 			canvas.set_ink_free(free)
 
@@ -1726,20 +1745,23 @@ func _normalize_scene_path(path: String) -> String:
 ## 打包瞬间恢复正常游玩布局，pack 完成后立刻回到编辑布局。
 func _pack_as_playable_scene(packed: PackedScene, scene: Node) -> Error:
 	var player_visible: bool = _player.visible if _player != null else true
-	var small_visible: bool = _canvas.visible if _canvas != null else false
-	var small_active: bool = _canvas.active if _canvas != null else false
+	var play_canvas_states: Dictionary = {}
+	for play_canvas in _play_canvases():
+		play_canvas_states[play_canvas] = [play_canvas.visible, play_canvas.active]
 	var map_visible: bool = _map_canvas.visible if _map_canvas != null else false
 	var map_active: bool = _map_canvas.active if _map_canvas != null else false
 	if _map_canvas != null:
 		_map_canvas.set_map_editor_mode(false)
 	if _player != null:
 		_player.visible = _saved_player_visible
-	_show_canvas(_canvas, true)
+	for play_canvas in _play_canvases():
+		_show_canvas(play_canvas, true)
 	_show_canvas(_map_canvas, false)
 	var error: Error = packed.pack(scene)
-	if _canvas != null:
-		_canvas.visible = small_visible
-		_canvas.active = small_active
+	for play_canvas in play_canvas_states:
+		if is_instance_valid(play_canvas):
+			play_canvas.visible = bool(play_canvas_states[play_canvas][0])
+			play_canvas.active = bool(play_canvas_states[play_canvas][1])
 	if _map_canvas != null:
 		_map_canvas.visible = map_visible
 		_map_canvas.active = map_active

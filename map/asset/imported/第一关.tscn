@@ -163,10 +163,17 @@ position = Vector2(2615.0425, 499.78738)
 process_callback = 0
 script = ExtResource("11_e5h3x")
 
-[node name="SmallCanvas" type="Node2D" parent="." unique_id=1726580571 instance=ExtResource("12_r0xtv")]
+[node name="SmallCanvas" type="Node2D" parent="." unique_id=1726580571 groups=["play_canvas"] instance=ExtResource("12_r0xtv")]
 process_physics_priority = 18
 z_index = -1
 position = Vector2(41, -42)
+script = ExtResource("13_aqnbn")
+canvas_size = Vector2i(400, 280)
+
+[node name="PlayCanvas2" type="Node2D" parent="." groups=["play_canvas"] instance=ExtResource("12_r0xtv")]
+process_physics_priority = 18
+z_index = -1
+position = Vector2(2650, 360)
 script = ExtResource("13_aqnbn")
 canvas_size = Vector2i(400, 280)
 
@@ -203,15 +210,6 @@ edit_snapshot_path = "res://map/asset/imported/第一关.edit.snapshot"
 
 [node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1356679822]
 position = Vector2(207, 54.5)
-
-[node name="CheckpointCanvas" parent="." instance=ExtResource("12_r0xtv")]
-process_physics_priority = 18
-z_index = -1
-position = Vector2(470, 220)
-canvas_size = Vector2i(400, 280)
-
-[node name="PlayerSpawn2" type="Marker2D" parent="."]
-position = Vector2(670, 360)
 
 [node name="MapTexts" type="Node2D" parent="." unique_id=653030093]
 
