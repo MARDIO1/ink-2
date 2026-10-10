@@ -26,8 +26,12 @@ var debug_upright_torque: float = 0.0
 #endregion
 
 
-#region 回正控制器
-## 角度误差产生的回复力矩系数；0 表示关闭弹簧项。
+#region 世界竖直回复力矩
+## 到**世界竖直**的角刚度（力矩 / 弧度）；0 = 关闭。
+## ⚠️ 参考取世界竖直，不是支撑面法向 —— 支撑面会凹凸不平，而世界竖直的代码就是 body.rotation。
+## ⚠️ 必须大于「倾倒自重的最大力矩」 m·g·h 才可能真的站稳（当前数字见 `actor/player/doc/脚.md`），
+##    只比 m·g·b 大是不够的，会卡在半倒的姿态上慢慢磨。
+## 实测（kick=3 rad/s）：本文件的 1.0e9 一步回正，尾巴角度 0.000；`player.tscn` 现在设 5e8。
 @export var upright_stiffness: float = 1000000000.0
 ## 玩家与支撑体相对角速度产生的制动力矩系数；0 表示关闭阻尼项。
 @export var upright_damping: float = 30000000.0

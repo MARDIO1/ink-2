@@ -139,7 +139,9 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 	var factor: float = min_thickness_factor + (1.0 - min_thickness_factor) / (1.0 + thickness_scale * log(1.0 + support))
 	var budget: float = damage_scale * impulse * attacker_strength / surface_strength * factor
 	if body == player_body:
-		result.player_damage += budget
+		# InkHealth 以像素计量；普通材料会用 budget / strength 个等效像素消费预算，
+		# 玩家不删形状，但扣除同样数量的墨水，避免把原始强度预算误当成像素数。
+		result.player_damage += budget / surface_strength
 		return
 	if not origin.is_finite() or direction.is_zero_approx():
 		_consume_path(world, body, path, budget, result)
@@ -200,7 +202,7 @@ func _impact(points: Array) -> Dictionary:
 			last = maxf(last, point.position.dot(tangent))
 	var width: int = maxi(1, ceili(last - first))
 	return {"position": position / total, "normal": normal, "dist": dist / total,
-		"impulse": total / float(width), "total_impulse": total, "width": width}
+		"impulse": total / float(width), "total_impulse": total}
 #endregion
 
 #region 像素路径
@@ -349,8 +351,4 @@ func apply_impulse_damage(world, body: PBody, origin: Vector2, direction: Vector
 	_damage_side(world, body, path, attacker_material, impulse, player_body, protected_bodies, result,
 		origin, direction.normalized(), hash(Vector3(origin.x, origin.y, impulse)))
 
-
-## 预留剪切入口；暂不消费切向摩擦冲量。
-func calculate_shear() -> void:
-	pass
 #endregion

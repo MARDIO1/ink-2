@@ -8,6 +8,7 @@ auto_step = false
 
 [node name="Player" parent="." index="5"]
 position = Vector2(0, 54)
+shape_density_scale = 4.0
 
 [node name="SlingSetup" type="Node2D" parent="."]
 script = ExtResource("2")

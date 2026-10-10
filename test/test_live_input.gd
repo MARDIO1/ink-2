@@ -87,7 +87,7 @@ func _run() -> void:
 	if OS.get_cmdline_user_args().has("--visual"):
 		await process_frame
 		await process_frame
-		root.get_texture().get_image().save_png("res://test/hud_check.png")
+		root.get_texture().get_image().save_png("user://hud_check.png")
 	for attempt in 2:
 		for i in 180:
 			await physics_frame

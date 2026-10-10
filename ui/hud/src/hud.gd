@@ -28,6 +28,7 @@ func _ready() -> void:
 	debug_hud = explicit_hud if explicit_hud != null else get_tree().get_first_node_in_group(DEBUG_HUD_GROUP)
 	if debug_hud != null:
 		debug_hud.visible = false
+		debug_hud.forces.enabled = false   # 力采样默认开着：Tab 没按过就不能让它一直跑
 	_health = get_node_or_null(health_path)
 	if _health == null:
 		var player := get_tree().get_first_node_in_group(PLAYER_GROUP)

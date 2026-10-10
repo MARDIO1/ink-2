@@ -12,8 +12,8 @@ extends Node
 ## 查询读 `ink` / `max_ink` / `ratio()`，改只走 `add()` / `reduce()`。
 ## 直写 `ink = x` 不会发 `changed`（HUD 不会跟着动），游戏内不要那么写。
 ##
-## 预留：碰撞伤害现在只在 `player_physics.gd:apply_collision_damage()`
-## 里累加数值，还没接过来；接的时候把它转成 `reduce()` 即可。
+## 碰撞伤害由 `player_physics.gd:apply_collision_damage()` 接入本节点的 `damage()`；
+## `collision_damage` 只保留为累计调试统计。
 
 ## 任何真的变了的数值变化后发出（含被夹到 0 / max_ink）。消费者自己去读 `ratio()`。
 signal changed

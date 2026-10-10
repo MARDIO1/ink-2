@@ -8,3 +8,5 @@ display_name = "player_body"
 id = 2
 color = Color(0, 0, 0, 1)
 density = 1.40338
+compress_strength = 100.0
+shear_strength = 30.0

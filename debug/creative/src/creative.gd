@@ -316,7 +316,6 @@ func _enter() -> void:
 	_body.gravity_scale = 0.0
 	_body.linear_velocity = Vector2.ZERO
 	_body.angular_velocity = 0.0
-	var canvas := get_node_or_null(canvas_path)
 	for play_canvas in _play_canvases():
 		_show_canvas(play_canvas, false)
 	_show_canvas(_map_canvas, true)

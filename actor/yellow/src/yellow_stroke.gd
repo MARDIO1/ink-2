@@ -127,12 +127,16 @@ func build_pixels() -> bool:
 	add_child(visual)
 	endpoint_a = Sprite2D.new()
 	endpoint_a.texture = TERMINAL
-	endpoint_a.position = path[0]
 	add_child(endpoint_a)
+	endpoint_a.top_level = true
+	endpoint_a.global_position = _world_to_canvas(path[0])
+	endpoint_a.global_rotation = 0.0
 	endpoint_b = Sprite2D.new()
 	endpoint_b.texture = TERMINAL
-	endpoint_b.position = path[-1]
 	add_child(endpoint_b)
+	endpoint_b.top_level = true
+	endpoint_b.global_position = _world_to_canvas(path[-1])
+	endpoint_b.global_rotation = 0.0
 	for point in worn:
 		_add_frontier(Vector2i(point))
 	return true
@@ -145,13 +149,37 @@ func update_visual() -> void:
 	var original: Vector2 = path[-1] - path[0]
 	var current: Vector2 = b - a
 	var factor: float = current.length() / original.length() if original.length() > 0.001 else 1.0
-	var angle: float = current.angle() - original.angle() if original.length() > 0.001 and current.length() > 0.001 else rotation
-	transform = Transform2D(angle, Vector2.ONE * maxf(0.001, factor), 0.0,
-		a - path[0].rotated(angle) * maxf(0.001, factor))
-	endpoint_a.scale = Vector2.ONE / maxf(0.001, factor)
-	endpoint_b.scale = endpoint_a.scale
+	var source_axis: Vector2 = original.normalized() if original.length() > 0.001 else Vector2.RIGHT
+	var target_axis: Vector2 = current.normalized() if current.length() > 0.001 else source_axis
+	var source_normal: Vector2 = source_axis.orthogonal()
+	var target_normal: Vector2 = target_axis.orthogonal()
+	# 只沿弹簧轴向拉伸；法向始终为原画笔宽度，不再越拉越粗。
+	var x_axis: Vector2 = target_axis * source_axis.x * factor + target_normal * source_normal.x
+	var y_axis: Vector2 = target_axis * source_axis.y * factor + target_normal * source_normal.y
+	var deformation := Transform2D(x_axis, y_axis, Vector2.ZERO)
+	deformation.origin = a - deformation.basis_xform(path[0])
+	# Stroke 本身永远保持单位变换；只变换黄色纹理。这样端子、数据坐标和
+	# Sprite2D 不会在连续更新中落入不同坐标空间。
+	transform = Transform2D.IDENTITY
+	visual.transform = deformation * Transform2D(0.0, Vector2(bounds.position))
+	# 端子是独立世界空间贴图：中心跟锚点，大小和朝向都不继承弹簧变形。
+	endpoint_a.global_position = _world_to_canvas(a)
+	endpoint_b.global_position = _world_to_canvas(b)
+	endpoint_a.global_rotation = 0.0
+	endpoint_b.global_rotation = 0.0
+	endpoint_a.global_scale = Vector2.ONE
+	endpoint_b.global_scale = Vector2.ONE
 	saved_anchor_a = a
 	saved_anchor_b = b
+
+func _world_to_canvas(point: Vector2) -> Vector2:
+	var world_node := get_parent() as Node2D
+	return world_node.to_global(point) if world_node != null else point
+
+func pixel_world(point: Vector2) -> Vector2:
+	if visual == null:
+		return _world_to_canvas(point)
+	return visual.to_global(point - Vector2(bounds.position))
 
 func animate_death(delta: float) -> void:
 	fade += delta / 0.3
