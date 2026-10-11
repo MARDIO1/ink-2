@@ -1787,3 +1787,74 @@ canvas 的 `PenSlider` 也一样（同一个主题）。要对齐就得往主题
 - 弹丸原先与黑色撞子留有 `2.5 px` 空隙，已改为两者边缘同为 `x=162.5` 的初始零间隙接触，并新增数值断言；普通黑色托台同步左移，不新增任何关节。
 - HUD 新增“是否抓住、指尖距撞子、鼠标目标距主角”三项诊断，玩家可直接区分没碰到、没抓住和抓住后拉力不足。
 - 当前合成目标两轮一致：60 px 拉程约 6 个物理帧达到，最大拉程约 91.01 px，水平峰值约 833.37 px/s，转换效率约 73.38%，距离约 1799 px；`test_yellow_hand_slingshot.gd` 53/0。黄色 34/0、旧悬挂/重复发射与碰撞伤害 42/0 均通过。未 commit。
+## 2026-10-11 — 黑墨喷溅：碰撞伤害 → 墨点溅射
+
+### 实现
+- 新增 `Ink/src/ink_spray.gd`：池化 `GPUParticles2D`，每次伤害取一簇；方向 = 受击表面朝外，
+  粒子数/初速/寿命随伤害插值，最后 40% 淡出。挂为 `SimulationRuntime/InkSpray`。
+- 新增 `Ink/asset/ink_drop.png`：4 帧墨点图集（白色 + alpha，靠 `material.color` 染色）。
+- `root/src/impact_damage.gd` 新增 `_record_hit()`：每次真正落地的伤害记一条
+  `{position, direction, amount, material, player}` 进通用效果包的 `hits`；规则本身仍不认识墨水。
+- `root/src/simulation_runtime.gd`：合并 `hits`，每个固定步交给实现 `observe_damage` 的扩展。
+- `hit_feedback.gd` 头注释改为指向喷溅节点（原本写着「粒子以后放在这里」）。
+
+### 实测（Godot 4.7.2 / GL Compatibility / RTX 5060）
+- `GPUParticles2D` 在本渲染器下**能画**：同参数对照 64 粒子，GPU 侧 3354 白像素 / CPU 侧 1624
+  （GPU 那侧多设了 preprocess，只证明「画出来了」）。
+- ⚠️ **`trail_enabled` 一开，整个发射器一个粒子都不画**（同对照只剩 100 像素）；引擎只给
+  `The Compatibility renderer does not support particle trails.`（`drivers/gles3/storage/particles_storage.cpp:303`）。
+- 帧动画在 `CanvasItemMaterial.particles_anim_h_frames` —— 4.7 的 `Texture2D` 没有 `hframes`（实测报错）。
+- 真主场景伤害标定：普通落地 0.7 px；玩家被 900 / 1400 px/s 砸 13–28 px。阈值取 2 / 40。
+- 窗口截图人工检查：喷溅锥、墨点沿速度拉长、1.2 s 后淡成灰残留（`Ink/doc/黑墨喷溅-实拍.png`）。
+
+### 验收
+- `test/test_ink_spray.gd` 23/0；`test_collision_damage.gd` 42/0；`test_hit_feedback.gd` 6/0；
+  `test_red_ink.gd` 33/1（既有失败：同体炮管反冲，与本次无关）。
+- ⚠️ 跑 `godot --headless --import` 会删掉已跟踪的 `addons/pixel_destruction/native/~fastphys.dll`
+  （本次已 `git checkout` 还原）。只有给新 PNG 生成 `.import` 时才需要跑它。
+- 没有 commit。
+### 改版：按用户要求改成纯 shader（不要实体）
+- 第一版是池化 `GPUParticles2D` + 4 帧墨点贴图（`ink_drop.png`，已删）。用户要求「不要做成实体，纯 shader」，
+  于是改成：一张 `ColorRect` + `Ink/asset/ink_splat.gdshader`，整个效果在片元里解析求值。
+- 每次喷溅只在着色器里存一条 `(位置, 方向, 出生时刻, 强度, 颜色)`（最多 8 条）；
+  墨滴轨迹是解析解（`中心 + 方向·速度·age + ½g·age²`），拖尾是「当前位置与上一瞬间位置连成的胶囊」。
+- 四边形取并集并裁到屏幕内，着色器里每像素先粗剔除；`mouse_filter = IGNORE`（否则会挡掉画布落笔）。
+- 顺带把 `opacity` 默认 0.75：墨是半透明的，叠得密的地方才更黑（预乘 over 累加）。
+- 调形状时踩到的坑：谐波一多主体就成对称星形（改成只留 2/3/5 次低频 + 沿喷出方向拉长 1.4 倍）；
+  `streak` 0.045 会把墨点拉成细长线（降到 0.014）。
+- 再按「透明渐变」加了一档：主体与每颗墨滴改成 `falloff()` 从核心往外淡出（不是实心片贴软边），
+  再乘 `gradient`（默认 0.65）让同一簇里越远的墨滴越淡 —— 整簇从落点往外是一道透明渐变。
+- **修方向 bug**：`_record_hit()` 原先把 `direction` 翻成「从受击表面朝外」，砸地时正好朝下 —— 墨往地里溅。
+  改成直接用**受击方被推的方向**（也就是 `_trace` 的进体方向）：砸地朝上、侧撞朝撞击方向。
+  验收新增两条钉住它（「被推的方向」与「砸地朝上」）。
+- 视觉重力 620 → 280：墨滴要飞得出去，不然刚喷出来就被拽下来。
+- 再按「粒子是一个个小方块」把形状从软边圆墨滴改成**轴对齐硬边方块**：`box_alpha()` 用 `step()` 不做抗锯齿，
+  主体改成 7 块方砖错开叠出来的方坨，墨滴 18 颗（边长 1..`drop_size` 取整）；`softness`/`streak`/`*_radius` 换成 `body_size`/`drop_size`。
+  第一版方块太小（5/2 px，像灰尘），先放大到 12/3 px，再按用户要求放大到 18/4 px；
+  之后用户要求「主体减小」，主体降到 10 px；再要求「把主方块删掉」，于是**去掉主体块**（`body_size` 整个删除），
+  整簇只剩飞出去的小方块，落点附近靠飞得慢的那几颗自然堆密。
+- 再按「给方块加一些旋转 / 不要都是一个角度」：`box_alpha()` 加角度参数（判边界前把点转进方块坐标系），
+  每颗的出生角度按 hash 随机（`h4 * TAU`）、自转速度与转向也各不相同（`spin_speed`，默认 2.5 rad/s）。
+- 用户问「现在会根据伤害大小变化强度吗」：查下来范围/大小/寿命早就跟着伤害走，**但墨点数量是写死的 18 颗**——
+  轻重伤害撒一样多。补上 `drop_min`/`drop_max`（4→22，按强度插值取整），强度这一维才完整。
+- 再按用户要求把强度**改成连续 + 阈值 + 封顶**：阈值以下 0，`reference_damage` 处 1，再往上 `1 + ln(ratio)`
+  （在 ratio=1 处斜率连续，没有台阶），最后封到 `max_strength`（默认 2，防巨额伤害）。`full_damage` 改名 `reference_damage`；
+  速度另按强度 1.6 封顶、颗数 ≤ `drop_max`。验收加 4 条（阈值=0 / 参考=1 / 继续涨 / 封顶），共 37/0。
+- 再按「把斜率减小」加 `strength_curve`（默认 1.6）：前段改成 `pow(ratio, curve)`、后段 `1 + ln(ratio)/curve`，
+  函数仍连续单调、参考点仍是 1、封顶不变。实测：伤害 10 → 0.08、20 → 0.28（原 0.20 / 0.45），200 才到封顶 2.0。
+  验收加 1 条（比线性平缓），共 38/0。
+- 再按「封顶 1.00 强度」把 `max_strength` 默认从 2.0 改成 **1.0**：参考伤害就是最猛的表现，
+  100 / 200 / 1000 的伤害全部停在 1.000（实测）。验收把「继续增长」那条换成「单调不减 + 参考点即封顶」，共 39/0。
+- `test/test_ink_spray.gd` 改成 32 checks / 0 failures。
+
+### 叠到上游 main
+- 按用户要求拉上游：`origin` = MARDIO1/ink-2（SSH 拉不通，改用 `-c url.https://…insteadOf=git@…` 走 HTTPS，
+  且 github 连接是间歇性的 —— 第 7 次重试才成功）。上游 `main` = `99c6d76`「修建音频」，比本地多 24 个提交
+  （含 UI-optimized-version 合并、怪物物理、音频）。
+- 本地 `main` 快进到 `99c6d76`，本轮工作挪到新分支 `feat/black-ink-spray` 上，**未 commit**。
+- 上游改的正好是我改过的 5 个文件（readme / simulation_runtime.tscn / hit_feedback / impact_damage / simulation_runtime），
+  做法：先把我的改动存成补丁、`git checkout --` 还原这 5 个文件，快进后再逐条叠回。
+- 上游 `hit_feedback.gd` **保持不动**：它已重构成 ImpactEvent 统一入口（`_emit_particles()` 等钩子按**冲量**驱动），
+  而本喷溅按**伤害**驱动，继续走 `observe_damage`；这一点写进了 `Ink/doc/黑墨喷溅.md`。
+- 上游把 `addons/pixel_destruction/native/~fastphys.dll` 从版本控制里删了（现在不再跟踪），本地那份已删掉保持一致。
+- 上游带进一批新图片资源，需要跑一次 `--headless --import` 才能跑测试（导入后 `test_collision_damage` 恢复）。

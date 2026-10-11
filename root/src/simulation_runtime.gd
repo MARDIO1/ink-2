@@ -72,6 +72,7 @@ func _physics_process(delta: float) -> void:
 	while _elapsed >= _main.fixed_dt and steps < _main.max_substeps:
 		var result: Dictionary = _step(_main.fixed_dt)
 		_player.apply_collision_damage(result.player_damage)
+		_observe_damage(result.hits)
 		if not result.removals.is_empty():
 			var nodes: Array = _main._body_nodes.duplicate()
 			commit(_main.world, result.removals, result.get("bursts", {}), true)
@@ -117,12 +118,14 @@ func _context() -> Dictionary:
 
 ## 创建统一效果包，所有规则都通过这些通用字段向物理层提交结果。
 func _empty_result() -> Dictionary:
-	return {"removals": {}, "player_damage": 0.0, "bursts": {}, "impulses": []}
+	return {"removals": {}, "player_damage": 0.0, "bursts": {}, "impulses": [], "hits": []}
 
 
 ## 合并多个规则的伤害、删除、分片和冲量效果，并保留最低连锁反应倍率。
 func _merge_result(target: Dictionary, source: Dictionary) -> void:
 	target.player_damage += source.get("player_damage", 0.0)
+	if not source.get("hits", []).is_empty():
+		target.hits.append_array(source.hits)
 	if not source.get("impulses", []).is_empty():
 		target.impulses.append_array(source.impulses)
 		_reaction_scale = minf(_reaction_scale, source.get("reaction_scale", 1.0))
@@ -178,6 +181,16 @@ func commit(world, removals: Dictionary, bursts: Dictionary = {},
 			if extension.has_method("observe_removals"):
 				extension.observe_removals(_context(), body, removals[body], _reaction_scale)
 	return _physics.commit(world, removals, bursts, defer_dust)
+
+
+## 把本轮落地的伤害事件交给表现层扩展（墨汁喷溅等），不参与物理结果。
+func _observe_damage(hits: Array) -> void:
+	if hits.is_empty():
+		return
+	var context: Dictionary = _context()
+	for extension in _extensions:
+		if extension.has_method("observe_damage"):
+			extension.observe_damage(context, hits)
 
 
 ## 提供给测试与诊断工具的接触读取入口，仍由 PhysicsStep 完成引擎查询。

@@ -46,10 +46,11 @@ func resolve_contacts(context: Dictionary, contacts: Array) -> Dictionary:
 
 
 #region 碰撞结算
-## 返回 {removals: {PBody: {PixelShape: {Vector2i: true}}}, player_damage: float}。
+## 返回 {removals: {PBody: {PixelShape: {Vector2i: true}}}, player_damage: float, hits: Array}。
 ## 重叠删除取并集；每条 lane 独立消费预算，未满一个像素的余量舍弃。
+## hits 是每次真正落地的伤害事件（位置、喷出方向、等效像素伤害、受击材料），只给表现层看。
 func calculate(world, contacts: Array, player_body: PBody = null, protected_bodies: Array = []) -> Dictionary:
-	var result: Dictionary = {"removals": {}, "player_damage": 0.0}
+	var result: Dictionary = {"removals": {}, "player_damage": 0.0, "hits": []}
 	# 轻碎片豁免：一个子步只建一次集合，别在每对接触上重建（见 _dust_bodies）。
 	var dust: Dictionary = ContactImpact.dust_bodies(world, player_body, protected_bodies)
 	for contact in contacts:
@@ -131,10 +132,14 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 				break
 	var factor: float = min_thickness_factor + (1.0 - min_thickness_factor) / (1.0 + thickness_scale * log(1.0 + support))
 	var budget: float = damage_scale * impulse * attacker_strength / surface_strength * factor
+	var dealt: float = budget / surface_strength
+	# 位置无效的调用（不传 origin 的老接口）没有可演的位置，不记事件。
+	if origin.is_finite() and not direction.is_zero_approx():
+		_record_hit(result, origin, direction, dealt, path[0].material, body == player_body)
 	if body == player_body:
 		# InkHealth 以像素计量；普通材料会用 budget / strength 个等效像素消费预算，
 		# 玩家不删形状，但扣除同样数量的墨水，避免把原始强度预算误当成像素数。
-		result.player_damage += budget / surface_strength
+		result.player_damage += dealt
 		return
 	if not origin.is_finite() or direction.is_zero_approx():
 		_consume_path(world, body, path, budget, result)
@@ -147,6 +152,18 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 		var angle: float = deg_to_rad((spread * crack_spread_degrees + jitter) * mirror)
 		_crack_path(body, origin, direction.rotated(angle), world,
 			branch_budget, seed + i * 97, mirror, result)
+
+
+## 记录一次落地的伤害事件给表现层（喷溅、闪光）。budget 已被减伤折过，dealt 就是等效受损像素数。
+##
+## ⚠️ direction 是**受击方被推的方向**（也是 _trace 的进体方向）：砸地时朝上、被侧面撞击时朝撞击方向。
+## 不要翻成"从表面朝外" —— 那对砸地就是朝下插进地面，墨会往地里溅。
+func _record_hit(result: Dictionary, origin: Vector2, direction: Vector2, amount: float,
+		material: int, player: bool) -> void:
+	if not result.has("hits"):
+		result["hits"] = []
+	result["hits"].append({"position": origin, "direction": direction.normalized(),
+		"amount": amount, "material": material, "player": player})
 
 
 ## 根据等效像素预算选择一到四条主裂纹。
