@@ -5,6 +5,7 @@ extends Node
 #region 依赖与配置
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const LIVING_TAG := "living"
+const ContactImpact = preload("res://root/src/contact_impact.gd")
 
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
 ## 碰撞冲量转为破坏预算的倍率；越大越容易删像素。
@@ -50,22 +51,22 @@ func resolve_contacts(context: Dictionary, contacts: Array) -> Dictionary:
 func calculate(world, contacts: Array, player_body: PBody = null, protected_bodies: Array = []) -> Dictionary:
 	var result: Dictionary = {"removals": {}, "player_damage": 0.0}
 	# 轻碎片豁免：一个子步只建一次集合，别在每对接触上重建（见 _dust_bodies）。
-	var dust: Dictionary = _dust_bodies(world, player_body, protected_bodies)
+	var dust: Dictionary = ContactImpact.dust_bodies(world, player_body, protected_bodies)
 	for contact in contacts:
 		if contact.approach <= min_approach:
 			continue
 		# 两头都是灰尘：两侧都被豁免，连冲量合成都不必算。
 		if dust.has(contact.a) and dust.has(contact.b):
 			continue
-		var impact: Dictionary = _impact(contact.points)
+		var impact: Dictionary = ContactImpact.summarize(contact.points)
 		if impact.is_empty():
 			continue
 		var point: Vector2 = impact.position
 		var normal: Vector2 = impact.normal
 		var a_origin: Vector2 = point - normal * 0.001
 		var b_origin: Vector2 = point + normal * (maxf(impact.dist, 0.0) + 0.001)
-		var a_material: int = _material_at(contact.a, a_origin)
-		var b_material: int = _material_at(contact.b, b_origin)
+		var a_material: int = ContactImpact.material_at(contact.a, a_origin)
+		var b_material: int = ContactImpact.material_at(contact.b, b_origin)
 		if a_material == 0 or b_material == 0:
 			continue
 		for side in [[contact.a, a_origin, -normal, a_material, b_material, -1.0],
@@ -100,19 +101,7 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 ## 豁免只针对「被撞的一方」；玩家、手臂/手、抓着的、挂关节的一律不在集合里
 ## （与引擎 _exempt_bodies() 末尾 erase(_interactive_bodies()) 同义）。
 func _dust_bodies(world, player_body: PBody, protected_bodies: Array) -> Dictionary:
-	var out: Dictionary = {}
-	var limit: float = world.ccd_ignore_mass
-	if limit <= 0.0:
-		return out
-	var interactive: Dictionary = world._interactive_bodies()
-	for body: PBody in world.bodies:
-		if body == player_body or protected_bodies.has(body):
-			continue
-		if body.is_static or body.frozen:
-			continue
-		if body.mass <= limit and not interactive.has(body):
-			out[body] = true
-	return out
+	return ContactImpact.dust_bodies(world, player_body, protected_bodies)
 
 
 ## 按厚度、材料强度和裂纹分支消耗单侧冲量预算。
@@ -183,41 +172,13 @@ func _consume_path(world, body: PBody, path: Array, budget: float, result: Dicti
 #region 接触合成
 ## 把同一碰撞对的多个接触点按冲量合成为一次面冲击。
 func _impact(points: Array) -> Dictionary:
-	var total: float = 0.0
-	var position: Vector2 = Vector2.ZERO
-	var normal: Vector2 = Vector2.ZERO
-	var dist: float = 0.0
-	for point in points:
-		if point.impulse <= 0.0:
-			continue
-		total += point.impulse
-		position += point.position * point.impulse
-		normal += point.normal * point.impulse
-		dist += point.dist * point.impulse
-	if total <= 0.0 or normal.is_zero_approx():
-		return {}
-	normal = normal.normalized()
-	var tangent: Vector2 = Vector2(-normal.y, normal.x)
-	var first: float = INF
-	var last: float = -INF
-	for point in points:
-		if point.impulse > 0.0:
-			first = minf(first, point.position.dot(tangent))
-			last = maxf(last, point.position.dot(tangent))
-	var width: int = maxi(1, ceili(last - first))
-	return {"position": position / total, "normal": normal, "dist": dist / total,
-		"impulse": total / float(width), "total_impulse": total}
+	return ContactImpact.summarize(points)
 #endregion
 
 #region 像素路径
 ## 返回世界点所在的刚体像素材质；空白位置返回 0。
 func _material_at(body: PBody, point: Vector2) -> int:
-	var cell: Vector2i = Vector2i(body.to_local(point).floor())
-	for shape in body.shapes:
-		var material: int = shape.get_pixel(cell.x, cell.y)
-		if material != 0:
-			return material
-	return 0
+	return ContactImpact.material_at(body, point)
 
 
 ## 局部网格 DDA：每个进入的像素只访问一次；第一处空洞停止，跨材料继续。
@@ -341,7 +302,7 @@ func apply_impulse_damage(world, body: PBody, origin: Vector2, direction: Vector
 		result: Dictionary, attacker_material: int = 0) -> void:
 	if body == null or protected_bodies.has(body) or direction.is_zero_approx() or impulse <= 0.0:
 		return
-	var strength: float = world.material_strength(_material_at(body, origin)).x
+	var strength: float = world.material_strength(ContactImpact.material_at(body, origin)).x
 	if strength <= 0.0 and body != player_body:
 		return
 	strength = strength if strength > 0.0 else reference_strength

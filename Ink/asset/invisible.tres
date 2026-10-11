@@ -7,4 +7,4 @@ script = ExtResource("1_mat")
 display_name = "invisible"
 id = 6
 color = Color(0, 0, 0, 0)
-compress_strength = 200.0
+compress_strength = 100.0

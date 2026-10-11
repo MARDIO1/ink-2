@@ -159,8 +159,8 @@ func _resolve_contacts(world, contacts: Array, player_body = null,
 		_forces.sample_contacts(contacts, _main.fixed_dt / world.last_substeps)
 	if is_instance_valid(_feet):
 		_feet.update_support(contacts)
-	var context: Dictionary = {"world": world, "player_body": player_body,
-		"protected_bodies": protected_bodies, "services": _services}
+	var context: Dictionary = {"world": world, "pixel_world": _main, "camera": _camera,
+		"player_body": player_body, "protected_bodies": protected_bodies, "services": _services}
 	var result: Dictionary = _empty_result()
 	for rule in _contact_rules:
 		_merge_result(result, rule.resolve_contacts(context, contacts))

@@ -19,13 +19,30 @@ const RED_ID: int = 8
 @export_range(4, 64, 4) var ray_count: int = 32
 ## 爆炸事件归组尺寸，不改变引擎 8×8 像素存储。
 @export_range(8, 64, 8) var event_chunk_size: int = 64
+@export_group("爆炸音效")
+@export var explosion_stream: AudioStream
+@export_range(1, 8, 1) var explosion_voice_count: int = 4
+@export_range(-40.0, 0.0, 0.5) var quiet_explosion_db: float = -22.0
+@export_range(-20.0, 6.0, 0.5) var loud_explosion_db: float = -1.0
 #endregion
 
 #region 状态
 var _pending: Array = []
+var _explosion_voices: Array[AudioStreamPlayer2D] = []
+var _next_explosion_voice: int = 0
 var _profile_enabled: bool = false
 var _profile: Dictionary = {}
 #endregion
+
+
+func _ready() -> void:
+	for index in explosion_voice_count:
+		var voice := AudioStreamPlayer2D.new()
+		voice.name = "ExplosionVoice%d" % index
+		voice.max_distance = 2400.0
+		voice.attenuation = 1.0
+		add_child(voice)
+		_explosion_voices.append(voice)
 
 
 #region Profiling
@@ -103,11 +120,33 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 	for event in current:
 		# fracture 保留坐标变换；原体删光也不会丢失这次爆炸。
 		var center: Vector2 = event.body.to_world(event.local)
+		_play_explosion(center, event.energy)
 		_blast(context.world, damage, center, event.energy, context.player_body,
 			context.protected_bodies, result)
 	if _profile_enabled:
 		_profile.resolve_us = _profile.get("resolve_us", 0) + Time.get_ticks_usec() - start
 	return result
+#endregion
+
+
+#region 爆炸音效
+## 1 像素事件保持克制，完整 64×64 事件接近最大响度；平方根让中等爆炸也有明显层级。
+func explosion_volume_db(energy: float) -> float:
+	var normalized := clampf(energy / maxf(float(event_chunk_size * event_chunk_size), 1.0), 0.0, 1.0)
+	return lerpf(quiet_explosion_db, loud_explosion_db, sqrt(normalized))
+
+
+func _play_explosion(position: Vector2, energy: float) -> void:
+	if explosion_stream == null or _explosion_voices.is_empty() or energy <= 0.0:
+		return
+	var voice: AudioStreamPlayer2D = _explosion_voices[_next_explosion_voice]
+	_next_explosion_voice = (_next_explosion_voice + 1) % _explosion_voices.size()
+	voice.stream = explosion_stream
+	voice.global_position = position
+	voice.volume_db = explosion_volume_db(energy)
+	var normalized := clampf(energy / maxf(float(event_chunk_size * event_chunk_size), 1.0), 0.0, 1.0)
+	voice.pitch_scale = lerpf(1.08, 0.90, sqrt(normalized)) * randf_range(0.97, 1.03)
+	voice.play()
 #endregion
 
 

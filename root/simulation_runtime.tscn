@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://root/src/simulation_runtime.gd" id="1_simulation"]
 [ext_resource type="Script" path="res://root/src/physics_step.gd" id="2_physics"]
@@ -7,6 +7,10 @@
 [ext_resource type="Script" path="res://Ink/src/yellow_ink.gd" id="5_yellow"]
 [ext_resource type="Script" path="res://root/src/hit_feedback.gd" id="6_feedback"]
 [ext_resource type="Script" path="res://root/src/monster_contacts.gd" id="7_monsters"]
+[ext_resource type="AudioStream" path="res://sound/sfx/普通敲击.ogg" id="8_impact"]
+[ext_resource type="AudioStream" path="res://sound/sfx/爆炸.ogg" id="9_explosion"]
+[ext_resource type="AudioStream" path="res://sound/sfx/弹簧紧绷.ogg" id="10_spring_tight"]
+[ext_resource type="AudioStream" path="res://sound/sfx/弹簧释放.ogg" id="11_spring_release"]
 
 [node name="SimulationRuntime" type="Node"]
 script = ExtResource("1_simulation")
@@ -19,12 +23,16 @@ script = ExtResource("3_damage")
 
 [node name="HitFeedback" type="Node" parent="."]
 script = ExtResource("6_feedback")
+impact_stream = ExtResource("8_impact")
 
 [node name="MonsterContacts" type="Node" parent="."]
 script = ExtResource("7_monsters")
 
 [node name="RedInk" type="Node" parent="."]
 script = ExtResource("4_red")
+explosion_stream = ExtResource("9_explosion")
 
 [node name="YellowInk" type="Node2D" parent="."]
 script = ExtResource("5_yellow")
+tension_stream = ExtResource("10_spring_tight")
+release_stream = ExtResource("11_spring_release")

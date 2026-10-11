@@ -1,13 +1,20 @@
-[gd_scene format=3 uid="uid://dr0gftbpnddda"]
+[gd_scene load_steps=5 format=3 uid="uid://dr0gftbpnddda"]
 
 [ext_resource type="Script" uid="uid://m887ouaqaa8q" path="res://root/src/root.gd" id="1_root"]
 [ext_resource type="PackedScene" path="res://ui/background/paper_background.tscn" id="2_bg"]
+[ext_resource type="AudioStream" path="res://sound/music/Miniature Parade.ogg" id="3_menu_music"]
+[ext_resource type="AudioStream" path="res://sound/music/Cartoon Spy Groove.ogg" id="4_level_music"]
 
 [node name="Root" type="Node" unique_id=1977969148]
 script = ExtResource("1_root")
+menu_music = ExtResource("3_menu_music")
+level_music = ExtResource("4_level_music")
 
 [node name="PaperBackground" parent="." instance=ExtResource("2_bg")]
 
 [node name="Level" type="Node2D" parent="." unique_id=961708237]
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=1009684291]
+
+[node name="Music" type="AudioStreamPlayer" parent="."]
+process_mode = 3

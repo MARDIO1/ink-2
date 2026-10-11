@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://uime50djqixj"
+path="res://.godot/imported/Miniature Parade.ogg-f9d394ae50f7993733d93abc28d40f74.oggvorbisstr"
+
+[deps]
+
+source_file="res://sound/music/Miniature Parade.ogg"
+dest_files=["res://.godot/imported/Miniature Parade.ogg-f9d394ae50f7993733d93abc28d40f74.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

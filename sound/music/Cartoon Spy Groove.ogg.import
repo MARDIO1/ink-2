@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://b3xplvsjdmsyp"
+path="res://.godot/imported/Cartoon Spy Groove.ogg-f28b8b34edb64e42e59e13bb2d2b0580.oggvorbisstr"
+
+[deps]
+
+source_file="res://sound/music/Cartoon Spy Groove.ogg"
+dest_files=["res://.godot/imported/Cartoon Spy Groove.ogg-f28b8b34edb64e42e59e13bb2d2b0580.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

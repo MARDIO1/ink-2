@@ -9,6 +9,12 @@ const Stroke = preload("res://actor/yellow/src/yellow_stroke.gd")
 ## 劲度变软后仍保留约 200 px 的静态安全拉伸量。
 @export var safe_force_per_width: float = 1000000.0
 @export var wear_pixels_per_second: float = 15.0
+@export_group("弹簧音效")
+@export var tension_stream: AudioStream
+@export var release_stream: AudioStream
+@export_range(0.01, 1.0, 0.01) var tension_sound_threshold: float = 0.15
+@export_range(0.0, 0.5, 0.01) var release_sound_threshold: float = 0.05
+@export_range(1, 8, 1) var spring_voice_count: int = 4
 var drawing = null
 var strokes: Array = []
 var _world = null
@@ -18,6 +24,9 @@ var _mask_image: Image
 var _mask_bounds: Rect2i
 var _mask_revision: int = -1
 var _wear_cursor: int = 0
+var _spring_audio: Dictionary = {}
+var _spring_voices: Array[AudioStreamPlayer2D] = []
+var _next_spring_voice: int = 0
 const OVERLAP_SHADER = preload("res://actor/yellow/asset/overlap.gdshader")
 #endregion
 
@@ -27,6 +36,13 @@ func _ready() -> void:
 	for child in _world.get_children():
 		if child is Stroke and child.activated:
 			strokes.append(child)
+	for index in spring_voice_count:
+		var voice := AudioStreamPlayer2D.new()
+		voice.name = "SpringVoice%d" % index
+		voice.max_distance = 2400.0
+		voice.attenuation = 1.0
+		add_child(voice)
+		_spring_voices.append(voice)
 
 func begin(surface, point: Vector2) -> void:
 	cancel()
@@ -211,6 +227,7 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 	for offset in strokes.size():
 		var stroke = strokes[(offset + _wear_cursor) % strokes.size()]
 		if stroke.state != Stroke.State.ACTIVE:
+			_release_tracked_spring(stroke.get_instance_id())
 			continue
 		for index in stroke.anchors.size():
 			var anchor: Dictionary = stroke.anchors[index]
@@ -223,6 +240,8 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 		if stroke.joint == null:
 			continue
 		var load: float = spring_load(stroke)
+		var safe_load := maxf(safe_force_per_width * stroke.brush_width, 0.001)
+		_update_spring_audio(stroke, load / safe_load)
 		stroke.wear_credit += wear_pixels_per_second * maxf(0.0,
 			load / (safe_force_per_width * stroke.brush_width) - 1.0) * delta
 		stroke.wear_elapsed += delta
@@ -234,6 +253,56 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 			stroke.erode(count)
 	_wear_cursor = (_wear_cursor + 1) % maxi(1, strokes.size())
 	return {}
+
+
+## 载荷分为三档；每跨一档重放一次紧绷声，使用至少 6 dB 的级差，避免听感挤在一起。
+func _update_spring_audio(stroke, ratio: float) -> void:
+	var key: int = stroke.get_instance_id()
+	var position := (Stroke.anchor_world(stroke.anchors[0]) + Stroke.anchor_world(stroke.anchors[1])) * 0.5
+	if ratio < tension_sound_threshold:
+		if ratio <= release_sound_threshold:
+			_release_tracked_spring(key, position)
+		return
+	var state: Dictionary = _spring_audio.get(key, {"peak": 0.0, "band": 0, "position": position})
+	state.peak = maxf(float(state.peak), ratio)
+	state.position = position
+	var band := spring_load_band(ratio)
+	if band > int(state.band):
+		_play_spring(tension_stream, position, spring_volume_db(band / 3.0), lerpf(1.08, 0.94, band / 3.0))
+		state.band = band
+	_spring_audio[key] = state
+
+
+func _release_tracked_spring(key: int, position: Vector2 = Vector2.INF) -> void:
+	if not _spring_audio.has(key):
+		return
+	var state: Dictionary = _spring_audio[key]
+	var at: Vector2 = state.position if position == Vector2.INF else position
+	_play_spring(release_stream, at, spring_volume_db(float(state.peak)), 1.0)
+	_spring_audio.erase(key)
+
+
+func spring_load_band(ratio: float) -> int:
+	if ratio < tension_sound_threshold:
+		return 0
+	var span := maxf(1.0 - tension_sound_threshold, 0.001)
+	return clampi(1 + floori((ratio - tension_sound_threshold) / span * 3.0), 1, 3)
+
+
+func spring_volume_db(ratio: float) -> float:
+	return lerpf(-16.0, -2.0, sqrt(clampf(ratio, 0.0, 1.0)))
+
+
+func _play_spring(stream: AudioStream, position: Vector2, volume_db: float, pitch: float) -> void:
+	if stream == null or _spring_voices.is_empty():
+		return
+	var voice: AudioStreamPlayer2D = _spring_voices[_next_spring_voice]
+	_next_spring_voice = (_next_spring_voice + 1) % _spring_voices.size()
+	voice.stream = stream
+	voice.global_position = position
+	voice.volume_db = volume_db
+	voice.pitch_scale = pitch * randf_range(0.98, 1.02)
+	voice.play()
 
 func _process(delta: float) -> void:
 	for stroke in strokes:

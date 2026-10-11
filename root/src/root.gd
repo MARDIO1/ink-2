@@ -12,14 +12,27 @@ extends Node
 @export var menu_scene: PackedScene = preload("res://ui/menu/menu.tscn")
 @export var level_select_scene: PackedScene = preload("res://ui/level_select/level_select.tscn")
 @export var ui_scene: PackedScene = preload("res://ui/game_ui.tscn")
+@export var menu_music: AudioStream
+@export var level_music: AudioStream
+@export_range(-40.0, 0.0, 0.5) var music_volume_db: float = -12.0
 
 @onready var level_root: Node = $Level
 @onready var ui_root: Node = $UI
+@onready var music_player: AudioStreamPlayer = $Music
 var _loading_level := false
 
 
 func _ready() -> void:
+	_play_music(menu_music)
 	_show_menu()
+
+
+func _exit_tree() -> void:
+	if is_instance_valid(music_player):
+		music_player.stop()
+		music_player.stream = null
+	menu_music = null
+	level_music = null
 
 
 ## 第一屏：主菜单。「开始」由菜单喊 `start_pressed`，换屏归 root 管。
@@ -88,4 +101,16 @@ func load_level(scene: PackedScene) -> Node:
 		child.queue_free()
 	var level := scene.instantiate()
 	level_root.add_child(level)
+	_play_music(level_music)
 	return level
+
+
+## 音乐由全局根持有，换 UI 不会重复创建；进入关卡时只切换一次曲目。
+func _play_music(track: AudioStream) -> void:
+	if track == null or music_player.stream == track and music_player.playing:
+		return
+	if track is AudioStreamOggVorbis:
+		(track as AudioStreamOggVorbis).loop = true
+	music_player.stream = track
+	music_player.volume_db = music_volume_db
+	music_player.play()
