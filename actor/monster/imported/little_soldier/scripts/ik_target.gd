@@ -42,3 +42,4 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if _dragging and not Engine.is_editor_hint():
 		global_position = get_global_mouse_position() + _drag_offset
+

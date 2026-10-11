@@ -3,10 +3,29 @@
 extends Node2D
 
 signal tool_changed(tool: int)
+signal map_changed
+signal editor_control_requested
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
 const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
+const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
+const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
+const EXPAND_CANVAS_ICON_REGION := Rect2(228, 128, 116, 116)
+const EDITOR_CONTROL_ICON_REGION := Rect2(340, 340, 116, 116)
+const PLAY_TOOL_COLUMNS := 2
+const EDITOR_TOOL_COLUMNS := 2
+const PLAY_TOOL_BUTTON_WIDTH := 32.0
+const PLAY_TOOL_BUTTON_HEIGHT := 43.0
+const PLAY_TOOL_BUTTON_H_GAP := 10.0
+const PLAY_TOOL_BUTTON_V_GAP := 4.0
+const PLAY_HAND_BUTTON_SIZE := 52.0
+const EDITOR_TOOL_BUTTON_WIDTH := 44.0
+const EDITOR_TOOL_BUTTON_HEIGHT := 60.0
+const EDITOR_TOOL_BUTTON_H_GAP := 16.0
+const EDITOR_TOOL_BUTTON_V_GAP := 10.0
+const EDITOR_HAND_BUTTON_SIZE := 72.0
 
 @onready var surface = $CanvasSurface
 @onready var solid = $CanvasSolid
@@ -18,7 +37,12 @@ const InkPalette := preload("res://Ink/src/ink_palette.gd")
 @onready var resize_panel = $WorkbenchUI/ResizePanel
 @onready var workbench: Node2D = $WorkbenchUI
 @onready var toggle_button: Button = $WorkbenchUI/Toggle
+@onready var hand_button: Button = $WorkbenchUI/Buttons/Grid/Hand
 @onready var canvas_frame: TextureRect = $CanvasFrame
+
+var _expand_canvas_window: Window
+var _expand_inputs: Dictionary = {}
+var _expand_size_preview: Label
 #endregion
 
 
@@ -48,6 +72,10 @@ func _ready() -> void:
 	_workbench_home_transform = workbench.transform
 	surface.canvas_size = canvas_size
 	_place_controls()
+	_prepare_workbench_structure()
+	tool_grid.get_node("Nail").visible = false
+	tool_grid.get_node("ExpandCanvas").visible = false
+	_apply_workbench_column_layout()
 	set_brush_size(int(brush_panel.get_node("PenSlider").value))
 	surface.set_process_input(active)
 	set_process_input(active)
@@ -56,9 +84,11 @@ func _ready() -> void:
 	_refresh_workbench_visibility()
 	if not Engine.is_editor_hint():
 		_build_side_panel()
+		_build_shape_popup()
 		_bind_buttons()
 		surface.selection_delete_requested.connect(_delete_selection)
-		_apply_tool(surface.tool)
+		# 进入正常游戏时始终从“手”开始，不能继承地图保存时的画笔状态。
+		_apply_tool(SurfaceScript.Tool.HAND if active else surface.tool)
 #endregion
 
 
@@ -85,7 +115,7 @@ func clear_canvas() -> void:
 
 ## 墨水固化成实体（原 E 键）。
 func generate() -> void:
-	solid.solidify(surface, world)
+	solid.solidify(surface, world, _map_editor_mode)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.solidify(surface)
@@ -138,8 +168,12 @@ func clear_solidified_bodies_outside_canvas() -> int:
 
 ## 未固化墨水与已固化实体一起框删，并合并成一个画布撤销步骤。
 func _delete_selection(rect: Rect2i) -> void:
+	# 固化实体必须先写回可编辑画布，再建立撤销快照。旧顺序在框内只有
+	# 固化像素时会得到“空 -> 空”的快照，既不触发自动保存，也无法撤销。
+	var removed: int = solid.rasterize_rect(surface, world, rect)
+	if removed > 0:
+		solid.sync_serializable_bodies(world)
 	surface._begin_undo_step()
-	solid.rasterize_rect(surface, world, rect)
 	surface.erase_rect(rect)
 	surface._commit_undo_step()
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
@@ -175,10 +209,17 @@ func _sync_hand_enabled(tool: int) -> void:
 		hand.set_enabled(tool == SurfaceScript.Tool.HAND)
 
 
+## 从地图编辑器返回游戏时，强制恢复手工具并重新启用抓取。
+func activate_hand_tool() -> void:
+	set_tool(SurfaceScript.Tool.HAND)
+
+
 ## 直接按 px 设定笔触直径。
 func set_brush_size(px: int) -> void:
 	surface.brush_size = px
 	brush_panel.get_node("PenSlider").tooltip_text = "笔触大小：%d px" % px
+	if _side_brush_slider != null:
+		_side_brush_slider.tooltip_text = "笔触大小：%d px" % px
 
 
 ## 免墨水：创造模式里画图不该花瓶子里的墨（"重绘"也就不会再凭空生墨）。
@@ -194,17 +235,35 @@ func expand_canvas(direction: Vector2i, amount := -1) -> bool:
 		return false
 	var step := canvas_expand_step if amount <= 0 else amount
 	step = maxi(step, 1)
-	var content_offset := Vector2i(
-		step if direction == Vector2i.LEFT else 0,
-		step if direction == Vector2i.UP else 0
-	)
-	var new_size := canvas_size + Vector2i(abs(direction.x), abs(direction.y)) * step
+	match direction:
+		Vector2i.LEFT:
+			return expand_canvas_sides(step, 0, 0, 0)
+		Vector2i.RIGHT:
+			return expand_canvas_sides(0, step, 0, 0)
+		Vector2i.UP:
+			return expand_canvas_sides(0, 0, step, 0)
+		Vector2i.DOWN:
+			return expand_canvas_sides(0, 0, 0, step)
+	return false
+
+
+## 一次扩展四侧。左、上扩展会平移旧内容与画布节点，确保旧内容的世界坐标不变。
+func expand_canvas_sides(left: int, right: int, top: int, bottom: int) -> bool:
+	left = maxi(left, 0)
+	right = maxi(right, 0)
+	top = maxi(top, 0)
+	bottom = maxi(bottom, 0)
+	if left + right + top + bottom == 0:
+		return false
+	var content_offset := Vector2i(left, top)
+	var new_size := canvas_size + Vector2i(left + right, top + bottom)
 	if not surface.resize_preserving_content(new_size, content_offset):
 		return false
 	_syncing_preserved_resize = true
 	canvas_size = new_size
 	_syncing_preserved_resize = false
 	position -= Vector2(content_offset)
+	map_changed.emit()
 	return true
 
 
@@ -254,12 +313,13 @@ func _place_controls() -> void:
 
 #region 右侧面板：墨水选择 + 笔刷粗细
 ## 右侧面板离画布右边缘多远。
-@export var side_panel_gap := 24.0
+@export var side_panel_gap := 14.0
 ## 笔刷粗细条最大直径（步长 1，任意直径都铺得准，见 canvas_surface）。
 @export_range(1, 65, 1) var brush_size_max := 33
 
 var _side_panel: Control = null
 var _ink_buttons: Array[Button] = []
+var _side_brush_slider: VSlider = null
 
 
 #右侧面板由色表生成：加一种墨水这里不用改。
@@ -268,38 +328,40 @@ func _build_side_panel() -> void:
 	panel.name = "SidePanel"
 	panel.z_index = 100
 	panel.theme = buttons.theme
-	panel.add_theme_constant_override("separation", 8)
+	panel.add_theme_constant_override("separation", 4)
 	add_child(panel)
 	_side_panel = panel
-	#笔刷粗细：把左边那条搬过来，顺便把档位分细（原来是 step 2、只有奇数档）。
-	brush_panel.reparent(panel)
-	brush_panel.custom_minimum_size = Vector2(140.0, 28.0)
-	var pen: HSlider = brush_panel.get_node("PenSlider")
-	pen.min_value = 1.0
-	pen.max_value = float(brush_size_max)
-	pen.step = 1.0
-	pen.tick_count = brush_size_max
-	pen.value = clampf(pen.value, 1.0, float(brush_size_max))
-	set_brush_size(int(round(pen.value)))
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	panel.add_child(grid)
+	var title := Label.new()
+	title.text = "色盘"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 12)
+	panel.add_child(title)
+	var controls := HBoxContainer.new()
+	controls.name = "Controls"
+	controls.add_theme_constant_override("separation", 8)
+	panel.add_child(controls)
+	var colors := VBoxContainer.new()
+	colors.name = "Colors"
+	colors.add_theme_constant_override("separation", 10)
+	controls.add_child(colors)
 	for i in InkPalette.ink_count():
 		var color: Color = InkPalette.color_at(i)
 		var style := StyleBoxFlat.new()
 		style.bg_color = color
-		style.border_width_left = 3
-		style.border_width_top = 3
-		style.border_width_right = 3
-		style.border_width_bottom = 3
+		style.corner_radius_top_left = 17
+		style.corner_radius_top_right = 17
+		style.corner_radius_bottom_left = 17
+		style.corner_radius_bottom_right = 17
+		style.border_width_left = 1
+		style.border_width_top = 1
+		style.border_width_right = 1
+		style.border_width_bottom = 1
 		style.border_color = Color(0.035, 0.031, 0.024, 1.0)
 		var button := Button.new()
+		button.name = "Ink%dButton" % i
 		button.toggle_mode = true
 		button.focus_mode = Control.FOCUS_NONE
-		button.custom_minimum_size = Vector2(66.0, 42.0)
-		button.text = InkPalette.ink_name(i)
+		button.custom_minimum_size = Vector2(34.0, 34.0)
 		button.tooltip_text = "%s（材质 %d）" % [
 			InkPalette.ink_name(i), InkPalette.material_id_of(InkPalette.ink_at(i))]
 		button.add_theme_color_override(
@@ -309,8 +371,27 @@ func _build_side_panel() -> void:
 		button.add_theme_stylebox_override("pressed", style)
 		button.add_theme_stylebox_override("focus", style)
 		button.pressed.connect(select_ink.bind(i))
-		grid.add_child(button)
+		colors.add_child(button)
 		_ink_buttons.append(button)
+	var source_pen := brush_panel.get_node("PenSlider") as HSlider
+	source_pen.min_value = 1.0
+	source_pen.max_value = float(brush_size_max)
+	source_pen.step = 1.0
+	source_pen.tick_count = brush_size_max
+	source_pen.value = clampf(source_pen.value, 1.0, float(brush_size_max))
+	_side_brush_slider = VSlider.new()
+	_side_brush_slider.name = "BrushSizeSlider"
+	_side_brush_slider.custom_minimum_size = Vector2(18.0, 166.0)
+	_side_brush_slider.min_value = source_pen.min_value
+	_side_brush_slider.max_value = source_pen.max_value
+	_side_brush_slider.step = source_pen.step
+	_side_brush_slider.tick_count = source_pen.tick_count
+	_side_brush_slider.value = source_pen.value
+	_side_brush_slider.tooltip_text = source_pen.tooltip_text
+	_side_brush_slider.theme = buttons.theme
+	_side_brush_slider.value_changed.connect(_on_pen_slider_changed)
+	controls.add_child(_side_brush_slider)
+	set_brush_size(int(round(_side_brush_slider.value)))
 	select_ink(surface.selected_ink)
 	_place_side_panel()
 	_refresh_workbench_visibility()
@@ -332,7 +413,7 @@ func _place_side_panel() -> void:
 		#创造模式工具栏跟着人飞：面板贴在工具栏右边。
 		_side_panel.position = workbench.position + Vector2(160.0, 56.0)
 	else:
-		_side_panel.position = Vector2(float(canvas_size.x) + side_panel_gap, 0.0)
+		_side_panel.position = Vector2(float(canvas_size.x) + side_panel_gap, -22.0)
 #endregion
 
 
@@ -360,10 +441,25 @@ func set_screen_fixed(on: bool) -> void:
 	_refresh_workbench_visibility()
 
 
-## 地图编辑专用布局：隐藏无角色时没有意义的“手”工具，并显示四向扩展按钮。
+## 两种模式都显示完整工具栏；地图编辑模式额外显示钉子与扩展画布。
 func set_map_editor_mode(on: bool) -> void:
 	_map_editor_mode = on
-	tool_grid.get_node("Hand").visible = not on
+	tool_grid.get_node("Brush").visible = true
+	tool_grid.get_node("Eraser").visible = true
+	tool_grid.get_node("Shape").visible = true
+	tool_grid.get_node("Bucket").visible = true
+	tool_grid.get_node("Nail").visible = on
+	tool_grid.get_node("ExpandCanvas").visible = on
+	hand_button.visible = true
+	hand_button.tooltip_text = (
+		"操纵（F）\n移动出生点、画布、复活点、文本、对话触发点和怪物；滚轮缩放怪物或文本"
+		if on else "操纵（F）\n从绘图工具切换回墨水小瓶的手"
+	)
+	_apply_workbench_column_layout()
+	if on and _expand_canvas_window == null:
+		_build_expand_canvas_window()
+	if not on and _expand_canvas_window != null:
+		_expand_canvas_window.hide()
 	var player_visibility_button: Button = resize_panel.get_node("Grid/PlayerVisibility")
 	player_visibility_button.set_pressed_no_signal(player != null and player.visible)
 	_update_player_visibility_tooltip(player_visibility_button.button_pressed)
@@ -371,10 +467,133 @@ func set_map_editor_mode(on: bool) -> void:
 	nail_visibility_button.set_pressed_no_signal(_nails_visible)
 	_update_nail_visibility_tooltip(_nails_visible)
 	_apply_nail_visuals(_nails_visible if on else true)
-	if on and surface.tool == SurfaceScript.Tool.HAND:
-		set_tool(SurfaceScript.Tool.BRUSH)
 	set_screen_fixed(on)
 	_refresh_workbench_visibility()
+
+
+func _prepare_workbench_structure() -> void:
+	var order := [
+		"Brush", "Eraser", "Shape", "Bucket", "Redraw", "SelectDelete",
+		"Generate", "ReturnToCanvas", "Nail", "ExpandCanvas",
+	]
+	var captions := {
+		"Brush": "画笔", "Eraser": "橡皮", "Shape": "形状", "Bucket": "填充",
+		"Redraw": "清空", "SelectDelete": "框删", "Generate": "固化",
+		"ReturnToCanvas": "墨化", "Nail": "钉子", "ExpandCanvas": "扩展",
+	}
+	for index in order.size():
+		var button := tool_grid.get_node_or_null(NodePath(order[index])) as Button
+		if button != null:
+			if button.name == &"ExpandCanvas":
+				button.icon = _atlas_icon(ExpandCanvasIconSource, EXPAND_CANVAS_ICON_REGION)
+			_add_tool_button_contents(button, str(captions[order[index]]))
+			tool_grid.move_child(button, index)
+	hand_button.reparent(buttons)
+	hand_button.icon = _atlas_icon(EditorControlIconSource, EDITOR_CONTROL_ICON_REGION)
+	hand_button.text = ""
+	hand_button.expand_icon = true
+	hand_button.add_theme_constant_override("icon_max_width", 92)
+
+
+func _atlas_icon(source: Texture2D, region: Rect2) -> AtlasTexture:
+	var icon := AtlasTexture.new()
+	icon.atlas = source
+	icon.region = region
+	return icon
+
+
+func _add_tool_button_contents(button: Button, caption_text: String) -> void:
+	var icon_texture := button.icon
+	button.icon = null
+	button.text = ""
+	button.expand_icon = false
+	var icon_view := TextureRect.new()
+	icon_view.name = "ToolIcon"
+	icon_view.texture = icon_texture
+	icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	icon_view.offset_left = 8.0
+	icon_view.offset_top = 6.0
+	icon_view.offset_right = -8.0
+	icon_view.offset_bottom = -28.0
+	button.add_child(icon_view)
+	var caption := Label.new()
+	caption.name = "Caption"
+	caption.text = caption_text
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	caption.anchor_left = 0.0
+	caption.anchor_top = 1.0
+	caption.anchor_right = 1.0
+	caption.anchor_bottom = 1.0
+	caption.offset_top = -28.0
+	caption.offset_bottom = -2.0
+	caption.add_theme_font_size_override("font_size", 16)
+	button.add_child(caption)
+
+
+func _apply_tool_button_metrics(button: Button, width: float, height: float,
+		caption_height: float, font_size: int) -> void:
+	button.custom_minimum_size = Vector2(width, height)
+	var icon_view := button.get_node("ToolIcon") as TextureRect
+	icon_view.offset_left = 4.0 if _map_editor_mode else 3.0
+	icon_view.offset_top = 3.0 if _map_editor_mode else 2.0
+	icon_view.offset_right = -4.0 if _map_editor_mode else -3.0
+	icon_view.offset_bottom = -caption_height
+	var caption := button.get_node("Caption") as Label
+	caption.offset_top = -caption_height
+	caption.offset_bottom = 0.0
+	caption.add_theme_font_size_override("font_size", font_size)
+
+
+## 两种模式均按 PPT 使用两列；操纵按钮独占最下方一行。
+func _apply_workbench_column_layout() -> void:
+	var columns: int = EDITOR_TOOL_COLUMNS if _map_editor_mode else PLAY_TOOL_COLUMNS
+	var button_width := EDITOR_TOOL_BUTTON_WIDTH if _map_editor_mode else PLAY_TOOL_BUTTON_WIDTH
+	var button_height := EDITOR_TOOL_BUTTON_HEIGHT if _map_editor_mode else PLAY_TOOL_BUTTON_HEIGHT
+	var h_gap := EDITOR_TOOL_BUTTON_H_GAP if _map_editor_mode else PLAY_TOOL_BUTTON_H_GAP
+	var v_gap := EDITOR_TOOL_BUTTON_V_GAP if _map_editor_mode else PLAY_TOOL_BUTTON_V_GAP
+	var hand_size := EDITOR_HAND_BUTTON_SIZE if _map_editor_mode else PLAY_HAND_BUTTON_SIZE
+	var caption_height := 14.0 if _map_editor_mode else 12.0
+	var width := columns * button_width + (columns - 1) * h_gap
+	tool_grid.columns = columns
+	tool_grid.add_theme_constant_override("h_separation", int(h_gap))
+	tool_grid.add_theme_constant_override("v_separation", int(v_gap))
+	tool_grid.offset_right = width
+	var visible_count := 0
+	for child in tool_grid.get_children():
+		if child is Control and child.visible:
+			_apply_tool_button_metrics(child as Button, button_width, button_height,
+				caption_height, 10 if _map_editor_mode else 8)
+			visible_count += 1
+	var rows := ceili(float(visible_count) / float(columns))
+	var grid_height := rows * button_height + maxi(rows - 1, 0) * v_gap
+	tool_grid.offset_bottom = grid_height
+	var hand_gap := 12.0 if _map_editor_mode else 8.0
+	hand_button.custom_minimum_size = Vector2.ONE * hand_size
+	hand_button.add_theme_constant_override("icon_max_width", 58 if _map_editor_mode else 42)
+	hand_button.position = Vector2((width - hand_size) * 0.5, grid_height + hand_gap)
+	hand_button.size = Vector2.ONE * hand_size
+	if _map_editor_mode:
+		buttons.offset_left = -186.0
+		buttons.offset_top = 116.0
+		toggle_button.offset_left = -186.0
+		toggle_button.offset_top = 56.0
+		toggle_button.offset_bottom = 84.0
+		toggle_button.add_theme_font_size_override("font_size", 16)
+	else:
+		buttons.offset_left = -42.0
+		buttons.offset_top = 160.0
+		toggle_button.offset_left = -22.0
+		toggle_button.offset_top = 136.0
+		toggle_button.offset_bottom = 154.0
+		toggle_button.add_theme_font_size_override("font_size", 10)
+	buttons.offset_right = buttons.offset_left + width
+	buttons.offset_bottom = buttons.offset_top + grid_height + hand_size + hand_gap
+	toggle_button.offset_right = toggle_button.offset_left + (width if _map_editor_mode else 36.0)
 
 
 ## 工具栏贴到玩家身体旁边。
@@ -427,11 +646,11 @@ func _set_workbench_visible(nearby: bool) -> void:
 	#⚠️ 隐藏按钮自己不受"手动隐藏"控制 —— 不然藏起来就再也点不回来了。
 	toggle_button.visible = active and nearby
 	buttons.visible = active and nearby and not _workbench_hidden
-	brush_panel.visible = active and nearby and not _workbench_hidden
-	resize_panel.visible = active and nearby and not _workbench_hidden and _map_editor_mode
+	brush_panel.visible = false
+	resize_panel.visible = false
 	#右侧面板是另一套布局，不跟着左边那个"隐藏"按钮走。
 	if _side_panel != null:
-		_side_panel.visible = active and nearby
+		_side_panel.visible = active and nearby and not _map_editor_mode
 
 
 func _distance_from_player_to_canvas() -> float:
@@ -450,20 +669,136 @@ func _distance_from_player_to_canvas() -> float:
 
 #region 按钮
 func _bind_buttons() -> void:
-	tool_grid.get_node("Hand").pressed.connect(set_tool.bind(SurfaceScript.Tool.HAND))
+	hand_button.pressed.connect(_on_hand_pressed)
 	tool_grid.get_node("Brush").pressed.connect(set_tool.bind(SurfaceScript.Tool.BRUSH))
 	tool_grid.get_node("Eraser").pressed.connect(set_tool.bind(SurfaceScript.Tool.ERASER))
-	tool_grid.get_node("Shape").pressed.connect(_select_shape_tool)
+	tool_grid.get_node("Shape").pressed.connect(_open_shape_popup)
 	tool_grid.get_node("Nail").pressed.connect(set_tool.bind(SurfaceScript.Tool.NAIL))
 	tool_grid.get_node("Bucket").pressed.connect(set_tool.bind(SurfaceScript.Tool.BUCKET))
 	tool_grid.get_node("SelectDelete").pressed.connect(set_tool.bind(SurfaceScript.Tool.SELECT_DELETE))
 	tool_grid.get_node("Redraw").pressed.connect(clear_canvas)
 	tool_grid.get_node("Generate").pressed.connect(generate)
 	tool_grid.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
+	tool_grid.get_node("ExpandCanvas").pressed.connect(_open_expand_canvas_window)
 	resize_panel.get_node("Grid/PlayerVisibility").toggled.connect(_on_player_visibility_toggled)
 	resize_panel.get_node("Grid/NailVisibility").toggled.connect(_on_nail_visibility_toggled)
 	toggle_button.pressed.connect(_toggle_workbench)
 	brush_panel.get_node("PenSlider").value_changed.connect(_on_pen_slider_changed)
+
+
+func _on_hand_pressed() -> void:
+	set_tool(SurfaceScript.Tool.HAND)
+	if _map_editor_mode:
+		editor_control_requested.emit()
+
+
+func _build_expand_canvas_window() -> void:
+	_expand_canvas_window = Window.new()
+	_expand_canvas_window.name = "ExpandCanvasWindow"
+	_expand_canvas_window.title = "扩展画布"
+	_expand_canvas_window.size = Vector2i(420, 390)
+	_expand_canvas_window.min_size = Vector2i(380, 350)
+	_expand_canvas_window.visible = false
+	_expand_canvas_window.transient = true
+	_expand_canvas_window.theme = EditorTheme
+	_expand_canvas_window.close_requested.connect(_expand_canvas_window.hide)
+	add_child(_expand_canvas_window)
+	_expand_canvas_window.hide()
+
+	var margin := MarginContainer.new()
+	margin.name = "Content"
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 28)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	_expand_canvas_window.add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.name = "Column"
+	column.add_theme_constant_override("separation", 16)
+	margin.add_child(column)
+
+	var explanation := Label.new()
+	explanation.text = "输入四侧需要增加的像素。原有地图内容的世界位置不会改变。"
+	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(explanation)
+
+	_expand_size_preview = Label.new()
+	_expand_size_preview.name = "SizePreview"
+	column.add_child(_expand_size_preview)
+
+	var input_grid := GridContainer.new()
+	input_grid.name = "Inputs"
+	input_grid.columns = 2
+	input_grid.add_theme_constant_override("h_separation", 24)
+	input_grid.add_theme_constant_override("v_separation", 10)
+	column.add_child(input_grid)
+	for side in ["Left", "Right", "Top", "Bottom"]:
+		var label := Label.new()
+		label.text = {"Left": "左侧", "Right": "右侧", "Top": "上侧", "Bottom": "下侧"}[side]
+		input_grid.add_child(label)
+		var amount := SpinBox.new()
+		amount.name = side + "Amount"
+		amount.custom_minimum_size = Vector2(210, 42)
+		amount.min_value = 0
+		amount.max_value = 8192
+		amount.step = 16
+		amount.value = 0
+		amount.suffix = " px"
+		amount.value_changed.connect(_update_expand_size_preview.unbind(1))
+		input_grid.add_child(amount)
+		_expand_inputs[side] = amount
+
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(spacer)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	actions.add_theme_constant_override("separation", 12)
+	column.add_child(actions)
+	var cancel := Button.new()
+	cancel.text = "取消"
+	cancel.pressed.connect(_expand_canvas_window.hide)
+	actions.add_child(cancel)
+	var confirm := Button.new()
+	confirm.text = "确认扩展"
+	confirm.pressed.connect(_confirm_expand_canvas)
+	actions.add_child(confirm)
+	_update_expand_size_preview()
+
+
+func _open_expand_canvas_window() -> void:
+	if not _map_editor_mode or _expand_canvas_window == null:
+		return
+	for input: SpinBox in _expand_inputs.values():
+		input.value = 0
+	_update_expand_size_preview()
+	_expand_canvas_window.popup_centered()
+
+
+func _update_expand_size_preview() -> void:
+	if _expand_size_preview == null:
+		return
+	var left := int((_expand_inputs.get("Left") as SpinBox).value)
+	var right := int((_expand_inputs.get("Right") as SpinBox).value)
+	var top := int((_expand_inputs.get("Top") as SpinBox).value)
+	var bottom := int((_expand_inputs.get("Bottom") as SpinBox).value)
+	_expand_size_preview.text = "当前：%d × %d px    扩展后：%d × %d px" % [
+		canvas_size.x, canvas_size.y,
+		canvas_size.x + left + right, canvas_size.y + top + bottom,
+	]
+
+
+func _confirm_expand_canvas() -> void:
+	var left := int((_expand_inputs["Left"] as SpinBox).value)
+	var right := int((_expand_inputs["Right"] as SpinBox).value)
+	var top := int((_expand_inputs["Top"] as SpinBox).value)
+	var bottom := int((_expand_inputs["Bottom"] as SpinBox).value)
+	if left + right + top + bottom == 0:
+		return
+	if expand_canvas_sides(left, right, top, bottom):
+		_expand_canvas_window.hide()
 
 
 ## 隐藏 / 显示工具栏本体。按钮自己一直露着，好点回来。
@@ -495,11 +830,13 @@ func _on_nail_visibility_toggled(show_nails: bool) -> void:
 
 func _apply_nail_visuals(show_nails: bool) -> void:
 	NailScript.visuals_visible = show_nails
+	NailScript.map_editor_active = _map_editor_mode
 	surface.nail_layer.visible = show_nails
 	if not is_inside_tree():
 		return
 	for nail in get_tree().get_nodes_in_group(NailScript.VISUAL_GROUP):
-		nail.visible = show_nails
+		if nail.has_method("refresh_visibility"):
+			nail.refresh_visibility()
 
 
 func _update_nail_visibility_tooltip(show_nails: bool) -> void:
@@ -508,31 +845,68 @@ func _update_nail_visibility_tooltip(show_nails: bool) -> void:
 
 
 var _shape_tool: int = SurfaceScript.Tool.RECT
+var _shape_popup: PopupMenu
 var _temporary_eraser := false
 
 
-func _select_shape_tool() -> void:
-	if surface.tool == SurfaceScript.Tool.RECT:
-		_shape_tool = SurfaceScript.Tool.CIRCLE
-	elif surface.tool == SurfaceScript.Tool.CIRCLE:
-		_shape_tool = SurfaceScript.Tool.RECT
-	_apply_tool(_shape_tool)
-	var shape_name := "圆形" if _shape_tool == SurfaceScript.Tool.CIRCLE else "矩形"
-	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（5/6）\n再次点击切换形状" % shape_name
+## 构建形状选择弹出菜单（矩形 / 圆形 / 直线）。
+func _build_shape_popup() -> void:
+	_shape_popup = PopupMenu.new()
+	_shape_popup.name = "ShapePopup"
+	_shape_popup.add_item("矩形", SurfaceScript.Tool.RECT)
+	_shape_popup.add_item("圆形", SurfaceScript.Tool.CIRCLE)
+	_shape_popup.add_item("直线", SurfaceScript.Tool.LINE)
+	_shape_popup.id_pressed.connect(_on_shape_picked)
+	_shape_popup.popup_hide.connect(_on_shape_popup_hide)
+	add_child(_shape_popup)
+
+
+## 点击形状按钮时在鼠标位置弹出三个选项。
+func _open_shape_popup() -> void:
+	if _shape_popup == null:
+		return
+	# 按钮在 Node2D 父级下 global_rect 不准，直接用鼠标视口坐标。
+	_shape_popup.position = Vector2i(get_viewport().get_mouse_position())
+	_shape_popup.reset_size()
+	_shape_popup.popup()
+
+
+## 选中某个形状后切换工具并更新按钮提示。
+func _on_shape_picked(id: int) -> void:
+	_shape_tool = id
+	_apply_tool(id)
+	_update_shape_tooltip(id)
+
+
+## 菜单关闭（未选择）时，按当前实际工具刷新按钮高亮，避免 Shape 按钮卡在 pressed。
+func _on_shape_popup_hide() -> void:
+	_apply_tool(surface.tool)
+
+
+func _update_shape_tooltip(tool: int) -> void:
+	var shape_name := "矩形"
+	if tool == SurfaceScript.Tool.CIRCLE:
+		shape_name = "圆形"
+	elif tool == SurfaceScript.Tool.LINE:
+		shape_name = "直线"
+	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（5/6/9）\n点击按钮选择形状" % shape_name
 
 
 func _apply_tool(tool: int) -> void:
 	surface.tool = tool
-	tool_grid.get_node("Hand").set_pressed_no_signal(tool == SurfaceScript.Tool.HAND)
+	hand_button.set_pressed_no_signal(tool == SurfaceScript.Tool.HAND)
 	tool_grid.get_node("Brush").set_pressed_no_signal(tool == SurfaceScript.Tool.BRUSH)
 	tool_grid.get_node("Eraser").set_pressed_no_signal(tool == SurfaceScript.Tool.ERASER)
 	tool_grid.get_node("Shape").set_pressed_no_signal(
-		tool == SurfaceScript.Tool.RECT or tool == SurfaceScript.Tool.CIRCLE
+		tool == SurfaceScript.Tool.RECT or tool == SurfaceScript.Tool.CIRCLE \
+		or tool == SurfaceScript.Tool.LINE
 	)
 	tool_grid.get_node("Nail").set_pressed_no_signal(tool == SurfaceScript.Tool.NAIL)
 	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
 	tool_grid.get_node("SelectDelete").set_pressed_no_signal(tool == SurfaceScript.Tool.SELECT_DELETE)
 	_sync_hand_enabled(tool)
+	if tool in [SurfaceScript.Tool.RECT, SurfaceScript.Tool.CIRCLE, SurfaceScript.Tool.LINE]:
+		_update_shape_tooltip(tool)
 	tool_changed.emit(tool)
 
 
@@ -585,6 +959,8 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 		match event.keycode:
+			KEY_F:
+				_on_hand_pressed()
 			KEY_1:
 				set_tool(SurfaceScript.Tool.HAND)
 			KEY_2:
@@ -601,6 +977,8 @@ func _input(event: InputEvent) -> void:
 				set_tool(SurfaceScript.Tool.BUCKET)
 			KEY_8:
 				set_tool(SurfaceScript.Tool.SELECT_DELETE)
+			KEY_9:
+				set_tool(SurfaceScript.Tool.LINE)
 			KEY_E:
 				generate()
 	#保存/读取走输入动作，别和上面的裸键 match 串成一个分支。

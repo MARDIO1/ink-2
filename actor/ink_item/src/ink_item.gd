@@ -10,6 +10,10 @@ const ANCHOR_TAG := "static_anchor_points"
 const Nail := preload("res://actor/nail/src/nail.gd")
 #endregion
 
+## 关卡文件里的墨水实体默认属于地图编辑器预置内容，其钉子仅供编辑时查看。
+## 游玩过程中由 CanvasSolid 新建的实体会显式将此值设为 false。
+@export var hide_nails_in_play := true
+
 
 #region 装载
 #⚠️ 不能挂在 _bake_lazily 上：PixelWorld.rebuild() 走的是 bake_node() → bake()，
@@ -44,5 +48,5 @@ func _restore_nails() -> void:
 	for point: Vector2i in points:
 		var nail := Nail.new()
 		host.add_child(nail)
-		nail.setup(body, point)
+		nail.setup(body, point, hide_nails_in_play)
 #endregion

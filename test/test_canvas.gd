@@ -20,6 +20,10 @@ func _run() -> void:
 	var valid: bool = surface.black_image.get_size() == Vector2i(320, 180)
 	valid = valid and bounds.shape.size == Vector2(320, 180) and bounds.position == Vector2(160, 90)
 	valid = valid and surface.collision_layer == 0 and not surface.monitoring
+	var background_valid := surface.background_texture != null
+	background_valid = background_valid and surface.background_texture.get_size() == Vector2(631, 762)
+	print("[Canvas] 横线纸平铺背景: ", "PASS" if background_valid else "FAIL")
+	valid = valid and background_valid
 	# 矩形必须是方角、等宽的边框；不能再用圆笔刷沿四边盖章，
 	# 否则粗笔刷会让外沿周期性鼓出。
 	var saved_tool: int = surface.tool
@@ -38,6 +42,25 @@ func _run() -> void:
 			and pixel.x >= 20 and pixel.x < 80 and pixel.y >= 30 and pixel.y < 70
 	valid = valid and rect_valid
 	print("[Canvas] 平整矩形边框: ", "PASS" if rect_valid else "FAIL")
+	# 直线工具必须生成从拖拽起点到终点的连续像素，并沿用笔刷粗细。
+	surface.tool = CanvasSurfaceScript.Tool.LINE
+	surface.brush_size = 1
+	var line_pixels: Dictionary = surface._shape_pixels(Vector2(20.5, 90.5), Vector2(80.5, 90.5))
+	var line_valid := line_pixels.size() == 61
+	for x in range(20, 81):
+		line_valid = line_valid and line_pixels.has(Vector2i(x, 90))
+	valid = valid and line_valid
+	print("[Canvas] 连续直线工具: ", "PASS" if line_valid else "FAIL")
+	canvas._shape_tool = CanvasSurfaceScript.Tool.RECT
+	canvas._apply_tool(CanvasSurfaceScript.Tool.RECT)
+	canvas._select_shape_tool()
+	var shape_cycle_valid: bool = surface.tool == CanvasSurfaceScript.Tool.CIRCLE
+	canvas._select_shape_tool()
+	shape_cycle_valid = shape_cycle_valid and surface.tool == CanvasSurfaceScript.Tool.LINE
+	canvas._select_shape_tool()
+	shape_cycle_valid = shape_cycle_valid and surface.tool == CanvasSurfaceScript.Tool.RECT
+	valid = valid and shape_cycle_valid
+	print("[Canvas] 形状按钮三态循环: ", "PASS" if shape_cycle_valid else "FAIL")
 	surface.tool = saved_tool
 	surface.brush_size = saved_brush_size
 	# 画一个实心笔划，确认编辑器范围改造没有破坏固化。

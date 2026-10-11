@@ -3,14 +3,8 @@ extends SceneTree
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 
 var MAPS := PackedStringArray([
-	"res://map/main.tscn",
-	"res://map/asset/imported/1.tscn",
-	"res://map/asset/imported/2.tscn",
-	"res://map/asset/imported/3.（盾兵）.tscn",
-	"res://map/asset/imported/4.（投掷手）.tscn",
-	"res://map/asset/imported/基础.tscn",
+	"res://map/1（终极版）.tscn",
 	"res://map/asset/imported/平路（新）.tscn",
-	"res://map/asset/imported/平路地图.tscn",
 ])
 
 

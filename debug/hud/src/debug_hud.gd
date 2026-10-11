@@ -22,10 +22,15 @@ var log_cost_us: int = 0
 var logged_frames: int = 0
 ## 低于该帧率才写入 F1 日志；50 FPS 对应 20 ms 的整帧预算。
 @export_range(1.0, 240.0, 1.0) var low_frame_fps: float = 50.0
-## 连续达到该帧耗时时保存现场并退出；用于避免物理追帧把实例拖到无法关闭。
+## 连续达到该帧耗时时保存现场；是否退出由 hang_auto_quit 控制。
 @export var hang_frame_ms: float = 500.0
 @export_range(1, 10, 1) var hang_frames: int = 2
+## 默认只记录现场并报警。长时间保存、资源导入和窗口拖动也会产生合法长帧，
+## 不能因此直接结束游戏；需要无人值守压测时可在专用场景中显式开启。
+@export var hang_auto_quit := false
+@export_range(1.0, 60.0, 1.0) var hang_report_cooldown: float = 10.0
 var hang_count: int = 0
+var hang_report_cooldown_until: int = 0
 
 func _toggle_log() -> void:
 	if low_log != null:
@@ -92,6 +97,9 @@ func _exit_tree() -> void:
 
 
 func _watch_hang(tick: int, duration_us: int) -> bool:
+	if tick < hang_report_cooldown_until:
+		hang_count = 0
+		return false
 	if duration_us < int(hang_frame_ms * 1000.0):
 		hang_count = 0
 		return false
@@ -107,9 +115,14 @@ func _watch_hang(tick: int, duration_us: int) -> bool:
 		_record_low_frame(tick, duration_us, damage.take_profile(), forces.take_profile())
 		low_log.close()
 		low_log = null
-	push_error("持续卡顿，现场已保存并自动退出：" + ProjectSettings.globalize_path(log_path))
-	get_tree().quit(2)
-	return true
+	hang_count = 0
+	hang_report_cooldown_until = tick + int(hang_report_cooldown * 1000000.0)
+	if hang_auto_quit:
+		push_error("持续卡顿，现场已保存并自动退出：" + ProjectSettings.globalize_path(log_path))
+		get_tree().quit(2)
+		return true
+	push_warning("检测到持续卡顿，现场已保存（游戏继续运行）：" + ProjectSettings.globalize_path(log_path))
+	return false
 
 
 func _unhandled_input(event: InputEvent) -> void:
