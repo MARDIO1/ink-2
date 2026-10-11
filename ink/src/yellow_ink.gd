@@ -1,8 +1,8 @@
 extends Node2D
 
 #region 配置与状态
-const Palette = preload("res://Ink/src/ink_palette.gd")
-const Stroke = preload("res://actor/yellow/src/yellow_stroke.gd")
+const Palette := preload("res://ink/src/ink_palette.gd")
+const Stroke := preload("res://actor/yellow/src/yellow_stroke.gd")
 ## 默认 7 px 支撑主角；较低阻尼保留弹弓的回弹能量。
 @export var stiffness_per_width: float = 5000.0
 @export var damping_ratio: float = 0.0
@@ -27,7 +27,7 @@ var _wear_cursor: int = 0
 var _spring_audio: Dictionary = {}
 var _spring_voices: Array[AudioStreamPlayer2D] = []
 var _next_spring_voice: int = 0
-const OVERLAP_SHADER = preload("res://actor/yellow/asset/overlap.gdshader")
+const OVERLAP_SHADER := preload("res://actor/yellow/asset/overlap.gdshader")
 #endregion
 
 #region 绘制与固化

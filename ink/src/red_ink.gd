@@ -2,8 +2,8 @@ extends Node
 ## 删除前保存红墨事件，下一固定步反应；没有独立的撞击阈值或点火扫描。
 
 #region 依赖
-const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
-const Query = preload("res://addons/pixel_destruction/physics/query.gd")
+const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
+const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 const RED_ID: int = 8
 #endregion
 

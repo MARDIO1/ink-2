@@ -16,7 +16,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
 
-InkRuntime="*res://Ink/src/runtime.gd"
+InkRuntime="*res://ink/src/ink_runtime.gd"
 
 [display]
 

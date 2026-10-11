@@ -3,9 +3,9 @@ extends Node
 ## 不推进世界、不提交破坏，也不依赖场景节点。
 
 #region 依赖与配置
-const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
+const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const LIVING_TAG := "living"
-const ContactImpact = preload("res://root/src/contact_impact.gd")
+const ContactImpact := preload("res://root/src/contact_impact.gd")
 
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
 ## 碰撞冲量转为破坏预算的倍率；越大越容易删像素。

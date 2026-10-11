@@ -1,19 +1,15 @@
 extends Node
 ## 给主菜单标题加交互水面。挂在 menu.tscn 的 Title 下面即可（父节点就是要作用的 TextureRect）。
 ##
-## 自成一体：只引用本目录的两个 shader，不依赖工程的其它代码，也不改 menu.gd。
-##
-## 实现参考 Namey5/godot-interactive-water：Godot 里 ViewportTexture **不能自引用**，
-## 所以用**两张 SubViewport 互相引用**做双缓冲乒乓 —— Godot 按树序渲染，
-## A 先渲染（读到 B 的上一帧），B 再渲染（读到 A 的这一帧），每帧刚好推进一步。
+## 只引用模块 asset 下的 shader。ViewportTexture 不能自引用，
+## 因此两张 SubViewport 交替读取对方的高度场，每帧推进一次波动模拟。
 
-const SIM_SHADER := "res://ui/menu/title_fx/ripple_sim.gdshader"
-const TITLE_SHADER := "res://ui/menu/title_fx/ripple_title.gdshader"
+const SIM_SHADER := "res://ui/menu/title_fx/asset/ripple_sim.gdshader"
+const TITLE_SHADER := "res://ui/menu/title_fx/asset/ripple_title.gdshader"
 
 @export var enabled := true
 @export var sim_size := Vector2i(192, 118)
-## 判定"在动"的最小位移（UV）。⚠️ 别设大：设大了慢速移动会几乎不注入，
-## 而且涟漪会生成在越过阈值的那一点上，看起来中心落后于鼠标。
+## 最小鼠标位移（UV）；阈值过大会使慢速拖动的涟漪不连续。
 @export var mouse_step := 0.0005
 ## 参考速度：移动速度等于它时按原强度注入；更快更强、更慢更弱
 @export var mouse_speed_ref := 0.010
@@ -31,13 +27,7 @@ var _next_drop := 1.5
 var _pending_drop := Vector2(-1.0, -1.0)
 
 
-## 把节点局部坐标映射成 shader 里的 UV。
-##
-## ⚠️ 关键：TextureRect 用 KEEP_ASPECT_CENTERED（stretch_mode = 5）时，贴图只画在矩形里
-## **居中、按比例缩放**的一块区域上，而 shader 里的 UV 是**这块绘制区**的 UV。
-## 拿整个矩形的相对位置去注入涟漪，涟漪就会被压向中心（离中心越远偏得越多）。
-## 实测：菜单矩形 614x248（比例 2.47）、贴图 2368x1456（比例 1.63）—— 绘制区只有约 404 宽，
-## 两侧各留 105 像素，偏移非常明显。
+## KEEP_ASPECT_CENTERED 的 shader UV 对应居中的贴图绘制区，不包含矩形留白。
 func _local_to_uv(local: Vector2) -> Vector2:
 	var size := _title.size
 	if size.x <= 0.0 or size.y <= 0.0:
@@ -61,8 +51,7 @@ func _make_sim() -> SubViewport:
 	vp.transparent_bg = false
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	var rect := ColorRect.new()
-	# ⚠️ SubViewport 不是 Control，子节点没有父 Control 可依，锚点撑不开 —— 必须显式给尺寸，
-	#    否则尺寸为 0，什么都不渲染（症状：模拟贴图恒定不变）。
+	# SubViewport 不是 Control，子 ColorRect 必须显式设置尺寸，不能依赖锚点。
 	rect.position = Vector2.ZERO
 	rect.size = Vector2(sim_size)
 	var mat := ShaderMaterial.new()
@@ -103,7 +92,7 @@ func _process(delta: float) -> void:
 	if size.x <= 0.0 or size.y <= 0.0:
 		return
 
-	# 鼠标：只在**移动**时注入，静止不动就不搅水
+	# 只在鼠标移动时注入，避免静止光标持续改变水面。
 	var mouse_uv := Vector2(-1.0, -1.0)
 	var uv := _local_to_uv(_title.get_local_mouse_position())
 	var speed := 0.0

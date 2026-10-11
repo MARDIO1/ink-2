@@ -10,7 +10,7 @@ signal solidified
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
-const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
 const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
@@ -28,6 +28,11 @@ const EDITOR_TOOL_BUTTON_HEIGHT := 60.0
 const EDITOR_TOOL_BUTTON_H_GAP := 16.0
 const EDITOR_TOOL_BUTTON_V_GAP := 10.0
 const EDITOR_HAND_BUTTON_SIZE := 72.0
+## 工具栏按行排列；第十个按钮使用数字键 0。
+const TOOL_SHORTCUT_ORDER := [
+	"Brush", "Eraser", "Shape", "Bucket", "Redraw", "SelectDelete",
+	"Generate", "ReturnToCanvas", "Nail", "ExpandCanvas",
+]
 
 @onready var surface = $CanvasSurface
 @onready var solid = $CanvasSolid
@@ -479,10 +484,7 @@ func set_map_editor_mode(on: bool) -> void:
 
 
 func _prepare_workbench_structure() -> void:
-	var order := [
-		"Brush", "Eraser", "Shape", "Bucket", "Redraw", "SelectDelete",
-		"Generate", "ReturnToCanvas", "Nail", "ExpandCanvas",
-	]
+	var order := TOOL_SHORTCUT_ORDER
 	var captions := {
 		"Brush": "画笔", "Eraser": "橡皮", "Shape": "形状", "Bucket": "填充",
 		"Redraw": "清空", "SelectDelete": "框删", "Generate": "固化",
@@ -500,6 +502,16 @@ func _prepare_workbench_structure() -> void:
 	hand_button.text = ""
 	hand_button.expand_icon = true
 	hand_button.add_theme_constant_override("icon_max_width", 92)
+	var hand_caption := Label.new()
+	hand_caption.name = "Caption"
+	hand_caption.text = "放下画笔"
+	hand_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hand_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hand_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hand_caption.anchor_top = 1.0
+	hand_caption.anchor_bottom = 1.0
+	hand_caption.anchor_right = 1.0
+	hand_button.add_child(hand_caption)
 
 
 func _atlas_icon(source: Texture2D, region: Rect2) -> AtlasTexture:
@@ -584,6 +596,10 @@ func _apply_workbench_column_layout() -> void:
 	hand_button.add_theme_constant_override("icon_max_width", 58 if _map_editor_mode else 42)
 	hand_button.position = Vector2((width - hand_size) * 0.5, grid_height + hand_gap)
 	hand_button.size = Vector2.ONE * hand_size
+	var hand_caption := hand_button.get_node("Caption") as Label
+	hand_caption.offset_top = 2.0
+	hand_caption.offset_bottom = 2.0 + caption_height
+	hand_caption.add_theme_font_size_override("font_size", 10 if _map_editor_mode else 8)
 	if _map_editor_mode:
 		buttons.offset_left = -186.0
 		buttons.offset_top = 116.0
@@ -599,7 +615,7 @@ func _apply_workbench_column_layout() -> void:
 		toggle_button.offset_bottom = 154.0
 		toggle_button.add_theme_font_size_override("font_size", 10)
 	buttons.offset_right = buttons.offset_left + width
-	buttons.offset_bottom = buttons.offset_top + grid_height + hand_size + hand_gap
+	buttons.offset_bottom = buttons.offset_top + grid_height + hand_size + hand_gap + caption_height + 2.0
 	toggle_button.offset_right = toggle_button.offset_left + (width if _map_editor_mode else 36.0)
 
 
@@ -896,7 +912,7 @@ func _update_shape_tooltip(tool: int) -> void:
 		shape_name = "圆形"
 	elif tool == SurfaceScript.Tool.LINE:
 		shape_name = "直线"
-	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（5/6/9）\n点击按钮选择形状" % shape_name
+	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（3）\n点击按钮或按 3 选择形状" % shape_name
 
 
 func _apply_tool(tool: int) -> void:
@@ -932,6 +948,19 @@ func _on_pen_slider_changed(value: float) -> void:
 var dev_save_enabled := true
 
 
+func _activate_tool_shortcut(keycode: int) -> bool:
+	if keycode != KEY_0 and (keycode < KEY_1 or keycode > KEY_9):
+		return false
+	var index := 9 if keycode == KEY_0 else keycode - KEY_1
+	if index < 0 or index >= TOOL_SHORTCUT_ORDER.size():
+		return false
+	var button := tool_grid.get_node(TOOL_SHORTCUT_ORDER[index]) as Button
+	if not button.visible or button.disabled:
+		return false
+	button.pressed.emit()
+	return true
+
+
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
@@ -948,6 +977,20 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
+		# 输入尺寸、文字或选择弹出菜单时，数字留给当前控件。
+		var focus := get_viewport().gui_get_focus_owner()
+		if focus is LineEdit or focus is TextEdit \
+		or (_shape_popup != null and _shape_popup.visible) \
+		or (_expand_canvas_window != null and _expand_canvas_window.visible):
+			return
+		if not _map_editor_mode and event.ctrl_pressed and event.keycode == KEY_Z:
+			surface.undo_last_edit()
+			get_viewport().set_input_as_handled()
+			return
+		if not event.ctrl_pressed and not event.alt_pressed and not event.meta_pressed \
+		and not event.shift_pressed and _activate_tool_shortcut(event.keycode):
+			get_viewport().set_input_as_handled()
+			return
 		# 地图扩展保留为快捷键，界面不再占一排方向按钮。
 		if _map_editor_mode and event.ctrl_pressed:
 			var expanded := true
@@ -968,24 +1011,6 @@ func _input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_F:
 				_on_hand_pressed()
-			KEY_1:
-				set_tool(SurfaceScript.Tool.HAND)
-			KEY_2:
-				set_tool(SurfaceScript.Tool.BRUSH)
-			KEY_3:
-				set_tool(SurfaceScript.Tool.ERASER)
-			KEY_4:
-				set_tool(SurfaceScript.Tool.NAIL)
-			KEY_5:
-				set_tool(SurfaceScript.Tool.RECT)
-			KEY_6:
-				set_tool(SurfaceScript.Tool.CIRCLE)
-			KEY_7:
-				set_tool(SurfaceScript.Tool.BUCKET)
-			KEY_8:
-				set_tool(SurfaceScript.Tool.SELECT_DELETE)
-			KEY_9:
-				set_tool(SurfaceScript.Tool.LINE)
 			KEY_E:
 				generate()
 	#保存/读取走输入动作，别和上面的裸键 match 串成一个分支。

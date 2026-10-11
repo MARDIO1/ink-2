@@ -32,6 +32,19 @@ enum Kind { SHIELD_SIDE = 0, LITTLE_SOLDIER = 1, BOMB_SIDE = 2, SHIELD_SOLDIER =
 @export var hit_polygon: PackedVector2Array = PackedVector2Array()
 @export_range(1.0, 200.0, 1.0) var minimum_hit_speed := 45.0
 @export_range(0.0, 4.0, 0.05) var impact_response := 1.0
+## 盾兵专属：是否携带可破坏盾牌。盾牌使用黑色墨水材质，可被打裂开。
+@export var has_shield := false
+## 盾牌贴图路径（相对 res://）。
+@export_file("*.png") var shield_texture_path := "res://actor/monster/imported/great_shield/assets/parts/shield.png"
+## 盾牌材质 ID，1 = 黑色墨水。
+@export_range(1, 254) var shield_material_id := 1
+## 盾牌剩余像素占比低于此值判定为破碎。
+@export_range(0.05, 0.9, 0.05) var shield_break_threshold := 0.3
+@export_range(0.1, 1.0, 0.01) var shield_scale := 0.45
+@export_range(1.0, 3.0, 0.05) var shield_height_scale := 2.0
+@export var shield_offset := Vector2(-155.0, -170.0)
+## 盾牌是否已破碎（运行时状态，编辑器中不生效）。
+var shield_broken := false
 ## 玩家接近时停止行走姿势，远离后恢复；两个距离避免临界位置反复切换。
 @export var player_stop_distance := 320.0
 @export var player_resume_distance := 400.0
@@ -64,6 +77,12 @@ var last_contact_impulse := Vector2.ZERO
 var last_contact_point := Vector2.ZERO
 var _hit_recovery := 0.0
 var _animation: AnimationPlayer
+var _shield_visual: Sprite2D
+var _shield_visual_revision: Array = []
+## 盾兵当前朝向：1=面朝右，-1=面朝左。变化时需重建 ragdoll 以翻转肢体与盾牌。
+var _current_facing := -1
+var _turning_shield_shapes: Array = []
+var _turning_shield_initial_pixels := 0
 
 
 func _enter_tree() -> void:
@@ -100,7 +119,7 @@ func _register_physics_deferred() -> void:
 		physics_body.internal_render = false
 		_ensure_ragdoll()
 	var creative := get_parent().get_parent().get_node_or_null("Creative") if get_parent() != null and get_parent().get_parent() != null else null
-	set_editor_physics_paused(creative != null and bool(creative.get("active")))
+	set_editor_physics_paused(creative != null and creative.get("active"))
 
 
 func _exit_tree() -> void:
@@ -269,7 +288,7 @@ func _physics_process(delta: float) -> void:
 	if physical_enabled:
 		_update_walk_state()
 		if _ragdoll != null:
-			_ragdoll.update_balance(delta, _editor_physics_paused, _hit_recovery > 0.0, walking)
+			_ragdoll.update_balance(delta, _editor_physics_paused, _hit_recovery > 0.0, walking, self)
 		# 实体小兵的攻击只走已求解接触；不再用手心点与速度猜测命中。
 		return
 	if _hit_cooldown > 0.0:
@@ -295,7 +314,7 @@ func _physics_process(delta: float) -> void:
 	receive_impact(hand_position, impulse)
 
 
-func _update_walk_state() -> void:
+func _update_walk_state(allow_turn := true) -> void:
 	if kind not in [Kind.LITTLE_SOLDIER, Kind.SHIELD_SOLDIER] or _animation == null:
 		return
 	var should_walk := not _editor_physics_paused and _hit_recovery <= 0.0
@@ -312,6 +331,15 @@ func _update_walk_state() -> void:
 		var distance := center.distance_to(player_center)
 		var limit := player_resume_distance if not walking else player_stop_distance
 		should_walk = should_walk and distance > limit
+		# 盾兵专属：玩家靠近时始终朝向玩家所在的一面，水平翻转视觉并刷新物理碰撞体
+		if allow_turn and kind == Kind.SHIELD_SOLDIER and _visual != null and not _editor_physics_paused and distance < player_resume_distance and absf(player_center.x - center.x) > 2.0:
+			var target_facing := -1 if player_center.x < center.x else 1
+			if target_facing != _current_facing:
+				_current_facing = target_facing
+				var base_scale_x := absf(_visual.scale.x)
+				# 源素材朝左；仅镜像 Visual 的 X，不改变物理根节点的旋转或 Y 缩放。
+				_visual.scale.x = base_scale_x if target_facing < 0 else -base_scale_x
+				_refresh_physics_for_facing()
 	if should_walk == walking:
 		return
 	walking = should_walk
@@ -336,7 +364,9 @@ func receive_contact_impact(point: Vector2, impulse: Vector2) -> void:
 	last_contact_impulse = impulse
 	last_contact_point = point
 	_hit_recovery = 0.45
-	_update_walk_state()
+	# 接触报告仍在遍历原生碰撞对，此时删除刚体会使后续接触句柄失效。
+	# 朝向在下一物理帧起点即时刷新，受击回调只更新停走状态。
+	_update_walk_state(false)
 	if _ragdoll != null:
 		_hit_cooldown = HIT_COOLDOWN
 		return
@@ -403,6 +433,7 @@ func _process(delta: float) -> void:
 		_visual.position = _visual_base_position
 		_visual.rotation = _visual_base_rotation
 		_ragdoll.update_pose(_editor_physics_paused)
+		_sync_shield_visual()
 		return
 	# 二阶弹簧：受力时后仰、松手后自然回弹，不移动地图节点本身。
 	_kick_velocity += (-_kick_offset * VISUAL_SPRING - _kick_velocity * VISUAL_DAMPING) * delta
@@ -476,4 +507,113 @@ func _ensure_ragdoll() -> void:
 	_ragdoll = Ragdoll.new()
 	_ragdoll.setup(self, physics_world, _body)
 	walking = true
-	_update_walk_state()
+	_create_shield_visual()
+
+
+## 转向时直接刷新物理碰撞体：释放旧 ragdoll 后按翻转后的骨骼重建，无过渡动画。
+func _refresh_physics_for_facing() -> void:
+	if _ragdoll == null or Engine.is_editor_hint():
+		return
+	var velocity: Vector2 = _body.linear_velocity
+	var angular_velocity: float = _body.angular_velocity
+	_turning_shield_shapes.clear()
+	if _ragdoll.shield_body != null and not shield_broken:
+		_turning_shield_initial_pixels = _ragdoll.shield_initial_pixels
+		for source in _ragdoll.shield_body.shapes:
+			var mirrored := Ragdoll.PixelShape.new()
+			mirrored.density_scale = source.density_scale
+			var bounds: Rect2i = source.local_aabb()
+			for y in range(bounds.position.y, bounds.end.y):
+				for x in range(bounds.position.x, bounds.end.x):
+					var material: int = source.get_pixel(x, y)
+					if material != 0:
+						mirrored.set_pixel(-x - 1, y, material)
+			_turning_shield_shapes.append(mirrored)
+	# 身体的非对称轮廓也必须镜像，不只是四肢。
+	sync_physics_from_node(true)
+	_turning_shield_shapes.clear()
+	_turning_shield_initial_pixels = 0
+	_body.linear_velocity = velocity
+	_body.angular_velocity = angular_velocity
+	for part: Dictionary in _ragdoll.parts:
+		part.body.linear_velocity = velocity
+	if _ragdoll.shield_body != null:
+		_ragdoll.shield_body.linear_velocity = velocity
+		_ragdoll.shield_body.angular_velocity = angular_velocity
+	_ragdoll.update_pose(_editor_physics_paused)
+	_sync_shield_visual()
+
+
+func _create_shield_visual() -> void:
+	if not has_shield or _visual == null:
+		return
+	_shield_visual = get_node_or_null("ShieldArt") as Sprite2D
+	if _shield_visual == null:
+		_shield_visual = Sprite2D.new()
+		_shield_visual.name = "ShieldArt"
+		add_child(_shield_visual)
+		_shield_visual.z_index = 50
+	_shield_visual.scale = Vector2(shield_scale, shield_scale * shield_height_scale)
+	_shield_visual.texture = load(shield_texture_path) as Texture2D
+	_shield_visual.centered = true
+	var bounds := _shield_visual.texture.get_image().get_used_rect()
+	# 物理盾牌以实际不透明包围盒中心为原点，与精灵居中方式一致。
+	_shield_visual.offset = _shield_visual.texture.get_size() * 0.5 \
+		- (Vector2(bounds.position) + Vector2(bounds.size) * 0.5)
+	_shield_visual_revision.clear()
+	_shield_visual.visible = not shield_broken
+
+
+func _sync_shield_visual() -> void:
+	if _shield_visual == null or _ragdoll == null:
+		return
+	var shield_body = _ragdoll.shield_body
+	if shield_body == null or shield_broken:
+		_shield_visual.visible = false
+		return
+	_shield_visual.visible = true
+	var physics_world := _find_physics_world()
+	if physics_world == null:
+		return
+	var facing_scale := 1.0 if _current_facing < 0 else -1.0
+	var size := shield_scale * absf(scale.x)
+	var remaining_pixels := 0
+	for shape in shield_body.shapes:
+		remaining_pixels += shape.pixel_count()
+	if remaining_pixels < _ragdoll.shield_initial_pixels:
+		_sync_damaged_shield_texture(shield_body)
+		_shield_visual.global_transform = Transform2D(
+			physics_world.global_rotation + shield_body.rotation,
+			physics_world.to_global(shield_body.position))
+		return
+	_shield_visual.global_transform = Transform2D(physics_world.global_rotation + shield_body.rotation,
+		Vector2(size * facing_scale, size * shield_height_scale),
+		0.0, physics_world.to_global(shield_body.position))
+
+
+## 破损盾牌仍保留原来的前景层级，但只绘制真实碰撞像素；内容不变时复用贴图。
+func _sync_damaged_shield_texture(shield_body) -> void:
+	var revision: Array = [shield_body.id]
+	var bounds := Rect2i()
+	for shape in shield_body.shapes:
+		revision.append(shape)
+		revision.append(shape.revision)
+		var shape_bounds: Rect2i = shape.local_aabb()
+		bounds = shape_bounds if bounds.size == Vector2i.ZERO else bounds.merge(shape_bounds)
+	if revision == _shield_visual_revision:
+		return
+	_shield_visual_revision = revision
+	if bounds.size.x <= 0 or bounds.size.y <= 0:
+		_shield_visual.visible = false
+		return
+	var image := Image.create(bounds.size.x, bounds.size.y, false, Image.FORMAT_RGBA8)
+	image.fill(Color.TRANSPARENT)
+	for shape in shield_body.shapes:
+		var shape_bounds: Rect2i = shape.local_aabb()
+		for y in range(shape_bounds.position.y, shape_bounds.end.y):
+			for x in range(shape_bounds.position.x, shape_bounds.end.x):
+				if shape.get_pixel(x, y) != 0:
+					image.set_pixel(x - bounds.position.x, y - bounds.position.y, Color.BLACK)
+	_shield_visual.texture = ImageTexture.create_from_image(image)
+	_shield_visual.centered = false
+	_shield_visual.offset = Vector2(bounds.position)

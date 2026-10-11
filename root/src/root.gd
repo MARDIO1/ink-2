@@ -24,6 +24,7 @@ var _loading_level := false
 
 func _ready() -> void:
 	_play_music(menu_music)
+	add_to_group(&"level_router")
 	_show_menu()
 
 
@@ -51,8 +52,13 @@ func _show_level_select() -> void:
 
 ## 第三屏：关卡 + 成品 UI。⚠️ 关卡先挂、UI 后挂（见文件头）。
 func _on_level_chosen(path: String) -> void:
+	await request_level_change(path)
+
+
+## 菜单和传送门共用异步加载入口，锁住期间拒绝其他切关请求。
+func request_level_change(path: String) -> bool:
 	if _loading_level:
-		return
+		return false
 	_loading_level = true
 	# Do not fan scene dependencies out to worker sub-threads. Several levels depend
 	# on native/custom resources that are safe to load in the background loader but
@@ -62,7 +68,7 @@ func _on_level_chosen(path: String) -> void:
 		_loading_level = false
 		_restore_level_select_after_failure(path)
 		push_error("Root: 无法开始加载关卡 %s (%d)" % [path, request_error])
-		return
+		return false
 	var status := ResourceLoader.load_threaded_get_status(path)
 	while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 		await get_tree().process_frame
@@ -73,9 +79,10 @@ func _on_level_chosen(path: String) -> void:
 	if scene == null:
 		_restore_level_select_after_failure(path)
 		push_error("Root: 加载关卡失败 %s" % path)
-		return
+		return false
 	load_level(scene)
 	_set_screen(ui_scene.instantiate())
+	return true
 
 
 func _restore_level_select_after_failure(path: String) -> void:

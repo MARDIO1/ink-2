@@ -4,13 +4,13 @@ extends Control
 ## 独立预览场景：只用 title.png / paper.png 两张图片素材，不引用工程里的任何场景或脚本。
 ## 空格 = 开关；ESC = 退出；鼠标划过标题会拖出涟漪。
 
+const SIM_SHADER := "res://ui/menu/title_fx/asset/ripple_sim.gdshader"
+const TITLE_SHADER := "res://ui/menu/title_fx/asset/ripple_title.gdshader"
+const SIM_SIZE := Vector2i(192, 118)
+
 @export var title_texture: Texture2D
 @export var paper_texture: Texture2D
 @export var auto_quit := false
-
-const SIM_SHADER := "res://ui/menu/title_fx/ripple_sim.gdshader"
-const TITLE_SHADER := "res://ui/menu/title_fx/ripple_title.gdshader"
-const SIM_SIZE := Vector2i(192, 118)
 
 var _title: TextureRect
 var _mat_a: ShaderMaterial
@@ -31,8 +31,7 @@ func _make_sim_viewport() -> SubViewport:
 	vp.transparent_bg = false
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	var rect := ColorRect.new()
-	# ⚠️ SubViewport 不是 Control，子节点没有父 Control 可依，锚点撑不开 —— 必须显式给尺寸，
-	#    否则尺寸为 0，什么都不渲染（症状：模拟贴图恒定不变）。
+	# SubViewport 不是 Control，子 ColorRect 必须显式设置尺寸，不能依赖锚点。
 	rect.position = Vector2.ZERO
 	rect.size = Vector2(SIM_SIZE)
 	var mat := ShaderMaterial.new()
@@ -99,7 +98,7 @@ func _process(delta: float) -> void:
 	if size.x <= 0.0 or size.y <= 0.0:
 		return
 
-	# 鼠标：只在**移动**时注入，静止不动就不搅水
+	# 只在鼠标移动时注入，避免静止光标持续改变水面。
 	var mouse_uv := Vector2(-1.0, -1.0)
 	var uv := Vector2(-1.0, -1.0)
 	if auto_quit:
