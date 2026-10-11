@@ -128,6 +128,24 @@ data = {
 "width": 40
 }
 
+[sub_resource type="Image" id="Image_nltwt"]
+data = {
+"data": PackedByteArray("AAAAAQAAAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEB"),
+"format": "Red8",
+"height": 6,
+"mipmaps": false,
+"width": 6
+}
+
+[sub_resource type="Image" id="Image_bxiay"]
+data = {
+"data": PackedByteArray("AAEBAQEAAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAEBAQEA"),
+"format": "Red8",
+"height": 6,
+"mipmaps": false,
+"width": 6
+}
+
 [node name="Main" type="Node2D" unique_id=1990985690]
 process_priority = 10
 script = ExtResource("1_gg8ap")
@@ -143,7 +161,7 @@ voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
-position = Vector2(54.90682, 125.11064)
+position = Vector2(-136.1523, 48.255344)
 process_callback = 0
 script = ExtResource("12_uma6a")
 
@@ -181,7 +199,6 @@ process_physics_priority = 15
 script = ExtResource("21_vk1g1")
 map_path = "res://map/asset/imported/教程关 （第四版）.tscn"
 baked_map_path = "res://map/asset/imported/教程关 （第四版）.png"
-edit_snapshot_path = "res://map/asset/imported/教程关 （第四版）.edit.snapshot"
 
 [node name="Ink9" type="Node2D" parent="." unique_id=460426238 groups=["ink_item"]]
 position = Vector2(-512, -256)
@@ -195,8 +212,8 @@ source = 3
 paint = SubResource("Image_dmwup")
 
 [node name="Ink13" type="Node2D" parent="." unique_id=1442234578 groups=["ink_item"]]
-position = Vector2(-511.77255, -260.15604)
-rotation = 0.00046552828
+position = Vector2(-511.77515, -260.1542)
+rotation = 0.00046025033
 script = ExtResource("22_jwr1v")
 
 [node name="@Node2D@832" type="Node2D" parent="Ink13" unique_id=1175020669]
@@ -206,8 +223,8 @@ source = 3
 paint = SubResource("Image_3yhdn")
 
 [node name="Ink14" type="Node2D" parent="." unique_id=1101108506 groups=["ink_item"]]
-position = Vector2(-611.99146, 292.88263)
-rotation = -0.46350166
+position = Vector2(-611.99194, 292.87524)
+rotation = -0.46349558
 script = ExtResource("22_jwr1v")
 
 [node name="@Node2D@833" type="Node2D" parent="Ink14" unique_id=568284060]
@@ -218,17 +235,18 @@ paint = SubResource("Image_dvoen")
 
 [node name="Monsters" type="Node2D" parent="." unique_id=623056446]
 
-[node name="LittleSoldier" type="Node2D" parent="Monsters" unique_id=1402245231 groups=["map_monster"] instance=ExtResource("24_dmwup")]
+[node name="LittleSoldier" type="Node2D" parent="Monsters" unique_id=2017849418 groups=["map_monster"] instance=ExtResource("24_dmwup")]
 process_priority = 100
 z_index = 1000
-position = Vector2(1062.0769, 103.0847)
-scale = Vector2(0.6999999, 0.6999999)
+position = Vector2(-352.90747, 258.6192)
+scale = Vector2(0.5999999, 0.5999999)
 script = ExtResource("25_3yhdn")
 kind = 1
 display_name = "小兵"
 editor_pick_radius = 250.0
-editor_id = "monster-55556777-2"
+editor_id = "monster-70486725-1"
 hit_radius = 120.0
+hit_polygon = PackedVector2Array(0, -205, -55, -165, -45, -45, 45, -45, 55, -165)
 
 [node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1848351476 groups=["player_spawn"]]
 position = Vector2(20.906815, 81.870415)
@@ -340,7 +358,7 @@ source = 3
 paint = SubResource("Image_bo038")
 
 [node name="Ink34" type="Node2D" parent="." unique_id=193597132 groups=["ink_item"]]
-position = Vector2(-512.0073, -203.00142)
+position = Vector2(-512.0066, -203.0013)
 script = ExtResource("22_jwr1v")
 
 [node name="@Node2D@840" type="Node2D" parent="Ink34" unique_id=542901097]
@@ -350,8 +368,8 @@ source = 3
 paint = SubResource("Image_uma6a")
 
 [node name="Ink36" type="Node2D" parent="." unique_id=697638567 groups=["ink_item"]]
-position = Vector2(341.84985, -1278.6062)
-rotation = 0.8086317
+position = Vector2(341.85046, -1278.6063)
+rotation = 0.8086322
 script = ExtResource("22_jwr1v")
 
 [node name="@Node2D@841" type="Node2D" parent="Ink36" unique_id=271600616]
@@ -359,3 +377,24 @@ position = Vector2(1617, 438)
 script = ExtResource("23_xbvcl")
 source = 3
 paint = SubResource("Image_1lgdh")
+
+[node name="@Node2D@833" type="Node2D" parent="." unique_id=1737091296 groups=["ink_item"]]
+position = Vector2(-511.99408, -43.01541)
+rotation = 2.196727e-05
+script = ExtResource("22_jwr1v")
+
+[node name="@Node2D@832" type="Node2D" parent="@Node2D@833" unique_id=1232237492]
+position = Vector2(891, 267)
+script = ExtResource("23_xbvcl")
+source = 3
+paint = SubResource("Image_nltwt")
+
+[node name="Ink35" type="Node2D" parent="." unique_id=459645890 groups=["ink_item"]]
+position = Vector2(-512, -44.996674)
+script = ExtResource("22_jwr1v")
+
+[node name="@Node2D@836" type="Node2D" parent="Ink35" unique_id=90900242]
+position = Vector2(1031, 269)
+script = ExtResource("23_xbvcl")
+source = 3
+paint = SubResource("Image_bxiay")

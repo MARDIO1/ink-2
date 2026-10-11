@@ -51,8 +51,8 @@ func _run() -> void:
 	var save_window := creative.get_node_or_null("MapSaveWindow") as PopupPanel
 	valid = valid and save_window != null
 	valid = valid and save_window.get_node_or_null("Content/MapThumbnail") is TextureRect
-	valid = valid and save_window.get_node_or_null("Content/MapNameInput") is LineEdit
-	valid = valid and save_window.get_node_or_null("Content/MapDirectoryInput") is LineEdit
+	valid = valid and save_window.find_child("MapNameInput", true, false) is LineEdit
+	valid = valid and save_window.find_child("MapDirectoryInput", true, false) is LineEdit
 	for item in health_ui:
 		valid = valid and not item.visible
 	valid = valid and exit_button.visible
@@ -105,12 +105,12 @@ func _run() -> void:
 	var palette_toggle := monster_palette.get_node("Root/PaletteToggle") as Button
 	var palette_panel := monster_palette.get_node("Root/Panel") as PanelContainer
 	var palette_toggle_valid: bool = palette_toggle.visible and not palette_panel.visible \
-		and palette_toggle.offset_top == 80.0 and palette_toggle.offset_bottom == 124.0
+		and palette_toggle.offset_top == 85.0 and palette_toggle.offset_bottom == 129.0
 	palette_toggle.pressed.emit()
 	palette_toggle_valid = palette_toggle_valid and palette_panel.visible and palette_toggle.text == "关闭" \
 		and palette_panel.offset_right == -16.0 and palette_toggle.offset_right == -16.0
 	palette_toggle.pressed.emit()
-	palette_toggle_valid = palette_toggle_valid and not palette_panel.visible and palette_toggle.text == "工具"
+	palette_toggle_valid = palette_toggle_valid and not palette_panel.visible and palette_toggle.text == "工具\nCapslock"
 	valid = valid and palette_toggle_valid
 	print("[CreativeEditor] right palette toggle: ", "PASS" if palette_toggle_valid else "FAIL")
 	var palette_content := "Root/Panel/Scroll/Margin/VBox/"
@@ -127,7 +127,7 @@ func _run() -> void:
 	valid = valid and layout_grid.has_node("MovePlayCanvasButton")
 	valid = valid and not layout_grid.has_node("PlaceSpawnButton")
 	valid = valid and not monster_grid.has_node("BombSideButton")
-	valid = valid and monster_grid.has_node("AdjustMonsterButton")
+	valid = valid and not monster_grid.has_node("AdjustMonsterButton")
 	valid = valid and monster_grid.has_node("ResetMonsterScaleButton")
 	var has_place_dialogue := dialogue_grid.has_node("PlaceDialogueTriggerButton")
 	var has_delete_dialogue := dialogue_grid.has_node("DeleteDialogueTriggerButton")
@@ -219,7 +219,10 @@ func _run() -> void:
 
 	# 框选删除是一个原子撤销步骤：未固化画布像素与已固化实体像素一起删除，
 	# Ctrl+Z 后两者都回到画布，下一次保存会照常重新固化。
-	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons/Grid/SelectDelete").icon != null
+	var select_delete_icon := map_canvas.get_node(
+		"WorkbenchUI/Buttons/Grid/SelectDelete/ToolIcon"
+	) as TextureRect
+	valid = valid and select_delete_icon != null and select_delete_icon.texture != null
 	var loose_pixel := Vector2i(1400, 700)
 	var baked_pixel := Vector2i(1410, 700)
 	surface.write_pixel(baked_pixel, Color.BLACK)
@@ -232,7 +235,8 @@ func _run() -> void:
 	map_canvas._delete_selection(Rect2i(Vector2i(1399, 699), Vector2i(14, 3)))
 	valid = valid and not surface.is_solid(loose_pixel.x, loose_pixel.y)
 	valid = valid and not surface.is_solid(baked_pixel.x, baked_pixel.y)
-	valid = valid and creative.undo_last_edit()
+	var selection_undo_restored: bool = creative.undo_last_edit()
+	valid = valid and selection_undo_restored
 	valid = valid and surface.is_solid(loose_pixel.x, loose_pixel.y)
 	valid = valid and surface.is_solid(baked_pixel.x, baked_pixel.y)
 	surface.clear(false)

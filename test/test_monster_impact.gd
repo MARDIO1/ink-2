@@ -8,7 +8,6 @@ func _initialize() -> void:
 func _run() -> void:
 	var valid := true
 	for scene_path in PackedStringArray([
-		"res://actor/monster/shield_side.tscn",
 		"res://actor/monster/little_soldier.tscn",
 		"res://actor/monster/bomb_side.tscn",
 	]):
@@ -29,8 +28,12 @@ func _run() -> void:
 		for index in bones.size():
 			bone_moved = bone_moved or absf(bones[index].rotation - before_rotations[index]) > 0.0001
 		valid = valid and bone_moved
-		# 小怪仅由 Node2D/骨骼组成，不注册 PixelBody，不会进入墨水碎裂流程。
-		valid = valid and monster.get("body") == null
+		# 第一阶段只有小兵注册不可碎裂的 PixelBody；旧怪物继续保持纯视觉兼容。
+		var has_physics := scene_path.ends_with("little_soldier.tscn")
+		valid = valid and (monster.get("body") != null) == has_physics
+		if has_physics:
+			valid = valid and monster.get("body").tags.has("living")
+			valid = valid and not monster.get("body").internal_render
 		monster.queue_free()
 		await process_frame
 	if not valid:

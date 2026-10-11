@@ -5,6 +5,8 @@ extends Node2D
 signal tool_changed(tool: int)
 signal map_changed
 signal editor_control_requested
+## 画布墨水固化完成时发射，供编辑器侧同步固定怪物初始位置等。
+signal solidified
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
@@ -120,6 +122,7 @@ func generate() -> void:
 	if yellow != null:
 		yellow.solidify(surface)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
+	solidified.emit()
 
 
 ## 画布范围内的实体重采样回墨水。
@@ -156,6 +159,10 @@ func clear_solidified_bodies_outside_canvas() -> int:
 		return 0
 	for body in removed:
 		physics.remove_body(body)
+		# 出界实体已永久回收，解除形状回指，避免反复编辑地图积累引用环。
+		for shape in body.shapes:
+			if shape.owner_body == body:
+				shape.owner_body = null
 		var node = nodes_by_body.get(body)
 		if is_instance_valid(node):
 			node.queue_free()

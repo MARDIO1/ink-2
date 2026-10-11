@@ -50,13 +50,15 @@ const MAP_TEXT_FONT_PATH := "res://ui/map_text/asset/Muyao-Softbrush.ttf"
 const MONSTER_SCENES: Array[PackedScene] = [
 	preload("res://actor/monster/bomb_side.tscn"),
 	preload("res://actor/monster/little_soldier.tscn"),
+	preload("res://actor/monster/great_shield.tscn"),
 ]
 const MONSTER_KINDS := [
 	MapMonsterScript.Kind.BOMB_SIDE,
 	MapMonsterScript.Kind.LITTLE_SOLDIER,
+	MapMonsterScript.Kind.SHIELD_SOLDIER,
 ]
-const MONSTER_NAMES := ["炸弹狂侧面", "小兵"]
-const MONSTER_NODE_NAMES := ["BombSide", "LittleSoldier"]
+const MONSTER_NAMES := ["炸弹狂侧面", "小兵", "大盾"]
+const MONSTER_NODE_NAMES := ["BombSide", "LittleSoldier", "GreatShield"]
 const EDITOR_THEME := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const MAX_EDIT_HISTORY := 128
 
@@ -176,6 +178,8 @@ func _ready() -> void:
 			surface.edit_committed.connect(_on_canvas_edit_committed)
 		if _map_canvas.has_signal("map_changed"):
 			_map_canvas.map_changed.connect(_on_map_changed)
+		if _map_canvas.has_signal("solidified"):
+			_map_canvas.solidified.connect(_store_monster_initial_positions)
 	# 游戏启动时不读取十几 MB 的编辑快照，也不创建地图编辑专用窗口和字体。
 	# 这些资源只在首次进入地图编辑器时按需初始化。
 	_show_canvas(_map_canvas, false)
@@ -350,6 +354,8 @@ func _handle_monster_adjust_motion(event: InputEventMouseMotion) -> bool:
 	if not _dragging_monster or not is_instance_valid(_selected_monster):
 		return false
 	_selected_monster.global_position = _event_world_position(event) + _drag_offset
+	if _selected_monster.has_method("sync_physics_from_node"):
+		_selected_monster.sync_physics_from_node()
 	_update_monster_status()
 	return true
 #endregion
@@ -378,6 +384,7 @@ func _enter() -> void:
 	_skip_restore_on_enter = false
 	_ensure_editor_resources()
 	_load_edit_snapshot_if_needed()
+	_set_monster_physics_paused(true)
 	if _player == null:
 		push_error("Creative: 找不到 Player")
 		return
@@ -462,6 +469,7 @@ func _exit() -> void:
 	# 玩家复位后再覆盖地图，编辑器中的飞行位置绝不能成为下一次出生位置。
 	if auto_save_on_exit:
 		_save_current_map_overwrite()
+	_set_monster_physics_paused(false)
 	_show_canvas(_map_canvas, false)
 	for play_canvas in _play_canvases():
 		_show_canvas(play_canvas, true)
@@ -715,6 +723,8 @@ func _handle_layout_mouse_motion(event: InputEventMouseMotion) -> bool:
 	if _layout_drag_target == null:
 		return false
 	_layout_drag_target.global_position = _event_world_position(event) + _layout_drag_offset
+	if _layout_drag_target.has_method("sync_physics_from_node"):
+		_layout_drag_target.sync_physics_from_node()
 	_refresh_layout_overlay(_layout_drag_target)
 	return true
 
@@ -786,6 +796,8 @@ func _resize_control_target(target, direction: float) -> bool:
 	if is_equal_approx(next_scale, old_scale.x):
 		return true
 	target.scale = Vector2.ONE * next_scale
+	if target.has_method("sync_physics_from_node"):
+		target.sync_physics_from_node(true)
 	_record_edit({
 		"type": &"object_transform",
 		"target": target,
@@ -1029,6 +1041,7 @@ func _build_monster_palette() -> void:
 			continue
 		var button := Button.new()
 		button.name = MONSTER_NODE_NAMES[index] + "Button"
+		button.set_meta("monster_kind", MONSTER_KINDS[index])
 		button.text = MONSTER_NAMES[index]
 		button.tooltip_text = "选择后在地图上单击放置%s" % MONSTER_NAMES[index]
 		button.toggle_mode = true
@@ -1235,7 +1248,7 @@ func select_control_tool() -> void:
 
 func _update_monster_buttons() -> void:
 	for index in _monster_buttons.size():
-		_monster_buttons[index].set_pressed_no_signal(_monster_mode == MONSTER_KINDS[index])
+		_monster_buttons[index].set_pressed_no_signal(_monster_mode == int(_monster_buttons[index].get_meta("monster_kind")))
 	if _delete_monster_button != null:
 		_delete_monster_button.set_pressed_no_signal(_monster_mode == MONSTER_MODE_DELETE)
 	if _adjust_monster_button != null:
@@ -1284,6 +1297,8 @@ func place_monster(
 	container.add_child(monster, true)
 	monster.global_position = world_position
 	monster.scale = monster_scale
+	if monster.has_method("sync_physics_from_node"):
+		monster.sync_physics_from_node(true)
 	if monster_id.is_empty():
 		monster_id = _new_monster_id()
 	monster.set("editor_id", monster_id)
@@ -1315,6 +1330,25 @@ func remove_monster_at(world_position: Vector2) -> bool:
 	nearest.queue_free()
 	_record_edit(removed)
 	return true
+
+
+## 固化画布时同步固定所有已放置怪物的初始位置。
+func _store_monster_initial_positions() -> void:
+	var container := _ensure_monster_container()
+	if container == null:
+		return
+	for child in container.get_children():
+		if child.has_method("store_initial_position"):
+			child.store_initial_position()
+
+
+func _set_monster_physics_paused(paused: bool) -> void:
+	var container := _ensure_monster_container()
+	if container == null:
+		return
+	for child in container.get_children():
+		if child.has_method("set_editor_physics_paused"):
+			child.set_editor_physics_paused(paused)
 
 
 func _find_monster_at(world_position: Vector2) -> Node2D:
@@ -1359,6 +1393,8 @@ func _resize_selected_monster(amount: float) -> void:
 	var old_scale := _selected_monster.scale
 	var next_scale := clampf(old_scale.x + amount, MONSTER_MIN_SCALE, MONSTER_MAX_SCALE)
 	_selected_monster.scale = Vector2.ONE * next_scale
+	if _selected_monster.has_method("sync_physics_from_node"):
+		_selected_monster.sync_physics_from_node(true)
 	_record_monster_transform(_selected_monster, old_position, old_scale)
 
 
@@ -1368,6 +1404,8 @@ func _reset_selected_monster_scale() -> void:
 	var old_position := _selected_monster.global_position
 	var old_scale := _selected_monster.scale
 	_selected_monster.scale = Vector2.ONE
+	if _selected_monster.has_method("sync_physics_from_node"):
+		_selected_monster.sync_physics_from_node(true)
 	_record_monster_transform(_selected_monster, old_position, old_scale)
 
 
@@ -1871,6 +1909,8 @@ func undo_last_edit() -> bool:
 			if is_instance_valid(target):
 				target.global_position = edit.get("old_position", target.global_position)
 				target.scale = edit.get("old_scale", target.scale)
+				if target.has_method("sync_physics_from_node"):
+					target.sync_physics_from_node(true)
 				_refresh_layout_overlay()
 				changed = true
 		&"respawn_place", &"play_canvas_place":
@@ -1902,6 +1942,8 @@ func _apply_monster_transform(monster_id: String, position: Vector2, scale: Vect
 			continue
 		child.global_position = position
 		child.scale = scale
+		if child.has_method("sync_physics_from_node"):
+			child.sync_physics_from_node(true)
 		_update_monster_status()
 		return true
 	return false
