@@ -1,10 +1,7 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="1_monster"]
 [ext_resource type="PackedScene" path="res://actor/monster/imported/little_soldier/scenes/little_soldier_character.tscn" id="2_visual"]
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_hitbox"]
-size = Vector2(120, 200)
 
 [node name="LittleSoldier" type="Node2D" groups=["map_monster"]]
 z_index = 1000
@@ -13,17 +10,16 @@ kind = 1
 display_name = "小兵"
 editor_pick_radius = 250.0
 hit_radius = 120.0
-
+hit_polygon = PackedVector2Array(0, -260, -65, -180, -45, -25, 45, -25, 65, -180)
+minimum_hit_speed = 15.0
+physical_enabled = true
+physics_rect = Rect2i(-54, -189, 108, 189)
+physics_density_scale = 0.3
+material_id = 6
+collision_layer = 1
+collision_mask = 4294967295
+internal_render = false
 [node name="Visual" parent="." instance=ExtResource("2_visual")]
-position = Vector2(0, -120)
+position = Vector2(0, -64)
 scale = Vector2(0.5, 0.5)
-
-[node name="Hitbox" type="Area2D" parent="."]
-monitoring = true
-monitorable = true
-collision_layer = 0
-collision_mask = 0
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Hitbox"]
-position = Vector2(0, -100)
-shape = SubResource("RectangleShape2D_hitbox")
+# 物理碰撞由根节点的 PixelBody2D 数据驱动，Visual 只负责显示。

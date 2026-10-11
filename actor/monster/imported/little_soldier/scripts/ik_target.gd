@@ -1,17 +1,26 @@
 @tool
 extends Area2D
 
+## 小兵骨骼 IK 目标点。
+## 在编辑器中显示为十字圆圈，可直接拖动调整手脚位置；
+## 运行时由 little_soldier_rig.gd 读取其 global_position 解算骨骼旋转。
+
+#region 导出参数
 @export var target_color := Color(0.1, 0.65, 0.95, 0.95):
 	set(value):
 		target_color = value
 		queue_redraw()
+
 @export_range(8.0, 28.0, 1.0) var target_radius := 15.0:
 	set(value):
 		target_radius = value
 		queue_redraw()
+#endregion
 
+#region 内部状态
 var _dragging := false
 var _drag_offset := Vector2.ZERO
+#endregion
 
 
 func _ready() -> void:
@@ -42,4 +51,3 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if _dragging and not Engine.is_editor_hint():
 		global_position = get_global_mouse_position() + _drag_offset
-

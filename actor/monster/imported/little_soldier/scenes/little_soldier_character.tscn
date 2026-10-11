@@ -1,18 +1,18 @@
 [gd_scene format=3 uid="uid://dglhcl2iuwojr"]
 
-[ext_resource type="Script" uid="uid://crqr6etmjqdry" path="res://actor/monster/imported/little_soldier/scripts/little_soldier_rig.gd" id="1_rig"]
-[ext_resource type="Script" uid="uid://pfddnh515w0o" path="res://actor/monster/imported/little_soldier/scripts/ik_target.gd" id="2_target"]
-[ext_resource type="Texture2D" uid="uid://bx5yc2oay5ycm" path="res://actor/monster/imported/little_soldier/assets/parts/body.png" id="3_body"]
-[ext_resource type="Texture2D" uid="uid://nrf3kmhac3ls" path="res://actor/monster/imported/little_soldier/assets/parts/left_arm.png" id="4_left_arm"]
-[ext_resource type="Texture2D" uid="uid://ogofx6e4h3v4" path="res://actor/monster/imported/little_soldier/assets/parts/right_arm.png" id="5_right_arm"]
-[ext_resource type="Texture2D" uid="uid://dwa5eoc66k2yd" path="res://actor/monster/imported/little_soldier/assets/parts/left_leg.png" id="6_left_leg"]
-[ext_resource type="Texture2D" uid="uid://bntr3h205bd4c" path="res://actor/monster/imported/little_soldier/assets/parts/right_leg.png" id="7_right_leg"]
-[ext_resource type="Texture2D" uid="uid://dmvu1ygys2o66" path="res://actor/monster/imported/little_soldier/assets/parts/masks/body_mask.png" id="8_body_mask"]
-[ext_resource type="Texture2D" uid="uid://c7va8q7nv280j" path="res://actor/monster/imported/little_soldier/assets/parts/masks/left_arm_mask.png" id="9_left_arm_mask"]
-[ext_resource type="Texture2D" uid="uid://cfwrf7v5r117s" path="res://actor/monster/imported/little_soldier/assets/parts/masks/right_arm_mask.png" id="10_right_arm_mask"]
-[ext_resource type="Texture2D" uid="uid://cet15q08x27fd" path="res://actor/monster/imported/little_soldier/assets/parts/masks/left_leg_mask.png" id="11_left_leg_mask"]
-[ext_resource type="Texture2D" uid="uid://bkjde84wvue2b" path="res://actor/monster/imported/little_soldier/assets/parts/masks/right_leg_mask.png" id="12_right_leg_mask"]
-[ext_resource type="Shader" uid="uid://de64k8vrisqsy" path="res://actor/monster/imported/little_soldier/shaders/part_occlusion.gdshader" id="13_occlusion"]
+[ext_resource type="Script" uid="uid://bfio8xrayhoax" path="res://actor/monster/imported/little_soldier/scripts/little_soldier_rig.gd" id="1_rig"]
+[ext_resource type="Script" uid="uid://daca0po1x3hih" path="res://actor/monster/imported/little_soldier/scripts/ik_target.gd" id="2_target"]
+[ext_resource type="Texture2D" uid="uid://bbhkfldbob41a" path="res://actor/monster/imported/little_soldier/assets/parts/body.png" id="3_body"]
+[ext_resource type="Texture2D" uid="uid://dgo7j4rmwl5cr" path="res://actor/monster/imported/little_soldier/assets/parts/left_arm.png" id="4_left_arm"]
+[ext_resource type="Texture2D" uid="uid://hvs4yxt4ciyt" path="res://actor/monster/imported/little_soldier/assets/parts/right_arm.png" id="5_right_arm"]
+[ext_resource type="Texture2D" uid="uid://dac0rmh2swx0s" path="res://actor/monster/imported/little_soldier/assets/parts/left_leg.png" id="6_left_leg"]
+[ext_resource type="Texture2D" uid="uid://ce6fmck7nqlmx" path="res://actor/monster/imported/little_soldier/assets/parts/right_leg.png" id="7_right_leg"]
+[ext_resource type="Texture2D" uid="uid://cu6qn8wsgvr4k" path="res://actor/monster/imported/little_soldier/assets/parts/masks/body_mask.png" id="8_body_mask"]
+[ext_resource type="Texture2D" uid="uid://drc1a83xkacr2" path="res://actor/monster/imported/little_soldier/assets/parts/masks/left_arm_mask.png" id="9_left_arm_mask"]
+[ext_resource type="Texture2D" uid="uid://dkrpyqsqivi6j" path="res://actor/monster/imported/little_soldier/assets/parts/masks/right_arm_mask.png" id="10_right_arm_mask"]
+[ext_resource type="Texture2D" uid="uid://c2w7k5rxwk4cn" path="res://actor/monster/imported/little_soldier/assets/parts/masks/left_leg_mask.png" id="11_left_leg_mask"]
+[ext_resource type="Texture2D" uid="uid://d0f3my63sw1ww" path="res://actor/monster/imported/little_soldier/assets/parts/masks/right_leg_mask.png" id="12_right_leg_mask"]
+[ext_resource type="Shader" uid="uid://dodsye1kdkwo4" path="res://actor/monster/imported/little_soldier/shaders/part_occlusion.gdshader" id="13_occlusion"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_body"]
 resource_local_to_scene = true
@@ -378,6 +378,9 @@ scale = Vector2(1.6, 1.6)
 texture = ExtResource("3_body")
 
 [node name="LeftArm" type="Bone2D" parent="Skeleton2D/Root/BodyBone" unique_id=2140777885]
+auto_calculate_length_and_angle = false
+length = 138.82104
+bone_angle = 2.02416
 position = Vector2(-76.8, -124.8)
 rotation = -0.19849849
 rest = Transform2D(1, 0, 0, 1, -76.8, -124.8)
@@ -396,6 +399,9 @@ scale = Vector2(1.6, 1.6)
 texture = ExtResource("4_left_arm")
 
 [node name="RightArm" type="Bone2D" parent="Skeleton2D/Root/BodyBone" unique_id=130410610]
+auto_calculate_length_and_angle = false
+length = 150.26376
+bone_angle = 1.107149
 position = Vector2(70.4, -128)
 rotation = 0.3331827
 rest = Transform2D(1, 0, 0, 1, 70.4, -128)
@@ -413,6 +419,9 @@ scale = Vector2(1.6, 1.6)
 texture = ExtResource("5_right_arm")
 
 [node name="LeftLeg" type="Bone2D" parent="Skeleton2D/Root" unique_id=5552436]
+auto_calculate_length_and_angle = false
+length = 125.493266
+bone_angle = 1.908676
 position = Vector2(-44.8, 0)
 rest = Transform2D(1, 0, 0, 1, -44.8, 0)
 
@@ -430,6 +439,9 @@ scale = Vector2(1.6, 1.6)
 texture = ExtResource("6_left_leg")
 
 [node name="RightLeg" type="Bone2D" parent="Skeleton2D/Root" unique_id=111329332]
+auto_calculate_length_and_angle = false
+length = 130.57534
+bone_angle = 1.272297
 position = Vector2(38.4, 0)
 rest = Transform2D(1, 0, 0, 1, 38.4, 0)
 

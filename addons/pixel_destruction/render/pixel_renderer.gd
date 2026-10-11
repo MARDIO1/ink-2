@@ -166,6 +166,10 @@ func material_color(material: int) -> Color:
 
 
 func sync(body) -> void:
+	# 无场景节点的关节肢体也有自己的渲染开关；不能默认当墨水碎块画出来。
+	if not body.internal_render:
+		forget(body.id)
+		return
 	if body.shapes.is_empty():
 		forget(body.id)
 		return

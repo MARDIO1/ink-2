@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://nlfkjjd01p7a"
-path="res://.godot/imported/extracted_shield_soldier.png-9f378506b2e511d464d81679cbce1be3.ctex"
+uid="uid://caitepx5j6ple"
+path="res://.godot/imported/right_leg.png-7423616656485ed0a9b54622cb20e919.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://actor/monster/imported/shield_side/assets/source/extracted_shield_soldier.png"
-dest_files=["res://.godot/imported/extracted_shield_soldier.png-9f378506b2e511d464d81679cbce1be3.ctex"]
+source_file="res://actor/monster/imported/great_shield/assets/parts/right_leg.png"
+dest_files=["res://.godot/imported/right_leg.png-7423616656485ed0a9b54622cb20e919.ctex"]
 
 [params]
 

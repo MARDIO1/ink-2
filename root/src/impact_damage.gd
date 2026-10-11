@@ -4,6 +4,7 @@ extends Node
 
 #region 依赖与配置
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
+const LIVING_TAG := "living"
 
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
 ## 碰撞冲量转为破坏预算的倍率；越大越容易删像素。
@@ -70,6 +71,9 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 		for side in [[contact.a, a_origin, -normal, a_material, b_material, -1.0],
 				[contact.b, b_origin, normal, b_material, a_material, 1.0]]:
 			var body: PBody = side[0]
+			# 玩家用生命值结算；其他生物的物理壳只负责阻挡和受力，不参与像素碎裂。
+			if body != player_body and body.tags.has(LIVING_TAG):
+				continue
 			if protected_bodies.has(body) or dust.has(body):
 				continue
 			var strength: float = world.material_strength(side[3]).x

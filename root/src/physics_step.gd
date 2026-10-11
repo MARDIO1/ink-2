@@ -119,6 +119,9 @@ func prepare_fixed(delta: float) -> int:
 	var size: Vector2 = _camera.get_viewport_rect().size / _camera.zoom * freeze_view_scale
 	physics.cull_freeze(Rect2(_camera.get_screen_center_position() - size * 0.5, size), [_player.body])
 	for body in physics.bodies:
+		# 相机范围恢复活动不能覆盖地图编辑器显式设置的冻结状态。
+		if bool(body.tags.get("editor_physics_paused", false)):
+			physics.freeze(body)
 		body.refresh_com()
 	var culled: int = physics.cull_fast_debris()
 	physics.last_debris_removed = culled

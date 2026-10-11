@@ -1,6 +1,14 @@
 @tool
 extends CanvasGroup
 
+## 小兵骨骼驱动主控。
+## 负责三件事：
+## 1. 四肢 IK 解算——读取 Targets 节点下的目标点，反算 Bone2D 旋转；
+## 2. 手绘抖动——按低帧率随机序列轻微扰动身体的位置/旋转/缩放，模拟手绘质感；
+## 3. 部位自遮挡——把前置部位的遮罩纹理传入后置部位的 shader，实现手臂挡身体等效果。
+
+#region 节点路径常量
+## 从前到后的绘制顺序，索引越大越靠上（后绘制）。
 const ART_FRONT_TO_BACK: Array[NodePath] = [
 	NodePath("Skeleton2D/Root/BodyBone/RightArm/RightArmArt"),
 	NodePath("Skeleton2D/Root/BodyBone/BodyArt"),
@@ -9,6 +17,7 @@ const ART_FRONT_TO_BACK: Array[NodePath] = [
 	NodePath("Skeleton2D/Root/LeftLeg/LeftLegArt"),
 ]
 
+## 与 ART_FRONT_TO_BACK 一一对应的遮罩精灵路径。
 const MASK_FRONT_TO_BACK: Array[NodePath] = [
 	NodePath("Skeleton2D/Root/BodyBone/RightArm/RightArmOcclusionMask"),
 	NodePath("Skeleton2D/Root/BodyBone/BodyOcclusionMask"),
@@ -16,7 +25,10 @@ const MASK_FRONT_TO_BACK: Array[NodePath] = [
 	NodePath("Skeleton2D/Root/RightLeg/RightLegOcclusionMask"),
 	NodePath("Skeleton2D/Root/LeftLeg/LeftLegOcclusionMask"),
 ]
+#endregion
 
+#region 手绘抖动序列
+## 身体位置的逐帧偏移（像素），循环播放。
 const WOBBLE_POSITIONS := [
 	Vector2(0.0, 0.0),
 	Vector2(0.80, -0.35),
@@ -26,7 +38,11 @@ const WOBBLE_POSITIONS := [
 	Vector2(0.55, -0.30),
 	Vector2(-0.35, 0.20),
 ]
+
+## 身体旋转的逐帧偏移（度）。
 const WOBBLE_ROTATIONS_DEGREES := [0.0, -0.22, 0.16, -0.12, 0.21, -0.15, 0.10]
+
+## 身体缩放的逐帧倍率。
 const WOBBLE_SCALES := [
 	Vector2(1.0, 1.0),
 	Vector2(1.004, 0.996),
@@ -36,7 +52,10 @@ const WOBBLE_SCALES := [
 	Vector2(1.004, 0.997),
 	Vector2(0.997, 1.003),
 ]
+#endregion
 
+#region IK 配置
+## 每条肢体的骨骼、目标点和静止方向（骨骼局部坐标）。
 const LIMB_CONTROLS := [
 	{
 		"bone": NodePath("Skeleton2D/Root/BodyBone/LeftArm"),
@@ -59,26 +78,33 @@ const LIMB_CONTROLS := [
 		"rest_direction": Vector2(38.4, 124.8),
 	},
 ]
+#endregion
 
+#region 导出参数
 @export var solve_ik := true
 @export var solve_ik_in_editor := true
-@export_group("Hand-drawn Wobble")
+
+@export_group("手绘抖动")
 @export var hand_drawn_wobble := true
 @export_range(2.0, 5.0, 0.05) var wobble_fps := 3.33
 @export_range(0.0, 1.0, 0.05) var wobble_strength := 0.85
 @export_range(4.0, 24.0, 0.5) var wobble_smoothing := 12.0
 @export var preview_wobble_in_editor := false
+
 @export var show_targets := true:
 	set(value):
 		show_targets = value
 		var targets := get_node_or_null("Targets") as Node2D
 		if targets != null:
 			targets.visible = value
+#endregion
 
+#region 内部状态
 var _wobble_elapsed := 0.0
 var _body_art_rest_position := Vector2.ZERO
 var _body_art_rest_rotation := 0.0
 var _body_art_rest_scale := Vector2.ONE
+#endregion
 
 
 func _ready() -> void:
@@ -101,6 +127,7 @@ func _process(_delta: float) -> void:
 	_update_occlusion_materials()
 
 
+## 按低帧率序列插值身体的位置/旋转/缩放，产生手绘抖动效果。
 func _update_body_wobble(delta: float) -> void:
 	var body_art := get_node_or_null("Skeleton2D/Root/BodyBone/BodyArt") as Sprite2D
 	var body_mask := get_node_or_null("Skeleton2D/Root/BodyBone/BodyOcclusionMask") as Sprite2D
@@ -125,6 +152,7 @@ func _update_body_wobble(delta: float) -> void:
 	body_mask.scale = body_art.scale
 
 
+## 读取每个 IK 目标点的世界坐标，反算对应 Bone2D 的旋转角。
 func _update_limb_rotations() -> void:
 	for control in LIMB_CONTROLS:
 		var bone := get_node_or_null(control["bone"]) as Bone2D
@@ -141,19 +169,20 @@ func _update_limb_rotations() -> void:
 		bone.rotation = direction.angle() - rest_direction.angle()
 
 
+## 把前置部位的遮罩纹理与逆变换写入后置部位的 shader 参数，实现部位自遮挡。
 func _update_occlusion_materials() -> void:
 	for art_index in range(1, ART_FRONT_TO_BACK.size()):
 		var art := get_node_or_null(ART_FRONT_TO_BACK[art_index]) as Sprite2D
 		if art == null or not art.material is ShaderMaterial:
 			continue
-		var material := art.material as ShaderMaterial
-		material.set_shader_parameter("mask_count", art_index)
+		var occlusion_material := art.material as ShaderMaterial
+		occlusion_material.set_shader_parameter("mask_count", art_index)
 		for mask_index in art_index:
 			var mask := get_node_or_null(MASK_FRONT_TO_BACK[mask_index]) as Sprite2D
 			if mask == null:
 				continue
 			var inverse := mask.global_transform.affine_inverse()
-			material.set_shader_parameter("mask_%d" % mask_index, mask.texture)
-			material.set_shader_parameter("mask_%d_inv_x" % mask_index, inverse.x)
-			material.set_shader_parameter("mask_%d_inv_y" % mask_index, inverse.y)
-			material.set_shader_parameter("mask_%d_inv_origin" % mask_index, inverse.origin)
+			occlusion_material.set_shader_parameter("mask_%d" % mask_index, mask.texture)
+			occlusion_material.set_shader_parameter("mask_%d_inv_x" % mask_index, inverse.x)
+			occlusion_material.set_shader_parameter("mask_%d_inv_y" % mask_index, inverse.y)
+			occlusion_material.set_shader_parameter("mask_%d_inv_origin" % mask_index, inverse.origin)
