@@ -157,4 +157,3 @@ func _nz(a: PackedByteArray) -> int:
 		if v != 0:
 			c += 1
 	return c
-

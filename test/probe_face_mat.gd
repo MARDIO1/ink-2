@@ -91,4 +91,3 @@ func _dump() -> void:
 			var m: int = mat[sy * w + sx] if (sx < w and sy < h) else 0
 			line += "." if m == 0 else str(m)
 		print("%3d %s" % [gy, line])
-

@@ -19,8 +19,15 @@ var black_texture: ImageTexture
 @onready var bounds: CollisionShape2D = $Bounds
 func _ready() -> void:
 	black_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_resize()
+	# 地图编辑快照由 Creative 在首次进入编辑器时按需恢复；游戏启动时不读盘。
 #endregion
+
+
+func _restore_saved_ink() -> void:
+	if not saved_ink_path.is_empty() and FileAccess.file_exists(saved_ink_path):
+		load_ink(saved_ink_path)
 
 
 #region 外观
@@ -35,6 +42,11 @@ func _ready() -> void:
 	set(value):
 		background_color = value
 		queue_redraw()
+## 纸张底图；绘制时按原始尺寸循环平铺，画布扩展后会自动补齐。
+@export var background_texture: Texture2D:
+	set(value):
+		background_texture = value
+		queue_redraw()
 ## 画布边框颜色；只影响显示。
 @export var border_color := Color(0.12, 0.12, 0.12, 1.0):
 	set(value):
@@ -42,11 +54,15 @@ func _ready() -> void:
 		queue_redraw()
 ## 画布边框线宽，单位 px。
 @export var border_width := 2.0
+## 地图编辑自动保存使用的未固化画布快照；场景载入完成后自动恢复。
+@export_file("*.res", "*.tres") var saved_ink_path := ""
 
 #纸底和边框由表面画，黑色墨水由 BlackSprite 盖在上面
 func _draw() -> void:
 	var rect := Rect2(Vector2.ZERO, Vector2(canvas_size))
 	draw_rect(rect, background_color, true)
+	if background_texture != null:
+		draw_texture_rect(background_texture, rect, true)
 	draw_rect(rect, border_color, false, border_width)
 #endregion
 
@@ -79,8 +95,9 @@ func _process(_delta: float) -> void:
 	elif _painting:
 		_continue_stroke()
 
-## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；墨水桶灌满封闭空区。
-enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE }
+## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；
+## 直线按拖拽起终点绘制；墨水桶灌满封闭空区。LINE 追加在末尾以保持旧地图工具枚举值兼容。
+enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE }
 
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
@@ -186,8 +203,8 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 		_bucket_fill(point)
 		_commit_undo_step()
 		return
-	#矩形/圆形是拖拽工具：按下定起点，拖拽出形状，松手定型。
-	if tool == Tool.RECT or tool == Tool.CIRCLE:
+	#矩形/圆形/直线是拖拽工具：按下定起点，拖拽出形状，松手定型。
+	if tool == Tool.RECT or tool == Tool.CIRCLE or tool == Tool.LINE:
 		_begin_undo_step()
 		_shaping = true
 		_shape_origin = point
@@ -495,7 +512,7 @@ func material_at(x: int, y: int) -> int:
 #endregion
 
 
-#region 矩形 / 圆形
+#region 矩形 / 圆形 / 直线
 #拖拽预览：每动一次先把上一帧改过的像素还原，再按新位置重画一圈。
 #松手才记账，所以拖拽过程不会反复扣墨水。
 func _update_shape() -> void:
@@ -541,13 +558,17 @@ func _end_shape() -> void:
 #形状外框 = 拿笔刷沿边界扫一圈，所以线宽就是笔刷直径。
 func _shape_pixels(from: Vector2, to: Vector2) -> Dictionary:
 	var out := {}
-	if tool == Tool.CIRCLE:
-		#圆心 = 按下点，半径 = 拖出的距离；永远是正圆。
-		_brush_circle(out, from, from.distance_to(to))
-	else:
-		# 矩形不能复用圆形笔刷沿边盖章：圆盘相交后的最外层会周期性凹凸，
-		# 粗边框固化后就会变成明显锯齿。这里直接生成整数像素包围盒和等宽方角边框。
-		_brush_rect(out, from, to)
+	match tool:
+		Tool.CIRCLE:
+			#圆心 = 按下点，半径 = 拖出的距离；永远是正圆。
+			_brush_circle(out, from, from.distance_to(to))
+		Tool.LINE:
+			#起点到终点的连续线段，粗细与当前笔刷一致。
+			_brush_line(out, from, to)
+		_:
+			# 矩形不能复用圆形笔刷沿边盖章：圆盘相交后的最外层会周期性凹凸，
+			# 粗边框固化后就会变成明显锯齿。这里直接生成整数像素包围盒和等宽方角边框。
+			_brush_rect(out, from, to)
 	return out
 
 
@@ -833,12 +854,42 @@ func _refund_all_ink() -> void:
 #region 画布复现文件
 ## 保存 CPU 像素缓冲，包含颜色、透明度和尺寸；不读取 GPU，不触发固化。
 func save_ink(path: String) -> Error:
-	var error: Error = ResourceSaver.save(black_image, path)
+	var error: Error
+	if path.get_extension().to_lower() == "snapshot":
+		error = _save_snapshot(path)
+	elif path.get_extension().to_lower() == "png":
+		error = black_image.save_png(ProjectSettings.globalize_path(path))
+	else:
+		error = ResourceSaver.save(black_image, path)
 	if error == OK:
 		print("CANVAS saved: ", ProjectSettings.globalize_path(path))
 	else:
 		push_error("Canvas save failed: %s (%d)" % [path, error])
 	return error
+
+
+## 编辑快照使用 PNG 压缩数据，但故意不用 .png 扩展名。Godot 编辑器会持续监视并
+## 导入 res:// 下的 PNG，自动保存恰好撞上导入线程时 Windows 会返回 ERR_FILE_CANT_WRITE。
+## 未注册的 .snapshot 不进入导入流水线，并通过同目录临时文件避免中途写坏快照。
+func _save_snapshot(path: String) -> Error:
+	var absolute := ProjectSettings.globalize_path(path)
+	var temporary := absolute + ".tmp"
+	DirAccess.make_dir_recursive_absolute(absolute.get_base_dir())
+	var file := FileAccess.open(temporary, FileAccess.WRITE)
+	if file == null:
+		return FileAccess.get_open_error()
+	file.store_buffer(black_image.save_png_to_buffer())
+	file.flush()
+	file.close()
+	if FileAccess.file_exists(path):
+		var remove_error := DirAccess.remove_absolute(absolute)
+		if remove_error != OK:
+			DirAccess.remove_absolute(temporary)
+			return remove_error
+	var rename_error := DirAccess.rename_absolute(temporary, absolute)
+	if rename_error != OK:
+		DirAccess.remove_absolute(temporary)
+	return rename_error
 
 
 ## 保存整张透明 PNG：黑=空、颜色=材质 id。
@@ -852,10 +903,20 @@ func save_png(path: String) -> Error:
 
 
 func load_ink(path: String) -> Error:
-	if not ResourceLoader.exists(path):
+	if not FileAccess.file_exists(path):
 		push_error("Canvas file missing: " + path)
 		return ERR_FILE_NOT_FOUND
-	var image: Image = ResourceLoader.load(path, "Image", ResourceLoader.CACHE_MODE_IGNORE) as Image
+	var image: Image
+	if path.get_extension().to_lower() == "snapshot":
+		image = Image.new()
+		var load_error := image.load_png_from_buffer(FileAccess.get_file_as_bytes(path))
+		if load_error != OK:
+			push_error("Canvas snapshot decode failed: %s (%d)" % [path, load_error])
+			return load_error
+	elif path.get_extension().to_lower() == "png":
+		image = Image.load_from_file(ProjectSettings.globalize_path(path))
+	else:
+		image = ResourceLoader.load(path, "Image", ResourceLoader.CACHE_MODE_IGNORE) as Image
 	if image == null or image.is_empty():
 		push_error("Canvas file is not an Image: " + path)
 		return ERR_INVALID_DATA
@@ -864,10 +925,29 @@ func load_ink(path: String) -> Error:
 	black_image = image
 	black_image.convert(Image.FORMAT_RGBA8)
 	black_texture.update(black_image)
-	_rebuild_nails()
-	recount_ink_px()
+	_rebuild_loaded_metadata()
 	print("CANVAS loaded: ", ProjectSettings.globalize_path(path))
 	return OK
+
+
+## 读盘后一次遍历同时重建钉子和墨水账，避免大画布连续全图扫描两遍。
+func _rebuild_loaded_metadata() -> void:
+	nail_layer.clear()
+	ink_px_by_material = {}
+	_pending_ink = {}
+	var data := black_image.get_data()
+	var width := canvas_size.x
+	for index in range(canvas_size.x * canvas_size.y):
+		var at := index * 4
+		if data[at + 3] <= 127:
+			continue
+		var material_id := InkPalette.material_id_at_color(Color8(
+			data[at], data[at + 1], data[at + 2], data[at + 3]
+		))
+		if material_id == InkPalette.nail_material_id():
+			nail_layer.add(Vector2i(index % width, index / width))
+		elif InkPalette.is_ink(material_id):
+			ink_px_by_material[material_id] = ink_px_of(material_id) + 1
 
 
 #按像素重新数一遍画布自己的账 —— 读盘、以及怀疑账本漂了的时候用。

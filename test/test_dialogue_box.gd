@@ -23,6 +23,7 @@ func _run() -> void:
 	await process_frame
 	var integrated_dialogue := game_ui.get_node_or_null("Dialogue") as DialogueBox
 	var integrated_esc := game_ui.get_node_or_null("Esc") as CanvasLayer
+	var integrated_log_button := game_ui.get_node_or_null("Hud/Root/LogButton") as TextureButton
 	_check(integrated_dialogue != null, "GameUI 应装配 DialogueBox")
 	_check(integrated_dialogue.lines.size() == 3, "GameUI 中的对话框应加载默认台词")
 	_check(integrated_esc != null, "GameUI 应装配 ESC 菜单")
@@ -30,6 +31,12 @@ func _run() -> void:
 		"ESC 菜单及压暗遮罩必须绘制在剧情框之上（ESC=%d，剧情=%d）" % [
 			integrated_esc.layer, integrated_dialogue.layer
 		])
+	_check(integrated_log_button != null and integrated_log_button.texture_normal != null,
+		"HUD should provide an icon-backed dialogue Log button")
+	integrated_log_button.pressed.emit()
+	await process_frame
+	_check(integrated_dialogue.log_root.visible, "Log button should open dialogue history")
+	integrated_dialogue.hide_log()
 	game_ui.queue_free()
 	await process_frame
 
@@ -44,6 +51,8 @@ func _run() -> void:
 	)
 	var viewport: SubViewport = pixel_text.get_node("TextViewport")
 	var dialogue_font: Font = dialogue.dialogue_label.get_theme_font("font")
+	_check(dialogue.viewed_lines.size() == 1,
+		"history should initially contain only the first displayed line")
 	_check(dialogue.lines.size() == 3, "应从 JSON 读入三句示例台词")
 	_check(dialogue.current_line == 0, "应自动从第一句开始")
 	_check(dialogue.dialogue_label.visible_characters == 0, "第一句应从零个字符开始打字")
@@ -102,6 +111,14 @@ func _run() -> void:
 	dialogue.advance()
 	dialogue.advance()
 	_check(not dialogue.root.visible, "最后一句完成后再次单击应隐藏文本框")
+
+	_check(dialogue.viewed_lines.size() >= 4,
+		"history should append each later line only when it is displayed")
+	dialogue.show_log()
+	_check(dialogue.log_root.visible, "dialogue history should open independently")
+	_check(dialogue.history_label.text.length() > 0,
+		"dialogue history should display viewed lines")
+	dialogue.hide_log()
 
 	print("[DialogueBox] %d checks (%d glyphs), %d failures" % [
 		_checks, checked_characters, _failures

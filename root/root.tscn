@@ -1,9 +1,12 @@
 [gd_scene format=3 uid="uid://dr0gftbpnddda"]
 
 [ext_resource type="Script" uid="uid://m887ouaqaa8q" path="res://root/src/root.gd" id="1_root"]
+[ext_resource type="PackedScene" path="res://ui/background/paper_background.tscn" id="2_bg"]
 
 [node name="Root" type="Node" unique_id=1977969148]
 script = ExtResource("1_root")
+
+[node name="PaperBackground" parent="." instance=ExtResource("2_bg")]
 
 [node name="Level" type="Node2D" parent="." unique_id=961708237]
 

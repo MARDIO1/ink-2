@@ -10,6 +10,7 @@
 [ext_resource type="Script" uid="uid://c6otusd1181wl" path="res://actor/player/src/bottled_ink.gd" id="12_ink"]
 [ext_resource type="Script" uid="uid://dfa8tnl720dm" path="res://actor/player/src/ink_health.gd" id="13_health"]
 [ext_resource type="Material" path="res://actor/player/asset/player_breath_wobble.tres" id="14_wobble"]
+[ext_resource type="Script" path="res://actor/player/src/fall_death.gd" id="15_fall_death"]
 [ext_resource type="Material" path="res://actor/player/asset/player_liquid_wobble.tres" id="15_liquid_wobble"]
 
 [sub_resource type="Image" id="Image_jqpk3"]
@@ -52,7 +53,6 @@ palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1),
 
 [node name="BottledInk" type="Sprite2D" parent="." unique_id=1298016972]
 process_physics_priority = 25
-material = ExtResource("14_wobble")
 visible = false
 material = ExtResource("15_liquid_wobble")
 z_index = -1
@@ -67,5 +67,8 @@ max_ink = 20000.0
 [node name="PlayerInput" type="Node" parent="." unique_id=452559037]
 script = ExtResource("2_input")
 upright_stiffness = 500000000.0
+
+[node name="FallDeath" type="Node" parent="."]
+script = ExtResource("15_fall_death")
 
 [node name="Arm" parent="." unique_id=1691926357 instance=ExtResource("11_hand")]

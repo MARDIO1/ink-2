@@ -10,6 +10,7 @@ extends Control
 
 const LEVEL_DIR := "res://map"
 const PLAYER_NODE := "Player"
+const NON_LEVEL_SCENE := "res://map/main.tscn"
 ## 列表按钮宽度，避免被 CenterContainer 挤成一条。
 const BUTTON_SIZE := Vector2(340, 46)
 
@@ -35,12 +36,32 @@ func _ready() -> void:
 		button.theme_type_variation = &"PrimaryButton"
 		button.custom_minimum_size = BUTTON_SIZE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		button.pressed.connect(level_chosen.emit.bind(path))
+		button.pressed.connect(_on_level_button_pressed.bind(path, button))
 		list.add_child(button)
 	if list.get_child_count() == 0:
 		push_error("关卡选择：%s 下没找到关卡（根级有 %s 的 .tscn）" % [LEVEL_DIR, PLAYER_NODE])
 		return
 	(list.get_child(0) as Button).grab_focus()
+
+
+func _on_level_button_pressed(path: String, selected_button: Button) -> void:
+	# 大地图载入期间立即给出反馈，并禁止重复提交载入请求。
+	for child in list.get_children():
+		if child is Button:
+			(child as Button).disabled = true
+	selected_button.text = "%s（加载中…）" % path.get_file().get_basename()
+	level_chosen.emit(path)
+
+
+func show_load_failed(path: String) -> void:
+	for child in list.get_children():
+		if child is Button:
+			var button := child as Button
+			button.disabled = false
+			button.text = button.tooltip_text.get_file().get_basename()
+			if button.tooltip_text == path:
+				button.text += "（加载失败，请重试）"
+				button.grab_focus()
 
 
 ## `res://map` 下所有真关卡的路径，已排序。
@@ -63,7 +84,7 @@ static func _scan(dir_path: String, found: PackedStringArray) -> void:
 		if dir.current_is_dir():
 			if not entry.begins_with("."):
 				_scan(path, found)
-		elif entry.ends_with(".tscn") and _has_player(path):
+		elif entry.ends_with(".tscn") and path != NON_LEVEL_SCENE and _has_player(path):
 			found.append(path)
 		entry = dir.get_next()
 	dir.list_dir_end()
@@ -71,12 +92,15 @@ static func _scan(dir_path: String, found: PackedStringArray) -> void:
 
 ## 真关卡的判据：场景里有一个叫 `Player` 的节点。只看结构，不实例化、不进游戏。
 static func _has_player(path: String) -> bool:
-	var scene := load(path) as PackedScene
-	if scene == null:
-		push_error("关卡选择：%s 不是场景" % path)
+	# 关卡列表只需要判断节点名。逐行读取并在找到 Player 后立即停止，避免为了显示
+	# 菜单就把每个大型地图完整解析进 ResourceLoader 缓存。
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_error("关卡选择：无法读取 %s" % path)
 		return false
-	var state := scene.get_state()
-	for i in state.get_node_count():
-		if String(state.get_node_name(i)) == PLAYER_NODE:
+	var marker := 'name="%s"' % PLAYER_NODE
+	while not file.eof_reached():
+		var line := file.get_line()
+		if line.begins_with("[node ") and line.contains(marker):
 			return true
 	return false

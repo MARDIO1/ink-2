@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://ui/background/paper_background.gd" id="1_script"]
+[ext_resource type="Shader" path="res://ui/background/paper_background.gdshader" id="2_shader"]
+[ext_resource type="Texture2D" path="res://ui/background/asset/paper.png" id="3_paper"]
+
+[sub_resource type="ShaderMaterial" id="mat"]
+shader = ExtResource("2_shader")
+shader_parameter/paper = ExtResource("3_paper")
+
+[node name="PaperBackground" type="CanvasLayer"]
+layer = -10
+script = ExtResource("1_script")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 0.0
+offset_bottom = 0.0
+mouse_filter = 2
+material = SubResource("mat")
+color = Color(1, 1, 1, 1)

@@ -151,15 +151,25 @@ func _run() -> void:
 	esc.queue_free()
 	await process_frame
 	await _check_scene_fonts("res://ui/hud/hud.tscn", PackedStringArray([
-		"Root/InkMeter",
+		"Root/HealthUI/InkMeter",
 	]))
+	var hud := (load("res://ui/hud/hud.tscn") as PackedScene).instantiate()
+	root.add_child(hud)
+	await process_frame
+	var health_ui := hud.get_node("Root/HealthUI") as Control
+	_check(health_ui.scale.is_equal_approx(Vector2(0.75, 0.75)),
+		"血条、瓶身填充和墨水文字必须统一缩放为 0.75 倍")
+	_check(health_ui.has_node("BottleFill") and health_ui.has_node("HealthArt") \
+		and health_ui.has_node("InkMeter"), "配套血条 UI 必须位于同一缩放容器")
+	hud.queue_free()
+	await process_frame
 	await _check_scene_fonts("res://ui/dialogue/dialogue_box.tscn", PackedStringArray([
 		"Root/DialoguePanel/PixelText/TextViewport/DialogueLabel",
 		"Root/DialoguePanel/PixelText/TextViewport/NextHint",
 	]))
 	await _check_scene_fonts("res://actor/canvas/canvas.tscn", PackedStringArray([
 		"WorkbenchUI/Toggle",
-		"WorkbenchUI/Buttons/Grid/Hand",
+		"WorkbenchUI/Buttons/Hand",
 		"WorkbenchUI/ResizePanel/Grid/PlayerVisibility",
 		"WorkbenchUI/ResizePanel/Grid/NailVisibility",
 	]))

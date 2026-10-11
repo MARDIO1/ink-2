@@ -16,6 +16,7 @@
 [ext_resource type="Texture2D" path="res://ui/asset/canvas_frame.tres" id="14_canvas_frame"]
 [ext_resource type="Script" path="res://actor/canvas/src/selection_overlay.gd" id="15_selection_overlay"]
 [ext_resource type="Texture2D" path="res://ui/asset/select_delete.tres" id="16_select_delete"]
+[ext_resource type="Texture2D" path="res://actor/canvas/asset/lined_paper.png" id="17_lined_paper"]
 
 [sub_resource type="RectangleShape2D" id="CanvasBounds"]
 resource_local_to_scene = true
@@ -93,6 +94,7 @@ monitorable = false
 script = ExtResource("2_surface")
 canvas_size = Vector2i(400, 280)
 background_color = Color(0.968627, 0.952941, 0.854902, 1)
+background_texture = ExtResource("17_lined_paper")
 border_width = 1.0
 tool = 1
 
@@ -115,7 +117,7 @@ script = ExtResource("15_selection_overlay")
 script = ExtResource("3_solid")
 
 [node name="WorkbenchUI" type="Node2D" parent="." unique_id=1408551512]
-position = Vector2(61, -120)
+position = Vector2(-40, -160)
 
 [node name="Toggle" type="Button" parent="WorkbenchUI"]
 z_index = 100
@@ -192,8 +194,8 @@ expand_icon = true
 [node name="Shape" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=560230217]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "自选形状（5/6）
-重复点击切换矩形与圆形"
+tooltip_text = "自选形状（5/6/9）
+点击按钮在矩形、圆形、直线中选择"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52
@@ -317,6 +319,24 @@ toggle_mode = true
 button_group = SubResource("ToolButtonGroup")
 text = "手"
 
+[node name="ExpandCanvas" type="Button" parent="WorkbenchUI/Buttons/Grid"]
+visible = false
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+tooltip_text = "扩展画布\n分别设置左、右、上、下四侧的扩展量"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+theme_override_colors/font_focus_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+theme_override_colors/font_hover_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+theme_override_colors/font_pressed_color = Color(0.0352941, 0.0313726, 0.0235294, 1)
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconActionPressed")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+text = "扩"
+
 [node name="BrushPanel" type="Control" parent="WorkbenchUI" unique_id=2069911969]
 z_index = 100
 layout_mode = 3
@@ -383,7 +403,6 @@ layout_mode = 2
 tooltip_text = "隐藏钉子外观"
 focus_mode = 0
 mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("IconNormal")
 theme_override_styles/pressed = SubResource("IconSelected")
 theme_override_styles/hover = SubResource("IconHover")
