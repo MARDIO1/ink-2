@@ -22,8 +22,8 @@ const RED_ID: int = 8
 @export_group("爆炸音效")
 @export var explosion_stream: AudioStream
 @export_range(1, 8, 1) var explosion_voice_count: int = 4
-@export_range(-40.0, 0.0, 0.5) var quiet_explosion_db: float = -22.0
-@export_range(-20.0, 6.0, 0.5) var loud_explosion_db: float = -1.0
+@export_range(-40.0, 0.0, 0.5) var quiet_explosion_db: float = -16.0
+@export_range(-20.0, 6.0, 0.5) var loud_explosion_db: float = 0.0
 #endregion
 
 #region 状态

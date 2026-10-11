@@ -38,6 +38,13 @@ func _run() -> void:
 	_check("all four gameplay sounds are assigned", feedback.impact_stream != null
 		and red.explosion_stream != null and yellow.tension_stream != null
 		and yellow.release_stream != null)
+	_check("gameplay sounds have no long preroll", feedback.impact_stream.get_length() < 0.5
+		and red.explosion_stream.get_length() < 1.1
+		and yellow.tension_stream.get_length() < 0.8
+		and yellow.release_stream.get_length() < 1.0)
+	_check("music sits clearly below strong sound effects", app.music_volume_db <= -20.0
+		and feedback.maximum_volume_db - app.music_volume_db >= 18.0
+		and red.loud_explosion_db - app.music_volume_db >= 18.0)
 	_check("impact loudness has an obvious range",
 		feedback.volume_db_for_impulse(feedback.full_volume_impulse)
 		- feedback.volume_db_for_impulse(feedback.minimum_impulse + 1.0) > 18.0)

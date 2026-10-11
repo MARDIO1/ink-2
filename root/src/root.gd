@@ -14,7 +14,7 @@ extends Node
 @export var ui_scene: PackedScene = preload("res://ui/game_ui.tscn")
 @export var menu_music: AudioStream
 @export var level_music: AudioStream
-@export_range(-40.0, 0.0, 0.5) var music_volume_db: float = -12.0
+@export_range(-40.0, 0.0, 0.5) var music_volume_db: float = -22.0
 
 @onready var level_root: Node = $Level
 @onready var ui_root: Node = $UI

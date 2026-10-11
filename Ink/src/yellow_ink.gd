@@ -290,7 +290,7 @@ func spring_load_band(ratio: float) -> int:
 
 
 func spring_volume_db(ratio: float) -> float:
-	return lerpf(-16.0, -2.0, sqrt(clampf(ratio, 0.0, 1.0)))
+	return lerpf(-14.0, 0.0, sqrt(clampf(ratio, 0.0, 1.0)))
 
 
 func _play_spring(stream: AudioStream, position: Vector2, volume_db: float, pitch: float) -> void:
