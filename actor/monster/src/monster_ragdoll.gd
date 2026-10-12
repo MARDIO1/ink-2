@@ -3,6 +3,7 @@ const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd"
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PJoint := preload("res://addons/pixel_destruction/physics/joint.gd")
 const HullFit := preload("res://addons/pixel_destruction/core/hull_fit.gd")
+const LIVING_TAG := "living"
 static var _outline_cache: Dictionary = {}
 
 ## 五个真实刚体共用 PixelWorld；动画只提供软马达目标，绝不直接移动碰撞体。
@@ -17,6 +18,14 @@ var standing_time := 1.0
 var foot_height_correction := 0.0
 var uses_animation_tracks := false
 var body_rest_rotation := 0.0
+## 盾兵的可破坏盾牌。null 表示无盾或已破碎脱离。
+var shield_body: PBody = null
+var shield_joint: PJoint = null
+var shield_holder: Dictionary = {}
+var shield_initial_pixels := 0
+var shield_broken := false
+## 握盾时左手抬起的额外旋转（弧度），破碎后回零。
+const SHIELD_HOLD_ARM_OFFSET := 0.55
 
 
 static func sprite_shape(sprite: Sprite2D, frame: Transform2D, material: int) -> PixelShape:
@@ -46,6 +55,63 @@ static func sprite_shape(sprite: Sprite2D, frame: Transform2D, material: int) ->
 		if left < right:
 			shape.fill_rect(Rect2i(floori(left), y, ceili(right) - floori(left), 1), material)
 	return shape
+
+
+## 从纹理直接光栅化像素形状：alpha > 阈值的像素填充为指定材质。
+## scale 用于匹配怪物 Visual 的缩放；center_origin 使形状原点居中，便于旋转对齐。
+static func texture_shape(texture: Texture2D, material: int, alpha_threshold := 128,
+		scale := 1.0, center_origin := false, flip_x := false, height_scale := 1.0) -> PixelShape:
+	var shape := PixelShape.new()
+	if texture == null:
+		return shape
+	var image := texture.get_image()
+	if image == null:
+		return shape
+	var w := image.get_width()
+	var h := image.get_height()
+	# 先扫描非透明区域的 bbox，用于居中偏移
+	var min_x := INF
+	var max_x := -INF
+	var min_y := INF
+	var max_y := -INF
+	for y in h:
+		for x in w:
+			if image.get_pixel(x, y).a * 255.0 > alpha_threshold:
+				min_x = minf(min_x, x)
+				max_x = maxf(max_x, x)
+				min_y = minf(min_y, y)
+				max_y = maxf(max_y, y)
+	if min_x == INF:
+		return shape
+	var offset_x := 0.0
+	var offset_y := 0.0
+	if center_origin:
+		offset_x = (min_x + max_x + 1.0) * 0.5 * scale
+		offset_y = (min_y + max_y + 1.0) * 0.5 * scale * height_scale
+	for y in h:
+		var left := -1
+		# 分段填充，保留盾牌纹理中的透明窗口，不把整行包围区间填实。
+		for x in range(w + 1):
+			if x < w and image.get_pixel(x, y).a * 255.0 > alpha_threshold:
+				if left < 0:
+					left = x
+			elif left >= 0:
+				var sx := floori(float(left) * scale - offset_x)
+				var sw := maxi(1, ceili(float(x) * scale - offset_x) - sx)
+				if flip_x:
+					sx = -sx - sw
+				var sy := floori(float(y) * scale * height_scale - offset_y)
+				var end_y := ceili(float(y + 1) * scale * height_scale - offset_y)
+				shape.fill_rect(Rect2i(sx, sy, sw, maxi(1, end_y - sy)), material)
+				left = -1
+	return shape
+
+
+## 统计形状中的实心像素总数。PixelShape 内置 pixel_count()，这里做一层空值保护。
+static func count_pixels(shape) -> int:
+	if shape == null:
+		return 0
+	return shape.pixel_count()
 
 
 ## 十二方向支持平面：最多十二边，包住所有不透明像素，不随动画重新拟合。
@@ -117,23 +183,25 @@ func setup(monster: Node2D, pixel_world: Node2D, torso: PBody) -> void:
 		if str(bone.name).ends_with("Arm") and not uses_animation_tracks:
 			var outward := 0.26 if str(bone.name) == "LeftArm" else -0.26
 			bone.rotation = Vector2.DOWN.angle() + outward - Vector2(control.rest_direction).angle()
+		if monster.has_shield and not monster.shield_broken and str(bone.name) == "LeftArm":
+			bone.rotation += SHIELD_HOLD_ARM_OFFSET
 	_align_standing_feet()
 	torso.ccd = true
-	torso.additional_solver_iterations = 8
+	torso.additional_solver_iterations = 32 if monster.has_shield else 8
 	for control: Dictionary in visual.LIMB_CONTROLS:
 		var bone: Bone2D = visual.get_node(control.bone)
 		var sprite: Sprite2D = bone.get_node(str(bone.name) + "Art")
-		var frame := Transform2D(bone.global_rotation, bone.global_position)
+		var frame := Transform2D(bone.global_transform.x.angle(), bone.global_position)
 		var shape := sprite_shape(sprite, frame, monster.material_id)
 		shape.density_scale = monster.physics_density_scale
 		var limb := PBody.new()
 		limb.position = world_node.to_local(bone.global_position)
-		limb.rotation = bone.global_rotation - world_node.global_rotation
+		limb.rotation = bone.global_transform.x.angle() - world_node.global_rotation
 		limb.tags = torso.tags.duplicate()
 		limb.tags["monster_part"] = str(bone.name)
 		limb.internal_render = false
 		limb.ccd = true
-		limb.additional_solver_iterations = 8
+		limb.additional_solver_iterations = 32 if monster.has_shield else 8
 		world_node.world.add_body(limb, [shape], Callable(world_node, "_density_of"), true)
 		var joint: PJoint = world_node.world.add_hinge(torso, limb, limb.position)
 		joint.set_limits(-1.4, 1.4)
@@ -154,8 +222,76 @@ func setup(monster: Node2D, pixel_world: Node2D, torso: PBody) -> void:
 			var exclusion: PJoint = world_node.world.add_rope(a, b, a.position, b.position, 1000000.0)
 			exclusion.contacts_enabled = false
 			self_contact_filters.append(exclusion)
+	_setup_shield(monster)
 	world_node.realign_body_nodes()
 	animation.play("walk")
+
+
+## 创建可破坏盾牌并绑定到身体朝向一侧；位置与尺寸使用怪物的导出参数。
+## 握盾姿态在创建关节前烘焙，保证视觉与碰撞体使用同一个零位。
+func shield_position(monster: Node2D) -> Vector2:
+	var offset: Vector2 = monster.shield_offset * monster.scale.abs()
+	if monster._current_facing > 0:
+		offset.x = -offset.x
+	return torso_body.position + offset.rotated(torso_body.rotation)
+
+func _setup_shield(monster: Node2D) -> void:
+	if not monster.has_shield or monster.shield_broken:
+		return
+	var shield_texture := load(monster.shield_texture_path) as Texture2D
+	if shield_texture == null:
+		push_warning("盾兵盾牌贴图不存在：%s" % monster.shield_texture_path)
+		return
+	# 找到左手肢体（仅用于握盾姿态，不绑定盾牌）
+	var left_arm: Dictionary = {}
+	for part: Dictionary in parts:
+		if str(part.bone.name) == "LeftArm":
+			left_arm = part
+			break
+	if left_arm.is_empty():
+		return
+	# 按怪物的尺寸缩放，同步镜像物理像素。
+	var shield_shape := texture_shape(shield_texture, monster.shield_material_id, 128,
+		monster.shield_scale * absf(monster.scale.x), true,
+		monster._current_facing > 0, monster.shield_height_scale)
+	shield_shape.density_scale = monster.physics_density_scale
+	shield_initial_pixels = count_pixels(shield_shape)
+	var shield_shapes: Array = [shield_shape]
+	if not monster._turning_shield_shapes.is_empty():
+		shield_shapes = monster._turning_shield_shapes.duplicate()
+		shield_initial_pixels = monster._turning_shield_initial_pixels
+	if shield_initial_pixels <= 0:
+		return
+	# 位置相对脚底原点，旋转跟随躯干。
+	var shield_pos := shield_position(monster)
+	shield_body = PBody.new()
+	shield_body.position = shield_pos
+	shield_body.rotation = torso_body.rotation
+	shield_body.tags = torso_body.tags.duplicate()
+	# 盾牌是可破坏物体，不能继承生物的 LIVING_TAG，否则 impact_damage 会跳过像素伤害。
+	shield_body.tags.erase(LIVING_TAG)
+	shield_body.tags["monster_part"] = "Shield"
+	shield_body.internal_render = false
+	shield_body.ccd = true
+	shield_body.additional_solver_iterations = 32
+	world_node.world.add_body(shield_body, shield_shapes, Callable(world_node, "_density_of"), true)
+	# 盾牌由画面左侧的手臂握持，受击时与该手臂一起运动。
+	shield_joint = world_node.world.add_weld(left_arm.body, shield_body, shield_pos)
+	if shield_joint != null:
+		shield_joint.contacts_enabled = false
+	var torso_filter: PJoint = world_node.world.add_rope(shield_body, torso_body,
+		shield_body.position, torso_body.position, 1000000.0)
+	torso_filter.contacts_enabled = false
+	self_contact_filters.append(torso_filter)
+	# 盾牌与本人的四肢同样排除自碰撞，避免焊接约束和碰撞求解互相顶住。
+	for part: Dictionary in parts:
+		var exclusion: PJoint = world_node.world.add_rope(shield_body, part.body,
+			shield_body.position, part.body.position, 1000000.0)
+		exclusion.contacts_enabled = false
+		self_contact_filters.append(exclusion)
+	shield_holder = left_arm
+	shield_broken = false
+	monster.shield_broken = false
 
 
 ## 只抬高较低的一侧美术和遮罩，不改变髋关节位置；重复重建不累积偏移。
@@ -191,7 +327,7 @@ func _align_standing_feet() -> void:
 
 
 ## 在固定物理帧更新姿势控制。力矩经过求解器，不直接覆盖真实刚体角度。
-func update_balance(delta: float, paused: bool, recovering: bool, walking: bool) -> void:
+func update_balance(delta: float, paused: bool, recovering: bool, walking: bool, monster: Node2D = null) -> void:
 	if torso_body == null:
 		return
 	if paused:
@@ -238,8 +374,54 @@ func update_balance(delta: float, paused: bool, recovering: bool, walking: bool)
 				# 没有实际行进驱动时不让动画交替抬脚，保持双脚承重。
 				desired = float(part.rest_angle)
 		var stiffness := 180.0 if str(part.bone.name).ends_with("Leg") else 120.0
-		joints[index].set_motor_target(wrapf(desired - part.rest_angle, -PI, PI),
+		var mirror_sign := -1.0 if visual.global_transform.determinant() < 0.0 else 1.0
+		joints[index].set_motor_target(wrapf(desired - part.rest_angle, -PI, PI) * mirror_sign,
 			limb.inertia * 200.0 * recovery_strength, stiffness * maxf(recovery_strength, 0.05), 25.0)
+	_check_shield_break(monster)
+
+
+## 检测盾牌是否破碎：剩余像素低于阈值时断开焊接、左手放下。
+func _check_shield_break(monster: Node2D) -> void:
+	if monster == null or shield_body == null or shield_broken:
+		return
+	if shield_initial_pixels <= 0:
+		return
+	var current_pixels := 0
+	var body_alive: bool = world_node.world.bodies.has(shield_body)
+	if body_alive:
+		for shape in shield_body.shapes:
+			current_pixels += count_pixels(shape)
+	var ratio := float(current_pixels) / float(shield_initial_pixels)
+	if ratio > monster.shield_break_threshold:
+		return
+	# 盾牌破碎：断开与左手的焊接，盾牌成为自由刚体可被打飞
+	shield_broken = true
+	monster.shield_broken = true
+	# 脱落后以实际剩余像素绘制，不能隐藏贴图后留下不可见的自由刚体。
+	shield_body.internal_render = true
+	shield_body.tags.erase("monster_receiver")
+	shield_body.tags.erase("map_monster")
+	for exclusion in self_contact_filters.duplicate():
+		if exclusion.body_a == shield_body or exclusion.body_b == shield_body:
+			world_node.world.remove_joint(exclusion)
+			exclusion.body_a = null
+			exclusion.body_b = null
+			self_contact_filters.erase(exclusion)
+	if shield_joint != null:
+		world_node.world.remove_joint(shield_joint)
+		shield_joint.body_a = null
+		shield_joint.body_b = null
+		shield_joint = null
+	# 左手放下：回握盾时抬起的角度
+	if not shield_holder.is_empty():
+		shield_holder.rest_angle -= SHIELD_HOLD_ARM_OFFSET
+	if body_alive:
+		world_node.renderer.sync(shield_body)
+	else:
+		world_node.renderer.forget(shield_body.id)
+		for shape in shield_body.shapes:
+			shape.owner_body = null
+		shield_body = null
 
 
 func pause(paused: bool) -> void:
@@ -253,6 +435,15 @@ func pause(paused: bool) -> void:
 			world_node.world.freeze(limb)
 		else:
 			world_node.world.unfreeze(limb)
+	# 盾牌冻结
+	if shield_body != null:
+		shield_body.tags["editor_physics_paused"] = paused
+		shield_body.linear_velocity = Vector2.ZERO
+		shield_body.angular_velocity = 0.0
+		if paused:
+			world_node.world.freeze(shield_body)
+		else:
+			world_node.world.unfreeze(shield_body)
 
 
 func sync_from_node() -> void:
@@ -266,9 +457,17 @@ func sync_from_node() -> void:
 		bone.rotation = part.rest_angle
 		var limb: PBody = part.body
 		limb.position = world_node.to_local(bone.global_position)
-		limb.rotation = bone.global_rotation - world_node.global_rotation
+		limb.rotation = bone.global_transform.x.angle() - world_node.global_rotation
 		limb.update_aabb()
 		limb.compute_swept_aabb(0.0)
+	# 未破碎时跟随躯干的朝向一侧。
+	if shield_body != null and not shield_broken:
+		shield_body.position = shield_position(visual.get_parent())
+		shield_body.rotation = torso_body.rotation
+		shield_body.linear_velocity = Vector2.ZERO
+		shield_body.angular_velocity = 0.0
+		shield_body.update_aabb()
+		shield_body.compute_swept_aabb(0.0)
 
 
 func update_pose(paused: bool) -> void:
@@ -283,7 +482,11 @@ func update_pose(paused: bool) -> void:
 			bone.rotation = part.rest_angle
 			continue
 		bone.global_position = world_node.to_global(limb.position)
-		bone.global_rotation = world_node.global_rotation + limb.rotation
+		# 负 X 缩放会把 Node2D 的全局旋转分解成额外的 PI 和负 Y 缩放。
+		# 在父骨骼局部空间解算 X 轴角度，保留镜像，不把人物上下翻转。
+		var parent := bone.get_parent() as Node2D
+		var direction := Vector2.from_angle(world_node.global_rotation + limb.rotation)
+		bone.rotation = parent.global_transform.basis_xform_inv(direction).angle()
 	# 遮罩也读取实际骨骼变换，不使用上一帧的 IK 变换。
 	visual._update_occlusion_materials()
 
@@ -298,8 +501,22 @@ func release() -> void:
 			world_node.world.remove_body(part.body)
 			for shape in part.body.shapes:
 				shape.owner_body = null
+		# 清理盾牌
+		if shield_joint != null:
+			world_node.world.remove_joint(shield_joint)
+			shield_joint.body_a = null
+			shield_joint.body_b = null
+			shield_joint = null
+		if shield_body != null:
+			world_node.world.remove_body(shield_body)
+			for shape in shield_body.shapes:
+				shape.owner_body = null
+			shield_body = null
 		world_node.realign_body_nodes()
 	joints.clear()
 	self_contact_filters.clear()
 	parts.clear()
+	shield_holder = {}
+	shield_initial_pixels = 0
+	shield_broken = false
 	torso_body = null

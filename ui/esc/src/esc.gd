@@ -8,7 +8,12 @@ const ROOT_SCENE := "res://root/root.tscn"
 
 
 func _ready() -> void:
+	add_to_group(&"esc_menu")
 	visible = false
+
+
+func open_menu() -> void:
+	_set_open(true)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -21,11 +26,24 @@ func _set_open(open: bool) -> void:
 	visible = open
 	get_tree().paused = open
 	if open:
+		var recovery := _recovery_controller()
+		$Center/Panel/Buttons/EscapeStuckButton.disabled = recovery == null or recovery._editor_active()
 		continue_button.grab_focus()
 
 
 func _on_continue_button_pressed() -> void:
 	_set_open(false)
+
+
+func _recovery_controller() -> Node:
+	var player := get_tree().get_first_node_in_group(&"player")
+	return player.get_node_or_null("FallDeath") if player != null else null
+
+
+func _on_escape_stuck_button_pressed() -> void:
+	var recovery := _recovery_controller()
+	if recovery != null and recovery.escape_stuck():
+		_set_open(false)
 
 
 func _on_menu_button_pressed() -> void:

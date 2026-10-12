@@ -7,7 +7,7 @@
 [ext_resource type="Image" path="res://actor/player/asset/player_hand_grab_0.tres" id="8_grab"]
 [ext_resource type="Script" path="res://actor/player/src/pbody_visual.gd" id="7_visual"]
 [ext_resource type="Image" path="res://actor/player/asset/player_hand_phys_0.tres" id="9_phys"]
-[ext_resource type="Script" path="res://Ink/src/pixel_art_layer.gd" id="20_art"]
+[ext_resource type="Script" path="res://ink/src/pixel_art_layer.gd" id="20_art"]
 [ext_resource type="Script" path="res://actor/player/src/arm_curve.gd" id="21_armcurve"]
 
 [node name="Arm" type="Node2D"]
@@ -36,6 +36,8 @@ paint = ExtResource("9_phys")
 
 [node name="Visual" type="Sprite2D" parent="Hand"]
 process_physics_priority = 20
+z_index = 4094
+z_as_relative = false
 script = ExtResource("7_visual")
 palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0, 0, 0, 1), Color(0.12, 0.12, 0.12, 1), Color(1, 1, 1, 1), Color(0, 0, 0, 0)])
 
@@ -52,6 +54,8 @@ image = ExtResource("8_grab")
 fill_material = 5
 
 [node name="ArmCurve" type="Line2D" parent="Hand/Visual"]
+z_index = 4093
+z_as_relative = false
 width = 4.0
 default_color = Color(0, 0, 0, 1)
 script = ExtResource("21_armcurve")

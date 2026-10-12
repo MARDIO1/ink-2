@@ -1,10 +1,10 @@
 extends Node2D
 
 #region 数据
-const Palette = preload("res://Ink/src/ink_palette.gd")
-const Destruction = preload("res://addons/pixel_destruction/core/destruction.gd")
-const PixelShape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
-const TERMINAL = preload("res://actor/yellow/asset/terminal.svg")
+const Palette := preload("res://ink/src/ink_palette.gd")
+const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
+const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
+const TERMINAL := preload("res://actor/yellow/asset/terminal.svg")
 const NEIGHBORS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 enum State { EDITING, ACTIVE, DYING, REMOVED }
 @export var path: PackedVector2Array = []

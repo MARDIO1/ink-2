@@ -12,7 +12,7 @@ extends SceneTree
 ## shader 判据的浮点容差：液面正好压在角上时 dot 会有 1e-13 级误差。
 const EPS := 1e-6
 const MAIN = preload("res://map/main.tscn")
-const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 ## 瓶内像素数（泛洪出来的封闭空腔）。跟着 asset 走：改了剪影贴图就要跟着改。
 const INTERIOR_PX := 1810
 
@@ -126,7 +126,7 @@ func _run() -> void:
 	_player = _scene.get_node("Player")
 	_visual = _player.get_node("Visual")
 	_ink = _player.get_node("BottledInk")
-	_liquid = _player.get_node("BottledInk/Liquid")
+	_liquid = _player.get_node("Bottledink/Liquid")
 	_body = _player.body
 	_health = _player.get_node("InkHealth")
 	_base_mass = _body.mass

@@ -1,8 +1,8 @@
 extends Node
 ## 统一碰撞反馈入口：从同一份 ImpactEvent 驱动空间音效，并为闪光、抖屏、粒子保留直接调用点。
 
-const ContactImpact = preload("res://root/src/contact_impact.gd")
-const ImpactSoundProfile = preload("res://root/src/impact_sound_profile.gd")
+const ContactImpact := preload("res://root/src/contact_impact.gd")
+const ImpactSoundProfile := preload("res://root/src/impact_sound_profile.gd")
 
 #region 音效参数
 @export var minimum_approach: float = 300.0

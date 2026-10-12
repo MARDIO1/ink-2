@@ -41,7 +41,7 @@ theme_override_constants/separation = 14
 [node name="Title" type="Label" parent="Center/Panel/Buttons"]
 layout_mode = 2
 theme_type_variation = &"TitleLabel"
-text = "INK ATTACK"
+text = "INT FFF"
 horizontal_alignment = 1
 
 [node name="ContinueButton" type="Button" parent="Center/Panel/Buttons"]
@@ -52,6 +52,14 @@ mouse_default_cursor_shape = 2
 text = "继续"
 icon = ExtResource("1_play")
 expand_icon = true
+
+[node name="EscapeStuckButton" type="Button" parent="Center/Panel/Buttons"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+theme_type_variation = &"MenuActionButton"
+mouse_default_cursor_shape = 2
+text = "脱离卡死"
+tooltip_text = "返回当前关卡中已经经过的最近出生点或复活点"
 
 [node name="MenuButton" type="Button" parent="Center/Panel/Buttons"]
 custom_minimum_size = Vector2(0, 58)
@@ -70,5 +78,6 @@ icon = ExtResource("2_exit")
 expand_icon = true
 
 [connection signal="pressed" from="Center/Panel/Buttons/ContinueButton" to="." method="_on_continue_button_pressed"]
+[connection signal="pressed" from="Center/Panel/Buttons/EscapeStuckButton" to="." method="_on_escape_stuck_button_pressed"]
 [connection signal="pressed" from="Center/Panel/Buttons/MenuButton" to="." method="_on_menu_button_pressed"]
 [connection signal="pressed" from="Center/Panel/Buttons/QuitButton" to="." method="_on_quit_button_pressed"]

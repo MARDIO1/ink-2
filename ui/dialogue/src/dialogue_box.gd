@@ -10,7 +10,6 @@ signal history_changed(lines: PackedStringArray)
 
 @export_file("*.json") var dialogue_file: String = "res://ui/dialogue/asset/dialogue_lines.json"
 @export_range(1.0, 120.0, 1.0) var characters_per_second: float = 24.0
-@export var start_automatically: bool = true
 @export var hide_when_finished: bool = true
 
 @onready var root: Control = $Root
@@ -32,10 +31,8 @@ func _ready() -> void:
 	add_to_group(&"dialogue_box")
 	panel.gui_input.connect(_on_panel_gui_input)
 	_load_lines_from_file()
-	if start_automatically and not lines.is_empty():
-		start_dialogue()
-	else:
-		root.hide()
+	# 进入关卡时不自动播放；台词只能由对话触发点或工具栏文本框通过 start_dialogue() 触发。
+	root.hide()
 	_refresh_history_text()
 
 

@@ -160,7 +160,7 @@ columns = 2
 [node name="Brush" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=800523901]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "绘图（2）
+tooltip_text = "绘图（1）
 按住鼠标右键临时切换为擦除"
 focus_mode = 0
 mouse_default_cursor_shape = 2
@@ -178,7 +178,7 @@ expand_icon = true
 [node name="Eraser" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=494551619]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "擦除（3）"
+tooltip_text = "擦除（2）"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52
@@ -194,7 +194,7 @@ expand_icon = true
 [node name="Shape" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=560230217]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "自选形状（5/6/9）
+tooltip_text = "自选形状（3）
 点击按钮在矩形、圆形、直线中选择"
 focus_mode = 0
 mouse_default_cursor_shape = 2
@@ -211,7 +211,7 @@ expand_icon = true
 [node name="Nail" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=255897817]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "钉子（4）"
+tooltip_text = "钉子（9）"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52
@@ -227,7 +227,7 @@ expand_icon = true
 [node name="Bucket" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=1982403456]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "填充封闭区域（7）"
+tooltip_text = "填充封闭区域（4）"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52
@@ -243,7 +243,7 @@ expand_icon = true
 [node name="SelectDelete" type="Button" parent="WorkbenchUI/Buttons/Grid"]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "框选删除（8）\n拖拽矩形，同时删除未固化与已固化内容；Ctrl+Z 撤销"
+tooltip_text = "框选删除（6）\n拖拽矩形，同时删除未固化与已固化内容；Ctrl+Z 撤销"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52
@@ -259,7 +259,7 @@ expand_icon = true
 [node name="ReturnToCanvas" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=850868090]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "返回画布
+tooltip_text = "返回画布（8）
 只回收画布内的部分，画布外的一半留在世界里"
 focus_mode = 0
 mouse_default_cursor_shape = 2
@@ -274,7 +274,7 @@ expand_icon = true
 [node name="Generate" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=1560647768]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "生成实体（E）"
+tooltip_text = "生成实体（7 / E）"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52
@@ -288,7 +288,7 @@ expand_icon = true
 [node name="Redraw" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=2102979719]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "清理画布"
+tooltip_text = "清理画布（5）"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52
@@ -302,7 +302,7 @@ expand_icon = true
 [node name="Hand" type="Button" parent="WorkbenchUI/Buttons/Grid"]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "普通手（1）
+tooltip_text = "普通手（F）
 鼠标不作用于画布"
 focus_mode = 0
 mouse_default_cursor_shape = 2
@@ -323,7 +323,7 @@ text = "手"
 visible = false
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "扩展画布\n分别设置左、右、上、下四侧的扩展量"
+tooltip_text = "扩展画布（0，第 10 项）\n分别设置左、右、上、下四侧的扩展量"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.0352941, 0.0313726, 0.0235294, 1)

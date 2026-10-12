@@ -27,6 +27,8 @@ func _ready() -> void:
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	scroll.scroll_deadzone = 0
 	scroll.get_v_scroll_bar().focus_mode = Control.FOCUS_ALL
+	resized.connect(_update_list_layout)
+	list.minimum_size_changed.connect(_update_list_layout)
 	var paths := find_levels()
 	print("LEVELS: %s" % str(paths))
 	for path in paths:
@@ -38,10 +40,26 @@ func _ready() -> void:
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		button.pressed.connect(_on_level_button_pressed.bind(path, button))
 		list.add_child(button)
+		preload("res://ui/theme/src/button_appearance.gd").uniform(button)
+	_update_list_layout()
 	if list.get_child_count() == 0:
 		push_error("关卡选择：%s 下没找到关卡（根级有 %s 的 .tscn）" % [LEVEL_DIR, PLAYER_NODE])
 		return
 	(list.get_child(0) as Button).grab_focus()
+
+
+## 两关时面板随内容收紧；关卡增多后限高滚动，标题和底部始终留白。
+func _update_list_layout() -> void:
+	var panel := $Center/Panel as PanelContainer
+	var panel_style := panel.get_theme_stylebox("panel")
+	var padding := panel_style.get_minimum_size()
+	var width := minf(440.0, maxf(160.0, size.x * 0.80 - padding.x - 24.0))
+	var max_height := maxf(60.0, size.y * 0.57 - padding.y - 24.0)
+	var content_height := list.get_combined_minimum_size().y
+	scroll.custom_minimum_size = Vector2(width, minf(maxf(content_height, 60.0), max_height))
+	for child in list.get_children():
+		if child is Button:
+			(child as Button).custom_minimum_size.x = minf(BUTTON_SIZE.x, width)
 
 
 func _on_level_button_pressed(path: String, selected_button: Button) -> void:
@@ -84,8 +102,13 @@ static func _scan(dir_path: String, found: PackedStringArray) -> void:
 		if dir.current_is_dir():
 			if not entry.begins_with("."):
 				_scan(path, found)
-		elif entry.ends_with(".tscn") and path != NON_LEVEL_SCENE and _has_player(path):
-			found.append(path)
+		else:
+			# 导出后文本场景会变成 .scn，并通过原路径的 .remap 文件访问。
+			if entry.ends_with(".tscn.remap"):
+				path = path.trim_suffix(".remap")
+			if path.ends_with(".tscn") and path != NON_LEVEL_SCENE \
+			and not found.has(path) and _has_player(path):
+				found.append(path)
 		entry = dir.get_next()
 	dir.list_dir_end()
 
@@ -96,7 +119,13 @@ static func _has_player(path: String) -> bool:
 	# 菜单就把每个大型地图完整解析进 ResourceLoader 缓存。
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
-		push_error("关卡选择：无法读取 %s" % path)
+		# PCK 内不保留源 .tscn：读取编译场景的结构，不实例化关卡。
+		var packed = ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+		if packed != null:
+			var state := packed.get_state()
+			for index in state.get_node_count():
+				if String(state.get_node_name(index)) == PLAYER_NODE:
+					return true
 		return false
 	var marker := 'name="%s"' % PLAYER_NODE
 	while not file.eof_reached():

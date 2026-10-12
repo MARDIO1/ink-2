@@ -8,7 +8,7 @@ extends Sprite2D
 ## 液体由 addons/pixel_destruction/fluid/fluid_pbf.gd 模拟 —— 纯表现，不进物理像素。
 ## 算法与参数见那个文件；这里只管"容器是哪一块、重力朝哪、颜色怎么上"。
 ##
-## ## ⚠️ 本节点画在线稿**下面**（z_index = -1）
+## ## ⚠️ 本节点画在线稿**下面**（z_index = 4095，线稿为 4096）
 ##
 ## 所以两件事必须同时成立，少一件就看不见墨水：
 ##   1. 本节点的 z_index < Visual 的（见 player.tscn）；

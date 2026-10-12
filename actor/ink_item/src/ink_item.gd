@@ -5,7 +5,7 @@
 @tool
 extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
 
-const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 const ANCHOR_TAG := "static_anchor_points"
 const Nail := preload("res://actor/nail/src/nail.gd")
 #endregion

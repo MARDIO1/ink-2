@@ -4,10 +4,10 @@ const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Query = preload("res://addons/pixel_destruction/physics/query.gd")
-const RedInk = preload("res://Ink/src/red_ink.gd")
+const RedInk = preload("res://ink/src/red_ink.gd")
 const Damage = preload("res://root/src/impact_damage.gd")
 const Step = preload("res://root/src/physics_step.gd")
-const Palette = preload("res://Ink/src/ink_palette.gd")
+const Palette = preload("res://ink/src/ink_palette.gd")
 
 var failures: int = 0
 var checks: int = 0
