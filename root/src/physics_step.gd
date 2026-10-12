@@ -96,6 +96,7 @@ func setup(main, player, protected_bodies: Array, camera: Camera2D) -> void:
 func _exit_tree() -> void:
 	if _main == null or _main.world == null:
 		return
+	Query.detach(_main.world)
 	for body in _main.world.bodies.duplicate():
 		for shape in body.shapes:
 			shape.owner_body = null

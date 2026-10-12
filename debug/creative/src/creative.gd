@@ -62,7 +62,7 @@ const MONSTER_KINDS := [
 	MapMonsterScript.Kind.LITTLE_SOLDIER,
 	MapMonsterScript.Kind.SHIELD_SOLDIER,
 ]
-const MONSTER_NAMES := ["炸弹狂侧面", "小兵", "盾兵"]
+const MONSTER_NAMES := ["炸弹狂", "小兵", "盾兵"]
 const MONSTER_NODE_NAMES := ["BombSide", "LittleSoldier", "GreatShield"]
 ## 放置怪物时的固定大小，与"平路"关卡一致；滚轮缩放已禁用，保留接口供未来启用。
 const MONSTER_FIXED_SCALES := {
@@ -109,7 +109,9 @@ var _spawn_point: Marker2D = null
 var _layout_overlay = null
 var _layout_buttons: Dictionary = {}
 var _layout_status_label: Label = null
-var _portal_destination: OptionButton = null
+var _portal_destination: PopupMenu = null
+var _portal_target_path := ""
+var _portal_menu_target: Node2D = null
 var _selected_portal: Node2D = null
 var _layout_drag_target = null
 var _layout_drag_offset := Vector2.ZERO
@@ -371,7 +373,20 @@ func _handle_monster_adjust_motion(event: InputEventMouseMotion) -> bool:
 
 #region 开关
 func toggle() -> void:
+	if _transition.busy:
+		return
+	var message := "展开地图画稿…" if not active else "墨迹成形，回到游玩…"
+	if not await _transition.begin(_transition.Style.DRAFT, message):
+		return
+	_mode_transition_pending = true
 	set_active(not active)
+	if not _map_reload_in_progress:
+		_mode_transition_pending = false
+		await _transition.finish()
+
+
+var _mode_transition_pending := false
+@onready var _transition: Node = get_node("/root/SceneTransition")
 
 
 func set_active(value: bool) -> void:
@@ -712,6 +727,10 @@ func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
 		match _monster_mode:
 			CONTROL_MODE:
 				_selected_control_target = _pick_control_target(world_position)
+				if event.double_click and is_instance_valid(_selected_control_target) \
+				and _selected_control_target.is_in_group(MapPortalScript.GROUP):
+					_open_portal_menu(_selected_control_target)
+					return true
 				_begin_layout_drag(_selected_control_target, world_position)
 			LAYOUT_MODE_PLACE_RESPAWN:
 				place_respawn_point(world_position)
@@ -944,7 +963,7 @@ func delete_portal(portal: Node2D) -> bool:
 	if _selected_control_target == portal:
 		_selected_control_target = null
 	_record_edit({"type": &"portal_delete", "position": portal.global_position,
-		"destination": portal.target_map, "size": portal.portal_size, "scale": portal.scale})
+		"destination": portal.target_map, "size": portal.portal_size, "scale": portal.scale, "target": portal})
 	portal.get_parent().remove_child(portal)
 	portal.queue_free()
 	_selected_portal = null
@@ -953,24 +972,17 @@ func delete_portal(portal: Node2D) -> bool:
 
 
 func _portal_choice() -> String:
-	return str(_portal_destination.get_item_metadata(_portal_destination.selected)) \
-		if _portal_destination != null and _portal_destination.selected >= 0 else ""
+	return _portal_target_path
 
 
 func _select_portal(portal: Node2D) -> void:
 	_selected_portal = portal
 	if not is_instance_valid(portal) or _portal_destination == null:
 		return
-	_refresh_portal_choices()
-	for index in _portal_destination.item_count:
-		if str(_portal_destination.get_item_metadata(index)) == portal.target_map:
-			_portal_destination.select(index)
-			break
-	_layout_status_label.text = "已选中传送门；左键拖动，下拉框直接修改目标地图"
+	_layout_status_label.text = "已选中传送门；左键拖动，双击修改目标地图"
 
 
 func _refresh_portal_choices() -> void:
-	var previous := _portal_choice()
 	_portal_destination.clear()
 	_portal_destination.add_item("下一关（地图列表顺序）")
 	_portal_destination.set_item_metadata(0, "")
@@ -979,8 +991,14 @@ func _refresh_portal_choices() -> void:
 		_portal_destination.add_item(path.get_file().get_basename())
 		_portal_destination.set_item_metadata(index, path)
 		_portal_destination.set_item_tooltip(index, path)
-		if path == previous:
-			_portal_destination.select(index)
+
+
+func _open_portal_menu(portal: Node2D = null) -> void:
+	select_control_tool()
+	_cancel_layout_drag()
+	_portal_menu_target = portal
+	_refresh_portal_choices()
+	_portal_destination.popup_centered()
 
 
 func set_portal_destination(portal: Node2D, destination: String) -> bool:
@@ -994,11 +1012,15 @@ func set_portal_destination(portal: Node2D, destination: String) -> bool:
 	return true
 
 
-func _on_portal_destination_selected(_index: int) -> void:
-	if _monster_mode == CONTROL_MODE and is_instance_valid(_selected_control_target) \
-	and _selected_control_target.is_in_group(MapPortalScript.GROUP):
-		if set_portal_destination(_selected_control_target, _portal_choice()):
+func _on_portal_destination_selected(index: int) -> void:
+	_portal_target_path = str(_portal_destination.get_item_metadata(index))
+	if is_instance_valid(_portal_menu_target):
+		if set_portal_destination(_portal_menu_target, _portal_choice()):
 			_layout_status_label.text = "传送门目标已修改；Ctrl+Z 撤销"
+	else:
+		select_monster_tool(LAYOUT_MODE_PLACE_PORTAL)
+		_layout_status_label.text = "目标已选择；左键单击地图放置传送门"
+	_portal_menu_target = null
 
 
 func place_play_canvas(world_position: Vector2, record_undo := true) -> Node2D:
@@ -1193,9 +1215,6 @@ func _build_monster_palette() -> void:
 	monster_grid.add_theme_constant_override("v_separation", 6)
 	column.add_child(monster_grid)
 	for index in MONSTER_NAMES.size():
-		# 炸弹狂侧面保留给旧地图加载与撤销恢复，但不再提供新放置入口。
-		if MONSTER_KINDS[index] == MapMonsterScript.Kind.BOMB_SIDE:
-			continue
 		var button := Button.new()
 		button.name = MONSTER_NODE_NAMES[index] + "Button"
 		button.set_meta("monster_kind", MONSTER_KINDS[index])
@@ -1316,7 +1335,7 @@ func _build_monster_palette() -> void:
 		[LAYOUT_MODE_PLACE_CANVAS, "PlacePlayCanvasButton", "新增画布", "单击地图新增一块与主游玩画布同尺寸的画布"],
 		[LAYOUT_MODE_MOVE_CANVAS, "MovePlayCanvasButton", "移动画布", "拖动画布边框调整游玩画布位置"],
 		null,
-		[LAYOUT_MODE_PLACE_PORTAL, "PlacePortalButton", "新增传送门", "单击地图放置；目标使用下方的地图选择"],
+		[LAYOUT_MODE_PLACE_PORTAL, "PlacePortalButton", "新增传送门", "打开子菜单选择目标地图，然后单击地图放置"],
 		[LAYOUT_MODE_DELETE_PORTAL, "DeletePortalButton", "删除传送门", "单击传送门删除；Ctrl+Z 撤销"],
 	]
 	for tool in layout_tools:
@@ -1332,19 +1351,22 @@ func _build_monster_palette() -> void:
 		layout_button.toggle_mode = true
 		layout_button.focus_mode = Control.FOCUS_NONE
 		layout_button.custom_minimum_size = Vector2(96.0, 44.0)
-		layout_button.pressed.connect(select_monster_tool.bind(int(tool[0])))
+		if int(tool[0]) == LAYOUT_MODE_PLACE_PORTAL:
+			layout_button.pressed.connect(_open_portal_menu)
+		else:
+			layout_button.pressed.connect(select_monster_tool.bind(int(tool[0])))
 		layout_grid.add_child(layout_button)
 		_layout_buttons[int(tool[0])] = layout_button
-	_portal_destination = OptionButton.new()
-	_portal_destination.name = "PortalDestination"
-	_portal_destination.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_portal_destination.custom_minimum_size = Vector2(96.0, 44.0)
-	_portal_destination.fit_to_longest_item = false
-	_portal_destination.tooltip_text = "目标地图：操纵工具左键选中已有传送门后可直接修改；否则用于新增传送门"
-	layout_grid.add_child(_portal_destination)
+	var portal_spacer := Control.new()
+	portal_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout_grid.add_child(portal_spacer)
+	_portal_destination = PopupMenu.new()
+	_portal_destination.name = "PortalMapMenu"
+	_portal_destination.theme = EDITOR_THEME
+	_portal_destination.min_size = Vector2i(300, 0)
+	root.add_child(_portal_destination)
 	_refresh_portal_choices()
-	_portal_destination.get_popup().about_to_popup.connect(_refresh_portal_choices)
-	_portal_destination.item_selected.connect(_on_portal_destination_selected)
+	_portal_destination.index_pressed.connect(_on_portal_destination_selected)
 
 	_layout_status_label = Label.new()
 	_layout_status_label.name = "LayoutStatus"
@@ -1763,6 +1785,8 @@ func remove_dialogue_trigger_at(world_position: Vector2) -> bool:
 		return false
 	var removed := {
 		"type": &"dialogue_delete",
+		"target": trigger,
+		"scale": trigger.scale,
 		"id": str(trigger.get("editor_id")),
 		"position": trigger.global_position,
 		"lines": PackedStringArray(trigger.get("lines")),
@@ -1966,6 +1990,8 @@ func remove_map_text_at(world_position: Vector2) -> bool:
 		return false
 	var removed := {
 		"type": &"text_delete",
+		"target": label,
+		"scale": label.scale,
 		"id": str(label.get("editor_id")),
 		"position": label.global_position,
 		"text": label.text,
@@ -2063,21 +2089,29 @@ func undo_last_edit() -> bool:
 		&"dialogue_place":
 			changed = _remove_dialogue_trigger_by_id(str(edit.get("id", "")))
 		&"dialogue_delete":
-			changed = place_dialogue_trigger(
+			var trigger = place_dialogue_trigger(
 				edit.get("position", Vector2.ZERO),
 				PackedStringArray(edit.get("lines", PackedStringArray())),
 				false,
 				str(edit.get("id", ""))
-			) != null
+			)
+			if trigger != null:
+				trigger.scale = edit.get("scale", Vector2.ONE)
+				_rebind_history_target(edit.get("target"), trigger)
+				changed = true
 		&"text_place":
 			changed = _remove_map_text_by_id(str(edit.get("id", "")))
 		&"text_delete":
-			changed = place_map_text(
+			var label = place_map_text(
 				edit.get("position", Vector2.ZERO),
 				str(edit.get("text", "")),
 				false,
 				str(edit.get("id", ""))
-			) != null
+			)
+			if label != null:
+				label.scale = edit.get("scale", Vector2.ONE)
+				_rebind_history_target(edit.get("target"), label)
+				changed = true
 		&"layout_move", &"object_transform":
 			var target = edit.get("target")
 			if is_instance_valid(target):
@@ -2099,10 +2133,17 @@ func undo_last_edit() -> bool:
 			if portal != null:
 				portal.portal_size = edit.get("size", portal.portal_size)
 				portal.scale = edit.get("scale", Vector2.ONE)
+				_rebind_history_target(edit.get("target"), portal)
 				changed = true
 	if changed:
 		_queue_edit_auto_save()
 	return changed
+
+
+func _rebind_history_target(old_target, restored: Node) -> void:
+	for entry in _edit_history:
+		if entry.has("target") and entry.target == old_target:
+			entry.target = restored
 
 
 func _remove_monster_by_id(monster_id: String) -> bool:
@@ -2407,18 +2448,27 @@ func _finish_threaded_map_reload(tree_root: Node) -> void:
 		push_warning("Creative: 无法恢复已保存地图 %s" % map_path)
 		_skip_restore_on_enter = true
 		_enter()
+		if _mode_transition_pending:
+			_mode_transition_pending = false
+			_transition.finish()
 		return
 	if not is_instance_valid(tree_root):
+		if _mode_transition_pending:
+			_transition.finish()
 		return
 	var level: Node = tree_root.load_level(packed)
 	var replacement := level.get_node_or_null(^"Creative")
 	if replacement != null:
-		replacement.call_deferred("_activate_restored_editor")
+		replacement.call_deferred("_activate_restored_editor", _mode_transition_pending)
+	elif _mode_transition_pending:
+		_transition.finish()
 
 
-func _activate_restored_editor() -> void:
+func _activate_restored_editor(finish_transition := false) -> void:
 	_skip_restore_on_enter = true
 	set_active(true)
+	if finish_transition:
+		_transition.finish()
 
 
 ## 保存入口始终写出可直接运行的 `.tscn`。prepare_canvas=false 仅供自动测试或只打包当前状态使用。
@@ -2432,7 +2482,7 @@ func export_map_to(save_path: String, prepare_canvas := true) -> Error:
 		push_error("Creative: 场景保存路径为空")
 		return ERR_INVALID_PARAMETER
 	if prepare_canvas and _map_canvas != null:
-		_map_canvas.generate()       # 先把画布上剩的墨水固化，一个像素都不丢
+		_map_canvas.generate(false)       # 保存不是用户编辑操作，不追加撤销步骤。
 		if save_preview_on_export:
 			var bake_error: Error = _map_canvas.bake_png(baked_map_path)
 			if bake_error != OK:

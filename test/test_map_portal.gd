@@ -45,10 +45,10 @@ func _run() -> void:
 	_check("placement and owner", portal.owner == level and creative._portals().size() == 1)
 	_check("UI controls", creative._portal_destination.item_count == choices.size() + 1 \
 		and creative._layout_buttons.has(creative.LAYOUT_MODE_PLACE_PORTAL))
-	var grid := creative._portal_destination.get_parent() as GridContainer
+	var grid := creative._monster_palette_panel.find_child("LayoutGrid", true, false) as GridContainer
 	_check("three category rows without setup/stop buttons", grid.columns == 3 and grid.get_child_count() == 9 \
 		and grid.get_child(0).name == "PlaceRespawnButton" and grid.get_child(3).name == "PlacePlayCanvasButton" \
-		and grid.get_child(6).name == "PlacePortalButton" and grid.get_child(8) == creative._portal_destination \
+		and grid.get_child(6).name == "PlacePortalButton" and not grid.get_child(8) is OptionButton \
 		and not grid.has_node("ConfigurePortalButton") and not grid.has_node("StopLayoutButton"))
 	portal._process(0.5)
 	_check("editor label shows destination map", portal._editor_label == "通往：" + destination.get_file().get_basename())
@@ -76,9 +76,10 @@ func _run() -> void:
 	creative._handle_layout_mouse_button(press)
 	_check("control left drag moves portal", portal.global_position.is_equal_approx(Vector2(530, 20)))
 	creative.undo_last_edit()
-	creative._portal_destination.select(0)
-	creative._portal_destination.item_selected.emit(0)
-	_check("control selection dropdown changes destination", portal.target_map.is_empty())
+	creative._open_portal_menu(portal)
+	creative._portal_destination.hide()
+	creative._portal_destination.index_pressed.emit(0)
+	_check("submenu changes existing portal destination", portal.target_map.is_empty())
 	creative.undo_last_edit()
 	creative.set_portal_destination(portal, "")
 	creative.undo_last_edit()
@@ -133,7 +134,12 @@ func _run() -> void:
 	creative.place_portal(Vector2(800, 0))
 	creative.undo_last_edit()
 	_check("placement undo", creative._portals().size() == 1)
-	creative.select_monster_tool(creative.LAYOUT_MODE_PLACE_PORTAL)
+	grid.get_node("PlacePortalButton").pressed.emit()
+	_check("placement opens target submenu first", creative._portal_destination.visible \
+		and creative._monster_mode == creative.CONTROL_MODE)
+	creative._portal_destination.hide()
+	creative._portal_destination.index_pressed.emit(0)
+	_check("submenu choice enters placement mode", creative._monster_mode == creative.LAYOUT_MODE_PLACE_PORTAL)
 	press.pressed = true
 	press.position = root.get_canvas_transform() * Vector2(800, 0)
 	creative._handle_layout_mouse_button(press)

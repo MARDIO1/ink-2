@@ -758,6 +758,9 @@ func undo_last_edit() -> bool:
 	_painting = false
 	_cancel_undo_step()
 	var step: Dictionary = _undo_steps.pop_back()
+	if step.has("transaction"):
+		get_parent().History.restore(get_parent(), step.transaction)
+		return true
 	if step.has("solidified"):
 		var canvas = get_parent()
 		for reference in step.solidified:
@@ -775,7 +778,13 @@ func undo_last_edit() -> bool:
 	if step.has("yellow"):
 		var yellow = yellow_rule()
 		if yellow != null:
-			yellow.undo(step.yellow, self)
+			var stroke = step.yellow
+			if (not is_instance_valid(stroke) or not yellow.strokes.has(stroke)) and step.has("yellow_id"):
+				for candidate in yellow.strokes:
+					if candidate.get_meta(&"canvas_undo_identity", -1) == step.yellow_id:
+						stroke = candidate
+						break
+			yellow.undo(stroke, self)
 		return true
 	for pixel: Vector2i in step:
 		_set_pixel_raw(pixel, step[pixel])

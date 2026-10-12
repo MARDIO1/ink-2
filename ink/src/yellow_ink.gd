@@ -91,9 +91,9 @@ func finish(surface, point: Vector2) -> bool:
 	if stroke.paid and health != null:
 		health.reduce(Palette.YELLOW.id, stroke.original_area)
 	strokes.append(stroke)
-	surface._undo_steps.append({"yellow": stroke})
+	stroke.set_meta(&"canvas_undo_identity", stroke.get_instance_id())
+	surface.push_undo_step({"yellow": stroke, "yellow_id": stroke.get_instance_id()})
 	stroke.queue_redraw()
-	surface.edit_committed.emit()
 	return true
 
 func cancel() -> void:

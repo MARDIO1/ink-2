@@ -20,6 +20,7 @@ extends Node
 @onready var ui_root: Node = $UI
 @onready var music_player: AudioStreamPlayer = $Music
 var _loading_level := false
+@onready var _transition: Node = get_node("/root/SceneTransition")
 
 
 func _ready() -> void:
@@ -45,9 +46,12 @@ func _show_menu() -> void:
 
 ## 第二屏：关卡选择。`ui/level_select` 扫出 map 下所有真关卡。
 func _show_level_select() -> void:
+	if not await _transition.begin(_transition.Style.PAGE, "翻开关卡目录…"):
+		return
 	var select := level_select_scene.instantiate() as Control
 	select.connect(&"level_chosen", _on_level_chosen)
 	_set_screen(select)
+	await _transition.finish()
 
 
 ## 第三屏：关卡 + 成品 UI。⚠️ 关卡先挂、UI 后挂（见文件头）。
@@ -57,7 +61,7 @@ func _on_level_chosen(path: String) -> void:
 
 ## 菜单和传送门共用异步加载入口，锁住期间拒绝其他切关请求。
 func request_level_change(path: String) -> bool:
-	if _loading_level:
+	if _loading_level or _transition.busy:
 		return false
 	_loading_level = true
 	# Do not fan scene dependencies out to worker sub-threads. Several levels depend
@@ -69,19 +73,24 @@ func request_level_change(path: String) -> bool:
 		_restore_level_select_after_failure(path)
 		push_error("Root: 无法开始加载关卡 %s (%d)" % [path, request_error])
 		return false
+	var transition_style: int = _transition.Style.TEAR if level_root.get_child_count() > 0 else _transition.Style.INK
+	await _transition.begin(transition_style, "正在展开 %s…" % path.get_file().get_basename())
 	var status := ResourceLoader.load_threaded_get_status(path)
 	while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 		await get_tree().process_frame
 		status = ResourceLoader.load_threaded_get_status(path)
 	var scene := ResourceLoader.load_threaded_get(path) as PackedScene \
 		if status == ResourceLoader.THREAD_LOAD_LOADED else null
-	_loading_level = false
 	if scene == null:
 		_restore_level_select_after_failure(path)
 		push_error("Root: 加载关卡失败 %s" % path)
+		await _transition.finish()
+		_loading_level = false
 		return false
 	load_level(scene)
 	_set_screen(ui_scene.instantiate())
+	await _transition.finish()
+	_loading_level = false
 	return true
 
 

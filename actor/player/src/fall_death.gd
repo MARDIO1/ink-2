@@ -7,6 +7,8 @@ extends Node
 @export var fall_death_threshold := 1000.0
 ## 死亡后多少秒重生。
 @export var respawn_delay := 3.0
+## 玩家进入此范围后，才允许“脱离卡死”返回该点；不会跳到未经过的点。
+@export var checkpoint_visit_radius := 80.0
 const PLAYER_SPAWN_NAME := "PlayerSpawn"
 const PLAYER_SPAWN_GROUP := &"player_spawn"
 const RESPAWN_POINT_PREFIX := "RespawnPoint"
@@ -24,17 +26,28 @@ var _dead := false
 var _death_timer := 0.0
 var _death_layer: CanvasLayer
 var _death_label: Label
+var _visited_points: Array[Marker2D] = []
+var _checkpoints: Array = []
+var _checkpoints_initialized := false
+var _initial_position := Vector2.ZERO
+var _initial_rotation := 0.0
 #endregion
 
 
 #region 生命周期
 func _ready() -> void:
 	_player = get_parent()
+	_initial_position = _player.global_position
+	_initial_rotation = _player.global_rotation
 	_player_input = _player.get_node_or_null("PlayerInput")
 	_build_death_ui()
 
 
 func _physics_process(_delta: float) -> void:
+	if not _editor_active():
+		_update_visited_points()
+	else:
+		_checkpoints_initialized = false # 编辑器可新增、移动或删除复活点。
 	if _dead:
 		_death_timer -= _delta
 		_death_label.text = "已死亡\n%.0f" % ceil(_death_timer)
@@ -102,22 +115,90 @@ func _respawn() -> void:
 	if spawn == null or _body == null:
 		return
 
-	var target := spawn.global_position
+	_teleport_to(spawn.global_position, spawn.global_rotation)
+
+
+func _teleport_to(target: Vector2, target_rotation: float) -> void:
 	# 与 creative.gd _reset_player_to_spawn 相同的传送方式。
 	_player.global_position = target
-	_player.global_rotation = spawn.global_rotation
+	_player.global_rotation = target_rotation
 	_body.position = target
-	_body.rotation = spawn.global_rotation
+	_body.rotation = target_rotation
 	_body.linear_velocity = Vector2.ZERO
 	_body.angular_velocity = 0.0
 	_body.control_force = Vector2.ZERO
 	_body.control_torque = 0.0
+	_body.awake = true
+	_body.sleep_timer = 0.0
 	_body.refresh_com()
 	_body.update_aabb()
+	if _player_input != null:
+		_player_input.support = null
 
 	var hand := _player.get_node_or_null("Arm/Hand/HandControl")
 	if hand != null and hand.has_method("reset_after_player_teleport"):
 		hand.reset_after_player_teleport()
+
+
+## 暂停菜单也可调用。不回血、不更改普通死亡的最近复活点规则。
+func escape_stuck() -> bool:
+	if _editor_active():
+		return false
+	_body = _player.get("body")
+	if _body == null:
+		return false
+	_update_visited_points()
+	var point := _nearest_visited_point()
+	_dead = false
+	_death_timer = 0.0
+	_death_layer.visible = false
+	_peak_y = INF
+	_teleport_to(point.global_position if point != null else _initial_position,
+		point.global_rotation if point != null else _initial_rotation)
+	# 复位抓握后同步工具栏，避免手已启用但 UI 仍显示画笔。
+	for canvas in get_tree().get_nodes_in_group(&"play_canvas"):
+		if _level_root().is_ancestor_of(canvas) and canvas.active:
+			canvas.activate_hand_tool()
+	return true
+
+
+func _level_root() -> Node:
+	return _player.get_parent()
+
+
+func _editor_active() -> bool:
+	var creative := _level_root().get_node_or_null("Creative")
+	return creative != null and bool(creative.get("active"))
+
+
+func _update_visited_points() -> void:
+	if not _checkpoints_initialized:
+		_checkpoints_initialized = true
+		_checkpoints = _collect_respawn_points(_level_root())
+		var spawn := _find_player_spawn(_level_root())
+		if spawn != null:
+			_checkpoints.append(spawn)
+			if not _visited_points.has(spawn):
+				_visited_points.append(spawn) # 关卡出生点始终是安全回退目标。
+	var position: Vector2 = _body.com_world() if _body != null else _player.global_position
+	for point in _checkpoints:
+		if is_instance_valid(point) and not _visited_points.has(point) \
+				and point.global_position.distance_squared_to(position) <= checkpoint_visit_radius * checkpoint_visit_radius:
+			_visited_points.append(point)
+
+
+func _nearest_visited_point() -> Marker2D:
+	var position: Vector2 = _body.com_world() if _body != null else _player.global_position
+	var best: Marker2D = null
+	var best_distance := INF
+	for point in _visited_points:
+		if not is_instance_valid(point) or not point.is_inside_tree():
+			continue
+		var distance := point.global_position.distance_squared_to(position)
+		if distance < best_distance:
+			best = point
+			best_distance = distance
+	return best
 #endregion
 
 

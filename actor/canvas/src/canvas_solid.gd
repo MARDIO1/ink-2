@@ -23,7 +23,7 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 
 #region 固化
 #把画布表面固化成动态刚体节点，并把结果打印到控制台
-func solidify(surface, world, editor_placed_nails := false) -> void:
+func solidify(surface, world, editor_placed_nails := false, record_undo := true) -> void:
 	if world == null:
 		push_error("CanvasSolid.solidify: world 为空")
 		return
@@ -42,7 +42,8 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 		for x in range(size.x):
 			var material: int = surface.material_at(x, y)
 			if material != 0:
-				original_pixels[Vector2i(x, y)] = surface.black_image.get_pixel(x, y)
+				if record_undo:
+					original_pixels[Vector2i(x, y)] = surface.black_image.get_pixel(x, y)
 				shape.set_pixel(x, y, material)
 				if material == InkPalette.nail_material_id():
 					anchors[Vector2i(x, y)] = true
@@ -72,7 +73,8 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 		for node in world.get_children():
 			if node is PixelBody2D and not previous_nodes.has(node):
 				created_nodes.append(weakref(node))
-		surface.push_undo_step({"solidified": created_nodes, "pixels": original_pixels})
+		if record_undo:
+			surface.push_undo_step({"solidified": created_nodes, "pixels": original_pixels})
 	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
 #endregion
 
@@ -210,6 +212,7 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 			_remove_all_nails(world, body)
 			world.remove_body_node(node)
 			if is_instance_valid(node):
+				world.remove_child(node)
 				node.queue_free()
 			continue
 		if plan.is_empty():
@@ -219,6 +222,7 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		_free_nails(world, body)
 		#整个刚体都在画布里 -> 引擎已经把它删了，节点跟着走；还剩像素的刚体留在世界里。
 		if not result.body_alive and is_instance_valid(node):
+			world.remove_child(node)
 			node.queue_free()
 	surface.refresh()
 	print("RESTORE bodies=%d pixels=%d fragments=%d kept=%s" % [
@@ -255,6 +259,7 @@ func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
 		var result: Dictionary = _fracture_preserving_remainders(world, body, plan, anchors)
 		_free_nails(world, body)
 		if not result.body_alive and is_instance_valid(node):
+			world.remove_child(node)
 			node.queue_free()
 	return removed
 

@@ -561,13 +561,16 @@ var material_restitution := PackedFloat32Array()
 ## 忘了注销就会一直持有刚体引用，Godot 退出时报
 ## "resources still in use at exit" / "Orphan StringName: RefCounted (static: 1)"。
 ## 让拥有者负责生命周期，调用方就没有"记得注销"这件事。
+var _query_owner_id: int = 0
+
 func _init() -> void:
+	_query_owner_id = get_instance_id()
 	Query.attach(self)
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
-		Query.detach(self)
+		Query.detach_id(_query_owner_id)
 
 
 ## 设置某材质的密度（会自动扩容表，中间没设过的按 1.0 算）。
