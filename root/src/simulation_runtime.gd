@@ -71,7 +71,7 @@ func _physics_process(delta: float) -> void:
 	var steps: int = 0
 	while _elapsed >= _main.fixed_dt and steps < _main.max_substeps:
 		var result: Dictionary = _step(_main.fixed_dt)
-		_player.apply_collision_damage(result.player_damage)
+		_player.apply_collision_damage(result.player_damage, result.player_impacts)
 		if not result.removals.is_empty():
 			var nodes: Array = _main._body_nodes.duplicate()
 			commit(_main.world, result.removals, result.get("bursts", {}), true)
@@ -117,12 +117,15 @@ func _context() -> Dictionary:
 
 ## 创建统一效果包，所有规则都通过这些通用字段向物理层提交结果。
 func _empty_result() -> Dictionary:
-	return {"removals": {}, "player_damage": 0.0, "bursts": {}, "impulses": []}
+	return {"removals": {}, "player_damage": 0.0, "player_impacts": [],
+		"bursts": {}, "impulses": []}
 
 
 ## 合并多个规则的伤害、删除、分片和冲量效果，并保留最低连锁反应倍率。
 func _merge_result(target: Dictionary, source: Dictionary) -> void:
 	target.player_damage += source.get("player_damage", 0.0)
+	if not source.get("player_impacts", []).is_empty():
+		target.player_impacts.append_array(source.player_impacts)
 	if not source.get("impulses", []).is_empty():
 		target.impulses.append_array(source.impulses)
 		_reaction_scale = minf(_reaction_scale, source.get("reaction_scale", 1.0))

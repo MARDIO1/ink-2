@@ -37,6 +37,12 @@ var debug_force_vector: Vector2 = Vector2.ZERO
 
 #region 生命周期
 func _ready() -> void:
+	var config: Resource = $"../../..".controller_config
+	if config != null:
+		max_force = config.hand_max_force
+		max_power = config.hand_max_power
+		position_stiffness = config.hand_position_stiffness
+		position_damping = config.hand_position_damping
 	process_physics_priority = -10
 	# 仅提高手所在约束岛的精度，不增加全世界的碰撞检测次数。
 	body.additional_solver_iterations = 32
@@ -299,6 +305,12 @@ func _release_grab() -> void:
 	_remove_joint(grip_joint)
 	grip_joint = null
 	grabbed_body = null
+
+
+## 抓住静态世界时，脚不能再提供平移或跳跃动力；身体只能由手臂约束/马达带动。
+func locks_foot_translation() -> bool:
+	return grabbed_body != null and grabbed_body.is_static \
+		and grip_joint != null and grip_joint.is_active()
 
 
 func _remove_joint(joint) -> void:

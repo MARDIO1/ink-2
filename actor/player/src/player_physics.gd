@@ -5,6 +5,8 @@ const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_
 
 ## 所属 PixelWorld 的相对路径。
 @export var world_path := NodePath("..")
+## 只在玩家根节点赋值；手和连杆沿用各自场景参数。
+@export var controller_config: Resource
 ## 应用于所有直接子形状的密度倍率。
 @export var shape_density_scale := 1.0
 ## 生物实体标记；反向栅格化时跳过。
@@ -13,9 +15,11 @@ const LIVING_TAG := "living"
 #region 碰撞伤害
 ## 累计世界结算器给出的伤害，作为调试统计；实际生命值同步交给 InkHealth。
 var collision_damage: float = 0.0
+## 粒子等表现层连接这里；每个 impact 含 position、normal、amount、impulse、attacker_material。
+signal collision_damaged(amount: float, impacts: Array)
 
 
-func apply_collision_damage(amount: float) -> void:
+func apply_collision_damage(amount: float, impacts: Array = []) -> void:
 	var damage: float = maxf(amount, 0.0)
 	collision_damage += damage
 	if damage <= 0.0:
@@ -23,6 +27,7 @@ func apply_collision_damage(amount: float) -> void:
 	var health := get_node_or_null("InkHealth")
 	if health != null:
 		health.damage(damage)
+	collision_damaged.emit(damage, impacts)
 #endregion
 
 
@@ -31,6 +36,8 @@ func _bake_lazily():
 
 
 func collect_shapes() -> Array:
+	if controller_config != null:
+		shape_density_scale = controller_config.body_density_scale
 	var shapes: Array = []
 	for child in get_children():
 		# Arm 和 Hand 是独立刚体，不属于玩家主体形状。

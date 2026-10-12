@@ -3,6 +3,7 @@ extends Node
 
 @onready var player = $".."
 @onready var world = $"../.."
+@onready var hand_control = $"../Arm/Hand/HandControl"
 const UPRIGHT_ANGLE_DEADZONE: float = 0.001
 const UPRIGHT_SPIN_DEADZONE: float = 0.03
 var support = null
@@ -42,6 +43,15 @@ var debug_upright_torque: float = 0.0
 
 #region 接触与输入
 func _ready() -> void:
+	var config: Resource = player.controller_config
+	if config != null:
+		max_force = config.foot_max_force
+		max_power = config.foot_max_power
+		move_speed = config.foot_move_speed
+		jump_impulse = config.foot_jump_impulse
+		upright_stiffness = config.foot_upright_stiffness
+		upright_damping = config.foot_upright_damping
+		max_upright_torque = config.foot_max_upright_torque
 	process_physics_priority = -30
 
 
@@ -74,6 +84,10 @@ func apply_input(axis: float, jump: bool, delta: float) -> void:
 	debug_upright_torque = 0.0
 	if support == null or delta <= 0.0 or not world.world.bodies.has(support):
 		return
+	# 静态抓点已经把玩家连到世界；脚只保留站立回正，不能继续拉长手臂或叠加跳跃。
+	if hand_control != null and hand_control.locks_foot_translation():
+		axis = 0.0
+		jump = false
 	var body = player.body
 	var tangent: Vector2 = Vector2(-support_normal.y, support_normal.x)
 	var relative: Vector2 = body.velocity_at(contact_point) - support.velocity_at(contact_point)

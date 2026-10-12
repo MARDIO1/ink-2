@@ -12,6 +12,7 @@
 [ext_resource type="Material" path="res://actor/player/asset/player_breath_wobble.tres" id="14_wobble"]
 [ext_resource type="Script" path="res://actor/player/src/fall_death.gd" id="15_fall_death"]
 [ext_resource type="Material" path="res://actor/player/asset/player_liquid_wobble.tres" id="15_liquid_wobble"]
+[ext_resource type="Resource" path="res://actor/player/asset/player_controller_config.tres" id="16_controller"]
 
 [sub_resource type="Image" id="Image_jqpk3"]
 data = {
@@ -28,6 +29,7 @@ image = SubResource("Image_jqpk3")
 [node name="Player" type="Node2D" unique_id=1427605215]
 script = ExtResource("1_body")
 can_sleep = false
+controller_config = ExtResource("16_controller")
 
 [node name="Shape0" type="Node2D" parent="." unique_id=1675591295]
 visible = false
@@ -69,7 +71,6 @@ max_ink = 20000.0
 
 [node name="PlayerInput" type="Node" parent="." unique_id=452559037]
 script = ExtResource("2_input")
-upright_stiffness = 500000000.0
 
 [node name="FallDeath" type="Node" parent="."]
 script = ExtResource("15_fall_death")

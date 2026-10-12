@@ -43,7 +43,8 @@ func _count(result: Dictionary) -> int:
 func _run() -> void:
 	var calc = ImpactDamage.new()
 	var runtime = PhysicsStep.new()
-	_check("game defaults require a deliberate impact", calc.damage_scale == 0.012 and calc.min_approach == 300.0)
+	_check("game defaults require a deliberate impact", calc.damage_scale == 0.012
+		and calc.min_approach == 300.0 and calc.player_damage_multiplier == 100.0)
 	# 规则单测固定预算；真实游戏默认数值由下砸校准脚本单独验证。
 	calc.damage_scale = 0.1
 	calc.min_approach = 5.0
@@ -88,10 +89,24 @@ func _run() -> void:
 	contact.points[0].tangent_impulse = 1e9
 	_check("friction impulse ignored", _count(calc.calculate(world, world.contacts)) == strong_count)
 	result = calc.calculate(world, world.contacts, a, [b])
-	_check("player gets damage without pixel deletion", result.player_damage > 0.0 and result.removals.is_empty())
+	_check("player gets damage without pixel deletion", result.player_damage > 0.0
+		and result.removals.is_empty() and result.player_impacts.size() == 1)
+	var amplified_damage: float = result.player_damage
+	calc.player_damage_multiplier = 1.0
+	var base_player_result: Dictionary = calc.calculate(world, world.contacts, a, [b])
+	_check("player multiplier does not alter material damage", is_equal_approx(amplified_damage,
+		base_player_result.player_damage * 100.0) and base_player_result.removals.is_empty())
+	calc.player_damage_multiplier = 100.0
 	var player = Player.new()
-	player.apply_collision_damage(result.player_damage)
+	var received: Dictionary = {}
+	player.collision_damaged.connect(func(amount: float, impacts: Array) -> void:
+		received.amount = amount
+		received.impacts = impacts)
+	player.apply_collision_damage(result.player_damage, result.player_impacts)
 	_check("player receiver accumulates positive damage", player.collision_damage == result.player_damage)
+	_check("player exposes collision particle event", received.get("amount", 0.0) == result.player_damage
+		and received.get("impacts", []).size() == 1
+		and received.impacts[0].position.is_finite())
 	player.free()
 	world.set_material_strength(1, 0.0)
 	_check("zero strength is indestructible", _count(calc.calculate(world, world.contacts)) == 0)

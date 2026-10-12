@@ -50,6 +50,7 @@ func begin(surface, point: Vector2) -> void:
 		return
 	drawing = Stroke.new()
 	drawing.preview = true
+	drawing.compact_raster = true
 	drawing.source_surface = surface
 	drawing.brush_width = surface.brush_size
 	drawing.path.append(_world.to_local(surface.to_global(point.floor() + Vector2.ONE * 0.5)))

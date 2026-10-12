@@ -54,6 +54,7 @@ func run() -> void:
 	check("valid black endpoints submit independently", draw(Vector2(30, 30), Vector2(130, 30)))
 	var first = rule.strokes[-1]
 	var area: int = first.original_area
+	check("normal canvas uses compact yellow raster", first.compact_raster)
 	check("area charges only path, terminals excluded", health.ink_of(Palette.YELLOW.id) == before - area)
 	check("yellow leaves underlying black unchanged", surface.material_at(30, 30) == Palette.BLACK.id
 		and surface.material_at(70, 30) == 0)
@@ -104,7 +105,6 @@ func run() -> void:
 	b.update_aabb()
 	first.update_visual()
 	var refund_before: float = health.ink_of(Palette.YELLOW.id)
-	first.rng.seed = 42
 	first.erode(20)
 	check("wear changes area without changing endpoint sprites", first.cells.size() < area
 		and first.endpoint_a.texture != null and first.endpoint_b.texture != null)
@@ -152,19 +152,37 @@ func run() -> void:
 	quit(1 if failures else 0)
 
 func _test_erosion() -> void:
+	var deterministic: Array = []
+	for copy in 2:
+		var probe = Stroke.new()
+		probe.preview = true
+		probe.path = PackedVector2Array([Vector2(0.5, 0.5), Vector2(300.5, 0.5)])
+		probe.brush_width = 11
+		scene.add_child(probe)
+		probe.build_pixels()
+		probe.state = Stroke.State.ACTIVE
+		probe.erode(3)
+		deterministic.append(probe)
+	check("identical yellow strokes always produce the same wear sequence",
+		deterministic[0].worn == deterministic[1].worn)
+	check("fixed cracks start at 44, 50 and 56 percent around stroke middle",
+		absf(deterministic[0].worn[0].x - 132.0) <= 1.0
+		and absf(deterministic[0].worn[1].x - 150.0) <= 1.0
+		and absf(deterministic[0].worn[2].x - 168.0) <= 1.0)
+	for probe in deterministic:
+		probe.queue_free()
 	var stroke = Stroke.new()
 	stroke.path = PackedVector2Array([Vector2(0.5, 0.5), Vector2(300.5, 0.5)])
 	stroke.brush_width = 11
 	scene.add_child(stroke)
 	stroke.state = Stroke.State.ACTIVE
-	stroke.rng.seed = 123
 	var start: int = Time.get_ticks_usec()
 	var iterations: int = 0
 	while stroke.state == Stroke.State.ACTIVE and iterations < 100:
 		stroke.erode(20)
 		iterations += 1
 	var elapsed: int = Time.get_ticks_usec() - start
-	check("growing random damage eventually cuts across path", stroke.state == Stroke.State.DYING)
+	check("fixed middle cracks eventually cut across path", stroke.state == Stroke.State.DYING)
 	check("damage retains refundable pixels after cut", not stroke.cells.is_empty())
 	print("WEAR area=", stroke.original_area, " batches=", iterations, " total_us=", elapsed,
 		" avg_batch_us=", elapsed / maxi(1, iterations))
@@ -176,13 +194,30 @@ func _test_erosion() -> void:
 	scene.add_child(large)
 	check("large negative-coordinate stroke builds connected native occupancy", large.build_pixels() and large.connected())
 	large.state = Stroke.State.ACTIVE
-	large.rng.seed = 456
 	start = Time.get_ticks_usec()
 	large.erode(256)
 	elapsed = Time.get_ticks_usec() - start
 	check("large wear batch deletes exactly its budget", large.cells.size() == large.original_area - 256)
 	print("LARGE_WEAR area=", large.original_area, " batch_us=", elapsed)
 	large.queue_free()
+	var very_long = Stroke.new()
+	very_long.preview = true
+	very_long.compact_raster = true
+	very_long.path = PackedVector2Array([Vector2(-5000.5, -5000.5), Vector2(5000.5, 5000.5)])
+	very_long.brush_width = 7
+	scene.add_child(very_long)
+	var long_built: bool = very_long.build_pixels()
+	check("compact yellow can build beyond the removed 65536 pixel cap",
+		long_built and very_long.compact_raster and very_long.original_area > 65536
+		and very_long.connected())
+	check("compact long constraint avoids a giant diagonal texture",
+		long_built and very_long.bounds.size.y <= very_long.brush_width + 2
+		and very_long.bounds.size.x > 10000)
+	check("compact long constraint still maps both terminal centres to world endpoints",
+		long_built
+		and very_long.pixel_world(very_long.raster_path[0]).distance_to(scene.to_global(very_long.path[0])) < 0.01
+		and very_long.pixel_world(very_long.raster_path[-1]).distance_to(scene.to_global(very_long.path[-1])) < 0.01)
+	very_long.queue_free()
 
 func _test_serialization() -> void:
 	paint(Rect2i(20, 180, 30, 30))
@@ -266,7 +301,6 @@ func _render_sample() -> void:
 	check("curved stroke submits for render", draw(Vector2(35, 145), Vector2(195, 145), [Vector2(70, 80), Vector2(150, 80)]))
 	canvas.generate()
 	var stroke = rule.strokes[-1]
-	stroke.rng.seed = 42
 	stroke.erode(4)
 	check("crossing stroke submits for overlap render", draw(Vector2(35, 145), Vector2(195, 145)))
 	canvas.generate()

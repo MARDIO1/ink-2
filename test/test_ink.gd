@@ -154,6 +154,11 @@ func _run() -> void:
 	_check("add puts ink back", is_equal_approx(_health.ink_of(ink_a), _health.max_of(ink_a) * 0.8))
 	_health.reduce(ink_a, 1.0e9)
 	_check("ink never drops below zero", _health.ink_of(ink_a) == 0.0 and _health.ratio_of(ink_a) == 0.0)
+	var fall_death: Node = _player.get_node("FallDeath")
+	_check("empty black ink kills the player", fall_death._dead)
+	fall_death._respawn()
+	_check("respawn refills black ink", not fall_death._dead
+		and _health.ink_of(ink_a) == _health.max_of(ink_a))
 	_health.add(ink_a, 1.0e9)
 	_check("ink never rises above max",
 		_health.ink_of(ink_a) == _health.max_of(ink_a) and _health.ratio_of(ink_a) == 1.0)
@@ -168,7 +173,8 @@ func _run() -> void:
 	_check("hud bar shows the full ink", is_equal_approx(_hud.bottle_fill.value, 100.0))
 	_health.reduce(ink_a, _health.max_of(ink_a) * 0.75)
 	_health.reduce(ink_b, _health.max_of(ink_b) * 0.75)
-	_check("hud bar follows the ink source", is_equal_approx(_hud.bottle_fill.value, 25.0))
+	_check("hud shows black ink instead of total ink", is_equal_approx(_hud.bottle_fill.value, 25.0)
+		and _hud.ink_meter.text == "黑墨 5000 px")
 	for i in InkPalette.ink_count():
 		var material_id: int = InkPalette.material_id_of(InkPalette.ink_at(i))
 		_health.add(material_id, _health.max_of(material_id))

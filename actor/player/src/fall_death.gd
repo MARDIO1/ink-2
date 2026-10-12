@@ -13,12 +13,14 @@ const PLAYER_SPAWN_NAME := "PlayerSpawn"
 const PLAYER_SPAWN_GROUP := &"player_spawn"
 const RESPAWN_POINT_PREFIX := "RespawnPoint"
 const RESPAWN_POINT_GROUP := &"respawn_point"
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 #endregion
 
 
 #region 状态
 var _player: Node2D
 var _player_input: Node
+var _health: Node
 var _body = null # PBody，延迟到 _body 烘焙出来后取
 ## 本次下落轨迹的最高点（y 最小）；着地时重置为当前 y。
 var _peak_y := INF
@@ -40,6 +42,9 @@ func _ready() -> void:
 	_initial_position = _player.global_position
 	_initial_rotation = _player.global_rotation
 	_player_input = _player.get_node_or_null("PlayerInput")
+	_health = _player.get_node_or_null("InkHealth")
+	if _health != null and not _health.depleted.is_connected(_on_ink_depleted):
+		_health.depleted.connect(_on_ink_depleted)
 	_build_death_ui()
 
 
@@ -95,6 +100,8 @@ func _build_death_ui() -> void:
 
 #region 死亡与重生
 func _die() -> void:
+	if _dead:
+		return
 	_dead = true
 	_death_timer = respawn_delay
 	_death_layer.visible = true
@@ -112,10 +119,26 @@ func _respawn() -> void:
 	_peak_y = INF
 
 	var spawn := _find_respawn_target()
-	if spawn == null or _body == null:
+	if _body == null:
 		return
 
-	_teleport_to(spawn.global_position, spawn.global_rotation)
+	if spawn != null:
+		_teleport_to(spawn.global_position, spawn.global_rotation)
+	else:
+		_teleport_to(_initial_position, _initial_rotation)
+	_refill_black_ink()
+
+
+func _on_ink_depleted(material_id: int) -> void:
+	if material_id == InkPalette.material_id_of(InkPalette.BLACK) and not _editor_active():
+		_die()
+
+
+func _refill_black_ink() -> void:
+	if _health == null:
+		return
+	var black_id: int = InkPalette.material_id_of(InkPalette.BLACK)
+	_health.add(black_id, _health.max_of(black_id) - _health.ink_of(black_id))
 
 
 func _teleport_to(target: Vector2, target_rotation: float) -> void:

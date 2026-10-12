@@ -35,6 +35,14 @@ mouse_default_cursor_shape = 2
 tooltip_text = "隐藏 / 显示旋钮"
 text = "隐藏"
 
+[node name="Save" type="Button" parent="Panel/Rows/Header"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+tooltip_text = "把当前数值写回 Player 配置文件"
+text = "保存为默认"
+
 [node name="Knobs" type="VBoxContainer" parent="Panel/Rows"]
 layout_mode = 2
 
@@ -59,12 +67,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootMaxForce"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/FootMaxForce"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="FootMaxPower" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/PlayerInput"
@@ -87,12 +92,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootMaxPower"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/FootMaxPower"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="FootMoveSpeed" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/PlayerInput"
@@ -115,12 +117,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootMoveSpeed"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/FootMoveSpeed"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="FootJumpImpulse" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/PlayerInput"
@@ -143,12 +142,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootJumpImpulse"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/FootJumpImpulse"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="FootUprightStiffness" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/PlayerInput"
@@ -171,12 +167,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootUprightStiffness"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/FootUprightStiffness"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="FootUprightDamping" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/PlayerInput"
@@ -199,12 +192,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootUprightDamping"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/FootUprightDamping"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="FootMaxUprightTorque" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/PlayerInput"
@@ -227,12 +217,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/FootMaxUprightTorque"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/FootMaxUprightTorque"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="HandMaxForce" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/Arm/Hand/HandControl"
@@ -255,12 +242,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/HandMaxForce"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/HandMaxForce"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="HandMaxPower" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/Arm/Hand/HandControl"
@@ -283,12 +267,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/HandMaxPower"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/HandMaxPower"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="HandPositionStiffness" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/Arm/Hand/HandControl"
@@ -311,12 +292,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/HandPositionStiffness"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/HandPositionStiffness"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="HandPositionDamping" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player/Arm/Hand/HandControl"
@@ -339,12 +317,9 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/HandPositionDamping"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/HandPositionDamping"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1
 
 [node name="BodyMass" type="HBoxContainer" parent="Panel/Rows/Knobs"]
 metadata/target_path = "../Player"
@@ -367,9 +342,6 @@ max_value = 5.0
 step = 0.05
 value = 1.0
 
-[node name="Read" type="Label" parent="Panel/Rows/Knobs/BodyMass"]
+[node name="Read" type="SpinBox" parent="Panel/Rows/Knobs/BodyMass"]
 custom_minimum_size = Vector2(125, 0)
 layout_mode = 2
-theme_type_variation = &"MutedLabel"
-text = "×1.00 = --"
-vertical_alignment = 1

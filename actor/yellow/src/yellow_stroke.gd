@@ -5,7 +5,8 @@ const Palette := preload("res://ink/src/ink_palette.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const TERMINAL := preload("res://actor/yellow/asset/terminal.svg")
-const NEIGHBORS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
+const NEIGHBORS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
+const CRACK_FRACTIONS: Array[float] = [0.44, 0.50, 0.56]
 enum State { EDITING, ACTIVE, DYING, REMOVED }
 @export var path: PackedVector2Array = []
 @export var brush_width: int = 7
@@ -14,6 +15,8 @@ enum State { EDITING, ACTIVE, DYING, REMOVED }
 @export var saved_anchor_a: Vector2 = Vector2.ZERO
 @export var saved_anchor_b: Vector2 = Vector2.ZERO
 @export var activated: bool = false
+## 新画出的黄色统一使用紧凑直线栅格；默认 false 仅用于读取旧场景。
+@export var compact_raster: bool = false
 var state: State = State.EDITING
 var anchors: Array = []
 var joint = null
@@ -22,6 +25,8 @@ var source_surface = null
 var cells: Dictionary = {}
 var occupancy: PixelShape
 var frontier: Dictionary = {}
+var frontier_queue: Array[Vector2i] = []
+var frontier_cursor: int = 0
 var wear_pool: Array[Vector2i] = []
 var wear_indices: Dictionary = {}
 var original_area: int = 0
@@ -33,18 +38,18 @@ var cut_index: float = 0.0
 var image: Image
 var texture: ImageTexture
 var bounds: Rect2i
+var raster_path: PackedVector2Array = []
 var visual: Sprite2D
 var endpoint_a: Sprite2D
 var endpoint_b: Sprite2D
 var preview: bool = false
-var rng = RandomNumberGenerator.new()
+var fixed_seed_cursor: int = 0
 #endregion
 
 #region 显示
 func _ready() -> void:
 	z_index = 8
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	rng.randomize()
 	if path.is_empty() or preview:
 		return
 	build_pixels()
@@ -77,10 +82,11 @@ func build_pixels() -> bool:
 	cells.clear()
 	if path.is_empty():
 		return false
+	raster_path = _make_raster_path()
 	var radius: float = maxf(0.5, (brush_width - 1) * 0.5)
-	for index in maxi(1, path.size() - 1):
-		var a: Vector2 = path[index]
-		var b: Vector2 = path[mini(index + 1, path.size() - 1)]
+	for index in maxi(1, raster_path.size() - 1):
+		var a: Vector2 = raster_path[index]
+		var b: Vector2 = raster_path[mini(index + 1, raster_path.size() - 1)]
 		var steps: int = maxi(1, ceili(a.distance_to(b) * 2.0))
 		for step in steps + 1:
 			var center: Vector2 = a.lerp(b, float(step) / steps)
@@ -91,8 +97,6 @@ func build_pixels() -> bool:
 					var p: Vector2i = Vector2i(x, y)
 					if (Vector2(p) + Vector2.ONE * 0.5).distance_squared_to(center) <= radius * radius:
 						cells[p] = float(index) + float(step) / steps
-					if cells.size() > 65536:
-						return false
 	original_area = cells.size()
 	for point in worn:
 		cells.erase(Vector2i(point))
@@ -101,9 +105,13 @@ func build_pixels() -> bool:
 		occupancy.set_pixel(p.x, p.y, 1)
 	wear_pool.clear()
 	wear_indices.clear()
+	frontier.clear()
+	frontier_queue.clear()
+	frontier_cursor = 0
 	for p: Vector2i in cells:
 		var center: Vector2 = Vector2(p) + Vector2.ONE * 0.5
-		if center.distance_squared_to(path[0]) >= 20.25 and center.distance_squared_to(path[-1]) >= 20.25:
+		if center.distance_squared_to(raster_path[0]) >= 20.25 \
+		and center.distance_squared_to(raster_path[-1]) >= 20.25:
 			wear_indices[p] = wear_pool.size()
 			wear_pool.append(p)
 	if cells.is_empty():
@@ -114,17 +122,20 @@ func build_pixels() -> bool:
 		low = low.min(p)
 		high = high.max(p)
 	bounds = Rect2i(low, high - low + Vector2i.ONE)
-	if bounds.size.x * bounds.size.y > 4194304:
-		return false
 	image = Image.create_empty(bounds.size.x, bounds.size.y, false, Image.FORMAT_RGBA8)
 	for p: Vector2i in cells:
 		image.set_pixelv(p - bounds.position, Palette.YELLOW.color)
 	texture = ImageTexture.create_from_image(image)
 	visual = Sprite2D.new()
 	visual.centered = false
-	visual.position = Vector2(bounds.position)
 	visual.texture = texture
 	add_child(visual)
+	if compact_raster:
+		var direction: Vector2 = path[-1] - path[0]
+		visual.transform = Transform2D(direction.angle(), path[0]) \
+			* Transform2D(0.0, Vector2(bounds.position))
+	else:
+		visual.position = Vector2(bounds.position)
 	endpoint_a = Sprite2D.new()
 	endpoint_a.texture = TERMINAL
 	add_child(endpoint_a)
@@ -139,14 +150,22 @@ func build_pixels() -> bool:
 	endpoint_b.global_rotation = 0.0
 	for point in worn:
 		_add_frontier(Vector2i(point))
+	fixed_seed_cursor = CRACK_FRACTIONS.size() if not worn.is_empty() else 0
 	return true
+
+func _make_raster_path() -> PackedVector2Array:
+	if path.size() < 2:
+		return path.duplicate()
+	if compact_raster:
+		return PackedVector2Array([Vector2.ZERO, Vector2(path[0].distance_to(path[-1]), 0.0)])
+	return path.duplicate()
 
 func update_visual() -> void:
 	if anchors.size() != 2 or state != State.ACTIVE:
 		return
 	var a: Vector2 = anchor_world(anchors[0])
 	var b: Vector2 = anchor_world(anchors[1])
-	var original: Vector2 = path[-1] - path[0]
+	var original: Vector2 = raster_path[-1] - raster_path[0]
 	var current: Vector2 = b - a
 	var factor: float = current.length() / original.length() if original.length() > 0.001 else 1.0
 	var source_axis: Vector2 = original.normalized() if original.length() > 0.001 else Vector2.RIGHT
@@ -157,7 +176,7 @@ func update_visual() -> void:
 	var x_axis: Vector2 = target_axis * source_axis.x * factor + target_normal * source_normal.x
 	var y_axis: Vector2 = target_axis * source_axis.y * factor + target_normal * source_normal.y
 	var deformation := Transform2D(x_axis, y_axis, Vector2.ZERO)
-	deformation.origin = a - deformation.basis_xform(path[0])
+	deformation.origin = a - deformation.basis_xform(raster_path[0])
 	# Stroke 本身永远保持单位变换；只变换黄色纹理。这样端子、数据坐标和
 	# Sprite2D 不会在连续更新中落入不同坐标空间。
 	transform = Transform2D.IDENTITY
@@ -193,11 +212,12 @@ func animate_death(delta: float) -> void:
 		image = null
 		texture = null
 		return
-	var count: float = maxi(1, path.size() - 1) * fade
+	var segment_count: int = maxi(1, raster_path.size() - 1)
+	var count: float = segment_count * fade
 	# 消散只更新显示，不消耗可回收的剩余墨水。
 	for p: Vector2i in cells:
 		var nearest: float = cells[p]
-		var erase: bool = nearest < count if invalid_end == 0 else nearest >= path.size() - 1 - count
+		var erase: bool = nearest < count if invalid_end == 0 else nearest >= segment_count - count
 		if invalid_end < 0:
 			erase = absf(nearest - cut_index) < count
 		if erase:
@@ -258,7 +278,7 @@ func fail(end: int = -1) -> void:
 	remove_joint()
 	state = State.DYING
 	invalid_end = end
-	cut_index = rng.randf_range(0.4, 0.6) * maxi(1, path.size() - 1)
+	cut_index = 0.5 * maxi(1, raster_path.size() - 1)
 	activated = false
 	owner = null
 
@@ -271,38 +291,82 @@ func _exit_tree() -> void:
 func _add_frontier(p: Vector2i) -> void:
 	for offset in NEIGHBORS:
 		var neighbor: Vector2i = p + offset
-		if wear_indices.has(neighbor):
+		if wear_indices.has(neighbor) and not frontier.has(neighbor):
 			frontier[neighbor] = true
+			frontier_queue.append(neighbor)
 
 func erode(amount: int) -> void:
 	for iteration in mini(amount, 256):
 		if wear_pool.is_empty():
 			break
-		var p: Vector2i
-		if not frontier.is_empty() and rng.randf() < 0.9:
-			var candidates: Array = frontier.keys()
-			p = candidates[rng.randi_range(0, candidates.size() - 1)]
-		else:
-			p = wear_pool[rng.randi_range(0, wear_pool.size() - 1)]
-		var index: int = wear_indices[p]
-		var last: Vector2i = wear_pool[-1]
-		wear_pool[index] = last
-		wear_indices[last] = index
-		wear_pool.pop_back()
-		wear_indices.erase(p)
-		cells.erase(p)
-		occupancy.clear_pixel(p.x, p.y)
-		frontier.erase(p)
-		worn.append(Vector2(p))
-		_add_frontier(p)
-		image.set_pixelv(p - bounds.position, Color.TRANSPARENT)
+		var p: Vector2i = _next_fixed_wear_point()
+		_remove_wear_point(p)
 	texture.update(image)
 	if not connected():
 		fail()
 
+func _next_fixed_wear_point() -> Vector2i:
+	if fixed_seed_cursor < CRACK_FRACTIONS.size():
+		var seed: Vector2i = _closest_wear_point(_crack_frame(CRACK_FRACTIONS[fixed_seed_cursor]).point)
+		fixed_seed_cursor += 1
+		return seed
+	while frontier_cursor < frontier_queue.size():
+		var candidate: Vector2i = frontier_queue[frontier_cursor]
+		frontier_cursor += 1
+		if frontier.has(candidate) and wear_indices.has(candidate):
+			frontier.erase(candidate)
+			return candidate
+	return _closest_wear_point(_crack_frame(0.5).point)
+
+func _closest_wear_point(target: Vector2) -> Vector2i:
+	var origin := Vector2i(target.floor())
+	var search_radius: int = maxi(2, brush_width)
+	var found: bool = false
+	var best := Vector2i.ZERO
+	var best_distance: float = INF
+	for y in range(origin.y - search_radius, origin.y + search_radius + 1):
+		for x in range(origin.x - search_radius, origin.x + search_radius + 1):
+			var candidate := Vector2i(x, y)
+			if not wear_indices.has(candidate):
+				continue
+			var distance: float = (Vector2(candidate) + Vector2.ONE * 0.5).distance_squared_to(target)
+			if not found or distance < best_distance or (is_equal_approx(distance, best_distance) \
+			and (candidate.y < best.y or (candidate.y == best.y and candidate.x < best.x))):
+				found = true
+				best = candidate
+				best_distance = distance
+	if found:
+		return best
+	return wear_pool[0]
+
+func _crack_frame(fraction: float) -> Dictionary:
+	var scaled: float = clampf(fraction, 0.0, 1.0) * maxi(1, raster_path.size() - 1)
+	var index: int = mini(floori(scaled), raster_path.size() - 2)
+	var local_t: float = scaled - index
+	var a: Vector2 = raster_path[index]
+	var b: Vector2 = raster_path[index + 1]
+	var tangent: Vector2 = (b - a).normalized()
+	if tangent == Vector2.ZERO:
+		tangent = Vector2.RIGHT
+	return {"point": a.lerp(b, local_t), "tangent": tangent}
+
+func _remove_wear_point(p: Vector2i) -> void:
+	var index: int = wear_indices[p]
+	var last: Vector2i = wear_pool[-1]
+	wear_pool[index] = last
+	wear_indices[last] = index
+	wear_pool.pop_back()
+	wear_indices.erase(p)
+	cells.erase(p)
+	occupancy.clear_pixel(p.x, p.y)
+	frontier.erase(p)
+	worn.append(Vector2(p))
+	_add_frontier(p)
+	image.set_pixelv(p - bounds.position, Color.TRANSPARENT)
+
 func connected() -> bool:
-	var start: Vector2i = Vector2i(path[0].floor())
-	var end: Vector2i = Vector2i(path[-1].floor())
+	var start: Vector2i = Vector2i(raster_path[0].floor())
+	var end: Vector2i = Vector2i(raster_path[-1].floor())
 	if not cells.has(start) or not cells.has(end):
 		return false
 	var key_a: int = PixelShape.make_key(start.x >> 3, start.y >> 3)

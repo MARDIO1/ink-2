@@ -34,6 +34,17 @@ func _run() -> void:
 	for i in 3:
 		damage._step(DT)
 	_check("actual partial foot contact acquired", feet.support == box)
+	body.linear_velocity = Vector2.ZERO
+	body.angular_velocity = 0.0
+	box.linear_velocity = Vector2.ZERO
+	box.angular_velocity = 0.0
+	_check("static world grab created for foot lock", hand._begin_grab(ground, hand.body.com_world()))
+	feet.apply_input(1.0, true, DT)
+	_check("static world grab blocks walking and jumping", body.linear_velocity == Vector2.ZERO
+		and box.linear_velocity == Vector2.ZERO and feet.debug_drive_impulse == Vector2.ZERO
+		and feet.debug_jump_impulse == Vector2.ZERO)
+	hand._release_grab()
+	hand._remove_arm()
 	var momentum: Vector2 = scene.world.total_momentum()
 	var angular: float = scene.world.total_angular_momentum()
 	var energy: float = scene.world.total_kinetic_energy()
