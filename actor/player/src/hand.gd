@@ -266,13 +266,14 @@ func _update_grip(_delta: float) -> void:
 		return
 	_release_grab()
 	var tip: Vector2 = body.com_world() + FINGERTIP.rotated(body.rotation)
-	var hit = Query.closest_point(tip, GRAB_RADIUS, [body, player_body])
+	var hit = Query.closest_point(tip, GRAB_RADIUS, [body, player_body], physics_world)
 	if hit.hit and hit.body != null:
 		_begin_grab(hit.body, hit.point)
 
 
 func _begin_grab(target_body, world_point: Vector2) -> bool:
-	if target_body == null or target_body == body or target_body == player_body:
+	if target_body == null or target_body == body or target_body == player_body \
+			or not physics_world.bodies.has(target_body):
 		return false
 	_ensure_arm_joint()
 	_release_grab()

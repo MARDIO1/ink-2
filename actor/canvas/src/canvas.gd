@@ -9,8 +9,9 @@ signal editor_control_requested
 signal solidified
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
+const History := preload("res://actor/canvas/src/canvas_history.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
-const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
 const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
@@ -28,6 +29,11 @@ const EDITOR_TOOL_BUTTON_HEIGHT := 60.0
 const EDITOR_TOOL_BUTTON_H_GAP := 16.0
 const EDITOR_TOOL_BUTTON_V_GAP := 10.0
 const EDITOR_HAND_BUTTON_SIZE := 72.0
+## 工具栏按行排列；第十个按钮使用数字键 0。
+const TOOL_SHORTCUT_ORDER := [
+	"Brush", "Eraser", "Shape", "Bucket", "Redraw", "SelectDelete",
+	"Generate", "ReturnToCanvas", "Nail", "ExpandCanvas",
+]
 
 @onready var surface = $CanvasSurface
 @onready var solid = $CanvasSolid
@@ -112,25 +118,32 @@ func _ready() -> void:
 
 ## 清空画布墨水。
 func clear_canvas() -> void:
+	var state := History.capture(self)
 	surface.clear()
+	History.commit(self, state)
 
 
 ## 墨水固化成实体（原 E 键）。
-func generate() -> void:
-	solid.solidify(surface, world, _map_editor_mode)
+func generate(record_undo := true) -> void:
+	var state: Dictionary = History.capture(self) if record_undo else {}
+	solid.solidify(surface, world, _map_editor_mode, false)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.solidify(surface)
+	if record_undo:
+		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 	solidified.emit()
 
 
 ## 画布范围内的实体重采样回墨水。
 func return_to_canvas() -> void:
+	var state := History.capture(self, true)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.reclaim(surface)
 	solid.rasterize(surface, world)
+	History.commit(self, state)
 
 
 ## 地图编辑模式清理已经整体掉出画布的固化墨水。
@@ -177,12 +190,12 @@ func clear_solidified_bodies_outside_canvas() -> int:
 func _delete_selection(rect: Rect2i) -> void:
 	# 固化实体必须先写回可编辑画布，再建立撤销快照。旧顺序在框内只有
 	# 固化像素时会得到“空 -> 空”的快照，既不触发自动保存，也无法撤销。
+	var state := History.capture(self, true, Rect2(surface.to_global(Vector2(rect.position)), Vector2(rect.size)))
 	var removed: int = solid.rasterize_rect(surface, world, rect)
 	if removed > 0:
 		solid.sync_serializable_bodies(world)
-	surface._begin_undo_step()
 	surface.erase_rect(rect)
-	surface._commit_undo_step()
+	History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 
@@ -264,12 +277,14 @@ func expand_canvas_sides(left: int, right: int, top: int, bottom: int) -> bool:
 		return false
 	var content_offset := Vector2i(left, top)
 	var new_size := canvas_size + Vector2i(left + right, top + bottom)
+	var state := History.capture(self)
 	if not surface.resize_preserving_content(new_size, content_offset):
 		return false
 	_syncing_preserved_resize = true
 	canvas_size = new_size
 	_syncing_preserved_resize = false
 	position -= Vector2(content_offset)
+	History.commit(self, state)
 	map_changed.emit()
 	return true
 
@@ -479,10 +494,7 @@ func set_map_editor_mode(on: bool) -> void:
 
 
 func _prepare_workbench_structure() -> void:
-	var order := [
-		"Brush", "Eraser", "Shape", "Bucket", "Redraw", "SelectDelete",
-		"Generate", "ReturnToCanvas", "Nail", "ExpandCanvas",
-	]
+	var order := TOOL_SHORTCUT_ORDER
 	var captions := {
 		"Brush": "画笔", "Eraser": "橡皮", "Shape": "形状", "Bucket": "填充",
 		"Redraw": "清空", "SelectDelete": "框删", "Generate": "固化",
@@ -497,9 +509,28 @@ func _prepare_workbench_structure() -> void:
 			tool_grid.move_child(button, index)
 	hand_button.reparent(buttons)
 	hand_button.icon = _atlas_icon(EditorControlIconSource, EDITOR_CONTROL_ICON_REGION)
+	var hand_icon := TextureRect.new()
+	hand_icon.name = "ToolIcon"
+	hand_icon.texture = hand_button.icon
+	hand_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hand_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hand_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hand_icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hand_button.add_child(hand_icon)
+	hand_button.icon = null
 	hand_button.text = ""
 	hand_button.expand_icon = true
 	hand_button.add_theme_constant_override("icon_max_width", 92)
+	var hand_caption := Label.new()
+	hand_caption.name = "Caption"
+	hand_caption.text = "放下画笔"
+	hand_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hand_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hand_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hand_caption.anchor_top = 1.0
+	hand_caption.anchor_bottom = 1.0
+	hand_caption.anchor_right = 1.0
+	hand_button.add_child(hand_caption)
 
 
 func _atlas_icon(source: Texture2D, region: Rect2) -> AtlasTexture:
@@ -584,6 +615,10 @@ func _apply_workbench_column_layout() -> void:
 	hand_button.add_theme_constant_override("icon_max_width", 58 if _map_editor_mode else 42)
 	hand_button.position = Vector2((width - hand_size) * 0.5, grid_height + hand_gap)
 	hand_button.size = Vector2.ONE * hand_size
+	var hand_caption := hand_button.get_node("Caption") as Label
+	hand_caption.offset_top = 2.0
+	hand_caption.offset_bottom = 2.0 + caption_height
+	hand_caption.add_theme_font_size_override("font_size", 10 if _map_editor_mode else 8)
 	if _map_editor_mode:
 		buttons.offset_left = -186.0
 		buttons.offset_top = 116.0
@@ -599,7 +634,7 @@ func _apply_workbench_column_layout() -> void:
 		toggle_button.offset_bottom = 154.0
 		toggle_button.add_theme_font_size_override("font_size", 10)
 	buttons.offset_right = buttons.offset_left + width
-	buttons.offset_bottom = buttons.offset_top + grid_height + hand_size + hand_gap
+	buttons.offset_bottom = buttons.offset_top + grid_height + hand_size + hand_gap + caption_height + 2.0
 	toggle_button.offset_right = toggle_button.offset_left + (width if _map_editor_mode else 36.0)
 
 
@@ -676,6 +711,13 @@ func _distance_from_player_to_canvas() -> float:
 
 #region 按钮
 func _bind_buttons() -> void:
+	for button in tool_grid.get_children() + [hand_button]:
+		if button is Button:
+			preload("res://ui/theme/src/button_appearance.gd").uniform(button, true)
+			var feedback := Node.new()
+			feedback.name = "IconFeedback"
+			feedback.set_script(preload("res://actor/canvas/src/tool_icon_feedback.gd"))
+			button.add_child(feedback)
 	hand_button.pressed.connect(_on_hand_pressed)
 	tool_grid.get_node("Brush").pressed.connect(set_tool.bind(SurfaceScript.Tool.BRUSH))
 	tool_grid.get_node("Eraser").pressed.connect(set_tool.bind(SurfaceScript.Tool.ERASER))
@@ -872,6 +914,8 @@ func _build_shape_popup() -> void:
 func _open_shape_popup() -> void:
 	if _shape_popup == null:
 		return
+	# 打开菜单不代表已选择新形状，保留当前实际工具的选中状态。
+	_apply_tool(surface.tool)
 	# 按钮在 Node2D 父级下 global_rect 不准，直接用鼠标视口坐标。
 	_shape_popup.position = Vector2i(get_viewport().get_mouse_position())
 	_shape_popup.reset_size()
@@ -896,7 +940,7 @@ func _update_shape_tooltip(tool: int) -> void:
 		shape_name = "圆形"
 	elif tool == SurfaceScript.Tool.LINE:
 		shape_name = "直线"
-	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（5/6/9）\n点击按钮选择形状" % shape_name
+	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（3）\n点击按钮或按 3 选择形状" % shape_name
 
 
 func _apply_tool(tool: int) -> void:
@@ -932,6 +976,20 @@ func _on_pen_slider_changed(value: float) -> void:
 var dev_save_enabled := true
 
 
+func _activate_tool_shortcut(keycode: int) -> bool:
+	if keycode != KEY_0 and (keycode < KEY_1 or keycode > KEY_9):
+		return false
+	var index := 9 if keycode == KEY_0 else keycode - KEY_1
+	if index < 0 or index >= TOOL_SHORTCUT_ORDER.size():
+		return false
+	var button := tool_grid.get_node(TOOL_SHORTCUT_ORDER[index]) as Button
+	if not button.visible or button.disabled:
+		return false
+	button.get_node("IconFeedback").pulse()
+	button.pressed.emit()
+	return true
+
+
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
@@ -948,6 +1006,20 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
+		# 输入尺寸、文字或选择弹出菜单时，数字留给当前控件。
+		var focus := get_viewport().gui_get_focus_owner()
+		if focus is LineEdit or focus is TextEdit \
+		or (_shape_popup != null and _shape_popup.visible) \
+		or (_expand_canvas_window != null and _expand_canvas_window.visible):
+			return
+		if not _map_editor_mode and event.ctrl_pressed and event.keycode == KEY_Z:
+			surface.undo_last_edit()
+			get_viewport().set_input_as_handled()
+			return
+		if not event.ctrl_pressed and not event.alt_pressed and not event.meta_pressed \
+		and not event.shift_pressed and _activate_tool_shortcut(event.keycode):
+			get_viewport().set_input_as_handled()
+			return
 		# 地图扩展保留为快捷键，界面不再占一排方向按钮。
 		if _map_editor_mode and event.ctrl_pressed:
 			var expanded := true
@@ -967,26 +1039,10 @@ func _input(event: InputEvent) -> void:
 				return
 		match event.keycode:
 			KEY_F:
+				hand_button.get_node("IconFeedback").pulse()
 				_on_hand_pressed()
-			KEY_1:
-				set_tool(SurfaceScript.Tool.HAND)
-			KEY_2:
-				set_tool(SurfaceScript.Tool.BRUSH)
-			KEY_3:
-				set_tool(SurfaceScript.Tool.ERASER)
-			KEY_4:
-				set_tool(SurfaceScript.Tool.NAIL)
-			KEY_5:
-				set_tool(SurfaceScript.Tool.RECT)
-			KEY_6:
-				set_tool(SurfaceScript.Tool.CIRCLE)
-			KEY_7:
-				set_tool(SurfaceScript.Tool.BUCKET)
-			KEY_8:
-				set_tool(SurfaceScript.Tool.SELECT_DELETE)
-			KEY_9:
-				set_tool(SurfaceScript.Tool.LINE)
 			KEY_E:
+				tool_grid.get_node("Generate/IconFeedback").pulse()
 				generate()
 	#保存/读取走输入动作，别和上面的裸键 match 串成一个分支。
 	if dev_save_enabled and event.is_action_pressed("canvas_save"):

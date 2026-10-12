@@ -18,7 +18,7 @@ extends Node
 ## 任何真的变了的数值变化后发出（含被夹到 0 / max_ink）。消费者自己去读 `ratio()`。
 signal changed
 
-const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 
 ## **每种墨水各自的**满瓶量；每关不一样就改这一个数（场景里设）。
 @export var max_ink: float = 20000.0

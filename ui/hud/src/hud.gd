@@ -2,8 +2,8 @@ extends CanvasLayer
 ## 成品 HUD：瓶内液面显示玩家墨水量（来源 InkHealth），顶部横条只留空框。
 ## Tab 在成品 HUD 与 debugHUD 之间切换。
 
-## 退出按钮回主菜单 = 重新进 root（root 第一屏是主菜单）。
-const ROOT_SCENE := "res://root/root.tscn"
+## 退出按钮先打开 ESC 菜单，由菜单决定继续、回主菜单或退出。
+const ESC_SCENE := preload("res://ui/esc/esc.tscn")
 ## UI 与关卡不在同一棵子树时的兜底查找：玩家 / 调试 HUD 都按组找（场景里挂的组见
 ## `map/main.tscn` 的 `Player` 与 `debug/hud/debug_hud.tscn` 的根节点）。
 const PLAYER_GROUP := "player"
@@ -67,7 +67,11 @@ func _switch_debug_hud() -> void:
 
 
 func _on_exit_button_pressed() -> void:
-	get_tree().change_scene_to_file(ROOT_SCENE)
+	var esc_menu := get_tree().get_first_node_in_group(&"esc_menu")
+	if esc_menu == null:
+		esc_menu = ESC_SCENE.instantiate()
+		get_parent().add_child(esc_menu)
+	esc_menu.open_menu()
 
 
 func _on_log_button_pressed() -> void:

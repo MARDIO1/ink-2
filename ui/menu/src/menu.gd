@@ -8,6 +8,9 @@ signal start_pressed
 
 
 func _ready() -> void:
+	for button in $ButtonCenter/Buttons.get_children():
+		if button is Button:
+			preload("res://ui/theme/src/button_appearance.gd").uniform(button)
 	start_button.grab_focus()
 
 

@@ -9,7 +9,7 @@ signal selection_delete_requested(rect: Rect2i)
 
 signal edit_committed
 
-const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 #endregion
 
 #region 初始化
@@ -135,7 +135,7 @@ var _shape_delta := 0
 		tool = value
 		_painting = false
 		_shaping = false
-## 当前选中的墨水（`Ink/src/ink_palette.gd` 的 INKS 下标）；右侧面板改它。
+## 当前选中的墨水（`ink/src/ink_palette.gd` 的 INKS 下标）；右侧面板改它。
 @export var selected_ink: int = 0
 
 
@@ -387,6 +387,10 @@ func write_pixel(pixel: Vector2i, color: Color) -> bool:
 		return false
 	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
+	if InkPalette.material_id_at_color(color) == InkPalette.nail_material_id():
+		nail_layer.add(pixel)
+	else:
+		nail_layer.remove(pixel)
 	_bump_ink(before, -1, false)
 	_bump_ink(InkPalette.material_id_at_color(color), 1, false)
 	return true
@@ -728,10 +732,14 @@ func _commit_undo_step() -> void:
 	if _undo_capture.is_empty():
 		_undo_capture = {}
 		return
-	_undo_steps.append(_undo_capture)
+	push_undo_step(_undo_capture)
+	_undo_capture = {}
+
+
+func push_undo_step(step: Dictionary) -> void:
+	_undo_steps.append(step)
 	if _undo_steps.size() > MAX_UNDO_STEPS:
 		_undo_steps.pop_front()
-	_undo_capture = {}
 	edit_committed.emit()
 
 
@@ -750,10 +758,33 @@ func undo_last_edit() -> bool:
 	_painting = false
 	_cancel_undo_step()
 	var step: Dictionary = _undo_steps.pop_back()
+	if step.has("transaction"):
+		get_parent().History.restore(get_parent(), step.transaction)
+		return true
+	if step.has("solidified"):
+		var canvas = get_parent()
+		for reference in step.solidified:
+			var node = reference.get_ref()
+			if not is_instance_valid(node) or node.is_queued_for_deletion():
+				continue
+			canvas.solid._remove_all_nails(canvas.world, node.body)
+			canvas.world.remove_body_node(node)
+			canvas.world.remove_child(node)
+			node.queue_free()
+		for pixel: Vector2i in step.pixels:
+			write_pixel(pixel, step.pixels[pixel])
+		refresh()
+		return true
 	if step.has("yellow"):
 		var yellow = yellow_rule()
 		if yellow != null:
-			yellow.undo(step.yellow, self)
+			var stroke = step.yellow
+			if (not is_instance_valid(stroke) or not yellow.strokes.has(stroke)) and step.has("yellow_id"):
+				for candidate in yellow.strokes:
+					if candidate.get_meta(&"canvas_undo_identity", -1) == step.yellow_id:
+						stroke = candidate
+						break
+			yellow.undo(stroke, self)
 		return true
 	for pixel: Vector2i in step:
 		_set_pixel_raw(pixel, step[pixel])

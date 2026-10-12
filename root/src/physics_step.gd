@@ -4,9 +4,9 @@ signal body_fractured(world, body, pieces: Array)
 ## 本脚本不知道墨水、颜色、伤害规则或任何具体玩法类型。
 
 #region 依赖
-const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
-const DebrisDust = preload("res://root/src/debris_dust.gd")
-const Query = preload("res://addons/pixel_destruction/physics/query.gd")
+const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
+const DebrisDust := preload("res://root/src/debris_dust.gd")
+const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 const ANCHOR_TAG: String = "static_anchor_points"
 #endregion
 
@@ -96,6 +96,7 @@ func setup(main, player, protected_bodies: Array, camera: Camera2D) -> void:
 func _exit_tree() -> void:
 	if _main == null or _main.world == null:
 		return
+	Query.detach(_main.world)
 	for body in _main.world.bodies.duplicate():
 		for shape in body.shapes:
 			shape.owner_body = null

@@ -10,13 +10,17 @@ config_version=5
 
 [application]
 
-config/name="ink2"
+config/name="INT FFF"
+config/version="0.0.1"
 run/main_scene="res://root/root.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://ui/icon/int_fff.png"
+config/windows_native_icon="res://ui/icon/int_fff.ico"
 
 [autoload]
 
-InkRuntime="*res://Ink/src/runtime.gd"
+SceneTransition="*res://ui/transition/scene_transition.gd"
+InkRuntime="*res://ink/src/ink_runtime.gd"
 
 [display]
 

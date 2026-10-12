@@ -1,0 +1,388 @@
+[gd_scene format=3]
+
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/body.png" id="2_body"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/far_arm_normalized_4x.png" id="3_far_arm"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/near_arm_normalized_4x.png" id="4_near_arm"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/far_leg-mono-source-transparent-mono-source-transparent_normalized_4x.png" id="5_far_leg"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/near_leg-mono-source-transparent_normalized_4x.png" id="6_near_leg"]
+
+[ext_resource type="Script" path="res://actor/monster/imported/bomb_side/scripts/bomb_side_rig.gd" id="9_occlusion_rig"]
+[ext_resource type="Shader" path="res://actor/monster/imported/bomb_side/shaders/part_occlusion.gdshader" id="10_occlusion_shader"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/assets/parts/masks/left_arm_mask.png" id="11_left_arm_mask"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/assets/parts/masks/left_leg_mask.png" id="12_left_leg_mask"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/assets/parts/masks/body_mask.png" id="13_body_mask"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/assets/parts/masks/right_leg_mask.png" id="14_right_leg_mask"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/assets/parts/masks/right_arm_mask.png" id="15_right_arm_mask"]
+
+[sub_resource type="ShaderMaterial" id="Occlusion_left_leg"]
+resource_local_to_scene = true
+shader = ExtResource("10_occlusion_shader")
+shader_parameter/mask_count = 0
+
+[sub_resource type="ShaderMaterial" id="Occlusion_body"]
+resource_local_to_scene = true
+shader = ExtResource("10_occlusion_shader")
+shader_parameter/mask_count = 0
+
+[sub_resource type="ShaderMaterial" id="Occlusion_right_leg"]
+resource_local_to_scene = true
+shader = ExtResource("10_occlusion_shader")
+shader_parameter/mask_count = 0
+
+[sub_resource type="ShaderMaterial" id="Occlusion_right_arm"]
+resource_local_to_scene = true
+shader = ExtResource("10_occlusion_shader")
+shader_parameter/mask_count = 0
+
+[sub_resource type="Animation" id="Animation_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/BodyHead:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/BodyHead:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [-1.5708]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Skeleton2D/BodyHead/LeftArm:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [3.2861901]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Skeleton2D/BodyHead/RightArm:rotation")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [2.3445741]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Skeleton2D/BodyHead/LeftLeg:rotation")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [3.1221083]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Skeleton2D/BodyHead/RightLeg:rotation")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [2.9172397]
+}
+
+[sub_resource type="Animation" id="Animation_idle"]
+resource_name = "idle"
+length = 1.6
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/BodyHead:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, -4), Vector2(0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/BodyHead:rotation")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [-1.5858, -1.5558, -1.5858]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Skeleton2D/BodyHead/LeftArm:rotation")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [3.3254001, 3.2454001, 3.3254001]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Skeleton2D/BodyHead/RightArm:rotation")
+tracks/3/interp = 2
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [2.3037841, 2.3837841, 2.3037841]
+}
+
+[sub_resource type="Animation" id="Animation_throw"]
+resource_name = "throw"
+length = 1.2
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/BodyHead:rotation")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.3, 0.62, 1.2),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [-1.5708, -1.6508, -1.4708, -1.5708]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/BodyHead/RightArm:rotation")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.3, 0.62, 1.2),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [2.3445741, 3.1237841, 1.0237841, 2.3445741]
+}
+
+[sub_resource type="Animation" id="Animation_walk"]
+resource_name = "walk"
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Skeleton2D/BodyHead:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.5, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, -7), Vector2(0, 0), Vector2(0, -7), Vector2(0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Skeleton2D/BodyHead:rotation")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [-1.5958, -1.5458, -1.5958]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Skeleton2D/BodyHead/LeftArm:rotation")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [2.8954001, 3.6454001, 2.8954001]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Skeleton2D/BodyHead/RightArm:rotation")
+tracks/3/interp = 2
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [2.7037841, 1.9537841, 2.7037841]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Skeleton2D/BodyHead/LeftLeg:rotation")
+tracks/4/interp = 2
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [3.5013183, 2.7513183, 3.5013183]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Skeleton2D/BodyHead/RightLeg:rotation")
+tracks/5/interp = 2
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0, 0.5, 1),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [2.5464497, 3.2964497, 2.5464497]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_main"]
+_data = {
+&"RESET": SubResource("Animation_reset"),
+&"idle": SubResource("Animation_idle"),
+&"throw": SubResource("Animation_throw"),
+&"walk": SubResource("Animation_walk")
+}
+
+[node name="BombSideRig" type="Node2D" unique_id=235961958]
+script = ExtResource("9_occlusion_rig")
+
+[node name="Skeleton2D" type="Skeleton2D" parent="." unique_id=1541997234]
+scale = Vector2(-1, 1)
+
+[node name="BodyHead" type="Bone2D" parent="Skeleton2D" unique_id=796774335]
+rotation = -1.5708
+rest = Transform2D(-3.61999e-06, -1, 1, -3.61999e-06, 0, 0)
+
+[node name="LeftArm" type="Bone2D" parent="Skeleton2D/BodyHead" unique_id=1169884724]
+position = Vector2(121.49928, -76.3241)
+rotation = 3.28619
+rest = Transform2D(-0.989564, -0.144094, 0.144094, -0.989564, 121.49928, -76.3241)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/BodyHead/LeftArm" unique_id=935337217]
+z_index = 4
+texture_filter = 1
+position = Vector2(-29.716148, 37.09438)
+rotation = -1.5566128
+texture = ExtResource("3_far_arm")
+centered = false
+flip_h = true
+
+[node name="RightArm" type="Bone2D" parent="Skeleton2D/BodyHead" unique_id=675911783]
+position = Vector2(112.28148, 33.63707)
+rotation = 2.3445742
+rest = Transform2D(-0.698842, 0.715276, -0.715276, -0.698842, 112.28148, 33.63707)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/BodyHead/RightArm" unique_id=728888459]
+material = SubResource("Occlusion_right_arm")
+texture_filter = 1
+position = Vector2(-32.32074, 36.51534)
+rotation = -1.3374226
+texture = ExtResource("4_near_arm")
+centered = false
+flip_h = true
+
+[node name="LeftLeg" type="Bone2D" parent="Skeleton2D/BodyHead" unique_id=1053964376]
+position = Vector2(-21.99971, -47.999874)
+rotation = 3.1221082
+rest = Transform2D(-0.99981, 0.019483, -0.019483, -0.99981, -21.99971, -47.999874)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/BodyHead/LeftLeg" unique_id=1912960932]
+z_index = 3
+material = SubResource("Occlusion_left_leg")
+texture_filter = 1
+position = Vector2(-44.474228, 62.395393)
+rotation = -1.5513183
+texture = ExtResource("5_far_leg")
+centered = false
+flip_h = true
+
+[node name="RightLeg" type="Bone2D" parent="Skeleton2D/BodyHead" unique_id=1851966131]
+position = Vector2(-21.99987, 36.00013)
+rotation = 2.9172397
+rest = Transform2D(-0.974938, 0.222476, -0.222476, -0.974938, -21.99987, 36.00013)
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/BodyHead/RightLeg" unique_id=1091319082]
+z_index = 1
+material = SubResource("Occlusion_right_leg")
+texture_filter = 1
+position = Vector2(-38.716404, 37.06558)
+rotation = -1.3464496
+texture = ExtResource("6_near_leg")
+centered = false
+flip_h = true
+
+[node name="Art" type="Sprite2D" parent="Skeleton2D/BodyHead" unique_id=2056450522]
+z_index = 2
+material = SubResource("Occlusion_body")
+texture_filter = 1
+position = Vector2(426.25104, -298.7485)
+rotation = 1.5708
+texture = ExtResource("2_body")
+centered = false
+flip_h = true
+
+[node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead/LeftArm"]
+visible = false
+texture = ExtResource("11_left_arm_mask")
+centered = false
+flip_h = true
+
+[node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead/LeftLeg"]
+visible = false
+texture = ExtResource("12_left_leg_mask")
+centered = false
+flip_h = true
+
+[node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead"]
+visible = false
+texture = ExtResource("13_body_mask")
+centered = false
+flip_h = true
+
+[node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead/RightLeg"]
+visible = false
+texture = ExtResource("14_right_leg_mask")
+centered = false
+flip_h = true
+
+[node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead/RightArm"]
+visible = false
+texture = ExtResource("15_right_arm_mask")
+centered = false
+flip_h = true
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=2125732217]
+libraries/ = SubResource("AnimationLibrary_main")
+autoplay = "idle"

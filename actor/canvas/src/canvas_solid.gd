@@ -4,7 +4,7 @@
 #region 依赖
 extends Node
 
-const InkPalette := preload("res://Ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 const ANCHOR_TAG := "static_anchor_points"
 ## 墨水物品所在的组；存关卡时用它区分"画出来的东西"和地形/生物。
 const INK_GROUP := "ink_item"
@@ -23,7 +23,7 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 
 #region 固化
 #把画布表面固化成动态刚体节点，并把结果打印到控制台
-func solidify(surface, world, editor_placed_nails := false) -> void:
+func solidify(surface, world, editor_placed_nails := false, record_undo := true) -> void:
 	if world == null:
 		push_error("CanvasSolid.solidify: world 为空")
 		return
@@ -37,10 +37,13 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	#先收集墨水，再只扫描实体与画布相交的局部区域。
 	var shape = PixelShape.new()
 	var anchors: Dictionary = {}
+	var original_pixels: Dictionary = {}
 	for y in range(size.y):
 		for x in range(size.x):
 			var material: int = surface.material_at(x, y)
 			if material != 0:
+				if record_undo:
+					original_pixels[Vector2i(x, y)] = surface.black_image.get_pixel(x, y)
 				shape.set_pixel(x, y, material)
 				if material == InkPalette.nail_material_id():
 					anchors[Vector2i(x, y)] = true
@@ -57,6 +60,7 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	#每个连通分量做成一个刚体节点，add_body_node 进世界（类比 add_child）
 	var spawned := 0
 	var total_pixels := 0
+	var previous_nodes: Array = world.get_children()
 	for part in parts:
 		if _spawn_component(world, pos, part, anchors, editor_placed_nails):
 			spawned += 1
@@ -65,6 +69,12 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	#固化成功后清空画布上的蓝图墨水
 	if spawned > 0:
 		surface.clear(false)      # 这些墨水已经变成刚体带走了，不能还回瓶子
+		var created_nodes: Array = []
+		for node in world.get_children():
+			if node is PixelBody2D and not previous_nodes.has(node):
+				created_nodes.append(weakref(node))
+		if record_undo:
+			surface.push_undo_step({"solidified": created_nodes, "pixels": original_pixels})
 	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
 #endregion
 
@@ -164,7 +174,7 @@ func _spawn_nails(world, body, anchors: Dictionary, editor_placed_nails := false
 ## 把**落在画布里的那部分**实体像素按材质颜色重采样回墨水，再把这些像素从刚体上摘掉。
 ## 只算画布内的部分：画布外的那半留在世界里继续当刚体，不再跟着一起消失。
 ## 跳过带 LIVING_TAG 的生物实体（玩家、手、NPC）。
-## ⚠️ 钉子不回收：材质 4 的像素不回画布；锚点像素被摘掉的钉子外观跟着丢，留下来的还钉在刚体上。
+## 钉子随实体返回画布，保留锚点位置，供再次固化使用。
 ## `keep_bodies = true` 只采样、不摘像素 —— 存保底 PNG 用（存图不能顺手删关卡）。
 func rasterize(surface, world, keep_bodies := false) -> void:
 	if world == null or surface == null:
@@ -202,6 +212,7 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 			_remove_all_nails(world, body)
 			world.remove_body_node(node)
 			if is_instance_valid(node):
+				world.remove_child(node)
 				node.queue_free()
 			continue
 		if plan.is_empty():
@@ -211,6 +222,7 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		_free_nails(world, body)
 		#整个刚体都在画布里 -> 引擎已经把它删了，节点跟着走；还剩像素的刚体留在世界里。
 		if not result.body_alive and is_instance_valid(node):
+			world.remove_child(node)
 			node.queue_free()
 	surface.refresh()
 	print("RESTORE bodies=%d pixels=%d fragments=%d kept=%s" % [
@@ -247,6 +259,7 @@ func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
 		var result: Dictionary = _fracture_preserving_remainders(world, body, plan, anchors)
 		_free_nails(world, body)
 		if not result.body_alive and is_instance_valid(node):
+			world.remove_child(node)
 			node.queue_free()
 	return removed
 
@@ -273,7 +286,9 @@ func sync_serializable_bodies(world) -> void:
 	world.realign_body_nodes()
 	for index in world.world.bodies.size():
 		var body = world.world.bodies[index]
-		if body == null or body.tags.has(LIVING_TAG):
+		# 怪物由 Monsters 场景保存。持有中的可破坏盾牌不带 living，
+		# 但仍是角色附属刚体，不能另存成无美术的 InkSaved 隐形障碍。
+		if body == null or body.tags.has(LIVING_TAG) or body.tags.has("map_monster"):
 			continue
 		var body_node = world._body_nodes[index] if index < world._body_nodes.size() else null
 		if body_node == null or not is_instance_valid(body_node):
@@ -454,7 +469,7 @@ func _sample_body(surface, body, plan: Dictionary, collect_plan := true) -> int:
 					if not plan.has(shape):
 						plan[shape] = {}
 					plan[shape][Vector2i(x, y)] = true
-				#钉子不回收进画布（color = null），但画布内的那部分一样从刚体上摘走。
+				# 钉子和墨水一起返回蓝图，再次固化时仍作为锚点。
 				var color = _canvas_color(surface, material)
 				if color == null:
 					continue
@@ -469,8 +484,10 @@ func _inside_canvas(surface, pixel: Vector2i) -> bool:
 		and pixel.x < surface.canvas_size.x and pixel.y < surface.canvas_size.y)
 
 
-## 材质到画布颜色的映射；null 表示该材质不回到画布（钉子不回收）。
+## 材质到画布颜色的映射；钉子保留，未知材质返回 null。
 func _canvas_color(surface, material: int):
+	if material == InkPalette.nail_material_id():
+		return surface.nail_color()
 	var color: Color = InkPalette.color_for_material_id(material)
 	return color if color.a > 0.0 else null
 #endregion

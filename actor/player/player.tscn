@@ -44,6 +44,8 @@ paint = ExtResource("4_body0")
 
 [node name="Visual" type="Sprite2D" parent="." unique_id=1684242029]
 process_physics_priority = 20
+z_index = 4096
+z_as_relative = false
 material = ExtResource("14_wobble")
 texture_filter = 1
 texture = SubResource("ImageTexture_g32og")
@@ -55,7 +57,8 @@ palette = Array[Color]([Color(0, 0, 0, 0), Color(0, 0, 0, 1), Color(0, 0, 0, 1),
 process_physics_priority = 25
 visible = false
 material = ExtResource("15_liquid_wobble")
-z_index = -1
+z_index = 4095
+z_as_relative = false
 texture_filter = 1
 centered = false
 script = ExtResource("12_ink")
