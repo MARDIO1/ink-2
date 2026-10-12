@@ -67,6 +67,23 @@ func extend(surface, point: Vector2) -> void:
 		drawing.path.append(p)
 		drawing.queue_redraw()
 
+## 被否掉的笔画（太短 / 没锚点 / 没连通 / 超墨量）不再"啪"地消失：先短淡出再 free。
+## ⚠️ 判据一个字没改，只是给它一个收场 —— 观感上不该有东西凭空不见。
+## 被否掉的正是 preview 状态，而 preview 笔画才是可见的那一份（见 yellow_stroke.gd 的 _draw）。
+const DISCARD_FADE := 0.18
+
+
+func _discard(stroke) -> void:
+	if not is_instance_valid(stroke):
+		return
+	if not stroke.is_inside_tree():
+		stroke.queue_free()
+		return
+	var tween: Tween = stroke.create_tween()
+	tween.tween_property(stroke, "modulate:a", 0.0, DISCARD_FADE)
+	tween.tween_callback(stroke.queue_free)
+
+
 func finish(surface, point: Vector2) -> bool:
 	if drawing == null or drawing.source_surface != surface:
 		return false
@@ -75,16 +92,16 @@ func finish(surface, point: Vector2) -> bool:
 	stroke.path.append(_world.to_local(surface.to_global(point.floor() + Vector2.ONE * 0.5)))
 	if not surface._inside(point) or not valid_anchor(surface, point) \
 	or not endpoint_legal(stroke.path[0]) or not endpoint_legal(stroke.path[-1]):
-		stroke.queue_free()
+		_discard(stroke)
 		return false
 	var distance: float = stroke.path[0].distance_to(stroke.path[-1])
 	if distance > 0.001 and distance < 9.0:
-		stroke.queue_free()
+		_discard(stroke)
 		return false
 	stroke.preview = false
 	if not stroke.build_pixels() or not stroke.connected() \
 	or (not surface.ink_free and stroke.original_area > surface._ink_room(Palette.YELLOW.id)):
-		stroke.queue_free()
+		_discard(stroke)
 		return false
 	stroke.paid = not surface.ink_free
 	var health = surface._health_node()
@@ -98,7 +115,7 @@ func finish(surface, point: Vector2) -> bool:
 
 func cancel() -> void:
 	if is_instance_valid(drawing):
-		drawing.queue_free()
+		_discard(drawing)
 	drawing = null
 
 func endpoint_legal(point: Vector2) -> bool:
