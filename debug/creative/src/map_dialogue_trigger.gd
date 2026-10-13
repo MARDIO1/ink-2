@@ -17,6 +17,7 @@ var _triggered := false
 
 func _ready() -> void:
 	add_to_group(GROUP)
+	visible = false
 	set_process(true)
 	set_physics_process(not Engine.is_editor_hint())
 	_refresh_editor_visibility()
@@ -71,11 +72,13 @@ func _find_player() -> Node:
 
 
 func _is_map_editor_active() -> bool:
+	if Engine.is_editor_hint():
+		return true
 	var level := get_parent()
 	if level != null and level.name == "DialogueTriggers":
 		level = level.get_parent()
 	var creative := level.get_node_or_null("Creative") if level != null else null
-	return creative != null and bool(creative.get("active"))
+	return creative != null and creative.get("active") == true
 
 
 func _refresh_editor_visibility() -> void:

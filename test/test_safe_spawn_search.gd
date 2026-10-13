@@ -52,6 +52,9 @@ func _run() -> void:
 	search.setup(recovery, level.world, player.body, hand)
 	var shifted: Dictionary = await search.find([target])
 	_check("blocked point finds nearby safe position", not shifted.is_empty() and shifted.position != origin)
+	if not shifted.is_empty():
+		recovery._body = player.body
+		player.teleport_to(level.to_global(shifted.position), shifted.rotation + level.global_rotation)
 	_check("actual player and hand clear obstacles", not shifted.is_empty() and await search.verify(shifted.position, shifted.rotation))
 	_check("items neither moved nor deleted", obstacle.position == obstacle_position and obstacle.shapes[0].pixel_count() == pixels)
 	_check("search bounded", search.candidates_checked <= Search.MAX_CANDIDATES and search.pairs_checked <= Search.MAX_PAIRS + 1)
@@ -66,9 +69,23 @@ func _run() -> void:
 	search.setup(recovery, level.world, player.body, hand)
 	var fallback: Dictionary = await search.find([target, {"position": second_origin, "rotation": 0.0}])
 	_check("blocked checkpoint falls back to next visited target", not fallback.is_empty() and fallback.position == second_origin)
+	var many_targets: Array = []
+	for i in 7:
+		many_targets.append(target)
+	many_targets.append({"position": second_origin, "rotation": 0.0})
+	search = Search.new()
+	search.setup(recovery, level.world, player.body, hand)
+	var last_fallback: Dictionary = await search.find(many_targets)
+	_check("budget reserves candidates for eighth visited target", not last_fallback.is_empty() and last_fallback.position == second_origin)
 	_remove(wall)
 	_remove(floor_body)
 	_remove(second_floor)
+	var lower_floor = _block(origin + Vector2(-300, ceilf(bounds.end.y) + 140), Vector2i(700, 16))
+	search = Search.new()
+	search.setup(recovery, level.world, player.body, hand)
+	var lower: Dictionary = await search.find([target])
+	_check("nearby search includes supported positions below checkpoint", not lower.is_empty() and lower.position.y > origin.y)
+	_remove(lower_floor)
 	search = Search.new()
 	search.setup(recovery, level.world, player.body, hand)
 	_check("unsupported empty space rejected", (await search.find([target])).is_empty())
@@ -89,6 +106,7 @@ func _run() -> void:
 	_check("failed recovery stays paused with message", not escaped and paused and esc.visible and esc._recovery_status.visible)
 	_check("failed search leaves player untouched", player.body.position == previous)
 	_check("failure releases button lock", not esc._recovery_busy and not esc.continue_button.disabled)
+	_check("failure message does not ask player to clear items", not recovery.recovery_error.contains("清理"))
 	# 恢复游玩前突然有物品进入已选落点，首个真实物理步应自动重新搜索。
 	_block(origin + Vector2(-300, ceilf(bounds.end.y) + 2), Vector2i(700, 16))
 	_check("safe recovery succeeds", await esc._on_escape_stuck_button_pressed())
@@ -102,6 +120,18 @@ func _run() -> void:
 		await process_frame
 	_check("post-physics obstruction automatically relocates", not paused and player.body.position.distance_to(chosen) > 1.0)
 	_check("late intruder not deleted", level.world.bodies.has(intruder))
+	# 第二次真实物理步仍被新物品占用，也应继续自动搜索，而非提示玩家重试。
+	chosen = player.body.position
+	var second_intruder = _block(chosen + bounds.position - Vector2(3, 3), Vector2i(bounds.size) + Vector2i(6, 6))
+	await physics_frame
+	await process_frame
+	for i in 120:
+		if not recovery.recovering and recovery._pending_safety_check.is_empty() and not esc._recovery_busy:
+			break
+		await process_frame
+	_check("repeated post-physics obstruction automatically relocates", not paused and player.body.position.distance_to(chosen) > 1.0 and not esc._recovery_status.visible)
+	_check("automatic retries share candidate budget", recovery.last_search_stats.candidates <= Search.MAX_CANDIDATES)
+	_check("second intruder not deleted", level.world.bodies.has(second_intruder))
 	paused = true
 	for i in 200:
 		_block(origin + Vector2(-50 + (i % 10) * 7, -80 + (i / 10) * 4), Vector2i(4, 4), false)

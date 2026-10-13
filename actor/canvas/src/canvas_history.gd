@@ -52,7 +52,8 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 			if stroke.source_surface != surface and not include_bodies:
 				continue
 			state.yellow.append({"id": identity(stroke), "path": stroke.path.duplicate(),
-				"width": stroke.brush_width, "worn": stroke.worn.duplicate(), "paid": stroke.paid,
+				"width": stroke.brush_width, "compact": stroke.compact_raster,
+				"worn": stroke.worn.duplicate(), "paid": stroke.paid,
 				"active": stroke.activated, "state": stroke.state, "rest": stroke.rest_length,
 				"a": stroke.saved_anchor_a, "b": stroke.saved_anchor_b, "source": weakref(stroke.source_surface) if stroke.source_surface != null else null})
 	var health = surface._health_node()
@@ -119,6 +120,7 @@ static func restore(canvas, state: Dictionary) -> void:
 			var stroke := Stroke.new()
 			stroke.path = saved.path
 			stroke.brush_width = saved.width
+			stroke.compact_raster = saved.get("compact", false)
 			stroke.worn = saved.worn
 			stroke.paid = saved.paid
 			stroke.rest_length = saved.rest

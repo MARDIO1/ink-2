@@ -50,7 +50,7 @@ func _run() -> void:
 	_move(body, points[1].global_position)
 	recovery._update_visited_points()
 	_move(body, Vector2(2850, -1000))
-	_check("nearest visited selected, not nearer unvisited", recovery._nearest_visited_point() == points[1])
+	_check("only passed checkpoints visited", recovery._visited_points.has(points[0]) and recovery._visited_points.has(points[1]) and not recovery._visited_points.has(points[2]))
 	var esc: Node = get_first_node_in_group(&"esc_menu")
 	esc.open_menu()
 	_check("menu recovery button enabled", not esc.get_node("Center/Panel/Buttons/EscapeStuckButton").disabled and paused)
@@ -66,9 +66,12 @@ func _run() -> void:
 	_check("hand reset clears overrides and grip", hand.enabled and hand.grabbed_body == null and hand._grip_override == null and hand._target_override == null)
 	points[1].free()
 	_move(body, Vector2(2850, -1000))
-	_check("deleted checkpoint safely skipped", recovery._nearest_visited_point() == points[0])
+	esc.open_menu()
+	var restored: bool = await esc._on_escape_stuck_button_pressed()
+	_check("deleted checkpoint safely skipped", restored and body.position.is_equal_approx(points[0].global_position))
 	var previous_point_id := points[0].get_instance_id()
-	await app.request_level_change("res://map/asset/imported/扉页（教程关）.tscn")
+	# 使用带固定支撑的基础关卡，避免编辑中的教程地图影响出生点回退验证。
+	await app.request_level_change("res://map/main.tscn")
 	await process_frame
 	var next: Node = app.level_root.get_child(0).get_node("Player/FallDeath")
 	var leaked_visit := false
@@ -83,6 +86,15 @@ func _run() -> void:
 	_check("editor disables recovery", esc.get_node("Center/Panel/Buttons/EscapeStuckButton").disabled and not await next.escape_stuck())
 	creative.active = false
 	esc._on_continue_button_pressed()
+	paused = true
+	var next_level := app.level_root.get_child(0) as Node2D
+	var next_player: Node2D = next_level.get_node("Player")
+	next_level.position = Vector2(300, 160)
+	next_level.rotation = 0.2
+	var local_target := Vector2(-128, 90)
+	next_player.teleport_to(next_level.to_global(local_target), next_level.global_rotation + 0.3)
+	_check("shared teleport converts world pose to level coordinates", next_player.body.position.is_equal_approx(local_target) and is_equal_approx(next_player.body.rotation, 0.3))
+	paused = false
 	app.queue_free()
 	await process_frame
 	quit(1 if failures else 0)

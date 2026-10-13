@@ -2,6 +2,7 @@ extends "res://test/test_collision_damage.gd"
 
 const NailVisual := preload("res://actor/nail/src/nail.gd")
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 
 
 func _initialize() -> void:
@@ -28,7 +29,7 @@ func _run() -> void:
 	var play_tool_grid := small_canvas.get_node("WorkbenchUI/Buttons/Grid") as GridContainer
 	var play_tool_buttons := small_canvas.get_node("WorkbenchUI/Buttons") as Control
 	var play_toolbar_valid: bool = play_tool_grid.columns == 2 \
-		and play_tool_buttons.position == Vector2(-42.0, 160.0) \
+		and play_tool_buttons.position == Vector2(-44.0, 184.0) \
 		and play_tool_grid.get_node("Brush").position.y == 0.0 \
 		and not play_tool_grid.get_node("Nail").visible \
 		and (small_canvas.get_node("WorkbenchUI/Buttons/Hand") as Button).size \
@@ -99,7 +100,7 @@ func _run() -> void:
 	valid = valid and player.visible
 	visibility_button.button_pressed = false
 
-	# 炸弹狂侧面保留旧地图兼容能力，但不再出现在小怪放置栏。
+	# 放置栏提供当前支持的小怪。
 	var monster_palette: CanvasLayer = creative.get_node("MonsterPalette")
 	valid = valid and monster_palette.visible
 	var palette_toggle := monster_palette.get_node("Root/PaletteToggle") as Button
@@ -126,7 +127,7 @@ func _run() -> void:
 	valid = valid and layout_grid.has_node("PlacePlayCanvasButton")
 	valid = valid and layout_grid.has_node("MovePlayCanvasButton")
 	valid = valid and not layout_grid.has_node("PlaceSpawnButton")
-	valid = valid and not monster_grid.has_node("BombSideButton")
+	valid = valid and monster_grid.has_node("BombSideButton")
 	valid = valid and not monster_grid.has_node("AdjustMonsterButton")
 	valid = valid and monster_grid.has_node("ResetMonsterScaleButton")
 	var has_place_dialogue := dialogue_grid.has_node("PlaceDialogueTriggerButton")
@@ -211,14 +212,14 @@ func _run() -> void:
 	undo_key.keycode = KEY_Z
 	undo_key.ctrl_pressed = true
 	undo_key.pressed = true
-	creative._unhandled_input(undo_key)
+	creative._input(undo_key)
 	valid = valid and creative.monster_count() == 0
 	valid = valid and surface.black_image.get_pixelv(undo_pixel).a > 0.5
 	valid = valid and creative.undo_last_edit()
 	valid = valid and surface.black_image.get_pixelv(undo_pixel) == before_undo_color
 
 	# 框选删除是一个原子撤销步骤：未固化画布像素与已固化实体像素一起删除，
-	# Ctrl+Z 后两者都回到画布，下一次保存会照常重新固化。
+	# Ctrl+Z 后蓝图恢复到画布，已固化像素恢复为实体。
 	var select_delete_icon := map_canvas.get_node(
 		"WorkbenchUI/Buttons/Grid/SelectDelete/ToolIcon"
 	) as TextureRect
@@ -238,7 +239,13 @@ func _run() -> void:
 	var selection_undo_restored: bool = creative.undo_last_edit()
 	valid = valid and selection_undo_restored
 	valid = valid and surface.is_solid(loose_pixel.x, loose_pixel.y)
-	valid = valid and surface.is_solid(baked_pixel.x, baked_pixel.y)
+	var baked_world_position: Vector2 = surface.to_global(Vector2(baked_pixel) + Vector2.ONE * 0.5)
+	var restored_baked_pixel := false
+	for entity in scene.world.bodies:
+		var local_pixel := Vector2i(entity.to_local(baked_world_position).floor())
+		for shape in entity.shapes:
+			restored_baked_pixel = restored_baked_pixel or shape.get_pixel(local_pixel.x, local_pixel.y) == InkPalette.BLACK.id
+	valid = valid and restored_baked_pixel and not surface.is_solid(baked_pixel.x, baked_pixel.y)
 	surface.clear(false)
 
 	# 固化墨水只有在整体离开地图画布后才自动清除；普通动态场景节点不受影响。

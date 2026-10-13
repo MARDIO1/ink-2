@@ -44,15 +44,18 @@ func _bounds(box) -> Rect2:
 	var size: Vector2 = box.u.abs() * box.h.x + box.v.abs() * box.h.y
 	return Rect2(box.center - size, size * 2.0)
 
-func _pose_boxes(position: Vector2, rotation: float) -> Array:
+func _pose_boxes(position: Vector2, rotation: float, actual_hand := false) -> Array:
 	var result: Array = []
 	for rect in player_body.rects:
 		result.append(_obb(rect, position, rotation, 0.5))
 	if hand != null:
 		var offset: Vector2 = hand.rest_offset.limit_length(hand.max_reach - hand.reach_solver_margin)
-		var hand_rotation: float = rotation + offset.angle()
+		var hand_rotation: float = rotation
 		var hand_position: Vector2 = position + player_body.local_com.rotated(rotation) \
 			+ offset.rotated(rotation) - hand.body.local_com.rotated(hand_rotation)
+		if actual_hand:
+			hand_rotation = hand.body.rotation
+			hand_position = hand.body.position
 		for rect in hand.body.rects:
 			result.append(_obb(rect, hand_position, hand_rotation, 0.5))
 	return result
@@ -73,8 +76,8 @@ func _nearby(bounds: Rect2) -> Array:
 			await _yield_if_needed()
 	return result
 
-func pose_safe(position: Vector2, rotation: float, nearby: Array) -> bool:
-	var boxes := _pose_boxes(position, rotation)
+func pose_safe(position: Vector2, rotation: float, nearby: Array, actual_hand := false) -> bool:
+	var boxes := _pose_boxes(position, rotation, actual_hand)
 	if boxes.is_empty():
 		return false
 	for box in boxes:
@@ -83,9 +86,9 @@ func pose_safe(position: Vector2, rotation: float, nearby: Array) -> bool:
 			if not bounds.intersects(obstacle.aabb):
 				continue
 			for rect in obstacle.rects:
-				pairs_checked += 1
-				if pairs_checked > MAX_PAIRS:
+				if pairs_checked >= MAX_PAIRS:
 					return false
+				pairs_checked += 1
 				var other = Collide.obb_from_local_rect(obstacle, rect)
 				if bounds.intersects(_bounds(other)):
 					Collide.sat_signed_into(box, other, _sat)
@@ -111,7 +114,18 @@ func pose_safe(position: Vector2, rotation: float, nearby: Array) -> bool:
 
 func find(targets: Array, skipped: Array = []) -> Dictionary:
 	var step: float = clampf(player_body.aabb.size.y * 0.25, 16.0, 32.0)
-	for target in targets:
+	var offsets: Array[Vector2] = []
+	for vertical in [0, -1, 1, -2, 2, -3, 3, -4, 4, -6, 6]:
+		for side in [0, -1, 1, -2, 2, -3, 3]:
+			offsets.append(Vector2(side, vertical) * step)
+	offsets.sort_custom(func(a, b):
+		if a.length_squared() == b.length_squared():
+			return a.y < b.y
+		return a.length_squared() < b.length_squared())
+	for target_index in targets.size():
+		var target: Dictionary = targets[target_index]
+		# 为后续经过的点保留预算，避免最近几个点占满所有候选名额。
+		var target_limit := candidates_checked + maxi(1, (MAX_CANDIDATES - candidates_checked) / (targets.size() - target_index))
 		var position: Vector2 = target.position
 		var rotation: float = target.rotation
 		var boxes := _pose_boxes(position, rotation)
@@ -121,26 +135,28 @@ func find(targets: Array, skipped: Array = []) -> Dictionary:
 		for box in boxes:
 			search_bounds = search_bounds.merge(_bounds(box))
 		search_bounds = search_bounds.grow(192.0)
+		search_bounds.size.y += 96.0 # 最低候选位置下方的支撑也必须纳入查询。
 		var nearby: Array = await _nearby(search_bounds)
-		# 同高度左右之后逐步向上，避开碎屑覆盖；所有点都已按距离排序。
-		for up in [0, 1, 2, 3, 4, 6]:
-			for side in [0, -1, 1, -2, 2, -3, 3]:
-				if candidates_checked >= MAX_CANDIDATES or pairs_checked >= MAX_PAIRS:
-					return {}
-				var candidate := position + Vector2(side, -up) * step
-				if skipped.has(candidate):
-					continue
-				candidates_checked += 1
-				if await pose_safe(candidate, rotation, nearby):
-					return {"position": candidate, "rotation": rotation}
-				await _yield_if_needed()
+		# 按距离由近到远覆盖上下左右；同距离优先向上避开碎屑。
+		for offset in offsets:
+			if candidates_checked >= target_limit:
+				break
+			if candidates_checked >= MAX_CANDIDATES or pairs_checked >= MAX_PAIRS:
+				return {}
+			var candidate: Vector2 = position + offset
+			if skipped.has(candidate):
+				continue
+			candidates_checked += 1
+			if await pose_safe(candidate, rotation, nearby):
+				return {"position": candidate, "rotation": rotation}
+			await _yield_if_needed()
 	return {}
 
 func verify(position: Vector2, rotation: float) -> bool:
-	var boxes := _pose_boxes(position, rotation)
+	var boxes := _pose_boxes(position, rotation, true)
 	if boxes.is_empty():
 		return false
 	var bounds := _bounds(boxes[0])
 	for box in boxes:
 		bounds = bounds.merge(_bounds(box))
-	return await pose_safe(position, rotation, await _nearby(bounds.grow(100.0)))
+	return await pose_safe(position, rotation, await _nearby(bounds.grow(100.0)), true)

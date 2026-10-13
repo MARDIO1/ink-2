@@ -117,7 +117,7 @@ func _process(delta: float) -> void:
 
 func _editor_active() -> bool:
 	var creative := _level().get_node_or_null("Creative") if _level() != null else null
-	return creative != null and bool(creative.get("active"))
+	return creative != null and creative.get("active") == true
 
 
 func contains_world_point(point: Vector2) -> bool:

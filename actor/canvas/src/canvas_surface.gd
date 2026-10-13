@@ -25,11 +25,6 @@ func _ready() -> void:
 #endregion
 
 
-func _restore_saved_ink() -> void:
-	if not saved_ink_path.is_empty() and FileAccess.file_exists(saved_ink_path):
-		load_ink(saved_ink_path)
-
-
 #region 外观
 ## 表面宽高，单位 px；由父 Canvas 的 canvas_size 同步，直接修改父节点即可。
 @export var canvas_size := Vector2i(256, 256):
@@ -54,7 +49,7 @@ func _restore_saved_ink() -> void:
 		queue_redraw()
 ## 画布边框线宽，单位 px。
 @export var border_width := 2.0
-## 地图编辑自动保存使用的未固化画布快照；场景载入完成后自动恢复。
+## 地图编辑自动保存使用的快照路径；由 Creative 按需恢复。
 @export_file("*.res", "*.tres") var saved_ink_path := ""
 
 #纸底和边框由表面画，黑色墨水由 BlackSprite 盖在上面
@@ -308,16 +303,10 @@ func _resize() -> void:
 	queue_redraw()
 
 
-## 扩大画布时保留已有像素、墨水账本和钉子。
-## content_offset 表示旧内容在新画布中的左上角；扩左/扩上时分别传入正的 x/y 偏移。
+## 调整画布时平移并裁切像素与钉子，同时保留墨水账本。
+## content_offset 表示旧内容在新画布中的偏移；负值会裁掉对应边缘。
 func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZERO) -> bool:
-	new_size = Vector2i(maxi(new_size.x, 1), maxi(new_size.y, 1))
-	if content_offset.x < 0 or content_offset.y < 0:
-		push_error("CanvasSurface: content_offset 不能为负数")
-		return false
-	if content_offset.x + canvas_size.x > new_size.x \
-	or content_offset.y + canvas_size.y > new_size.y:
-		push_error("CanvasSurface: 新画布装不下旧内容")
+	if new_size.x < 1 or new_size.y < 1:
 		return false
 	if new_size == canvas_size and content_offset == Vector2i.ZERO:
 		return true
@@ -345,7 +334,9 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 
 	nail_layer.clear()
 	for nail in old_nails:
-		nail_layer.add(Vector2i(nail) + content_offset)
+		var shifted := Vector2i(nail) + content_offset
+		if Rect2i(Vector2i.ZERO, new_size).has_point(shifted):
+			nail_layer.add(shifted)
 	queue_redraw()
 	return true
 
@@ -761,20 +752,6 @@ func undo_last_edit() -> bool:
 	if step.has("transaction"):
 		get_parent().History.restore(get_parent(), step.transaction)
 		return true
-	if step.has("solidified"):
-		var canvas = get_parent()
-		for reference in step.solidified:
-			var node = reference.get_ref()
-			if not is_instance_valid(node) or node.is_queued_for_deletion():
-				continue
-			canvas.solid._remove_all_nails(canvas.world, node.body)
-			canvas.world.remove_body_node(node)
-			canvas.world.remove_child(node)
-			node.queue_free()
-		for pixel: Vector2i in step.pixels:
-			write_pixel(pixel, step.pixels[pixel])
-		refresh()
-		return true
 	if step.has("yellow"):
 		var yellow = yellow_rule()
 		if yellow != null:
@@ -979,19 +956,6 @@ func _rebuild_loaded_metadata() -> void:
 			nail_layer.add(Vector2i(index % width, index / width))
 		elif InkPalette.is_ink(material_id):
 			ink_px_by_material[material_id] = ink_px_of(material_id) + 1
-
-
-#按像素重新数一遍画布自己的账 —— 读盘、以及怀疑账本漂了的时候用。
-#⚠️ 会全图扫一遍，只走一次性路径，别塞进热循环。
-func recount_ink_px() -> void:
-	ink_px_by_material = {}
-	_pending_ink = {}
-	for y in range(canvas_size.y):
-		for x in range(canvas_size.x):
-			if black_image.get_pixel(x, y).a > 0.5:
-				var material_id := material_at(x, y)
-				if InkPalette.is_ink(material_id):
-					ink_px_by_material[material_id] = ink_px_of(material_id) + 1
 
 
 #按像素颜色重建钉子外观层；只在读盘时走一次。

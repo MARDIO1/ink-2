@@ -13,5 +13,10 @@ func _enter_tree() -> void:
 
 
 func pick_rect() -> Rect2:
-	var displayed_size: Vector2 = size * get_global_transform().get_scale().abs()
-	return Rect2(global_position, displayed_size).grow(12.0)
+	return (get_global_transform() * Rect2(Vector2.ZERO, size)).grow(12.0)
+
+
+func contains_world_point(point: Vector2, margin: float) -> bool:
+	var transform := get_global_transform()
+	var padding := Vector2(margin / transform.x.length(), margin / transform.y.length())
+	return Rect2(Vector2.ZERO, size).grow_individual(padding.x, padding.y, padding.x, padding.y).has_point(transform.affine_inverse() * point)

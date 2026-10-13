@@ -53,7 +53,7 @@ func _recovery_controller() -> Node:
 	return player.get_node_or_null("FallDeath") if player != null else null
 
 
-func _on_escape_stuck_button_pressed(skipped: Array = [], retry := 0) -> bool:
+func _on_escape_stuck_button_pressed(skipped: Array = [], search = null) -> bool:
 	if _recovery_busy:
 		return false
 	var recovery := _recovery_controller()
@@ -63,14 +63,13 @@ func _on_escape_stuck_button_pressed(skipped: Array = [], retry := 0) -> bool:
 	for button in $Center/Panel/Buttons.get_children():
 		if button is Button:
 			button.disabled = true
-	show_recovery_status("正在寻找安全落点…")
-	var succeeded: bool = await recovery.escape_stuck(skipped, retry)
+	show_recovery_status("")
+	var succeeded: bool = await recovery.escape_stuck(skipped, search)
 	_recovery_busy = false
 	for button in $Center/Panel/Buttons.get_children():
 		if button is Button:
 			button.disabled = false
 	if succeeded:
-		show_recovery_status("")
 		_set_open(false)
 	else:
 		show_recovery_status(recovery.recovery_error)

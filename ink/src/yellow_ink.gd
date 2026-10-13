@@ -182,6 +182,35 @@ func refund(stroke, surface, amount: int) -> void:
 	if stroke.paid and health != null:
 		health.add(Palette.YELLOW.id, amount)
 
+
+## 缩小地图时只裁掉旧画布中被移除的区域，不影响画布外的其他黄墨。
+func crop_to_surface(surface, kept: Rect2i) -> void:
+	if drawing != null and drawing.source_surface == surface:
+		cancel()
+	var original := Rect2i(Vector2i.ZERO, surface.canvas_size)
+	for stroke in strokes.duplicate():
+		var removed: Array[Vector2i] = []
+		for cell: Vector2i in stroke.cells:
+			var pixel := Vector2i(surface.to_local(stroke.pixel_world(Vector2(cell) + Vector2.ONE * 0.5)).floor())
+			if original.has_point(pixel) and not kept.has_point(pixel):
+				removed.append(cell)
+		if removed.is_empty():
+			continue
+		refund(stroke, surface, removed.size())
+		for cell in removed:
+			stroke.cells.erase(cell)
+			stroke.occupancy.clear_pixel(cell.x, cell.y)
+			stroke.worn.append(Vector2(cell))
+			if stroke.image != null:
+				stroke.image.set_pixelv(cell - stroke.bounds.position, Color.TRANSPARENT)
+		if stroke.texture != null:
+			stroke.texture.update(stroke.image)
+		if stroke.state == Stroke.State.ACTIVE:
+			stroke.fail()
+		if stroke.cells.is_empty():
+			strokes.erase(stroke)
+			stroke.queue_free()
+
 func undo(stroke, surface) -> void:
 	if not is_instance_valid(stroke) or not strokes.has(stroke) or stroke.state != Stroke.State.EDITING:
 		return

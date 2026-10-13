@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bxkedq8di8t66"
-path="res://.godot/imported/第一关.png-a5ab8a6456d1c6114cbd9b5bfa4a62b7.ctex"
+uid="uid://bu0lbgaki7nif"
+path="res://.godot/imported/ink_cursor_15x15.svg-c59d32aa8bc6d51b717f162af75604b1.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://map/asset/imported/第一关.png"
-dest_files=["res://.godot/imported/第一关.png-a5ab8a6456d1c6114cbd9b5bfa4a62b7.ctex"]
+source_file="res://ui/cursor/asset/ink_cursor_15x15.svg"
+dest_files=["res://.godot/imported/ink_cursor_15x15.svg-c59d32aa8bc6d51b717f162af75604b1.ctex"]
 
 [params]
 
@@ -38,3 +38,6 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
+svg/scale=1.0
+editor/scale_with_editor_scale=false
+editor/convert_colors_with_editor_theme=false

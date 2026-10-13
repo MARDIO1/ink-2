@@ -190,18 +190,7 @@ func _consume_path(world, body: PBody, path: Array, budget: float, result: Dicti
 #endregion
 
 
-#region 接触合成
-## 把同一碰撞对的多个接触点按冲量合成为一次面冲击。
-func _impact(points: Array) -> Dictionary:
-	return ContactImpact.summarize(points)
-#endregion
-
 #region 像素路径
-## 返回世界点所在的刚体像素材质；空白位置返回 0。
-func _material_at(body: PBody, point: Vector2) -> int:
-	return ContactImpact.material_at(body, point)
-
-
 ## 局部网格 DDA：每个进入的像素只访问一次；第一处空洞停止，跨材料继续。
 ## 支撑已饱和且累计像素成本覆盖未经减伤的预算时，后续深度不再影响结果。
 func _trace(body: PBody, origin: Vector2, direction: Vector2, world = null,

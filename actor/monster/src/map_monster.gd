@@ -10,6 +10,7 @@ const LIVING_TAG := "living"
 const MONSTER_TAG := "map_monster"
 const Ragdoll := preload("res://actor/monster/src/monster_ragdoll.gd")
 const HealthBar := preload("res://actor/monster/src/monster_health_bar.gd")
+const DeathEffect := preload("res://actor/effects/character_death.gd")
 signal health_changed(current: float, maximum: float)
 signal died
 const HEALTH_MULTIPLIER := 5.0
@@ -72,8 +73,6 @@ const BONE_DAMPING := 10.0
 var _visual: Node2D
 var _visual_base_position := Vector2.ZERO
 var _visual_base_rotation := 0.0
-## 固化时记录的初始位置，重置关卡时可回到此处。
-var initial_position := Vector2.ZERO
 var _kick_offset := Vector2.ZERO
 var _kick_velocity := Vector2.ZERO
 var _twist := 0.0
@@ -117,7 +116,6 @@ func _ready() -> void:
 			_bone_velocity[bone] = 0.0
 			_bone_last_applied[bone] = 0.0
 			_bone_base_rotation[bone] = bone.rotation
-	initial_position = global_position
 	max_health = (2000.0 if kind == Kind.SHIELD_SOLDIER else (500.0 if kind == Kind.BOMB_SIDE else 1000.0)) * HEALTH_MULTIPLIER
 	health = max_health
 	if not Engine.is_editor_hint():
@@ -279,24 +277,6 @@ func set_editor_physics_paused(paused: bool) -> void:
 		physics_world.world.unfreeze(physics_body)
 
 
-## 把当前世界坐标记为初始位置（固化时调用）。
-func store_initial_position() -> void:
-	initial_position = global_position
-
-
-## 回到初始位置，并清零受击偏移。
-func reset_to_initial_position() -> void:
-	global_position = initial_position
-	_kick_offset = Vector2.ZERO
-	_kick_velocity = Vector2.ZERO
-	_twist = 0.0
-	_twist_velocity = 0.0
-	for key in _bone_twist:
-		_bone_twist[key] = 0.0
-		_bone_velocity[key] = 0.0
-	sync_physics_from_node()
-
-
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
@@ -410,6 +390,24 @@ func _is_point_in_hit_volume(world_point: Vector2) -> bool:
 	return world_point.distance_squared_to(global_position) <= radius * radius
 
 
+## 操纵工具按可见身体和四肢选中，不把点击区域限制在脚底附近。
+func editor_contains_point(world_point: Vector2, margin: float) -> bool:
+	if _visual == null:
+		return false
+	var has_art := false
+	for sprite: Sprite2D in _visual.find_children("*", "Sprite2D", true, false):
+		if sprite.texture == null or not sprite.is_visible_in_tree():
+			continue
+		has_art = true
+		var transform := sprite.global_transform
+		var padding := Vector2(margin / transform.x.length(), margin / transform.y.length())
+		var rect := sprite.get_rect().grow_individual(padding.x, padding.y, padding.x, padding.y)
+		if rect.has_point(sprite.to_local(world_point)):
+			return true
+	var radius := margin if has_art else maxf(margin, editor_pick_radius * global_scale.abs().x)
+	return global_position.distance_squared_to(world_point) <= radius * radius
+
+
 ## 叉积法判断点是否在凸多边形内（顶点按顺时针或逆时针排列）。
 func _point_in_convex_polygon(point: Vector2, polygon: PackedVector2Array) -> bool:
 	var n := polygon.size()
@@ -520,6 +518,20 @@ func apply_damage(amount: float, hit_body = null) -> float:
 
 
 func _finish_death() -> void:
+	var world := _find_physics_world() as Node2D
+	if world != null and _visual != null:
+		var sprites := DeathEffect.visible_sprites(_visual)
+		if is_instance_valid(_shield_visual) and _shield_visual.visible:
+			sprites.append(_shield_visual)
+		var effect_style := DeathEffect.Style.SOLDIER
+		if kind == Kind.SHIELD_SOLDIER:
+			effect_style = DeathEffect.Style.SHIELD
+		elif kind == Kind.BOMB_SIDE:
+			effect_style = DeathEffect.Style.BOMB
+		var foot := DeathEffect.sprites_foot_position(sprites, global_position)
+		DeathEffect.spawn(world, sprites, effect_style, foot, last_contact_impulse.x)
+	# 先解除角色物理，再保留独立残影播放，不留下尸体碰撞或回正马达。
+	_release_physics_body()
 	queue_free()
 
 

@@ -21,8 +21,7 @@ class Probe:
 		for contact in contacts:
 			if (contact.a == hand and contact.b == target) or (contact.b == hand and contact.a == target):
 				approach = maxf(approach, contact.approach)
-				# ⚠️ 现行 API：_lanes() 已并入 _impact()（返回的 impulse 就是每条 lane 的冲量）。
-				var lane: Dictionary = _impact(contact.points)
+				var lane: Dictionary = ContactImpact.summarize(contact.points)
 				if not lane.is_empty():
 					impulse = maxf(impulse, lane["impulse"])
 		for scale in scales:
