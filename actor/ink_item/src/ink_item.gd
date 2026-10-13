@@ -16,6 +16,27 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 
 
 #region 装载
+## 白墨沿用刚体运动和渲染；无碰撞，不参与普通查询和爆炸。
+func bake():
+	var result = super.bake()
+	var white := false
+	var other := false
+	for shape in collect_shapes():
+		for chunk in shape.chunks.values():
+			for material in chunk.mat:
+				white = white or material == InkPalette.WHITE.id
+				other = other or (material != 0 and material != InkPalette.WHITE.id)
+	if white and not other:
+		result.tags["white_ink"] = true
+		result.tags["keep_disconnected"] = true
+		result.tags["linear_damping"] = 0.0
+		result.tags["angular_damping"] = 0.0
+		result.collision_layer = 0
+		result.collision_mask = 0
+		result.angular_velocity = 0.0
+		result.is_static = false
+	return result
+
 #⚠️ 不能挂在 _bake_lazily 上：PixelWorld.rebuild() 走的是 bake_node() → bake()，
 #   不经过"按需烘焙"那个钩子。所以延迟一帧，等世界把刚体和形状都装好再补锚点。
 func _ready() -> void:

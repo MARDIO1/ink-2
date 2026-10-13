@@ -94,6 +94,9 @@ func _physics_process(delta: float) -> void:
 func _step(delta: float) -> Dictionary:
 	var start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var count: int = _physics.prepare_fixed(delta)
+	for extension in _extensions:
+		if extension.has_method("prepare_fixed"):
+			extension.prepare_fixed(_context(), delta)
 	_reaction_scale = 1.0
 	var result: Dictionary = _empty_result()
 	for i in count:
@@ -111,7 +114,7 @@ func _step(delta: float) -> Dictionary:
 
 ## 生成规则共享的只读上下文；服务表用于规则间依赖接口，不暴露具体脚本类型。
 func _context() -> Dictionary:
-	return {"world": _main.world, "player_body": _player.body,
+	return {"world": _main.world, "pixel_world": _main, "player_node": _player, "player_body": _player.body,
 		"protected_bodies": _protected, "services": _services}
 
 

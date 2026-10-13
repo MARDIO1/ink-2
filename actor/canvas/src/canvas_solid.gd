@@ -36,6 +36,7 @@ func solidify(surface, world, editor_placed_nails := false, record_undo := true)
 
 	#先收集墨水，再只扫描实体与画布相交的局部区域。
 	var shape = PixelShape.new()
+	var white = PixelShape.new()
 	var anchors: Dictionary = {}
 	var original_pixels: Dictionary = {}
 	for y in range(size.y):
@@ -44,13 +45,19 @@ func solidify(surface, world, editor_placed_nails := false, record_undo := true)
 			if material != 0:
 				if record_undo:
 					original_pixels[Vector2i(x, y)] = surface.black_image.get_pixel(x, y)
-				shape.set_pixel(x, y, material)
+				if material == InkPalette.WHITE.id:
+					white.set_pixel(x, y, material)
+				else:
+					shape.set_pixel(x, y, material)
 				if material == InkPalette.nail_material_id():
 					anchors[Vector2i(x, y)] = true
 	var ink_pixels: int = shape.pixel_count()
 	var rejected_pixels: int = _remove_overlaps(shape, surface, world.world.bodies)
 
 	var parts: Array = Destruction.split(shape, 1)
+	# 白墨独立载体允许覆盖现有实体；断开的笔迹也共用一个速度。
+	if not white.is_empty():
+		parts.append(white)
 	if parts.is_empty():
 		if ink_pixels > 0:
 			surface.clear()

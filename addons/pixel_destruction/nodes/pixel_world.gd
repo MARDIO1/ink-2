@@ -447,7 +447,8 @@ func bake_node(node: _PixelBody2D) -> PBody:
 	var shapes := node.collect_shapes()
 	if shapes.is_empty():
 		return null
-	var b: PBody = world.add_body(node.bake(), shapes, Callable(self, "_density_of"))
+	var b: PBody = node.bake()
+	b = world.add_body(b, shapes, Callable(self, "_density_of"), b.tags.get("keep_disconnected", false))
 	# ⚠️ _body_nodes 与 world.bodies **按下标一一对应**（rebuild 末尾和
 	#    has_own_sprite 的过滤都依赖这个不变量）。两边必须同时 append/remove_at。
 	#

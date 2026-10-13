@@ -152,6 +152,8 @@ func clear_drafts(surface) -> void:
 
 func reclaim(surface) -> void:
 	for stroke in strokes.duplicate():
+		if stroke.get_meta(&"corroded", false):
+			continue
 		if stroke.state == Stroke.State.EDITING:
 			continue
 		var selected: Array[Vector2i] = []
@@ -189,6 +191,21 @@ func undo(stroke, surface) -> void:
 #endregion
 
 #region 物理与破坏
+func service_name() -> StringName:
+	return &"yellow"
+
+## 化学擦除立即移除约束；沿用死亡动画，保证静止弹簧也播放释放声。
+func dissolve(stroke) -> void:
+	if stroke.state != Stroke.State.ACTIVE:
+		return
+	var at: Vector2 = stroke.pixel_world(Vector2(stroke.bounds.get_center()))
+	_spring_audio.erase(stroke.get_instance_id())
+	_play_spring(release_stream, at, spring_volume_db(1.0), 1.0)
+	stroke.fail()
+	# 消散后的笔画不再可回收，也不再计入地图存档。
+	stroke.paid = false
+	stroke.set_meta(&"corroded", true)
+
 func connect_stroke(stroke, world) -> void:
 	if stroke.joint != null and stroke.joint.is_active():
 		return
@@ -306,11 +323,14 @@ func _play_spring(stream: AudioStream, position: Vector2, volume_db: float, pitc
 	voice.play()
 
 func _process(delta: float) -> void:
-	for stroke in strokes:
+	for stroke in strokes.duplicate():
 		if stroke.state == Stroke.State.ACTIVE:
 			stroke.update_visual()
 		elif stroke.state == Stroke.State.DYING:
 			stroke.animate_death(delta)
+		elif stroke.state == Stroke.State.REMOVED and stroke.get_meta(&"corroded", false):
+			strokes.erase(stroke)
+			stroke.queue_free()
 		elif stroke.state == Stroke.State.EDITING and is_instance_valid(stroke.source_surface):
 			stroke.visible = stroke.source_surface.is_visible_in_tree()
 	_update_overlap()

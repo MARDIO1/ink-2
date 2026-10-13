@@ -17,6 +17,15 @@ const LIVING_TAG := "living"
 var collision_damage: float = 0.0
 ## 粒子等表现层连接这里；每个 impact 含 position、normal、amount、impulse、attacker_material。
 signal collision_damaged(amount: float, impacts: Array)
+signal corrosion_damaged(amount: float)
+
+## 覆盖腐蚀只扣血，保留玩家形状，并遵守创造模式伤害闸门。
+func apply_corrosion_damage(amount: float) -> void:
+	var health := get_node_or_null("InkHealth")
+	if amount <= 0.0 or health == null or not health.damage_enabled:
+		return
+	health.damage(amount)
+	corrosion_damaged.emit(amount)
 
 
 func apply_collision_damage(amount: float, impacts: Array = []) -> void:

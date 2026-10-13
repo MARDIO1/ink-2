@@ -118,13 +118,17 @@ func _push_knob(world, name: String, value) -> bool:
 func prepare_fixed(delta: float) -> int:
 	var physics = _main.world
 	var size: Vector2 = _camera.get_viewport_rect().size / _camera.zoom * freeze_view_scale
-	physics.cull_freeze(Rect2(_camera.get_screen_center_position() - size * 0.5, size), [_player.body])
+	var keep: Array = [_player.body]
+	for body in physics.bodies:
+		if body.tags.has("white_ink"):
+			keep.append(body)
+	physics.cull_freeze(Rect2(_camera.get_screen_center_position() - size * 0.5, size), keep)
 	for body in physics.bodies:
 		# 相机范围恢复活动不能覆盖地图编辑器显式设置的冻结状态。
 		if bool(body.tags.get("editor_physics_paused", false)):
 			physics.freeze(body)
 		body.refresh_com()
-	var culled: int = physics.cull_fast_debris()
+	var culled: int = physics.cull_fast_debris(keep)
 	physics.last_debris_removed = culled
 	if culled > 0:
 		_drop_culled_nodes()
