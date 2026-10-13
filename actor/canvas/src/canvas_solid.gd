@@ -211,7 +211,7 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		var needs_plan := not keep_bodies and not fully_inside
 		if needs_plan:
 			_collect_nail_anchors(world, body, anchors)
-		pixels += _sample_body(surface, body, plan, needs_plan)
+		pixels += _sample_body(surface, body, plan, needs_plan, not keep_bodies)
 		if keep_bodies:
 			continue
 		# 完整落在画布内的刚体无需走昂贵的 fracture/split；采样后整体移除即可。
@@ -451,7 +451,7 @@ func _collect_nail_anchors(world, body, anchors: Dictionary) -> void:
 ## 把一个刚体**落在画布里的**像素按材质颜色写回画布，返回写进画布的像素数。
 ## `plan`（{shape: {Vector2i: true}}）收下画布内的全部像素（含钉子），调用方据此把它们从刚体上摘掉；
 ## `anchors`（同上分组）收下刚体上的全部钉子像素，供摘除后的分片判定静态。
-func _sample_body(surface, body, plan: Dictionary, collect_plan := true) -> int:
+func _sample_body(surface, body, plan: Dictionary, collect_plan := true, refund_yellow := true) -> int:
 	var written := 0
 	for shape in body.shapes:
 		# 按占用 chunk 遍历真实像素，跳过 AABB 内的大量空白。
@@ -466,6 +466,8 @@ func _sample_body(surface, body, plan: Dictionary, collect_plan := true) -> int:
 				var x: int = base_x + index % Bits.SIZE
 				var y: int = base_y + (index >> 3)
 				var material: int = chunk.mat[index]
+				if material == InkPalette.YELLOW.id and not refund_yellow:
+					continue
 				var world_point: Vector2 = body.to_world(Vector2(x + 0.5, y + 0.5))
 				var local: Vector2 = surface.to_local(world_point)
 				var target := Vector2i((local - Vector2(0.5, 0.5)).round())

@@ -17,6 +17,8 @@ func _initialize() -> void:
 	_test_sweep(Vector2(48, 37), 0.43)
 	_test_motion()
 	_test_holes()
+	_test_wide_gap()
+	_test_split_mass_cache()
 	_test_perf()
 	_test_perf(Vector2i(7, 40))
 	_test_continuous()
@@ -82,8 +84,8 @@ func _test_sweep(motion: Vector2, angle: float) -> void:
 			var hit := _segment_box(p, p - motion, Rect2(0, 0, 8, 11))
 			if hit:
 				expected += 1
-			clean = clean and (mask.has(Vector2i(x, y)) == hit)
-	_check("complete swept mask angle=%.2f" % angle, clean and expected > 0)
+			clean = clean and (not hit or mask.has(Vector2i(x, y)))
+	_check("coarse sweep covers every exact path pixel angle=%.2f" % angle, clean and expected > 0)
 	_check("no white rebuild/split", is_equal_approx(white.mass, mass) and white.rects_rev == revision and world.bodies.size() == 2)
 	_check("area consumed, speed unchanged", White._area(white) < original and white.linear_velocity.is_equal_approx(motion * 60.0))
 	_cleanup(world, rule)
@@ -107,6 +109,8 @@ func _test_motion() -> void:
 	var world = World.new()
 	world.gravity = Vector2(0, 600)
 	var rule = White.new()
+	rule.base_yield = 100.0
+	rule.max_yield = 100.0
 	var white = _add(world, Rect2i(0, 0, 4, 8), Palette.WHITE.id)
 	white.linear_velocity = Vector2(100, 0)
 	var obstacle = _add(world, Rect2i(0, 0, 20, 20), Palette.GREY.id, Vector2(4, 0))
@@ -136,9 +140,43 @@ func _test_holes() -> void:
 	rule.prepare_fixed(ctx, 1.0 / 60.0)
 	var result: Dictionary = rule.resolve_fixed(ctx)
 	var mask: Dictionary = result.removals.get(target, {}).get(target.shapes[0], {})
-	_check("disconnected white keeps transparent channel", mask.size() == 48 and not mask.has(Vector2i(3, 4)) and not mask.has(Vector2i(4, 4)))
+	_check("coarse brush may fill sub-grid channel", mask.size() == 64)
 	_check("fractional cost accumulates", White._area(white) == 48 and white.tags.white_cost > 0.0)
 	_cleanup(world, rule)
+
+func _test_wide_gap() -> void:
+	var world = World.new()
+	var rule = White.new()
+	rule.base_yield = 1000.0
+	rule.max_yield = 1000.0
+	var white = _add(world, Rect2i(0, 0, 64, 16), Palette.WHITE.id)
+	for y in 16:
+		for x in range(16, 48):
+			white.shapes[0].clear_pixel(x, y)
+	var target = _add(world, Rect2i(0, 0, 64, 16), Palette.BLACK.id)
+	target.shapes[0].set_pixel(0, 0, 7)
+	var ctx := _context(world)
+	rule.prepare_fixed(ctx, 1.0 / 60.0)
+	var result: Dictionary = rule.resolve_fixed(ctx)
+	var mask: Dictionary = result.removals.get(target, {}).get(target.shapes[0], {})
+	_check("coarse brush keeps large empty channel", not mask.has(Vector2i(32, 8)) and mask.has(Vector2i(8, 8)) and mask.has(Vector2i(56, 8)))
+	_check("coarse block does not remove nail material", not mask.has(Vector2i.ZERO))
+	_cleanup(world, rule)
+
+func _test_split_mass_cache() -> void:
+	var world = World.new()
+	world.set_material_density(Palette.BLACK.id, 3.0)
+	var body = _add(world, Rect2i(-24, -16, 96, 64), Palette.BLACK.id)
+	var mask := {}
+	for y in range(-16, 48):
+		mask[Vector2i(8, y)] = true
+	var result: Dictionary = world.fracture_pixels(body, {body.shapes[0]: mask})
+	var correct: bool = result.fragments.size() == 1
+	for piece in world.bodies:
+		var fresh = preload("res://addons/pixel_destruction/core/mass_props.gd").compute(piece.shapes[0], world.density_callable())
+		correct = correct and is_equal_approx(piece.mass, fresh.mass) and piece.local_com.is_equal_approx(fresh.com) and is_equal_approx(piece.inertia, fresh.inertia)
+	_check("adopted chunk cache matches fresh fragment mass, COM and inertia", correct)
+	_cleanup(world, White.new())
 
 func _test_perf(size := Vector2i(64, 64)) -> void:
 	var world = World.new()
@@ -164,7 +202,7 @@ func _test_perf(size := Vector2i(64, 64)) -> void:
 	var commit_us := Time.get_ticks_usec() - commit_start
 	print("WHITE_BENCH size=%s sweep=16 target=160000 erased=%d resolve_us=%d commit_us=%d total_us=%d" % [size, removed, elapsed, commit_us, elapsed + commit_us])
 	print("WHITE_COMMIT_STAGES ", world.profile_counts)
-	_check("large target full lane, one removal plan", removed == (size.x + 16) * size.y and result.removals.size() == 1)
+	_check("large target full lane, conservative extra erase", removed >= (size.x + 16) * size.y and result.removals.size() == 1)
 	_check("large target single commit", committed.calls == 1)
 	step.free()
 	_cleanup(world, rule)

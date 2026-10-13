@@ -3,6 +3,7 @@ extends RefCounted
 const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const Stroke := preload("res://actor/yellow/src/yellow_stroke.gd")
+const Hinge := preload("res://actor/yellow/src/yellow_hinge.gd")
 const Palette := preload("res://ink/src/ink_palette.gd")
 const TOKEN := &"canvas_undo_identity"
 
@@ -17,8 +18,13 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 	surface._flush_ink()
 	var data: PackedByteArray = surface.black_image.get_data()
 	var state := {"size": surface.canvas_size, "position": canvas.position,
+		"rod_image": surface.rod_layer.pixels.duplicate(), "rod_anchors": surface.rod_layer.anchor_points.duplicate(),
 		"image": data.compress(FileAccess.COMPRESSION_FASTLZ), "ledger": surface.ink_px_by_material.duplicate(),
-		"bodies": [], "before_ids": {}, "remove_ids": {}, "yellow": [], "health": {}, "health_delta": {}}
+		"bodies": [], "before_ids": {}, "remove_ids": {}, "yellow": [], "hinges": [], "health": {}, "health_delta": {}}
+	for child in canvas.world.get_children():
+		if child is Hinge and not child.is_queued_for_deletion():
+			if not child.yellow_anchor.is_empty() and not child.black_anchor.is_empty():
+				state.hinges.append([Stroke.anchor_world(child.yellow_anchor), Stroke.anchor_world(child.black_anchor)])
 	var bounds := selection if selection.has_area() else Rect2(surface.global_position, Vector2(surface.canvas_size))
 	canvas.world.realign_body_nodes()
 	for index in canvas.world.world.bodies.size():
@@ -52,6 +58,7 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 			if stroke.source_surface != surface and not include_bodies:
 				continue
 			state.yellow.append({"id": identity(stroke), "path": stroke.path.duplicate(),
+				"compact": stroke.compact_raster, "dashed": stroke.dashed, "dash_length": stroke.dash_length, "dash_gap": stroke.dash_gap,
 				"width": stroke.brush_width, "worn": stroke.worn.duplicate(), "paid": stroke.paid,
 				"active": stroke.activated, "state": stroke.state, "rest": stroke.rest_length,
 				"a": stroke.saved_anchor_a, "b": stroke.saved_anchor_b, "source": weakref(stroke.source_surface) if stroke.source_surface != null else null})
@@ -84,6 +91,11 @@ static func commit(canvas, state: Dictionary) -> void:
 
 static func restore(canvas, state: Dictionary) -> void:
 	var surface = canvas.surface
+	for child in canvas.world.get_children():
+		if child is Hinge:
+			child.remove_joint()
+			canvas.world.remove_child(child)
+			child.queue_free()
 	canvas.world.realign_body_nodes()
 	for node in canvas.world.get_children().duplicate():
 		if node is BodyNode and not node.is_queued_for_deletion() and state.remove_ids.has(identity(node)):
@@ -104,6 +116,12 @@ static func restore(canvas, state: Dictionary) -> void:
 			child.owner = canvas.world
 		var body = canvas.world.add_body_node(node)
 		body.tags[TOKEN] = saved.id
+	for saved in state.get("hinges", []):
+		var hinge := Hinge.new()
+		hinge.yellow_position = saved[0]
+		hinge.black_position = saved[1]
+		canvas.world.add_child(hinge)
+		hinge.owner = canvas.world
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		var ids := {}
@@ -119,6 +137,10 @@ static func restore(canvas, state: Dictionary) -> void:
 			var stroke := Stroke.new()
 			stroke.path = saved.path
 			stroke.brush_width = saved.width
+			stroke.compact_raster = saved.get("compact", false)
+			stroke.dashed = saved.get("dashed", true)
+			stroke.dash_length = saved.get("dash_length", 8.0)
+			stroke.dash_gap = saved.get("dash_gap", 6.0)
 			stroke.worn = saved.worn
 			stroke.paid = saved.paid
 			stroke.rest_length = saved.rest
@@ -126,6 +148,8 @@ static func restore(canvas, state: Dictionary) -> void:
 			stroke.saved_anchor_b = saved.b
 			stroke.activated = saved.active
 			stroke.source_surface = saved.source.get_ref() if saved.source != null else null
+			if is_instance_valid(stroke.source_surface):
+				stroke.source_canvas = canvas.world.get_path_to(stroke.source_surface)
 			stroke.set_meta(TOKEN, saved.id)
 			canvas.world.add_child(stroke)
 			stroke.owner = canvas.world if saved.active else null
@@ -143,6 +167,10 @@ static func restore(canvas, state: Dictionary) -> void:
 	surface.black_image = Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGBA8, bytes)
 	surface.black_texture = ImageTexture.create_from_image(surface.black_image)
 	surface.black_sprite.texture = surface.black_texture
+	if state.has("rod_image"):
+		surface.rod_layer.pixels = state.rod_image.duplicate()
+		surface.rod_layer.anchor_points = state.rod_anchors.duplicate()
+		surface.rod_layer.refresh()
 	surface.ink_px_by_material = state.ledger.duplicate()
 	surface._pending_ink.clear()
 	surface._rebuild_nails()

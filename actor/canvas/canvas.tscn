@@ -17,6 +17,7 @@
 [ext_resource type="Script" path="res://actor/canvas/src/selection_overlay.gd" id="15_selection_overlay"]
 [ext_resource type="Texture2D" path="res://ui/asset/select_delete.tres" id="16_select_delete"]
 [ext_resource type="Texture2D" path="res://actor/canvas/asset/lined_paper.png" id="17_lined_paper"]
+[ext_resource type="Script" path="res://actor/yellow/src/yellow_rod_layer.gd" id="18_rod"]
 
 [sub_resource type="RectangleShape2D" id="CanvasBounds"]
 resource_local_to_scene = true
@@ -108,6 +109,9 @@ centered = false
 
 [node name="NailLayer" type="Node2D" parent="CanvasSurface" unique_id=1721133058]
 script = ExtResource("4_nail_script")
+
+[node name="YellowRodLayer" type="Node2D" parent="CanvasSurface"]
+script = ExtResource("18_rod")
 
 [node name="SelectionOverlay" type="Node2D" parent="CanvasSurface"]
 z_index = 100

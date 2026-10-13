@@ -819,6 +819,8 @@ static func _assemble_groups(shape: PixelShape, groups: Dictionary, min_pixels: 
 			#    "本分片拿走了它的全部像素"，搬对象同样是精确的。
 			if adopt and mask == src_chunk.occ:
 				s.chunks[k3] = src_chunk
+				if shape._mp_cache.has(k3):
+					s._mp_cache[k3] = shape._mp_cache[k3]
 				s.mark_dirty_key(k3)
 				continue
 			s.blit_mask_from(src_chunk, k3, mask)

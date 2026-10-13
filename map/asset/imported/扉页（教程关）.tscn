@@ -11,12 +11,14 @@
 [ext_resource type="Resource" path="res://actor/nail/asset/nail.tres" id="9_re44c"]
 [ext_resource type="Resource" path="res://ink/asset/red.tres" id="10_xb4ko"]
 [ext_resource type="Resource" path="res://ink/asset/yellow.tres" id="11_t8m6q"]
+[ext_resource type="Resource" path="res://ink/asset/white.tres" id="12_5v41w"]
 [ext_resource type="Script" path="res://actor/player/src/player_camera.gd" id="12_joc00"]
 [ext_resource type="PackedScene" path="res://actor/canvas/canvas.tscn" id="13_32q43"]
 [ext_resource type="Script" path="res://actor/canvas/src/canvas.gd" id="14_2okh3"]
 [ext_resource type="PackedScene" path="res://actor/player/player.tscn" id="15_vdnpi"]
 [ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="16_fnjfx"]
 [ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="17_krmm6"]
+[ext_resource type="Resource" path="res://actor/player/asset/player_controller_config.tres" id="18_royeu"]
 [ext_resource type="Script" path="res://debug/hud/src/debug_hud.gd" id="18_td3q0"]
 [ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="19_nuk26"]
 [ext_resource type="Script" path="res://root/src/simulation_runtime.gd" id="20_t5ijd"]
@@ -172,13 +174,13 @@ ccd_ignore_mass = 100.0
 min_fragment_pixels = 5
 debris_max_mass = 20.0
 debris_min_speed = 20.0
-materials = Array[ExtResource("2_s24lg")]([ExtResource("3_2wwu5"), ExtResource("4_5v41w"), ExtResource("5_royeu"), ExtResource("6_27hwp"), ExtResource("7_mdeex"), ExtResource("8_54d0c"), ExtResource("9_re44c"), ExtResource("10_xb4ko"), ExtResource("11_t8m6q")])
+materials = Array[ExtResource("2_s24lg")]([ExtResource("3_2wwu5"), ExtResource("4_5v41w"), ExtResource("5_royeu"), ExtResource("6_27hwp"), ExtResource("7_mdeex"), ExtResource("8_54d0c"), ExtResource("9_re44c"), ExtResource("10_xb4ko"), ExtResource("11_t8m6q"), ExtResource("12_5v41w")])
 densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0, 0.0, 1.0])
 voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
-position = Vector2(38.906548, 167.1124)
+position = Vector2(-33.119057, 153.51804)
 process_callback = 0
 script = ExtResource("12_joc00")
 
@@ -201,6 +203,7 @@ active = false
 [node name="Player" type="Node2D" parent="." unique_id=1427605215 groups=["player"] instance=ExtResource("15_vdnpi")]
 position = Vector2(-474.19214, 123.87975)
 script = ExtResource("16_fnjfx")
+controller_config = ExtResource("18_royeu")
 can_sleep = false
 
 [node name="debugHUD" type="CanvasLayer" parent="." unique_id=1042695355 groups=["debug_hud"] instance=ExtResource("17_krmm6")]
@@ -216,6 +219,7 @@ process_physics_priority = 15
 script = ExtResource("21_u7g7s")
 map_path = "res://map/asset/imported/扉页（教程关）.tscn"
 baked_map_path = "res://map/asset/imported/扉页（教程关）.png"
+edit_snapshot_path = "res://map/asset/imported/扉页（教程关）.edit.snapshot"
 
 [node name="Ink9" type="Node2D" parent="." unique_id=460426238 groups=["ink_item"]]
 position = Vector2(-512, -256)
@@ -363,8 +367,8 @@ source = 3
 paint = SubResource("Image_mdeex")
 
 [node name="Ink34" type="Node2D" parent="." unique_id=193597132 groups=["ink_item"]]
-position = Vector2(-510.59607, -203.00073)
-rotation = 0.0029320056
+position = Vector2(-510.59583, -203.00189)
+rotation = 0.002932656
 script = ExtResource("22_mw6vm")
 
 [node name="@Node2D@1049" type="Node2D" parent="Ink34" unique_id=37826325]
@@ -374,8 +378,8 @@ source = 3
 paint = SubResource("Image_54d0c")
 
 [node name="Ink36" type="Node2D" parent="." unique_id=697638567 groups=["ink_item"]]
-position = Vector2(346.39984, -1276.0961)
-rotation = 0.8115594
+position = Vector2(346.40466, -1276.0988)
+rotation = 0.8115626
 script = ExtResource("22_mw6vm")
 
 [node name="@Node2D@1050" type="Node2D" parent="Ink36" unique_id=1124524217]
@@ -396,8 +400,8 @@ source = 3
 paint = SubResource("Image_xb4ko")
 
 [node name="Ink39" type="Node2D" parent="." unique_id=328621298 groups=["ink_item"]]
-position = Vector2(-510.66394, -219.99396)
-rotation = 0.0029298626
+position = Vector2(-510.66373, -219.99405)
+rotation = 0.0029303979
 script = ExtResource("22_mw6vm")
 
 [node name="@Node2D@1052" type="Node2D" parent="Ink39" unique_id=1792511951]
@@ -437,8 +441,8 @@ script = ExtResource("27_s24lg")
 target_map = "res://map/asset/imported/第一关.tscn"
 
 [node name="InkSaved15" type="Node2D" parent="." unique_id=1848787799 groups=["ink_item"]]
-position = Vector2(-512.2395, -251.60577)
-rotation = -0.00043787804
+position = Vector2(-512.2364, -251.61346)
+rotation = -0.0004316394
 script = ExtResource("22_mw6vm")
 
 [node name="@Node2D@1055" type="Node2D" parent="InkSaved15" unique_id=2011088111]

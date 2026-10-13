@@ -1,9 +1,0 @@
-[gd_scene load_steps=3 format=3]
-
-[ext_resource type="PackedScene" path="res://map/main.tscn" id="1"]
-[ext_resource type="Script" path="res://map/src/white_ink_test.gd" id="2"]
-
-[node name="WhiteInkTest" type="Node2D"]
-script = ExtResource("2")
-
-[node name="Main" parent="." instance=ExtResource("1")]

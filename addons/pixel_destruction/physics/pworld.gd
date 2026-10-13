@@ -3579,10 +3579,8 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 	# ⚠️ 三个 Callable 都要传：不传 -> 母体质量按"像素数"算错、摩擦/恢复被清成 0。
 	if anchor_mode:
 		body.is_static = kept_anchored
-	# ⚠️⚠️ 断出碎片时**不能**传 changed_chunks：split(adopt=true) 会把 PixelChunk **对象**
-	#    搬到新 shape 上 —— 块键还是那些键，但内容已经不是缓存里记的那份了 ✗
-	#    （闸门"甜甜圈：质量属性仍然逐位正确"当场抓到）。这时退回全量重算。
-	var hint: Variant = changed_chunks if loose.is_empty() else null
+	# 分片仅继承整块未变的质量缓存；切口块仍重算。
+	var hint: Variant = changed_chunks
 	body.rebuild(kept, density_callable(), max_rects_per_shape, Rect2i(),
 		friction_callable(), restitution_callable(), dirty, hint)
 	if profile_enabled:

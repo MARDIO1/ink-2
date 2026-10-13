@@ -9,7 +9,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var scene: Node = load("res://map/main.tscn").instantiate()
+	var scene: Node = load("res://map/asset/imported/main.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame
@@ -53,11 +53,11 @@ func _run() -> void:
 	print("[Canvas] 连续直线工具: ", "PASS" if line_valid else "FAIL")
 	canvas._shape_tool = CanvasSurfaceScript.Tool.RECT
 	canvas._apply_tool(CanvasSurfaceScript.Tool.RECT)
-	canvas._select_shape_tool()
+	canvas._on_shape_picked(CanvasSurfaceScript.Tool.CIRCLE)
 	var shape_cycle_valid: bool = surface.tool == CanvasSurfaceScript.Tool.CIRCLE
-	canvas._select_shape_tool()
+	canvas._on_shape_picked(CanvasSurfaceScript.Tool.LINE)
 	shape_cycle_valid = shape_cycle_valid and surface.tool == CanvasSurfaceScript.Tool.LINE
-	canvas._select_shape_tool()
+	canvas._on_shape_picked(CanvasSurfaceScript.Tool.RECT)
 	shape_cycle_valid = shape_cycle_valid and surface.tool == CanvasSurfaceScript.Tool.RECT
 	valid = valid and shape_cycle_valid
 	print("[Canvas] 形状按钮三态循环: ", "PASS" if shape_cycle_valid else "FAIL")
@@ -81,12 +81,12 @@ func _run() -> void:
 	canvas.canvas_size = Vector2i(32, 32)
 	await _press(KEY_F9)
 	valid = valid and surface.black_image.get_data() == before and canvas.canvas_size == Vector2i(320, 180)
-	#钉子不回收：带钉子的实体回到画布不能崩，也不能把钉子写回墨水。
+	# 回收保留钉子材质和固定点，沿用当前普通 Black 行为。
 	var home: Vector2 = canvas.position
 	canvas.position = Vector2(5000, 5000)      # 挪到空地：只回收这块刚体，别顺带把地形也收走
 	canvas.solid.solidify(surface, scene)
 	canvas.return_to_canvas()
-	valid = valid and surface.is_solid(20, 20) and not surface.is_solid(30, 20)
+	valid = valid and surface.is_solid(20, 20) and surface.material_at(30, 20) == InkPalette.nail_material_id()
 	await process_frame
 	canvas.position = home
 	#只回收画布内的部分：刚体跨在画布边上时，画布外的那半边留在世界里。

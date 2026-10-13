@@ -817,7 +817,7 @@ func realign_body_nodes() -> void:
 	_body_nodes = out
 
 
-func sync_world_bodies() -> void:
+func sync_world_bodies(changed: Variant = null) -> void:
 	# ① 节点数组按下标重建：能对上的节点保留，对不上的（碎片/未节点化）用 null 占位
 	realign_body_nodes()
 
@@ -829,6 +829,8 @@ func sync_world_bodies() -> void:
 	#    ⚠️ 必须在 ① 之后做：① 刚把 _body_nodes 按身份重建好，下标才是对的。
 	for i in world.bodies.size():
 		var b = world.bodies[i]
+		if changed != null and not changed.has(b):
+			continue
 		if i < _body_nodes.size() and not uses_internal_render(_body_nodes[i]):
 			renderer.forget(b.id)
 			continue

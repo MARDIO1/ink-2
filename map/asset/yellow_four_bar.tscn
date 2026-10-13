@@ -1,0 +1,5 @@
+[gd_scene format=3]
+[ext_resource type="Script" path="res://map/src/yellow_mechanisms.gd" id="1"]
+[node name="YellowFourBar" type="Node2D"]
+script = ExtResource("1")
+mechanism = 1

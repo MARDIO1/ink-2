@@ -78,7 +78,14 @@ func _ready() -> void:
 	process_physics_priority = 18       # 世界步进(10)之后、相机(20)之前：跟随时读到的才是这一帧的位姿
 	_workbench_home = workbench.position
 	_workbench_home_transform = workbench.transform
+	var rod_pixels: Image = surface.rod_layer.pixels.duplicate() if surface.rod_layer.pixels != null else null
+	var rod_anchors: PackedVector2Array = surface.rod_layer.anchor_points.duplicate()
 	surface.canvas_size = canvas_size
+	# 已保存的独立黄色层不能被首次 Canvas 尺寸同步清空。
+	if rod_pixels != null and rod_pixels.get_used_rect().has_area():
+		surface.rod_layer.pixels = rod_pixels
+		surface.rod_layer.anchor_points = rod_anchors
+		surface.rod_layer.resize(canvas_size)
 	_place_controls()
 	_prepare_workbench_structure()
 	tool_grid.get_node("Nail").visible = false
@@ -130,7 +137,12 @@ func generate(record_undo := true) -> void:
 		record_undo = false
 		surface._undo_steps.clear()
 	var state: Dictionary = History.capture(self) if record_undo else {}
+	# 只在落笔/抬笔时记录黑色；固化前擦掉的黑色不能重新成为轴。
+	for index in range(surface.rod_layer.anchor_points.size() - 1, -1, -1):
+		if not surface.rod_layer._black(surface.rod_layer.anchor_points[index]):
+			surface.rod_layer.anchor_points.remove_at(index)
 	solid.solidify(surface, world, _map_editor_mode, false)
+	surface.rod_layer.solidify(world)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.solidify(surface)

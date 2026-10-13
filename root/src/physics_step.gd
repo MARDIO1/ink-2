@@ -176,9 +176,9 @@ func contacts(world) -> Array:
 	return contacts
 
 ## 同步分片后的节点数组，并回收已经失去 PBody 的节点。
-func sync_after_commit(previous_nodes: Array) -> void:
+func sync_after_commit(previous_nodes: Array, changed: Variant = null) -> void:
 	var start: int = Time.get_ticks_usec() if profile_enabled else 0
-	_main.sync_world_bodies()
+	_main.sync_world_bodies(changed)
 	var live: Dictionary = {}
 	for body in _main.world.bodies:
 		live[body] = true

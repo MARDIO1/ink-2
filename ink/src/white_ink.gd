@@ -3,8 +3,11 @@ extends Node
 
 #region 配置与状态
 const Palette := preload("res://ink/src/ink_palette.gd")
-const Rects := preload("res://addons/pixel_destruction/core/greedy_rects.gd")
+const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
+const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")
+const BRUSH_SIZE := 16
+const BRUSH_RADIUS := BRUSH_SIZE * 0.7071067811865476
 ## 每个白像素的基础擦除量；速度增加效率，上限防止无限穿墙。
 @export var base_yield: float = 1.0
 @export var speed_per_yield: float = 300.0
@@ -46,11 +49,10 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 		white.tags["white_velocity"] = white.linear_velocity
 		var old: Transform2D = _previous[white]
 		var now := Transform2D(white.rotation, white.position)
-		var rects: Array = []
-		for shape in white.shapes:
-			rects.append_array(Rects.decompose(shape).rects)
+		var brushes := _brushes(white)
+		var area := _area(white)
 		var count := 0
-		var bounds := _bounds(white, old).merge(_bounds(white, now))
+		var bounds := _bounds(white, old).merge(_bounds(white, now)).grow(BRUSH_SIZE)
 		for target in context.world.bodies:
 			if target == white or target.collision_layer == 0 or context.protected_bodies.has(target):
 				continue
@@ -60,12 +62,10 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 			var target_old: Transform2D = _previous.get(target, target_now)
 			if not bounds.intersects(target.aabb.merge(_bounds(target, target_old))):
 				continue
-			# 扫掠矩形在目标局部空间逐行填掩码，避免高速盖章漏点。
-			var local_bounds := _local_bounds(bounds, target_now).merge(_local_bounds(bounds, target_old))
-			var polygons := swept_polygons(rects, target_old.affine_inverse() * old, target_now.affine_inverse() * now)
+			var sweeps := _sweeps(brushes, target_old.affine_inverse() * old, target_now.affine_inverse() * now)
 			var target_count := 0
 			for shape in target.shapes:
-				var mask := _raster_mask(shape, polygons, local_bounds, target == context.player_body)
+				var mask := _mask(shape, sweeps, target == context.player_body)
 				var existing: Dictionary = result.removals.get(target, {}).get(shape, {})
 				for cell in existing:
 					mask.erase(cell)
@@ -77,14 +77,14 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 			if target == context.player_body:
 				context.player_node.apply_corrosion_damage(target_count * player_damage_per_pixel)
 		if yellow != null:
-			var polygons := swept_polygons(rects, old, now)
+			var sweeps := _sweeps(brushes, old, now)
 			for stroke in yellow.strokes:
 				if stroke.state != stroke.State.ACTIVE:
 					continue
 				stroke.update_visual()
 				for cell in stroke.cells:
 					var point: Vector2 = stroke.pixel_world(Vector2(cell) + Vector2.ONE * 0.5)
-					if _covered(polygons, point):
+					if sweeps.any(func(damage): return damage.hits(point.x, point.y)):
 						count += 1
 						yellow.dissolve(stroke)
 						break
@@ -92,11 +92,12 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 			reacted = true
 			var efficiency := clampf(base_yield + white.linear_velocity.length() / maxf(speed_per_yield, 1.0), 1.0, maxf(max_yield, 1.0))
 			var credit: float = white.tags.get("white_cost", 0.0) + count / efficiency
-			var consumed := mini(int(credit), _area(white))
+			var consumed := mini(int(credit), area)
 			white.tags["white_cost"] = credit - consumed
 			_consume(white, consumed)
+			area -= consumed
 			_profile["erased_pixels"] = _profile.get("erased_pixels", 0) + count
-		if _area(white) == 0 or white.position.distance_to(white.tags.white_origin) > max_travel_from_spawn:
+		if area == 0 or white.position.distance_to(white.tags.white_origin) > max_travel_from_spawn:
 			_remove(context, white)
 	if reacted and context.has("pixel_world"):
 		# 世界破坏不可撤销，旧事务不能复活白墨、黄线或被擦掉的目标。
@@ -115,48 +116,43 @@ func _exit_tree() -> void:
 #endregion
 
 #region 几何与消费
-## 精确矩形分别扫掠，保留白墨缺口；旋转目标采用端点包络。
-static func swept_polygons(rects: Array, old: Transform2D, now: Transform2D) -> Array:
-	var polygons: Array = []
-	for rect: Rect2 in rects:
-		var corners := PackedVector2Array([rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)])
-		var points := old * corners
-		points.append_array(now * corners)
-		polygons.append(Geometry2D.convex_hull(points))
-	return polygons
+## 占用块合并为 16px 刷子，直接复用引擎线段伤害；允许边缘外扩。
+static func _brushes(body) -> Array:
+	var cells := {}
+	for shape in body.shapes:
+		for key: int in shape.chunks:
+			if shape.chunks[key].occ != 0:
+				cells[Vector2i(Shape.key_x(key) >> 1, Shape.key_y(key) >> 1)] = true
+	return cells.keys().map(func(cell): return Vector2(cell * BRUSH_SIZE) + Vector2.ONE * (BRUSH_SIZE / 2.0))
 
-static func _covered(polygons: Array, point: Vector2) -> bool:
-	for polygon in polygons:
-		if Geometry2D.is_point_in_polygon(point, polygon):
-			return true
-	return false
+static func _sweeps(brushes: Array, old: Transform2D, now: Transform2D) -> Array:
+	return brushes.map(func(center): return Destruction.Damage.segment(old * center, now * center, BRUSH_RADIUS))
 
-## 凸扫掠多边形逐行求区间；只遍历覆盖区，避免逐像素射线和点包含调用。
-static func _raster_mask(shape, polygons: Array, bounds: Rect2i, living: bool) -> Dictionary:
-	var mask: Dictionary = {}
-	var region: Rect2i = shape.local_aabb().intersection(bounds)
-	for polygon in polygons:
-		for y in range(region.position.y, region.end.y):
-			var row := y + 0.5
-			var left := INF
-			var right := -INF
-			for edge in polygon.size() - 1:
-				var a: Vector2 = polygon[edge]
-				var b: Vector2 = polygon[edge + 1]
-				if row < minf(a.y, b.y) or row >= maxf(a.y, b.y):
-					continue
-				var x: float = a.x + (row - a.y) * (b.x - a.x) / (b.y - a.y)
-				left = minf(left, x)
-				right = maxf(right, x)
-			if left == INF:
-				continue
-			for x in range(maxi(region.position.x, ceili(left - 0.5)), mini(region.end.x, floori(right - 0.5) + 1)):
-				var chunk = shape.chunk_at(x >> 3, y >> 3)
+static func _mask(shape, sweeps: Array, living: bool) -> Dictionary:
+	var chunks := {}
+	for damage in sweeps:
+		var bounds: Rect2 = damage.bounds().intersection(Rect2(shape.local_aabb()))
+		if not bounds.has_area():
+			continue
+		for cy in range(floori(bounds.position.y / 8), ceili(bounds.end.y / 8)):
+			for cx in range(floori(bounds.position.x / 8), ceili(bounds.end.x / 8)):
+				var key := Shape.make_key(cx, cy)
+				var chunk = shape.chunks.get(key)
 				if chunk == null:
 					continue
-				var material: int = chunk.mat[(y & 7) * 8 + (x & 7)]
-				if material != 0 and (living or material in [Palette.BLACK.id, Palette.GREY.id, Palette.RED.id]):
-					mask[Vector2i(x, y)] = true
+				# 线段扫掠包围区按 8px 块覆盖，允许外扩，不重复逐像素几何判断。
+				chunks[key] = chunk.occ
+	var mask := {}
+	for key: int in chunks:
+		var bits: int = chunks[key]
+		var chunk = shape.chunks[key]
+		var origin := Vector2i(Shape.key_x(key) * 8, Shape.key_y(key) * 8)
+		for index in 64:
+			if (bits & (1 << index)) == 0:
+				continue
+			var material: int = chunk.mat[index]
+			if living or material == Palette.BLACK.id or material == Palette.GREY.id or material == Palette.RED.id:
+				mask[origin + Vector2i(index & 7, index >> 3)] = true
 	return mask
 
 static func _bounds(body, transform: Transform2D) -> Rect2:
@@ -165,10 +161,6 @@ static func _bounds(body, transform: Transform2D) -> Rect2:
 		var rect := transform * Rect2(shape.local_aabb())
 		out = rect if not out.has_area() else out.merge(rect)
 	return out
-
-static func _local_bounds(rect: Rect2, transform: Transform2D) -> Rect2i:
-	var local := transform.affine_inverse() * rect
-	return Rect2i(Vector2i(local.position.floor()), Vector2i(local.end.ceil() - local.position.floor()))
 
 static func _area(body) -> int:
 	var area := 0

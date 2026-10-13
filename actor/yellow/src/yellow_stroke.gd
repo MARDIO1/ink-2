@@ -15,8 +15,13 @@ enum State { EDITING, ACTIVE, DYING, REMOVED }
 @export var saved_anchor_a: Vector2 = Vector2.ZERO
 @export var saved_anchor_b: Vector2 = Vector2.ZERO
 @export var activated: bool = false
+@export var source_canvas: NodePath
 ## 新画出的黄色统一使用紧凑直线栅格；默认 false 仅用于读取旧场景。
 @export var compact_raster: bool = false
+@export var dashed: bool = true
+@export var dash_length: float = 8.0
+@export var dash_gap: float = 6.0
+var dash_spans: Array[Vector2i] = []
 var state: State = State.EDITING
 var anchors: Array = []
 var joint = null
@@ -52,6 +57,16 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	if path.is_empty() or preview:
 		return
+	if not source_canvas.is_empty():
+		source_surface = get_parent().get_node_or_null(source_canvas)
+	# 旧黄色一律迁移为直线虚线弹簧，旧磨损投影到同一条轴线。
+	if dashed and not compact_raster and path.size() > 1:
+		var origin: Vector2 = path[0]
+		var direction: Vector2 = (path[-1] - origin).normalized()
+		for index in worn.size():
+			var relative: Vector2 = worn[index] - origin
+			worn[index] = Vector2(relative.dot(direction), relative.dot(direction.orthogonal())).floor()
+		compact_raster = true
 	build_pixels()
 	if activated:
 		state = State.ACTIVE
@@ -74,9 +89,11 @@ func _draw() -> void:
 	if not preview or path.is_empty():
 		return
 	if path.size() > 1:
-		draw_polyline(path, Palette.YELLOW.color, brush_width)
-	draw_texture(TERMINAL, path[0] - Vector2(4.5, 4.5))
-	draw_texture(TERMINAL, path[-1] - Vector2(4.5, 4.5))
+		var length: float = path[0].distance_to(path[-1])
+		var at := 0.0
+		while at < length:
+			draw_line(path[0].lerp(path[-1], at / length), path[0].lerp(path[-1], minf(at + dash_length, length) / length), Palette.YELLOW.color, brush_width)
+			at += dash_length + dash_gap
 
 func build_pixels() -> bool:
 	cells.clear()
@@ -97,7 +114,22 @@ func build_pixels() -> bool:
 					var p: Vector2i = Vector2i(x, y)
 					if (Vector2(p) + Vector2.ONE * 0.5).distance_squared_to(center) <= radius * radius:
 						cells[p] = float(index) + float(step) / steps
+	if dashed and raster_path.size() > 1:
+		var length: float = raster_path[0].distance_to(raster_path[-1])
+		for p: Vector2i in cells.keys():
+			var distance: float = clampf(float(cells[p]) / maxi(1, raster_path.size() - 1), 0.0, 1.0) * length
+			if fmod(distance, dash_length + dash_gap) >= dash_length and distance < length - 4.5:
+				cells.erase(p)
 	original_area = cells.size()
+	# 空隙不参与结构判定；每段实线自身必须仍能从左侧连通到右侧。
+	dash_spans.clear()
+	if dashed and compact_raster:
+		var full := PixelShape.new()
+		for p: Vector2i in cells:
+			full.set_pixel(p.x, p.y, 1)
+		for part in Destruction.split(full, 1):
+			var rect: Rect2i = part.local_aabb()
+			dash_spans.append(Vector2i(rect.position.x, rect.end.x - 1))
 	for point in worn:
 		cells.erase(Vector2i(point))
 	occupancy = PixelShape.new()
@@ -138,12 +170,14 @@ func build_pixels() -> bool:
 		visual.position = Vector2(bounds.position)
 	endpoint_a = Sprite2D.new()
 	endpoint_a.texture = TERMINAL
+	endpoint_a.z_index = 2
 	add_child(endpoint_a)
 	endpoint_a.top_level = true
 	endpoint_a.global_position = _world_to_canvas(path[0])
 	endpoint_a.global_rotation = 0.0
 	endpoint_b = Sprite2D.new()
 	endpoint_b.texture = TERMINAL
+	endpoint_b.z_index = 2
 	add_child(endpoint_b)
 	endpoint_b.top_level = true
 	endpoint_b.global_position = _world_to_canvas(path[-1])
@@ -365,6 +399,20 @@ func _remove_wear_point(p: Vector2i) -> void:
 	image.set_pixelv(p - bounds.position, Color.TRANSPARENT)
 
 func connected() -> bool:
+	if dashed and compact_raster:
+		var spans: Array[Vector2i] = []
+		for part in Destruction.split(occupancy, 1):
+			var rect: Rect2i = part.local_aabb()
+			spans.append(Vector2i(rect.position.x, rect.end.x - 1))
+		for required in dash_spans:
+			var found := false
+			for span in spans:
+				if span.x <= required.x and span.y >= required.y:
+					found = true
+					break
+			if not found:
+				return false
+		return not cells.is_empty()
 	var start: Vector2i = Vector2i(raster_path[0].floor())
 	var end: Vector2i = Vector2i(raster_path[-1].floor())
 	if not cells.has(start) or not cells.has(end):

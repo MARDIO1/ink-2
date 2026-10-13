@@ -2,9 +2,9 @@ extends "res://test/test_collision_damage.gd"
 class ProfileWorld:
 	extends "res://addons/pixel_destruction/nodes/pixel_world.gd"
 	var sync_us: int = 0
-	func sync_world_bodies() -> void:
+	func sync_world_bodies(changed: Variant = null) -> void:
 		var start: int = Time.get_ticks_usec()
-		super.sync_world_bodies()
+		super.sync_world_bodies(changed)
 		sync_us += Time.get_ticks_usec() - start
 		print("WORLD_SYNC ms=", (Time.get_ticks_usec() - start) / 1000.0)
 class ProfileRenderer:

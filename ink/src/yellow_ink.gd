@@ -3,6 +3,10 @@ extends Node2D
 #region 配置与状态
 const Palette := preload("res://ink/src/ink_palette.gd")
 const Stroke := preload("res://actor/yellow/src/yellow_stroke.gd")
+const Hinge := preload("res://actor/yellow/src/yellow_hinge.gd")
+@export_range(0.0, 1.0, 0.01) var yellow_opacity: float = 0.75
+@export_range(1.0, 64.0, 1.0) var dash_length: float = 8.0
+@export_range(1.0, 64.0, 1.0) var dash_gap: float = 6.0
 ## 默认 7 px 支撑主角；较低阻尼保留弹弓的回弹能量。
 @export var stiffness_per_width: float = 5000.0
 @export var damping_ratio: float = 0.0
@@ -27,6 +31,7 @@ var _wear_cursor: int = 0
 var _spring_audio: Dictionary = {}
 var _spring_voices: Array[AudioStreamPlayer2D] = []
 var _next_spring_voice: int = 0
+var _render_opacity: float = -1.0
 const OVERLAP_SHADER := preload("res://actor/yellow/asset/overlap.gdshader")
 #endregion
 
@@ -34,7 +39,7 @@ const OVERLAP_SHADER := preload("res://actor/yellow/asset/overlap.gdshader")
 func _ready() -> void:
 	_world = get_parent().get_parent()
 	for child in _world.get_children():
-		if child is Stroke and child.activated:
+		if child is Stroke:
 			strokes.append(child)
 	for index in spring_voice_count:
 		var voice := AudioStreamPlayer2D.new()
@@ -51,6 +56,9 @@ func begin(surface, point: Vector2) -> void:
 	drawing = Stroke.new()
 	drawing.preview = true
 	drawing.compact_raster = true
+	drawing.dashed = true
+	drawing.dash_length = dash_length
+	drawing.dash_gap = dash_gap
 	drawing.source_surface = surface
 	drawing.brush_width = surface.brush_size
 	drawing.path.append(_world.to_local(surface.to_global(point.floor() + Vector2.ONE * 0.5)))
@@ -64,8 +72,11 @@ func extend(surface, point: Vector2) -> void:
 		cancel()
 		return
 	var p: Vector2 = _world.to_local(surface.to_global(point))
-	if drawing.path[-1].distance_squared_to(p) >= 1.0:
+	if drawing.path.size() == 1:
 		drawing.path.append(p)
+	else:
+		drawing.path[1] = p
+	if drawing.path.size() > 1:
 		drawing.queue_redraw()
 
 func finish(surface, point: Vector2) -> bool:
@@ -92,6 +103,8 @@ func finish(surface, point: Vector2) -> bool:
 	if stroke.paid and health != null:
 		health.reduce(Palette.YELLOW.id, stroke.original_area)
 	strokes.append(stroke)
+	stroke.source_canvas = _world.get_path_to(surface)
+	stroke.owner = _world
 	stroke.set_meta(&"canvas_undo_identity", stroke.get_instance_id())
 	surface.push_undo_step({"yellow": stroke, "yellow_id": stroke.get_instance_id()})
 	stroke.queue_redraw()
@@ -119,8 +132,47 @@ func valid_anchor(surface, point: Vector2) -> bool:
 	if not surface._inside(point):
 		return false
 	var cell: Vector2i = Vector2i(point.floor())
-	return surface.material_at(cell.x, cell.y) == Palette.BLACK.id \
-		or not Stroke.find_anchor(_world.world, _world.to_local(surface.to_global(point))).is_empty()
+	return surface.material_at(cell.x, cell.y) == Palette.BLACK.id
+
+func erase_spring_ends(surface, from: Vector2, to: Vector2) -> void:
+	for stroke in strokes.duplicate():
+		if stroke.state != Stroke.State.EDITING or stroke.source_surface != surface:
+			continue
+		for at in [stroke.path[0], stroke.path[-1]]:
+			var local: Vector2 = surface.to_local(_world.to_global(at))
+			if local.distance_to(Geometry2D.get_closest_point_to_segment(local, from, to)) <= surface.brush_size * 0.5:
+				undo(stroke, surface)
+				break
+
+func draft_data(surface) -> Array:
+	var data: Array = []
+	for stroke in strokes:
+		if stroke.source_surface == surface and stroke.state == Stroke.State.EDITING:
+			data.append({"path": stroke.path, "width": stroke.brush_width, "paid": stroke.paid,
+				"worn": stroke.worn, "dash_length": stroke.dash_length, "dash_gap": stroke.dash_gap})
+	return data
+
+func restore_drafts(surface, data: Array, charge := false) -> void:
+	clear_drafts(surface)
+	for saved in data:
+		var stroke := Stroke.new()
+		stroke.path = saved.path
+		stroke.brush_width = saved.width
+		stroke.worn = saved.worn
+		stroke.compact_raster = true
+		stroke.dashed = true
+		stroke.dash_length = saved.dash_length
+		stroke.dash_gap = saved.dash_gap
+		stroke.paid = saved.paid
+		stroke.source_surface = surface
+		stroke.source_canvas = _world.get_path_to(surface)
+		_world.add_child(stroke)
+		stroke.owner = _world
+		strokes.append(stroke)
+		if charge and stroke.paid:
+			var health = surface._health_node()
+			if health != null:
+				health.reduce(Palette.YELLOW.id, stroke.cells.size())
 
 func solidify(surface) -> void:
 	for stroke in strokes.duplicate():
@@ -232,6 +284,9 @@ func spring_load(stroke) -> float:
 	return absf(stroke.joint.stiffness * (a.distance_to(b) - stroke.rest_length) + stroke.joint.damping * speed)
 
 func observe_fracture(world, body, pieces: Array) -> void:
+	for child in _world.get_children():
+		if child is Hinge and not child.is_queued_for_deletion():
+			child.rebind(world, body, pieces)
 	for stroke in strokes:
 		stroke.rebind(world, body, pieces)
 		if stroke.state == Stroke.State.ACTIVE and stroke.anchors.size() == 2:
@@ -323,7 +378,14 @@ func _play_spring(stream: AudioStream, position: Vector2, volume_db: float, pitc
 	voice.play()
 
 func _process(delta: float) -> void:
+	var color: Color = Palette.YELLOW.color
+	if not is_equal_approx(_render_opacity, yellow_opacity):
+		_render_opacity = yellow_opacity
+		color.a = yellow_opacity
+		_world.renderer.set_material_color(Palette.YELLOW.id, color)
+		_world.renderer.mark_all_dirty()
 	for stroke in strokes.duplicate():
+		stroke.modulate.a = yellow_opacity
 		if stroke.state == Stroke.State.ACTIVE:
 			stroke.update_visual()
 		elif stroke.state == Stroke.State.DYING:

@@ -74,8 +74,8 @@ func _physics_process(delta: float) -> void:
 		_player.apply_collision_damage(result.player_damage, result.player_impacts)
 		if not result.removals.is_empty():
 			var nodes: Array = _main._body_nodes.duplicate()
-			commit(_main.world, result.removals, result.get("bursts", {}), true)
-			_physics.sync_after_commit(nodes)
+			var committed := commit(_main.world, result.removals, result.get("bursts", {}), true)
+			_physics.sync_after_commit(nodes, committed.changed)
 		_physics.apply_radial_impulses(result.get("impulses", []))
 		_physics.flush_blast_dust()
 		_elapsed -= _main.fixed_dt
