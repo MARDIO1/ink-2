@@ -78,7 +78,7 @@ voxel_size = 1.0
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
-position = Vector2(658.6781, 559.5167)
+position = Vector2(988.2019, 609.4405)
 process_callback = 0
 script = ExtResource("13_camera")
 
@@ -148,8 +148,8 @@ source = 3
 paint = SubResource("Image_nyrf5")
 
 [node name="Ink21" type="Node2D" parent="." unique_id=652541757 groups=["ink_item"]]
-position = Vector2(-509.8993, -4.701599)
-rotation = 0.0026519503
+position = Vector2(-509.9032, -4.69281)
+rotation = 0.0026470055
 script = ExtResource("24_peoql")
 metadata/canvas_undo_identity = 396378519347
 
@@ -160,7 +160,7 @@ source = 3
 paint = SubResource("Image_hahew")
 
 [node name="Ink22" type="Node2D" parent="." unique_id=1706463151 groups=["ink_item"]]
-position = Vector2(-511.99966, -253.99408)
+position = Vector2(-511.99982, -253.99402)
 script = ExtResource("24_peoql")
 metadata/canvas_undo_identity = 1851231595438
 
