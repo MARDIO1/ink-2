@@ -5,11 +5,20 @@ extends CanvasLayer
 const ROOT_SCENE := "res://root/root.tscn"
 
 @onready var continue_button: Button = $Center/Panel/Buttons/ContinueButton
+var _recovery_busy := false
+var _recovery_status: Label
 
 
 func _ready() -> void:
 	add_to_group(&"esc_menu")
 	visible = false
+	_recovery_status = Label.new()
+	_recovery_status.name = "RecoveryStatus"
+	_recovery_status.custom_minimum_size.x = 300
+	_recovery_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_recovery_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_recovery_status.visible = false
+	$Center/Panel/Buttons.add_child(_recovery_status)
 
 
 func open_menu() -> void:
@@ -19,6 +28,8 @@ func open_menu() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("escape"):
 		get_viewport().set_input_as_handled()
+		if _recovery_busy:
+			return
 		_set_open(not visible)
 
 
@@ -32,6 +43,8 @@ func _set_open(open: bool) -> void:
 
 
 func _on_continue_button_pressed() -> void:
+	if _recovery_busy:
+		return
 	_set_open(false)
 
 
@@ -40,10 +53,33 @@ func _recovery_controller() -> Node:
 	return player.get_node_or_null("FallDeath") if player != null else null
 
 
-func _on_escape_stuck_button_pressed() -> void:
+func _on_escape_stuck_button_pressed(skipped: Array = [], retry := 0) -> bool:
+	if _recovery_busy:
+		return false
 	var recovery := _recovery_controller()
-	if recovery != null and recovery.escape_stuck():
+	if recovery == null:
+		return false
+	_recovery_busy = true
+	for button in $Center/Panel/Buttons.get_children():
+		if button is Button:
+			button.disabled = true
+	show_recovery_status("正在寻找安全落点…")
+	var succeeded: bool = await recovery.escape_stuck(skipped, retry)
+	_recovery_busy = false
+	for button in $Center/Panel/Buttons.get_children():
+		if button is Button:
+			button.disabled = false
+	if succeeded:
+		show_recovery_status("")
 		_set_open(false)
+	else:
+		show_recovery_status(recovery.recovery_error)
+	return succeeded
+
+
+func show_recovery_status(message: String) -> void:
+	_recovery_status.text = message
+	_recovery_status.visible = not message.is_empty()
 
 
 func _on_menu_button_pressed() -> void:

@@ -1,6 +1,15 @@
 @tool
 extends Node2D
 
+## 与实体怪物共用关节驱动；保留原始骨骼路径和动画轨道。
+const USE_ANIMATION_TRACKS := true
+const BODY_BONE_PATH := ^"Skeleton2D/BodyHead"
+const LIMB_CONTROLS := [
+	{"bone": ^"Skeleton2D/BodyHead/LeftArm", "rest_direction": Vector2.RIGHT},
+	{"bone": ^"Skeleton2D/BodyHead/RightArm", "rest_direction": Vector2.RIGHT},
+	{"bone": ^"Skeleton2D/BodyHead/LeftLeg", "rest_direction": Vector2.RIGHT},
+	{"bone": ^"Skeleton2D/BodyHead/RightLeg", "rest_direction": Vector2.RIGHT},
+]
 ## 从前到后：左手、左脚、身体、右脚、右手。
 const FRONT_TO_BACK: Array[NodePath] = [
 	^"Skeleton2D/BodyHead/LeftArm",
@@ -9,6 +18,17 @@ const FRONT_TO_BACK: Array[NodePath] = [
 	^"Skeleton2D/BodyHead/RightLeg",
 	^"Skeleton2D/BodyHead/RightArm",
 ]
+var solve_ik := false
+var hand_drawn_wobble := false
+
+
+func _update_limb_rotations() -> void:
+	# 此角色由 AnimationPlayer 提供零位，没有目标点 IK。
+	pass
+
+
+func _update_occlusion_materials() -> void:
+	update_masks()
 
 func _ready() -> void:
 	process_priority = 200

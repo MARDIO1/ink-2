@@ -3,6 +3,7 @@
 extends Node2D
 
 signal tool_changed(tool: int)
+signal ink_selected(index: int)
 signal map_changed
 signal editor_control_requested
 ## 画布墨水固化完成时发射，供编辑器侧同步固定怪物初始位置等。
@@ -12,6 +13,7 @@ const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
 const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
 const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
@@ -346,6 +348,7 @@ func _place_controls() -> void:
 var _side_panel: Control = null
 var _ink_buttons: Array[Button] = []
 var _side_brush_slider: VSlider = null
+var _selected_ink_label: Label
 
 
 #右侧面板由色表生成：加一种墨水这里不用改。
@@ -399,6 +402,12 @@ func _build_side_panel() -> void:
 		button.pressed.connect(select_ink.bind(i))
 		colors.add_child(button)
 		_ink_buttons.append(button)
+		InkSelectionIndicator.install(button, color)
+	_selected_ink_label = Label.new()
+	_selected_ink_label.name = "SelectedInkLabel"
+	_selected_ink_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_selected_ink_label.add_theme_font_size_override("font_size", 10)
+	panel.add_child(_selected_ink_label)
 	var source_pen := brush_panel.get_node("PenSlider") as HSlider
 	source_pen.min_value = 1.0
 	source_pen.max_value = float(brush_size_max)
@@ -430,6 +439,10 @@ func select_ink(index: int) -> void:
 	surface.selected_ink = index
 	for i in _ink_buttons.size():
 		_ink_buttons[i].set_pressed_no_signal(i == index)
+		_ink_buttons[i].get_node("InkSelectionIndicator").set_selected(i == index)
+	if is_instance_valid(_selected_ink_label):
+		_selected_ink_label.text = "当前：%s" % InkPalette.ink_name(index)
+	ink_selected.emit(index)
 
 
 func _place_side_panel() -> void:

@@ -29,6 +29,7 @@ const LAYOUT_MODE_MOVE_CANVAS := -12
 const CONTROL_MODE := -13
 const LAYOUT_MODE_PLACE_PORTAL := -14
 const LAYOUT_MODE_DELETE_PORTAL := -16
+const LAYOUT_MODE_FOUNTAIN := -17
 const LAYOUT_MODES := [
 	LAYOUT_MODE_MOVE_SPAWN,
 	LAYOUT_MODE_PLACE_RESPAWN,
@@ -37,10 +38,11 @@ const LAYOUT_MODES := [
 	LAYOUT_MODE_MOVE_CANVAS,
 	LAYOUT_MODE_PLACE_PORTAL,
 	LAYOUT_MODE_DELETE_PORTAL,
+	LAYOUT_MODE_FOUNTAIN,
 ]
 const MONSTER_SCALE_STEP := 0.1
-const MONSTER_MIN_SCALE := 0.35
-const MONSTER_MAX_SCALE := 2.5
+## 只保留非零正尺寸，避免退化碰撞体；不设玩法缩放上限。
+const MONSTER_MIN_SCALE := 0.01
 const TEXT_SCALE_STEP := 0.1
 const TEXT_MIN_SCALE := 0.35
 const TEXT_MAX_SCALE := 3.0
@@ -48,9 +50,14 @@ const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 const DialogueTriggerScript := preload("res://debug/creative/src/map_dialogue_trigger.gd")
 const MapTextScript := preload("res://ui/map_text/src/map_text_label.gd")
 const MapPortalScript := preload("res://actor/portal/src/map_portal.gd")
+const InkFountainScript := preload("res://actor/fountain/src/ink_fountain.gd")
+const InkFountainScene := preload("res://actor/fountain/ink_fountain.tscn")
 const MapPlacementOverlayScript := preload("res://debug/creative/src/map_placement_overlay.gd")
 const PlayCanvasScene := preload("res://actor/canvas/canvas.tscn")
 const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
+var _editor_ink_buttons: Array[Button] = []
+var _editor_ink_label: Label
 const MAP_TEXT_FONT_PATH := "res://ui/map_text/asset/Muyao-Softbrush.ttf"
 const MONSTER_SCENES: Array[PackedScene] = [
 	preload("res://actor/monster/bomb_side.tscn"),
@@ -64,7 +71,7 @@ const MONSTER_KINDS := [
 ]
 const MONSTER_NAMES := ["炸弹狂", "小兵", "盾兵"]
 const MONSTER_NODE_NAMES := ["BombSide", "LittleSoldier", "GreatShield"]
-## 放置怪物时的固定大小，与"平路"关卡一致；滚轮缩放已禁用，保留接口供未来启用。
+## 新放置怪物的默认大小；恢复原始大小也使用此表。
 const MONSTER_FIXED_SCALES := {
 	MapMonsterScript.Kind.BOMB_SIDE: 1.0,
 	MapMonsterScript.Kind.LITTLE_SOLDIER: 0.7,
@@ -313,8 +320,16 @@ func _event_world_position(event: InputEventMouse) -> Vector2:
 
 func _handle_monster_adjust_button(event: InputEventMouseButton) -> bool:
 	if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-		# 怪物大小已固定，滚轮缩放禁用；保留 _resize_selected_monster() 接口供未来启用。
-		return false
+		if not event.pressed or get_viewport().gui_get_hovered_control() != null:
+			return false
+		var target := _find_monster_at(_event_world_position(event))
+		if target != null:
+			_selected_monster = target
+		if not is_instance_valid(_selected_monster):
+			return false
+		_resize_selected_monster(MONSTER_SCALE_STEP if event.button_index == MOUSE_BUTTON_WHEEL_UP else -MONSTER_SCALE_STEP)
+		_update_monster_status()
+		return true
 	if event.button_index == MOUSE_BUTTON_RIGHT:
 		if not event.pressed:
 			return false
@@ -658,10 +673,11 @@ func _refresh_layout_overlay(selected = null) -> void:
 func _update_layout_status() -> void:
 	if _layout_status_label == null:
 		return
-	_layout_status_label.text = "出生点 1 个　复活点 %d 个　游玩画布 %d 块　传送门 %d 个" % [
+	_layout_status_label.text = "出生点 1 个　复活点 %d 个　游玩画布 %d 块　传送门 %d 个　墨泉 %d 个" % [
 		_respawn_points().size(),
 		_play_canvases().size(),
 		_portals().size(),
+		_ink_fountains().size(),
 	]
 	if _monster_mode == CONTROL_MODE:
 		_layout_status_label.text += "\n操纵：%s" % _control_target_name(_selected_control_target)
@@ -702,6 +718,10 @@ func _respawn_points() -> Array:
 
 
 func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
+	if _monster_mode == LAYOUT_MODE_FOUNTAIN and event.button_index == MOUSE_BUTTON_RIGHT:
+		if not event.pressed or get_viewport().gui_get_hovered_control() != null:
+			return false
+		return delete_ink_fountain(_pick_ink_fountain(_event_world_position(event)))
 	if _monster_mode == CONTROL_MODE and event.button_index == MOUSE_BUTTON_RIGHT:
 		if not event.pressed or get_viewport().gui_get_hovered_control() != null:
 			return false
@@ -745,6 +765,9 @@ func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
 					_selected_control_target = placed_portal
 					_select_portal(placed_portal)
 					_update_layout_status()
+				return true
+			LAYOUT_MODE_FOUNTAIN:
+				place_ink_fountain(world_position)
 				return true
 			LAYOUT_MODE_DELETE_PORTAL:
 				delete_portal(_pick_portal(world_position))
@@ -828,9 +851,12 @@ func _pick_control_target(world_position: Vector2, resizable_only := false):
 func _resize_control_target(target, direction: float) -> bool:
 	if not is_instance_valid(target):
 		return false
-	# 怪物大小已固定，禁止滚轮缩放；保留接口供未来启用。
 	if target.is_in_group(MapMonsterScript.GROUP):
-		return false
+		_selected_monster = target
+		_resize_selected_monster(direction * MONSTER_SCALE_STEP)
+		_update_monster_status()
+		_refresh_layout_overlay(target)
+		return true
 	var minimum := TEXT_MIN_SCALE
 	var maximum := TEXT_MAX_SCALE
 	var step := TEXT_SCALE_STEP
@@ -855,7 +881,7 @@ func _resize_control_target(target, direction: float) -> bool:
 
 func _control_target_name(target) -> String:
 	if not is_instance_valid(target):
-		return "单击对象后拖动；在文本上滚轮缩放"
+		return "单击对象后拖动；在怪物或文本上滚轮缩放"
 	if target.is_in_group(MapMonsterScript.GROUP):
 		return "怪物"
 	if target is Label and target.is_in_group(MapTextScript.GROUP):
@@ -937,6 +963,52 @@ func _pick_portal(world_position: Vector2) -> Node2D:
 		if portals[index].contains_world_point(world_position):
 			return portals[index]
 	return null
+
+
+func _ink_fountains() -> Array:
+	var result: Array = []
+	var level := _level_root()
+	if level == null:
+		return result
+	for node in _collect_nodes_recursive(level):
+		if node.is_in_group(InkFountainScript.GROUP):
+			result.append(node)
+	return result
+
+
+func _pick_ink_fountain(world_position: Vector2) -> Node2D:
+	var fountains := _ink_fountains()
+	for index in range(fountains.size() - 1, -1, -1):
+		if fountains[index].contains_world_point(world_position):
+			return fountains[index]
+	return null
+
+
+func place_ink_fountain(world_position: Vector2, record_undo := true) -> Node2D:
+	var level := _level_root()
+	if level == null:
+		return null
+	var fountain := InkFountainScene.instantiate() as Node2D
+	fountain.name = _unique_level_node_name("InkFountain")
+	level.add_child(fountain)
+	fountain.global_position = world_position
+	# 固定尺寸只存在于打包场景内部，编辑器永远不修改根节点 scale。
+	fountain.scale = Vector2.ONE
+	fountain.owner = level
+	if record_undo:
+		_record_edit({"type": &"fountain_place", "target": fountain})
+	_update_layout_status()
+	return fountain
+
+
+func delete_ink_fountain(fountain: Node2D) -> bool:
+	if not is_instance_valid(fountain) or not fountain.is_in_group(InkFountainScript.GROUP):
+		return false
+	_record_edit({"type": &"fountain_delete", "position": fountain.global_position, "target": fountain})
+	fountain.get_parent().remove_child(fountain)
+	fountain.queue_free()
+	_update_layout_status()
+	return true
 
 
 func place_portal(world_position: Vector2, destination := "", record_undo := true) -> Node2D:
@@ -1135,7 +1207,7 @@ func _build_monster_palette() -> void:
 	column.add_child(color_title)
 	var color_grid := GridContainer.new()
 	color_grid.name = "ColorGrid"
-	color_grid.columns = 4
+	color_grid.columns = InkPalette.ink_count()
 	color_grid.add_theme_constant_override("h_separation", 18)
 	color_grid.add_theme_constant_override("v_separation", 12)
 	column.add_child(color_grid)
@@ -1157,11 +1229,23 @@ func _build_monster_palette() -> void:
 		color_button.custom_minimum_size = Vector2(64.0, 64.0)
 		color_button.tooltip_text = InkPalette.ink_name(index)
 		color_button.focus_mode = Control.FOCUS_NONE
+		color_button.toggle_mode = true
 		color_button.add_theme_stylebox_override("normal", color_style)
 		color_button.add_theme_stylebox_override("hover", color_style)
 		color_button.add_theme_stylebox_override("pressed", color_style)
 		color_button.pressed.connect(_select_editor_ink.bind(index))
 		color_grid.add_child(color_button)
+		_editor_ink_buttons.append(color_button)
+		InkSelectionIndicator.install(color_button, color)
+	_editor_ink_label = Label.new()
+	_editor_ink_label.name = "SelectedInkLabel"
+	_editor_ink_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_editor_ink_label.text = "当前：黑墨"
+	column.add_child(_editor_ink_label)
+	if _map_canvas != null:
+		if not _map_canvas.ink_selected.is_connected(_refresh_editor_ink):
+			_map_canvas.ink_selected.connect(_refresh_editor_ink)
+		_refresh_editor_ink(_map_canvas.surface.selected_ink, false)
 	var brush_row := HBoxContainer.new()
 	brush_row.name = "BrushSizeRow"
 	brush_row.add_theme_constant_override("separation", 12)
@@ -1337,6 +1421,7 @@ func _build_monster_palette() -> void:
 		null,
 		[LAYOUT_MODE_PLACE_PORTAL, "PlacePortalButton", "新增传送门", "打开子菜单选择目标地图，然后单击地图放置"],
 		[LAYOUT_MODE_DELETE_PORTAL, "DeletePortalButton", "删除传送门", "单击传送门删除；Ctrl+Z 撤销"],
+		[LAYOUT_MODE_FOUNTAIN, "InkFountainButton", "墨泉", "左键放置固定尺寸墨泉，右键删除；不可缩放"],
 	]
 	for tool in layout_tools:
 		if tool == null:
@@ -1406,6 +1491,15 @@ func _select_editor_ink(index: int) -> void:
 		_map_canvas.call("select_ink", index)
 
 
+func _refresh_editor_ink(index: int, animate := true) -> void:
+	for i in _editor_ink_buttons.size():
+		var button := _editor_ink_buttons[i]
+		button.set_pressed_no_signal(i == index)
+		button.get_node("InkSelectionIndicator").set_selected(i == index, animate)
+	if is_instance_valid(_editor_ink_label):
+		_editor_ink_label.text = "当前墨水：%s" % InkPalette.ink_name(index)
+
+
 func select_monster_tool(mode: int) -> void:
 	if mode != MONSTER_MODE_NONE and mode != MONSTER_MODE_DELETE and mode != MONSTER_MODE_ADJUST \
 	and mode != DIALOGUE_MODE_PLACE and mode != DIALOGUE_MODE_DELETE \
@@ -1473,7 +1567,7 @@ func place_monster(
 	world_position: Vector2,
 	record_undo := true,
 	monster_id := "",
-	monster_scale := Vector2.ONE
+	monster_scale := Vector2.ZERO
 ) -> Node2D:
 	var scene_index := MONSTER_KINDS.find(kind)
 	if scene_index < 0:
@@ -1485,11 +1579,11 @@ func place_monster(
 	if monster == null:
 		return null
 	monster.name = MONSTER_NODE_NAMES[scene_index]
+	var fixed_scale_value: float = MONSTER_FIXED_SCALES.get(kind, 1.0)
+	# 无指定尺寸时采用默认值；删除撤销/恢复必须保留用户缩放。
+	monster.scale = Vector2.ONE * fixed_scale_value if monster_scale == Vector2.ZERO else monster_scale
 	container.add_child(monster, true)
 	monster.global_position = world_position
-	# 固定怪物大小，与"平路"关卡一致；忽略传入的 monster_scale。
-	var fixed_scale_value: float = MONSTER_FIXED_SCALES.get(kind, 1.0)
-	monster.scale = Vector2.ONE * fixed_scale_value
 	if monster.has_method("sync_physics_from_node"):
 		monster.sync_physics_from_node(true)
 	if monster_id.is_empty():
@@ -1584,7 +1678,9 @@ func _resize_selected_monster(amount: float) -> void:
 		return
 	var old_position := _selected_monster.global_position
 	var old_scale := _selected_monster.scale
-	var next_scale := clampf(old_scale.x + amount, MONSTER_MIN_SCALE, MONSTER_MAX_SCALE)
+	var next_scale := maxf(old_scale.x + amount, MONSTER_MIN_SCALE)
+	if not is_finite(next_scale) or is_equal_approx(next_scale, old_scale.x):
+		return
 	_selected_monster.scale = Vector2.ONE * next_scale
 	if _selected_monster.has_method("sync_physics_from_node"):
 		_selected_monster.sync_physics_from_node(true)
@@ -2121,8 +2217,13 @@ func undo_last_edit() -> bool:
 					target.sync_physics_from_node(true)
 				_refresh_layout_overlay()
 				changed = true
-		&"respawn_place", &"play_canvas_place", &"portal_place":
+		&"respawn_place", &"play_canvas_place", &"portal_place", &"fountain_place":
 			changed = _undo_placed_layout_node(edit.get("target"))
+		&"fountain_delete":
+			var fountain = place_ink_fountain(edit.get("position", Vector2.ZERO), false)
+			if fountain != null:
+				_rebind_history_target(edit.get("target"), fountain)
+				changed = true
 		&"portal_destination":
 			var portal = edit.get("target")
 			if is_instance_valid(portal):

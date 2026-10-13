@@ -57,6 +57,14 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 	for contact in contacts:
 		if contact.approach <= min_approach:
 			continue
+		# 同伴与自己的部件不会互相撕裂盾牌；真实碰撞约束仍保留。
+		if contact.a.tags.has("monster_receiver") and contact.b.tags.has("monster_receiver"):
+			continue
+		# 敌人落地的承重冲量不能切掉脚下地面或盾牌底缘，否则每次回正
+		# 都会改变支撑几何，形成塌地、再落地和弹起的循环。
+		if (contact.a.tags.has("monster_receiver") and contact.b.is_static) \
+			or (contact.b.tags.has("monster_receiver") and contact.a.is_static):
+			continue
 		# 两头都是灰尘：两侧都被豁免，连冲量合成都不必算。
 		if dust.has(contact.a) and dust.has(contact.b):
 			continue
@@ -314,6 +322,13 @@ func apply_impulse_damage(world, body: PBody, origin: Vector2, direction: Vector
 		impulse: float, player_body: PBody, protected_bodies: Array,
 		result: Dictionary, attacker_material: int = 0) -> void:
 	if body == null or protected_bodies.has(body) or direction.is_zero_approx() or impulse <= 0.0:
+		return
+	# 爆炸射线沿同一血量入口伤害生物，不把躯干/四肢当墨水打碎。
+	# 盾牌不带 living 标记，继续走原来的可破坏像素逻辑；打盾不扣本体血。
+	var monster_ref: WeakRef = body.tags.get("monster_receiver")
+	var monster = monster_ref.get_ref() if monster_ref != null else null
+	if monster != null and body.tags.has(LIVING_TAG):
+		monster.apply_damage(impulse * monster.contact_damage_scale, body)
 		return
 	var strength: float = world.material_strength(ContactImpact.material_at(body, origin)).x
 	if strength <= 0.0 and body != player_body:

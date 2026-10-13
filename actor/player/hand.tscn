@@ -1,10 +1,11 @@
-[gd_scene load_steps=10 format=3 uid="uid://b78lla71aiabs"]
+[gd_scene load_steps=11 format=3 uid="uid://b78lla71aiabs"]
 
 [ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="1_body"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="2_shape"]
 [ext_resource type="Script" uid="uid://b38aey7p3jly0" path="res://actor/player/src/hand.gd" id="3_hand"]
-[ext_resource type="Image" path="res://actor/player/asset/player_hand_unfold_0.tres" id="4_hand0"]
-[ext_resource type="Image" path="res://actor/player/asset/player_hand_grab_0.tres" id="8_grab"]
+[ext_resource type="Image" path="res://actor/player/asset/player_hand_idle.tres" id="4_hand0"]
+[ext_resource type="Image" path="res://actor/player/asset/player_hand_grip.tres" id="8_grab"]
+[ext_resource type="Image" path="res://actor/player/asset/player_hand_climb.tres" id="22_climb"]
 [ext_resource type="Script" path="res://actor/player/src/pbody_visual.gd" id="7_visual"]
 [ext_resource type="Image" path="res://actor/player/asset/player_hand_phys_0.tres" id="9_phys"]
 [ext_resource type="Script" path="res://ink/src/pixel_art_layer.gd" id="20_art"]
@@ -48,9 +49,14 @@ fill_material = 5
 
 [node name="ArtGrab" type="Sprite2D" parent="Hand/Visual"]
 visible = false
-position = Vector2(1, 2)
 script = ExtResource("20_art")
 image = ExtResource("8_grab")
+fill_material = 5
+
+[node name="ArtClimb" type="Sprite2D" parent="Hand/Visual"]
+visible = false
+script = ExtResource("20_art")
+image = ExtResource("22_climb")
 fill_material = 5
 
 [node name="ArmCurve" type="Line2D" parent="Hand/Visual"]

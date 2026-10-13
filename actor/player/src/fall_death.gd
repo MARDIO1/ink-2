@@ -14,6 +14,11 @@ const PLAYER_SPAWN_GROUP := &"player_spawn"
 const RESPAWN_POINT_PREFIX := "RespawnPoint"
 const RESPAWN_POINT_GROUP := &"respawn_point"
 const InkPalette := preload("res://ink/src/ink_palette.gd")
+const SafeSpawnSearch := preload("res://actor/player/src/safe_spawn_search.gd")
+var recovering := false
+var recovery_error := ""
+var last_search_stats: Dictionary = {}
+var _pending_safety_check: Dictionary = {}
 #endregion
 
 
@@ -38,6 +43,7 @@ var _initial_rotation := 0.0
 
 #region 生命周期
 func _ready() -> void:
+	process_physics_priority = 100 # 世界推进后再复查实际落点。
 	_player = get_parent()
 	_initial_position = _player.global_position
 	_initial_rotation = _player.global_rotation
@@ -49,6 +55,9 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if not _pending_safety_check.is_empty() and not recovering and not _editor_active():
+		_verify_after_resume()
+		return
 	if not _editor_active():
 		_update_visited_points()
 	else:
@@ -145,8 +154,9 @@ func _teleport_to(target: Vector2, target_rotation: float) -> void:
 	# 与 creative.gd _reset_player_to_spawn 相同的传送方式。
 	_player.global_position = target
 	_player.global_rotation = target_rotation
-	_body.position = target
-	_body.rotation = target_rotation
+	var level := _level_root() as Node2D
+	_body.position = level.to_local(target)
+	_body.rotation = target_rotation - level.global_rotation
 	_body.linear_velocity = Vector2.ZERO
 	_body.angular_velocity = 0.0
 	_body.control_force = Vector2.ZERO
@@ -164,25 +174,97 @@ func _teleport_to(target: Vector2, target_rotation: float) -> void:
 
 
 ## 暂停菜单也可调用。不回血、不更改普通死亡的最近复活点规则。
-func escape_stuck() -> bool:
-	if _editor_active():
+func escape_stuck(skipped: Array = [], retry := 0) -> bool:
+	if _editor_active() or recovering:
 		return false
 	_body = _player.get("body")
 	if _body == null:
 		return false
+	recovering = true
+	recovery_error = ""
+	_pending_safety_check = {}
+	var was_paused := get_tree().paused
+	get_tree().paused = true
 	_update_visited_points()
-	var point := _nearest_visited_point()
+	var level := _level_root() as Node2D
+	var points: Array = []
+	for point in _visited_points:
+		if is_instance_valid(point) and point.is_inside_tree():
+			points.append(point)
+	var current_position: Vector2 = _body.com_world()
+	points.sort_custom(func(a, b): return level.to_local(a.global_position).distance_squared_to(current_position) < level.to_local(b.global_position).distance_squared_to(current_position))
+	var targets: Array = []
+	for point in points.slice(0, 8):
+		targets.append({"position": level.to_local(point.global_position), "rotation": point.global_rotation - level.global_rotation})
+	if targets.is_empty():
+		targets.append({"position": level.to_local(_initial_position), "rotation": _initial_rotation - level.global_rotation})
+	var hand := _player.get_node_or_null("Arm/Hand/HandControl")
+	var search := SafeSpawnSearch.new()
+	search.setup(self, level.world, _body, hand)
+	var landing: Dictionary = await search.find(targets, skipped)
+	var previous_position := _player.global_position
+	var previous_rotation := _player.global_rotation
+	# 提交后等待一帧，重新读取当前物品和碎屑位置，而非只使用首次快照。
+	if not landing.is_empty():
+		_teleport_to(level.to_global(landing.position), landing.rotation + level.global_rotation)
+		await get_tree().process_frame
+		if not await search.verify(_body.position, _body.rotation):
+			skipped.append(landing.position)
+			landing = await search.find(targets, skipped)
+			if not landing.is_empty():
+				_teleport_to(level.to_global(landing.position), landing.rotation + level.global_rotation)
+				if not await search.verify(_body.position, _body.rotation):
+					landing = {}
+		if landing.is_empty():
+			_teleport_to(previous_position, previous_rotation)
+	last_search_stats = {"candidates": search.candidates_checked, "pairs": search.pairs_checked, "yielded_frames": search.frames_yielded}
+	if landing.is_empty():
+		recovery_error = "落点被阻挡或没有安全支撑，请清理附近障碍后重试。"
+		recovering = false
+		# 找不到安全位置时不自动恢复游戏，不强行把玩家塞进物品。
+		return false
 	_dead = false
 	_death_timer = 0.0
 	_death_layer.visible = false
 	_peak_y = INF
-	_teleport_to(point.global_position if point != null else _initial_position,
-		point.global_rotation if point != null else _initial_rotation)
 	# 复位抓握后同步工具栏，避免手已启用但 UI 仍显示画笔。
 	for canvas in get_tree().get_nodes_in_group(&"play_canvas"):
 		if _level_root().is_ancestor_of(canvas) and canvas.active:
 			canvas.activate_hand_tool()
+	_pending_safety_check = {"position": landing.position, "retry": retry}
+	recovering = false
+	get_tree().paused = was_paused
 	return true
+
+
+## 恢复游玩后的首个真实物理步再复查一次；只运行一次，不成为常驻碰撞扫描。
+func _verify_after_resume() -> void:
+	var pending := _pending_safety_check
+	_pending_safety_check = {}
+	recovering = true
+	get_tree().paused = true
+	var search := SafeSpawnSearch.new()
+	search.setup(self, _level_root().world, _body, _player.get_node_or_null("Arm/Hand/HandControl"))
+	var safe: bool = await search.verify(_body.position, _body.rotation)
+	recovering = false
+	if safe:
+		get_tree().paused = false
+		return
+	var menu := get_tree().get_first_node_in_group(&"esc_menu")
+	if menu != null:
+		menu.open_menu()
+	var succeeded := false
+	if int(pending.retry) < 1:
+		if menu != null:
+			succeeded = await menu._on_escape_stuck_button_pressed([pending.position], int(pending.retry) + 1)
+		else:
+			succeeded = await escape_stuck([pending.position], int(pending.retry) + 1)
+			if succeeded:
+				get_tree().paused = false
+	if not succeeded:
+		recovery_error = "落点被移动物品阻挡，请再次脱离卡死。"
+		if menu != null:
+			menu.show_recovery_status(recovery_error)
 
 
 func _level_root() -> Node:

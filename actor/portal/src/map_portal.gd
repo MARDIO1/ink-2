@@ -6,11 +6,16 @@ const GROUP := &"map_portal"
 const LevelList := preload("res://ui/level_select/src/level_select.gd")
 const TEXTURE_PATH := "res://actor/portal/asset/torn_paper_portal.png"
 const OVERLAP_SECONDS := 2.0
-const CENTER_FILTER_COLOR := Color(0.78, 0.78, 0.78, 0.3)
+const SPIRAL_SHADER := preload("res://actor/portal/asset/portal_spiral.gdshader")
 static var _center_mask: Texture2D
 
 @export_file("*.tscn") var target_map := ""
 @export var portal_size := Vector2(150.0, 150.0)
+## 每秒旋转弧度；暂停菜单打开时动画也暂停。
+@export var spiral_rotation_speed := 0.7
+var _spiral: Sprite2D
+var _spiral_material: ShaderMaterial
+var _spiral_phase := 0.0
 var overlap_time := 0.0
 var _fired := false
 var _pending := false
@@ -33,8 +38,23 @@ func _ready() -> void:
 	_texture = load(TEXTURE_PATH) as Texture2D
 	if _center_mask == null and _texture != null:
 		_center_mask = _make_center_mask(_texture.get_image())
+	_setup_spiral()
 	queue_redraw()
 	set_physics_process(not Engine.is_editor_hint())
+
+
+func _setup_spiral() -> void:
+	if _center_mask == null:
+		return
+	_spiral = Sprite2D.new()
+	_spiral.name = "SpiralCenter"
+	_spiral.texture = _center_mask
+	_spiral.show_behind_parent = true
+	_spiral_material = ShaderMaterial.new()
+	_spiral_material.shader = SPIRAL_SHADER
+	_spiral.material = _spiral_material
+	add_child(_spiral)
+	_spiral.scale = portal_size / Vector2(_center_mask.get_size())
 
 
 ## 从透明中心四向扩散，只覆盖被裂纹围住的洞口，不覆盖外围背景。
@@ -75,6 +95,10 @@ func editor_destination_text() -> String:
 
 
 func _process(delta: float) -> void:
+	if is_instance_valid(_spiral):
+		_spiral_phase = fposmod(_spiral_phase + delta * spiral_rotation_speed, TAU)
+		_spiral_material.set_shader_parameter("phase", _spiral_phase)
+		_spiral.scale = portal_size / Vector2(_center_mask.get_size())
 	var editing := Engine.is_editor_hint() or _editor_active()
 	if not editing:
 		if not _editor_label.is_empty():
@@ -191,8 +215,6 @@ func _draw() -> void:
 		var label_position := Vector2(-width * 0.5, -portal_size.y * 0.5 - 14.0)
 		draw_rect(Rect2(label_position - Vector2(0, 18), Vector2(width, 24)), Color(0.96, 0.95, 0.87, 0.85))
 		draw_string(font, label_position, _editor_label, HORIZONTAL_ALIGNMENT_CENTER, width, 16, Color.BLACK)
-	if _center_mask != null:
-		draw_texture_rect(_center_mask, Rect2(-portal_size * 0.5, portal_size), false, CENTER_FILTER_COLOR)
 	if _texture != null:
 		draw_texture_rect(_texture, Rect2(-portal_size * 0.5, portal_size), false)
 	if Engine.is_editor_hint() or _editor_active():

@@ -46,6 +46,13 @@ func _reset_monster(monster, position: Vector2) -> void:
 	monster.global_position = position
 	monster.global_rotation = 0.0
 	monster.sync_physics_from_node()
+	_protect_shield(monster)
+
+
+func _protect_shield(monster) -> void:
+	# 此处只测关节碰撞；破盾会改变被测组件质量和质心，破坏另有回归。
+	if monster._ragdoll != null and monster._ragdoll.shield_body != null:
+		monster._ragdoll.shield_body.tags["living"] = true
 
 
 func _monster_center_x(monster) -> float:
@@ -66,8 +73,8 @@ func _monster_center_x(monster) -> float:
 func _check_limb_fit(monster) -> bool:
 	var valid := true
 	for part in monster._ragdoll.parts:
-		var sprite: Sprite2D = part.bone.get_node(str(part.bone.name) + "Art")
-		var frame := Transform2D(part.bone.global_rotation, part.bone.global_position)
+		var sprite := Ragdoll.limb_art(part.bone)
+		var frame := Transform2D(part.bone.global_transform.x.angle(), part.bone.global_position)
 		var polygon := Ragdoll.sprite_polygon(sprite, frame)
 		var shape := Ragdoll.sprite_shape(sprite, frame, monster.material_id)
 		valid = valid and polygon.size() >= 4 and polygon.size() <= 12
@@ -76,11 +83,18 @@ func _check_limb_fit(monster) -> bool:
 		valid = valid and shape.pixel_count() < int(bounds.size.x * bounds.size.y * 0.97)
 		var image := sprite.texture.get_image()
 		var transform := frame.affine_inverse() * sprite.global_transform
-		var offset := sprite.offset - sprite.texture.get_size() * 0.5
+		var offset := sprite.offset
+		if sprite.centered:
+			offset -= sprite.texture.get_size() * 0.5
 		for y in image.get_height():
 			for x in image.get_width():
 				if image.get_pixel(x, y).a > 0.1:
-					var point := transform * (Vector2(x + 0.5, y + 0.5) + offset)
+					var pixel := Vector2(x + 0.5, y + 0.5)
+					if sprite.flip_h:
+						pixel.x = image.get_width() - pixel.x
+					if sprite.flip_v:
+						pixel.y = image.get_height() - pixel.y
+					var point := transform * (pixel + offset)
 					valid = valid and shape.get_pixel(floori(point.x), floori(point.y)) != 0
 	return valid
 
@@ -100,6 +114,8 @@ func _reset_body(body, position: Vector2, velocity := Vector2.ZERO) -> void:
 func _run() -> void:
 	var valid := true
 	var monster_kind := MapMonsterScript.Kind.SHIELD_SOLDIER if "--great-shield" in OS.get_cmdline_user_args() else MapMonsterScript.Kind.LITTLE_SOLDIER
+	if "--bomb-side" in OS.get_cmdline_user_args():
+		monster_kind = MapMonsterScript.Kind.BOMB_SIDE
 	var level := (load("res://map/main.tscn") as PackedScene).instantiate()
 	# 测试场只保留地面、玩家和被测怪物，移除演示道具干扰。
 	level.get_node("Box").free()
@@ -108,6 +124,7 @@ func _run() -> void:
 	level.get_node("Ground/Shape").rect_size = Vector2i(4000, 40)
 	root.add_child(level)
 	level.get_node("debugHUD").process_mode = Node.PROCESS_MODE_DISABLED
+	level.get_node("SimulationRuntime/PhysicsStep").freeze_view_scale = 32.0
 	await process_frame
 	await physics_frame
 
@@ -121,6 +138,9 @@ func _run() -> void:
 	await process_frame
 	await physics_frame
 	var monster_body = monster.body if monster != null else null
+	# 本测试隔离碰撞求解；高速撞墙不能先触发死亡并删除被测角色。
+	monster.contact_damage_scale = 0.0
+	_protect_shield(monster)
 	var ground_body = level.get_node("Ground").body
 	# 碰撞回归需要完整地面；像素破坏另测，不能让下落或撞击删除测试支撑。
 	ground_body.tags["living"] = true
@@ -142,6 +162,10 @@ func _run() -> void:
 	var arms_down := true
 	for part in monster._ragdoll.parts:
 		if str(part.bone.name).ends_with("Arm"):
+			if monster_kind == MapMonsterScript.Kind.BOMB_SIDE:
+				# 镜像侧身骨骼保留源动画零位，不采用正面小兵的下垂方向。
+				arms_down = arms_down and is_equal_approx(part.bone.rotation, part.rest_angle)
+				continue
 			if monster.has_shield and str(part.bone.name) == "LeftArm":
 				continue
 			var direction: Vector2 = Vector2(part.control.rest_direction).rotated(part.bone.rotation).normalized()
@@ -151,7 +175,7 @@ func _run() -> void:
 	var sole_heights: Array[float] = []
 	for part in monster._ragdoll.parts:
 		if str(part.bone.name).ends_with("Leg"):
-			var sprite: Sprite2D = part.bone.get_node(str(part.bone.name) + "Art")
+			var sprite := Ragdoll.limb_art(part.bone)
 			var bottom := -INF
 			for point in Ragdoll.sprite_polygon(sprite, monster.global_transform):
 				bottom = maxf(bottom, point.y)
@@ -177,6 +201,7 @@ func _run() -> void:
 		var previous_body_ref: WeakRef = weakref(monster_body)
 		monster.scale = Vector2.ONE * factor
 		monster.sync_physics_from_node(true)
+		_protect_shield(monster)
 		monster_body = monster.body
 		var scaled_fit := _check_limb_fit(monster)
 		valid = valid and scaled_fit
@@ -201,7 +226,7 @@ func _run() -> void:
 	var feet_aligned := true
 	for part in monster._ragdoll.parts:
 		feet_aligned = feet_aligned and part.bone.global_position.distance_to(level.to_global(part.body.position)) < 0.01
-		feet_aligned = feet_aligned and absf(wrapf(part.bone.global_rotation - part.body.rotation, -PI, PI)) < 0.001
+		feet_aligned = feet_aligned and absf(wrapf(part.bone.global_transform.x.angle() - part.body.rotation, -PI, PI)) < 0.001
 	valid = valid and feet_aligned
 	print("[MonsterPhysics] visible feet/collider aligned: ", feet_aligned)
 
@@ -216,7 +241,8 @@ func _run() -> void:
 		level.world.remove_joint(joint)
 	_reset_body(player_body, Vector2(-1000, -1000))
 	_reset_monster(monster, Vector2(0, -40))
-	for _frame in 240:
+	# 重载盾牌的落地回正刻意更平缓，保留姿态断言而延长稳定时间窗口。
+	for _frame in (480 if monster.has_shield else 240):
 		await physics_frame
 	var standing_valid: bool = absf(monster.body.rotation) < 0.04
 	var standing_contact := await _wait_for_monster_contact(level.world, monster, ground_body, 20)
@@ -255,6 +281,10 @@ func _run() -> void:
 
 	# 玩家主体应能和小兵形成求解接触。
 	level.world.gravity = Vector2.ZERO
+	# 零重力击退/薄墙阶段隔离地面摩擦和盾牌底缘支撑，避免把滚动回正
+	# 产生的地面反力误算为探针的水平击退方向。
+	ground_body.collision_layer = 0
+	ground_body.collision_mask = 0
 	# 此处只测玩家主体的碰撞；远处的手臂关节和鼠标马达不能干扰探测轨迹。
 	player.get_node("Arm/Hand").set_physics_process(false)
 	for joint in level.world.joints_of(player_body).duplicate():

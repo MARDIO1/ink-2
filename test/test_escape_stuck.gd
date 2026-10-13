@@ -1,6 +1,8 @@
 extends SceneTree
 
 var failures := 0
+const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
+const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -33,6 +35,14 @@ func _run() -> void:
 		level.add_child(point)
 		point.position = Vector2(1000 + i * 1000, -1000)
 		points.append(point)
+		var bottom := 0.0
+		for rect in body.rects:
+			bottom = maxf(bottom, rect.end.y)
+		var floor_body := PBody.new()
+		floor_body.position = point.position + Vector2(-160, ceilf(bottom) + 2)
+		var floor_shape := PixelShape.new()
+		floor_shape.fill_rect(Rect2i(0, 0, 320, 12), 1)
+		level.world.add_body(floor_body, [floor_shape], Callable(level, "_density_of"), true)
 	recovery._checkpoints_initialized = false
 	recovery._body = body
 	_move(body, points[0].global_position)
@@ -50,7 +60,7 @@ func _run() -> void:
 	hand.set_target_world(Vector2(5000, 5000))
 	hand.set_enabled(false)
 	level.get_node("Player/PlayerInput").support = body
-	esc.get_node("Center/Panel/Buttons/EscapeStuckButton").pressed.emit()
+	await esc._on_escape_stuck_button_pressed()
 	_check("button teleports and resumes", not paused and not esc.visible and body.position.is_equal_approx(points[1].global_position))
 	_check("clears motion and support", body.linear_velocity == Vector2.ZERO and body.angular_velocity == 0.0 and level.get_node("Player/PlayerInput").support == null)
 	_check("hand reset clears overrides and grip", hand.enabled and hand.grabbed_body == null and hand._grip_override == null and hand._target_override == null)
@@ -65,12 +75,12 @@ func _run() -> void:
 	for point in next._visited_points:
 		leaked_visit = leaked_visit or point.get_instance_id() == previous_point_id
 	_check("visits do not leak to next map", not leaked_visit)
-	_check("spawn fallback works", next.escape_stuck())
+	_check("spawn fallback works", await next.escape_stuck())
 	var creative: Node = app.level_root.get_child(0).get_node("Creative")
 	creative.active = true
 	esc = get_first_node_in_group(&"esc_menu")
 	esc.open_menu()
-	_check("editor disables recovery", esc.get_node("Center/Panel/Buttons/EscapeStuckButton").disabled and not next.escape_stuck())
+	_check("editor disables recovery", esc.get_node("Center/Panel/Buttons/EscapeStuckButton").disabled and not await next.escape_stuck())
 	creative.active = false
 	esc._on_continue_button_pressed()
 	app.queue_free()

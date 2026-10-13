@@ -3,12 +3,21 @@ class_name MapMonster
 extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
 
 ## 地图编辑器的小怪入口：保存标识、碰撞注册与编辑状态。
-## 实体小兵由关节刚体驱动骨骼；旧非实体怪物仍保留视觉动画。
+## 实体怪物由关节刚体驱动骨骼；旧非实体怪物仍保留视觉动画。
 
 const GROUP := &"map_monster"
 const LIVING_TAG := "living"
 const MONSTER_TAG := "map_monster"
 const Ragdoll := preload("res://actor/monster/src/monster_ragdoll.gd")
+const HealthBar := preload("res://actor/monster/src/monster_health_bar.gd")
+signal health_changed(current: float, maximum: float)
+signal died
+const HEALTH_MULTIPLIER := 5.0
+var max_health := 1000.0 * HEALTH_MULTIPLIER
+var health := 1000.0 * HEALTH_MULTIPLIER
+var _health_bar: Sprite2D
+var _dead := false
+@export var contact_damage_scale := 0.001
 var _ragdoll: RefCounted
 
 ## 前两个编号只为兼容旧地图与测试保留，已不再对应可放置场景或美术资源。
@@ -19,7 +28,7 @@ enum Kind { SHIELD_SIDE = 0, LITTLE_SOLDIER = 1, BOMB_SIDE = 2, SHIELD_SOLDIER =
 @export var display_name := "小怪"
 @export_range(16.0, 256.0, 1.0) var editor_pick_radius := 72.0
 @export var editor_id := ""
-## 小兵使用躯干和四肢五个关节刚体；旧怪物继续保持纯视觉。
+## 小兵、盾兵和炸弹狂使用躯干及四肢五个关节刚体。
 @export var physical_enabled := false
 ## 相对怪物原点（脚底中心）的简化身体碰撞壳。
 @export var physics_rect := Rect2i(-46, -220, 92, 220)
@@ -43,11 +52,15 @@ enum Kind { SHIELD_SIDE = 0, LITTLE_SOLDIER = 1, BOMB_SIDE = 2, SHIELD_SOLDIER =
 @export_range(0.1, 1.0, 0.01) var shield_scale := 0.45
 @export_range(1.0, 3.0, 0.05) var shield_height_scale := 2.0
 @export var shield_offset := Vector2(-155.0, -170.0)
+## 从掌心沿角色横轴向身体内侧移动，随地图缩放和朝向同步。
+@export_range(0.0, 32.0, 0.5) var shield_grip_inset := 4.0
 ## 盾牌是否已破碎（运行时状态，编辑器中不生效）。
 var shield_broken := false
 ## 玩家接近时停止行走姿势，远离后恢复；两个距离避免临界位置反复切换。
 @export var player_stop_distance := 320.0
 @export var player_resume_distance := 400.0
+## 玩家站在头顶时的微小横向晃动不应触发整套刚体重建。
+@export_range(2.0, 128.0, 1.0) var player_turn_deadzone := 32.0
 
 const HIT_COOLDOWN := 0.12
 const MAX_IMPULSE := 2400.0
@@ -105,6 +118,13 @@ func _ready() -> void:
 			_bone_last_applied[bone] = 0.0
 			_bone_base_rotation[bone] = bone.rotation
 	initial_position = global_position
+	max_health = (2000.0 if kind == Kind.SHIELD_SOLDIER else (500.0 if kind == Kind.BOMB_SIDE else 1000.0)) * HEALTH_MULTIPLIER
+	health = max_health
+	if not Engine.is_editor_hint():
+		_health_bar = HealthBar.new()
+		_health_bar.name = "MonsterHealthBar"
+		add_child(_health_bar)
+		_update_health_bar()
 	if physical_enabled and not Engine.is_editor_hint():
 		# 父 PixelWorld 会在自己的 _ready 重建一次；延迟注册可避免刚加入的嵌套刚体被重建覆盖。
 		_register_physics_deferred.call_deferred()
@@ -167,8 +187,8 @@ func _bake_lazily():
 func build_shape():
 	if not physical_enabled:
 		return PixelShape.new()
-	if kind in [Kind.LITTLE_SOLDIER, Kind.SHIELD_SOLDIER]:
-		var sprite := get_node("Visual/Skeleton2D/Root/BodyBone/BodyArt") as Sprite2D
+	if kind in [Kind.LITTLE_SOLDIER, Kind.SHIELD_SOLDIER, Kind.BOMB_SIDE]:
+		var sprite := Ragdoll.body_art(get_node("Visual"))
 		var frame := Transform2D(global_rotation, global_position)
 		return Ragdoll.sprite_shape(sprite, frame, material_id)
 	var shape := PixelShape.new()
@@ -231,6 +251,7 @@ func sync_physics_from_node(rebuild_shape := false) -> void:
 	if _ragdoll != null:
 		_ragdoll.sync_from_node()
 		_ragdoll.pause(_editor_physics_paused)
+		_sync_shield_visual() # 缩放当帧同步盾牌视觉，不等待下一次渲染更新。
 	if _editor_physics_paused:
 		physics_world.world.freeze(physics_body)
 	else:
@@ -277,6 +298,8 @@ func reset_to_initial_position() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _dead:
+		return
 	if physical_enabled and not Engine.is_editor_hint():
 		var physics_world := _find_physics_world()
 		var physics_body = body
@@ -315,7 +338,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _update_walk_state(allow_turn := true) -> void:
-	if kind not in [Kind.LITTLE_SOLDIER, Kind.SHIELD_SOLDIER] or _animation == null:
+	if kind not in [Kind.LITTLE_SOLDIER, Kind.SHIELD_SOLDIER, Kind.BOMB_SIDE] or _animation == null:
 		return
 	var should_walk := not _editor_physics_paused and _hit_recovery <= 0.0
 	var player := get_tree().get_first_node_in_group(&"player") as Node2D
@@ -332,7 +355,7 @@ func _update_walk_state(allow_turn := true) -> void:
 		var limit := player_resume_distance if not walking else player_stop_distance
 		should_walk = should_walk and distance > limit
 		# 盾兵专属：玩家靠近时始终朝向玩家所在的一面，水平翻转视觉并刷新物理碰撞体
-		if allow_turn and kind == Kind.SHIELD_SOLDIER and _visual != null and not _editor_physics_paused and distance < player_resume_distance and absf(player_center.x - center.x) > 2.0:
+		if allow_turn and kind == Kind.SHIELD_SOLDIER and _visual != null and not _editor_physics_paused and distance < player_resume_distance and absf(player_center.x - center.x) > maxf(player_turn_deadzone * absf(scale.x), 2.0):
 			var target_facing := -1 if player_center.x < center.x else 1
 			if target_facing != _current_facing:
 				_current_facing = target_facing
@@ -358,11 +381,13 @@ func _update_walk_state(allow_turn := true) -> void:
 
 
 ## 接触冲量已改变真实刚体速度；关节小兵松开姿势马达，旧碰撞壳使用视觉反馈。
-func receive_contact_impact(point: Vector2, impulse: Vector2) -> void:
+func receive_contact_impact(point: Vector2, impulse: Vector2, hit_body = null, attack := true) -> void:
 	if _editor_physics_paused or _body == null or _hit_cooldown > 0.0:
 		return
 	last_contact_impulse = impulse
 	last_contact_point = point
+	if attack:
+		apply_damage(impulse.length() * contact_damage_scale, hit_body)
 	_hit_recovery = 0.45
 	# 接触报告仍在遍历原生碰撞对，此时删除刚体会使后续接触句柄失效。
 	# 朝向在下一物理帧起点即时刷新，受击回调只更新停走状态。
@@ -411,6 +436,9 @@ func receive_impact(world_point: Vector2, impulse: Vector2) -> void:
 	var strength := capped.length()
 	if strength <= 0.001:
 		return
+	# 旧非实体怪物的玩家手部攻击也使用同一血量入口。
+	if not physical_enabled and _hit_cooldown <= 0.0:
+		apply_damage(strength * 0.1)
 	_hit_cooldown = HIT_COOLDOWN
 	_kick_velocity += capped.rotated(-global_rotation) / maxf(70.0 + strength * 0.08, 1.0)
 	var lever := world_point - global_position
@@ -427,6 +455,7 @@ func receive_impact(world_point: Vector2, impulse: Vector2) -> void:
 
 
 func _process(delta: float) -> void:
+	_update_health_bar()
 	if _visual == null:
 		return
 	if _ragdoll != null:
@@ -441,6 +470,10 @@ func _process(delta: float) -> void:
 	_twist_velocity += (-_twist * VISUAL_SPRING - _twist_velocity * VISUAL_DAMPING) * delta
 	_twist += _twist_velocity * delta
 	_visual.position = _visual_base_position + _kick_offset
+	_update_legacy_bones(delta)
+
+
+func _update_legacy_bones(delta: float) -> void:
 	_visual.rotation = _visual_base_rotation + _twist
 	for key in _bone_twist.keys():
 		var bone := key as Bone2D
@@ -450,10 +483,8 @@ func _process(delta: float) -> void:
 			_bone_last_applied.erase(key)
 			_bone_base_rotation.erase(key)
 			continue
-		# 先撤掉上一帧的附加偏移，再叠加本帧弹簧解；源动画/IK 仍控制基础姿势。
 		var previous: float = float(_bone_last_applied[bone])
 		var base: float = float(_bone_base_rotation.get(bone, bone.rotation))
-		# IK/动画可能已覆写基础角度，此时不能再次减去上一帧的偏移。
 		if not is_equal_approx(bone.rotation, base + previous):
 			base = bone.rotation
 		_bone_base_rotation[bone] = base
@@ -467,11 +498,48 @@ func _process(delta: float) -> void:
 		_bone_last_applied[bone] = angle
 
 
+## 盾牌受击不会扣本体血；地面承重不作为攻击。编辑时完全禁用伤害。
+func apply_damage(amount: float, hit_body = null) -> float:
+	var level := _find_physics_world()
+	var creative := level.get_node_or_null("Creative") if level != null else null
+	if _dead or _editor_physics_paused or (creative != null and creative.active) \
+			or not is_finite(amount) or amount <= 0.0:
+		return 0.0
+	if hit_body != null and str(hit_body.tags.get("monster_part", "")) == "Shield":
+		return 0.0
+	var removed := minf(health, amount)
+	health = maxf(0.0, health - removed)
+	health_changed.emit(health, max_health)
+	_update_health_bar()
+	if health <= 0.0:
+		_dead = true
+		walking = false
+		died.emit()
+		_finish_death.call_deferred() # 不能在原生接触遍历中移除刚体。
+	return removed
+
+
+func _finish_death() -> void:
+	queue_free()
+
+
+func _update_health_bar() -> void:
+	if not is_instance_valid(_health_bar):
+		return
+	var position := global_position + Vector2(0, -140.0 * absf(global_scale.y))
+	var width := clampf(90.0 * absf(global_scale.x), 50.0, 160.0)
+	var world := _find_physics_world()
+	if _body != null and world != null:
+		position = world.to_global(Vector2(_body.com_world().x, _body.aabb.position.y - 14.0))
+	_health_bar.global_position = position
+	_health_bar.update_health(health, max_health, width)
+
+
 func _configure_imported_visual() -> void:
 	var visual := get_node_or_null("Visual") as Node2D
 	if visual == null:
 		return
-	if physical_enabled and kind in [Kind.LITTLE_SOLDIER, Kind.SHIELD_SOLDIER]:
+	if physical_enabled and kind in [Kind.LITTLE_SOLDIER, Kind.SHIELD_SOLDIER, Kind.BOMB_SIDE]:
 		_set_property_if_present(visual, &"hand_drawn_wobble", false)
 	_set_property_if_present(visual, &"show_ik_targets", false)
 	_set_property_if_present(visual, &"show_targets", false)
@@ -499,7 +567,7 @@ func _set_property_if_present(object: Object, property: StringName, value: Varia
 
 
 func _ensure_ragdoll() -> void:
-	if _ragdoll != null or kind not in [Kind.LITTLE_SOLDIER, Kind.SHIELD_SOLDIER] or _body == null:
+	if _ragdoll != null or kind not in [Kind.LITTLE_SOLDIER, Kind.SHIELD_SOLDIER, Kind.BOMB_SIDE] or _body == null:
 		return
 	var physics_world := _find_physics_world()
 	if physics_world == null or not physics_world.world.bodies.has(_body):
