@@ -1,7 +1,7 @@
 extends SceneTree
 
 const Portal := preload("res://actor/portal/src/map_portal.gd")
-const MAIN := preload("res://map/main.tscn")
+const MAIN := preload("res://map/asset/imported/main.tscn")
 var failures := 0
 var checks := 0
 
@@ -37,11 +37,12 @@ func _run() -> void:
 	var image := (load(Portal.TEXTURE_PATH) as Texture2D).get_image()
 	_check("transparent asset size 150x150", image.get_size() == Vector2i(150, 150) and image.get_pixel(75, 75).a == 0.0)
 	var center_mask := Portal._center_mask.get_image()
-	_check("grey filter confined to central hole", center_mask.get_pixel(75, 75).a == 1.0 \
+	_check("spiral mask confined to central hole", center_mask.get_pixel(75, 75).a == 1.0 \
 		and center_mask.get_pixel(0, 0).a == 0.0 and center_mask.get_pixel(149, 149).a == 0.0)
-	_check("light grey filter is translucent", Portal.CENTER_FILTER_COLOR.r == Portal.CENTER_FILTER_COLOR.g \
-		and Portal.CENTER_FILTER_COLOR.g == Portal.CENTER_FILTER_COLOR.b \
-		and Portal.CENTER_FILTER_COLOR.r > 0.7 and Portal.CENTER_FILTER_COLOR.a > 0.0 and Portal.CENTER_FILTER_COLOR.a < 0.5)
+	_check("spiral uses shader behind paper", portal._spiral.material.shader == Portal.SPIRAL_SHADER and portal._spiral.show_behind_parent)
+	var phase: float = portal._spiral_phase
+	portal._process(0.1)
+	_check("spiral rotates", portal._spiral_phase > phase and portal._spiral_material.get_shader_parameter("phase") == portal._spiral_phase)
 	_check("placement and owner", portal.owner == level and creative._portals().size() == 1)
 	_check("UI controls", creative._portal_destination.item_count == choices.size() + 1 \
 		and creative._layout_buttons.has(creative.LAYOUT_MODE_PLACE_PORTAL))
@@ -183,11 +184,11 @@ func _run() -> void:
 	var app = (load("res://root/root.tscn") as PackedScene).instantiate()
 	root.add_child(app)
 	await process_frame
-	var first_loaded: bool = await app.request_level_change("res://map/main.tscn")
+	var first_loaded: bool = await app.request_level_change("res://map/asset/imported/main.tscn")
 	_check("real async router loads level and UI", first_loaded and app.get_node("Level").get_child_count() == 1 \
 		and app.get_node("UI").get_child_count() == 1)
 	var old_level: WeakRef = weakref(app.get_node("Level").get_child(0))
-	var second_loaded: bool = await app.request_level_change("res://map/main.tscn")
+	var second_loaded: bool = await app.request_level_change("res://map/asset/imported/main.tscn")
 	await process_frame
 	_check("second transition replaces old level", second_loaded and old_level.get_ref() == null \
 		and app.get_node("Level").get_child_count() == 1)

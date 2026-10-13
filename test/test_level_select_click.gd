@@ -10,14 +10,19 @@ func _run() -> void:
 	var app := root_scene.instantiate()
 	root.add_child(app)
 	await process_frame
+	var transition: Node = root.get_node("SceneTransition")
+	transition.duration = 0.01
 	var menu := app.get_node("UI").get_child(0)
 	menu.start_pressed.emit()
-	await process_frame
+	for frame in 120:
+		await process_frame
+		if not transition.busy:
+			break
 	var selector := app.get_node("UI").get_child(0)
 	var buttons := selector.get_node("Center/Panel/Scroll/List").get_children()
 	var target: Button
 	for candidate in buttons:
-		if candidate.tooltip_text == "res://map/asset/imported/平路（新）.tscn":
+		if candidate.tooltip_text == "res://map/asset/imported/第一关.tscn":
 			target = candidate as Button
 			break
 	if target == null:
@@ -25,11 +30,12 @@ func _run() -> void:
 		quit(1)
 		return
 	var result := {"chosen_path": ""}
+	var target_path: String = target.tooltip_text
 	selector.level_chosen.connect(func(path: String) -> void: result.chosen_path = path)
 	target.pressed.emit()
 	var showed_loading := target.disabled and target.text.contains("加载中")
 	await process_frame
-	if result.chosen_path != target.tooltip_text:
+	if result.chosen_path != target_path:
 		printerr("[LevelSelectClick] click signal missing: FAIL")
 		quit(1)
 		return

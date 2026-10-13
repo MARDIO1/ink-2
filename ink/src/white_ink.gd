@@ -26,7 +26,8 @@ func prepare_fixed(context: Dictionary, _delta: float) -> void:
 	_whites.clear()
 	_previous.clear()
 	for body in context.world.bodies:
-		if body.tags.has("white_ink") and not body.tags.get("editor_physics_paused", false):
+		if body.tags.has("white_ink") and not body.is_static \
+		and not body.tags.get("editor_physics_paused", false):
 			_whites.append(body)
 	if _whites.is_empty():
 		return

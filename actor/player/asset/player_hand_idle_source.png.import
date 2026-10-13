@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bxkedq8di8t66"
-path="res://.godot/imported/第一关.png-a5ab8a6456d1c6114cbd9b5bfa4a62b7.ctex"
+uid="uid://cppobvx73o1no"
+path="res://.godot/imported/player_hand_idle_source.png-a7127e33f4a6873db0e923505d68a368.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://map/asset/imported/第一关.png"
-dest_files=["res://.godot/imported/第一关.png-a5ab8a6456d1c6114cbd9b5bfa4a62b7.ctex"]
+source_file="res://actor/player/asset/player_hand_idle_source.png"
+dest_files=["res://.godot/imported/player_hand_idle_source.png-a7127e33f4a6873db0e923505d68a368.ctex"]
 
 [params]
 

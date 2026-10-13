@@ -1,6 +1,7 @@
 extends SceneTree
 
 const ImpactDamage = preload("res://root/src/impact_damage.gd")
+const ContactImpact := preload("res://root/src/contact_impact.gd")
 const PhysicsStep = preload("res://root/src/physics_step.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
@@ -62,7 +63,7 @@ func _run() -> void:
 		{"position": Vector2(8, 8), "normal": Vector2.RIGHT, "impulse": 12000.0, "dist": 0.0},
 	]
 	world.contacts = [contact]
-	var impact: Dictionary = calc._impact(contact.points)
+	var impact: Dictionary = ContactImpact.summarize(contact.points)
 	_check("contact points merge without multiplying impulse", is_equal_approx(impact.total_impulse, 24000.0)
 		and is_equal_approx(impact.impulse, 3000.0) and impact.position.is_equal_approx(Vector2(8, 4)))
 	var result: Dictionary = calc.calculate(world, world.contacts)

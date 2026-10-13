@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cdbvbod2hc1b1"
-path="res://.godot/imported/第一关.edit.png-c745c47d038ce94d8c260e86e071ae42.ctex"
+uid="uid://dw6pobfbqc34l"
+path="res://.godot/imported/ink_cursor_10x10.png-038904b7faf91b63dc833d014b266ffb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://map/asset/imported/第一关.edit.png"
-dest_files=["res://.godot/imported/第一关.edit.png-c745c47d038ce94d8c260e86e071ae42.ctex"]
+source_file="res://ui/cursor/asset/ink_cursor_10x10.png"
+dest_files=["res://.godot/imported/ink_cursor_10x10.png-038904b7faf91b63dc833d014b266ffb.ctex"]
 
 [params]
 

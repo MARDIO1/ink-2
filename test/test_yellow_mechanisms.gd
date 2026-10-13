@@ -15,7 +15,7 @@ func check(label: String, passed: bool) -> void:
 
 func run() -> void:
 	for kind in ["seesaw", "four_bar"]:
-		var demo = load("res://map/yellow_%s.tscn" % kind).instantiate()
+		var demo = load("res://map/asset/yellow_%s.tscn" % kind).instantiate()
 		root.add_child(demo)
 		for timeout in 30:
 			if demo.ready_for_test:

@@ -10,7 +10,7 @@ extends Control
 
 const LEVEL_DIR := "res://map"
 const PLAYER_NODE := "Player"
-const NON_LEVEL_SCENE := "res://map/main.tscn"
+const NON_LEVEL_SCENE := "res://map/asset/imported/main.tscn"
 ## 列表按钮宽度，避免被 CenterContainer 挤成一条。
 const BUTTON_SIZE := Vector2(340, 46)
 

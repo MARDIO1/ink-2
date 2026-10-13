@@ -3,15 +3,15 @@
 extends Node2D
 
 signal tool_changed(tool: int)
+signal ink_selected(index: int)
 signal map_changed
 signal editor_control_requested
-## 画布墨水固化完成时发射，供编辑器侧同步固定怪物初始位置等。
-signal solidified
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
 const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
 const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
@@ -24,6 +24,8 @@ const PLAY_TOOL_BUTTON_HEIGHT := 43.0
 const PLAY_TOOL_BUTTON_H_GAP := 10.0
 const PLAY_TOOL_BUTTON_V_GAP := 4.0
 const PLAY_HAND_BUTTON_SIZE := 52.0
+const PLAY_TOOLBAR_Y_OFFSET := 24.0
+const PLAY_TOOLBAR_X_OFFSET := 2.0
 const EDITOR_TOOL_BUTTON_WIDTH := 44.0
 const EDITOR_TOOL_BUTTON_HEIGHT := 60.0
 const EDITOR_TOOL_BUTTON_H_GAP := 16.0
@@ -75,8 +77,9 @@ var _expand_size_preview: Label
 
 
 func _ready() -> void:
-	process_physics_priority = 18       # 世界步进(10)之后、相机(20)之前：跟随时读到的才是这一帧的位姿
-	_workbench_home = workbench.position
+	if not Engine.is_editor_hint():
+		add_to_group(&"canvas_workbench")
+	process_physics_priority = 18 # 世界步进后更新玩家与工作台的距离。
 	_workbench_home_transform = workbench.transform
 	var rod_pixels: Image = surface.rod_layer.pixels.duplicate() if surface.rod_layer.pixels != null else null
 	var rod_anchors: PackedVector2Array = surface.rod_layer.anchor_points.duplicate()
@@ -141,7 +144,7 @@ func generate(record_undo := true) -> void:
 	for index in range(surface.rod_layer.anchor_points.size() - 1, -1, -1):
 		if not surface.rod_layer._black(surface.rod_layer.anchor_points[index]):
 			surface.rod_layer.anchor_points.remove_at(index)
-	solid.solidify(surface, world, _map_editor_mode, false)
+	solid.solidify(surface, world, _map_editor_mode)
 	surface.rod_layer.solidify(world)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
@@ -149,7 +152,6 @@ func generate(record_undo := true) -> void:
 	if record_undo:
 		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
-	solidified.emit()
 
 
 ## 画布范围内的实体重采样回墨水。
@@ -204,8 +206,7 @@ func clear_solidified_bodies_outside_canvas() -> int:
 
 ## 未固化墨水与已固化实体一起框删，并合并成一个画布撤销步骤。
 func _delete_selection(rect: Rect2i) -> void:
-	# 固化实体必须先写回可编辑画布，再建立撤销快照。旧顺序在框内只有
-	# 固化像素时会得到“空 -> 空”的快照，既不触发自动保存，也无法撤销。
+	# 同一事务保存蓝图和实体，撤销时各自回到删除前的状态。
 	var state := History.capture(self, true, Rect2(surface.to_global(Vector2(rect.position)), Vector2(rect.size)))
 	var removed: int = solid.rasterize_rect(surface, world, rect)
 	if removed > 0:
@@ -283,17 +284,38 @@ func expand_canvas(direction: Vector2i, amount := -1) -> bool:
 	return false
 
 
-## 一次扩展四侧。左、上扩展会平移旧内容与画布节点，确保旧内容的世界坐标不变。
+## 一次调整四侧；负值缩小并裁切边缘内容，保留部分的世界坐标不变。
 func expand_canvas_sides(left: int, right: int, top: int, bottom: int) -> bool:
-	left = maxi(left, 0)
-	right = maxi(right, 0)
-	top = maxi(top, 0)
-	bottom = maxi(bottom, 0)
-	if left + right + top + bottom == 0:
+	if left == 0 and right == 0 and top == 0 and bottom == 0:
 		return false
 	var content_offset := Vector2i(left, top)
 	var new_size := canvas_size + Vector2i(left + right, top + bottom)
-	var state := History.capture(self)
+	if new_size.x < 1 or new_size.y < 1:
+		return false
+	var shrinking := left < 0 or right < 0 or top < 0 or bottom < 0
+	var state := History.capture(self, shrinking)
+	if shrinking:
+		var old_bounds := Rect2i(Vector2i.ZERO, canvas_size)
+		var kept := old_bounds.intersection(Rect2i(-content_offset, new_size))
+		var removed: Array[Rect2i] = []
+		if not kept.has_area():
+			removed.append(old_bounds)
+		else:
+			removed.append(Rect2i(0, 0, canvas_size.x, kept.position.y))
+			removed.append(Rect2i(0, kept.end.y, canvas_size.x, canvas_size.y - kept.end.y))
+			removed.append(Rect2i(0, kept.position.y, kept.position.x, kept.size.y))
+			removed.append(Rect2i(kept.end.x, kept.position.y, canvas_size.x - kept.end.x, kept.size.y))
+		var changed_bodies := false
+		for rect in removed:
+			if not rect.has_area():
+				continue
+			changed_bodies = solid.rasterize_rect(surface, world, rect) > 0 or changed_bodies
+			surface.erase_rect(rect)
+		if changed_bodies:
+			solid.sync_serializable_bodies(world)
+		var yellow = surface.yellow_rule()
+		if yellow != null:
+			yellow.crop_to_surface(surface, kept)
 	if not surface.resize_preserving_content(new_size, content_offset):
 		return false
 	_syncing_preserved_resize = true
@@ -305,38 +327,19 @@ func expand_canvas_sides(left: int, right: int, top: int, bottom: int) -> bool:
 	return true
 
 
-func expand_left() -> void:
-	expand_canvas(Vector2i.LEFT)
-
-
-func expand_right() -> void:
-	expand_canvas(Vector2i.RIGHT)
-
-
-func expand_up() -> void:
-	expand_canvas(Vector2i.UP)
-
-
-func expand_down() -> void:
-	expand_canvas(Vector2i.DOWN)
 #endregion
 
 
 #region 工作台布局
 #画布和工具栏都是世界物件，不绑玩家；HUD 才留在 CanvasLayer 跟随屏幕。
-## 跟随时工具栏原点相对玩家质心的偏移（画布局部坐标）。
-## 工具栏本体在 WorkbenchUI 里是往左下方铺的（x -222..-86、y 56..428），
-## 所以这里给的是"让那一摞按钮落在玩家右手边"的量。
-@export var follow_offset := Vector2(246, -106)
 ## 固定工具栏时，WorkbenchUI 原点所在的视口逻辑坐标。
 ## 控件自身向左偏移 222 px、向下偏移 56 px，所以默认值会让可见区域从 (16, 16) 开始。
 @export var screen_toolbar_origin := Vector2(238, -40)
 
 var _workbench_nearby := true
+@export var toolbar_transition_seconds := 0.22
 var _workbench_hidden := false
-var _workbench_home := Vector2.ZERO
 var _workbench_home_transform := Transform2D.IDENTITY
-var _follow_player := false
 var _screen_fixed := false
 var _map_editor_mode := false
 var _syncing_preserved_resize := false
@@ -358,6 +361,7 @@ func _place_controls() -> void:
 var _side_panel: Control = null
 var _ink_buttons: Array[Button] = []
 var _side_brush_slider: VSlider = null
+var _selected_ink_label: Label
 
 
 #右侧面板由色表生成：加一种墨水这里不用改。
@@ -369,11 +373,20 @@ func _build_side_panel() -> void:
 	panel.add_theme_constant_override("separation", 4)
 	add_child(panel)
 	_side_panel = panel
+	var title_slot := Control.new()
+	title_slot.name = "TitleSlot"
+	title_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(title_slot)
 	var title := Label.new()
+	title.name = "Title"
 	title.text = "色盘"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 12)
-	panel.add_child(title)
+	title_slot.add_child(title)
+	# 保留原标题的布局高度，只移动文字，避免色块和滑条随容器重新排布。
+	title_slot.custom_minimum_size = title.get_combined_minimum_size()
+	title.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	title.position.y = -4.0
 	var controls := HBoxContainer.new()
 	controls.name = "Controls"
 	controls.add_theme_constant_override("separation", 8)
@@ -411,6 +424,12 @@ func _build_side_panel() -> void:
 		button.pressed.connect(select_ink.bind(i))
 		colors.add_child(button)
 		_ink_buttons.append(button)
+		InkSelectionIndicator.install(button, color)
+	_selected_ink_label = Label.new()
+	_selected_ink_label.name = "SelectedInkLabel"
+	_selected_ink_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_selected_ink_label.add_theme_font_size_override("font_size", 10)
+	panel.add_child(_selected_ink_label)
 	var source_pen := brush_panel.get_node("PenSlider") as HSlider
 	source_pen.min_value = 1.0
 	source_pen.max_value = float(brush_size_max)
@@ -442,36 +461,24 @@ func select_ink(index: int) -> void:
 	surface.selected_ink = index
 	for i in _ink_buttons.size():
 		_ink_buttons[i].set_pressed_no_signal(i == index)
+		_ink_buttons[i].get_node("InkSelectionIndicator").set_selected(i == index)
+	if is_instance_valid(_selected_ink_label):
+		_selected_ink_label.text = "当前：%s" % InkPalette.ink_name(index)
+	ink_selected.emit(index)
 
 
 func _place_side_panel() -> void:
 	if _side_panel == null:
 		return
-	if _follow_player:
-		#创造模式工具栏跟着人飞：面板贴在工具栏右边。
-		_side_panel.position = workbench.position + Vector2(160.0, 56.0)
-	else:
-		_side_panel.position = Vector2(float(canvas_size.x) + side_panel_gap, -22.0)
+	var outward_offset := 0.0 if _map_editor_mode else PLAY_TOOLBAR_X_OFFSET
+	_side_panel.position = Vector2(float(canvas_size.x) + side_panel_gap + outward_offset, -22.0 + PLAY_TOOLBAR_Y_OFFSET)
 #endregion
-
-
-## 把工具栏挂到玩家身上（创造模式全图飞行时够得着）；关掉就回到场景里摆的位置。
-func set_follow_player(on: bool) -> void:
-	if on:
-		set_screen_fixed(false)
-	_follow_player = on
-	if on:
-		_update_follow_position()
-	else:
-		workbench.position = _workbench_home
-	_refresh_workbench_visibility()
 
 
 ## 工具栏固定在视口左侧，不受相机移动、旋转或缩放影响。
 func set_screen_fixed(on: bool) -> void:
 	_screen_fixed = on
 	if on:
-		_follow_player = false
 		_update_screen_fixed_position()
 	else:
 		workbench.transform = _workbench_home_transform
@@ -490,10 +497,11 @@ func set_map_editor_mode(on: bool) -> void:
 	tool_grid.get_node("ExpandCanvas").visible = on
 	hand_button.visible = true
 	hand_button.tooltip_text = (
-		"操纵（F）\n移动出生点、画布、复活点、文本、对话触发点和怪物；滚轮缩放怪物或文本"
+		"操纵（F）\n左键选中并拖动；右键删除怪物、文本、对话、图片、传送门或墨泉；滚轮缩放怪物、文本或图片"
 		if on else "操纵（F）\n从绘图工具切换回墨水小瓶的手"
 	)
 	_apply_workbench_column_layout()
+	_place_side_panel()
 	if on and _expand_canvas_window == null:
 		_build_expand_canvas_window()
 	if not on and _expand_canvas_window != null:
@@ -506,7 +514,6 @@ func set_map_editor_mode(on: bool) -> void:
 	_update_nail_visibility_tooltip(_nails_visible)
 	_apply_nail_visuals(_nails_visible if on else true)
 	set_screen_fixed(on)
-	_refresh_workbench_visibility()
 
 
 func _prepare_workbench_structure() -> void:
@@ -643,25 +650,15 @@ func _apply_workbench_column_layout() -> void:
 		toggle_button.offset_bottom = 84.0
 		toggle_button.add_theme_font_size_override("font_size", 16)
 	else:
-		buttons.offset_left = -42.0
-		buttons.offset_top = 160.0
-		toggle_button.offset_left = -22.0
-		toggle_button.offset_top = 136.0
-		toggle_button.offset_bottom = 154.0
+		buttons.offset_left = -42.0 - PLAY_TOOLBAR_X_OFFSET
+		buttons.offset_top = 160.0 + PLAY_TOOLBAR_Y_OFFSET
+		toggle_button.offset_left = -22.0 - PLAY_TOOLBAR_X_OFFSET
+		toggle_button.offset_top = 136.0 + PLAY_TOOLBAR_Y_OFFSET
+		toggle_button.offset_bottom = 154.0 + PLAY_TOOLBAR_Y_OFFSET
 		toggle_button.add_theme_font_size_override("font_size", 10)
 	buttons.offset_right = buttons.offset_left + width
 	buttons.offset_bottom = buttons.offset_top + grid_height + hand_size + hand_gap + caption_height + 2.0
 	toggle_button.offset_right = toggle_button.offset_left + (width if _map_editor_mode else 36.0)
-
-
-## 工具栏贴到玩家身体旁边。
-func _update_follow_position() -> void:
-	if player == null:
-		return
-	var body = player.get("body")
-	var center: Vector2 = body.com_world() if body != null else player.global_position
-	workbench.position = to_local(center + follow_offset)
-	_place_side_panel()
 
 
 func _update_screen_fixed_position() -> void:
@@ -678,8 +675,6 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if _follow_player:
-		_update_follow_position()
 	_refresh_workbench_visibility()
 
 
@@ -687,28 +682,95 @@ func _refresh_workbench_visibility() -> void:
 	if not active:
 		_set_workbench_visible(false)
 		return
-	# 单独预览 Canvas 场景时没有玩家，工具栏保持可见，便于编辑与测试；
-	# 跟着人走时也不存在"离画布太远"这回事。
-	if player == null or _follow_player or _screen_fixed:
+	# 单独预览或编辑地图时，工具栏保持可见。
+	if player == null or _screen_fixed:
 		_set_workbench_visible(true)
 		return
 	var distance := _distance_from_player_to_canvas()
+	var was_nearby := _workbench_nearby
 	if _workbench_nearby:
 		_workbench_nearby = distance <= maxf(toolbar_hide_distance, toolbar_show_distance)
 	else:
 		_workbench_nearby = distance <= minf(toolbar_show_distance, toolbar_hide_distance)
 	_set_workbench_visible(_workbench_nearby)
+	if was_nearby and not _workbench_nearby and not _map_editor_mode:
+		_restore_hand_on_departure()
+
+
+func is_player_near_workbench() -> bool:
+	return active and visible and not _map_editor_mode \
+		and not _screen_fixed and _workbench_nearby
+
+
+func _restore_hand_on_departure() -> void:
+	# 相邻画布重叠时，离开其中一块不能打断另一块的绘制。
+	var canvases := get_tree().get_nodes_in_group(&"canvas_workbench")
+	for canvas in canvases:
+		if canvas != self and canvas.get_parent() == get_parent() and canvas.active \
+				and not canvas._map_editor_mode and canvas.visible \
+				and canvas._distance_from_player_to_canvas() <= maxf(canvas.toolbar_show_distance, canvas.toolbar_hide_distance):
+			return
+	for canvas in canvases:
+		if canvas.get_parent() == get_parent() and canvas.active and not canvas._map_editor_mode:
+			canvas._temporary_eraser = false
+			canvas.activate_hand_tool()
+
+
+func _set_toolbar_input(control: Control, enabled: bool) -> void:
+	if not enabled and not control.has_meta(&"toolbar_mouse_filter"):
+		control.set_meta(&"toolbar_mouse_filter", control.mouse_filter)
+	if enabled and control.has_meta(&"toolbar_mouse_filter"):
+		control.mouse_filter = int(control.get_meta(&"toolbar_mouse_filter"))
+		control.remove_meta(&"toolbar_mouse_filter")
+	elif not enabled:
+		control.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if control is Button:
+		if not enabled and not control.has_meta(&"toolbar_disabled"):
+			control.set_meta(&"toolbar_disabled", control.disabled)
+		if enabled and control.has_meta(&"toolbar_disabled"):
+			control.disabled = bool(control.get_meta(&"toolbar_disabled"))
+			control.remove_meta(&"toolbar_disabled")
+		elif not enabled:
+			control.disabled = true
+	for child in control.get_children():
+		if child is Control:
+			_set_toolbar_input(child, enabled)
+
+
+func _animate_toolbar(control: Control, show: bool) -> void:
+	if control.has_meta(&"toolbar_wanted") and bool(control.get_meta(&"toolbar_wanted")) == show:
+		return
+	var first := not control.has_meta(&"toolbar_wanted")
+	control.set_meta(&"toolbar_wanted", show)
+	var old_tween: Tween = control.get_meta(&"toolbar_tween") if control.has_meta(&"toolbar_tween") else null
+	if old_tween != null:
+		old_tween.kill()
+	_set_toolbar_input(control, show)
+	control.pivot_offset = Vector2(control.size.x * 0.5, 0.0)
+	if first or not active or _map_editor_mode or toolbar_transition_seconds <= 0.0:
+		control.visible = show
+		control.scale = Vector2.ONE if show else Vector2.ONE * 0.15
+		control.modulate.a = 1.0 if show else 0.0
+		return
+	control.visible = true
+	var tween := create_tween().set_parallel(true)
+	control.set_meta(&"toolbar_tween", tween)
+	tween.tween_property(control, "scale", Vector2.ONE if show else Vector2.ONE * 0.15,
+		toolbar_transition_seconds).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(control, "modulate:a", 1.0 if show else 0.0, toolbar_transition_seconds)
+	if not show:
+		tween.chain().tween_callback(func(): control.visible = bool(control.get_meta(&"toolbar_wanted", false)))
 
 
 func _set_workbench_visible(nearby: bool) -> void:
 	#⚠️ 隐藏按钮自己不受"手动隐藏"控制 —— 不然藏起来就再也点不回来了。
-	toggle_button.visible = active and nearby
-	buttons.visible = active and nearby and not _workbench_hidden
+	_animate_toolbar(toggle_button, active and nearby)
+	_animate_toolbar(buttons, active and nearby and not _workbench_hidden)
 	brush_panel.visible = false
 	resize_panel.visible = false
 	#右侧面板是另一套布局，不跟着左边那个"隐藏"按钮走。
 	if _side_panel != null:
-		_side_panel.visible = active and nearby and not _map_editor_mode
+		_animate_toolbar(_side_panel, active and nearby and not _map_editor_mode)
 
 
 func _distance_from_player_to_canvas() -> float:
@@ -785,7 +847,7 @@ func _build_expand_canvas_window() -> void:
 	margin.add_child(column)
 
 	var explanation := Label.new()
-	explanation.text = "输入四侧需要增加的像素。原有地图内容的世界位置不会改变。"
+	explanation.text = "正数扩展，负数缩小并删除越界内容。保留内容的世界位置不变，可 Ctrl+Z 撤销。"
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(explanation)
 
@@ -806,9 +868,9 @@ func _build_expand_canvas_window() -> void:
 		var amount := SpinBox.new()
 		amount.name = side + "Amount"
 		amount.custom_minimum_size = Vector2(210, 42)
-		amount.min_value = 0
+		amount.min_value = -8192
 		amount.max_value = 8192
-		amount.step = 16
+		amount.step = 1
 		amount.value = 0
 		amount.suffix = " px"
 		amount.value_changed.connect(_update_expand_size_preview.unbind(1))
@@ -827,7 +889,7 @@ func _build_expand_canvas_window() -> void:
 	cancel.pressed.connect(_expand_canvas_window.hide)
 	actions.add_child(cancel)
 	var confirm := Button.new()
-	confirm.text = "确认扩展"
+	confirm.text = "确认调整"
 	confirm.pressed.connect(_confirm_expand_canvas)
 	actions.add_child(confirm)
 	_update_expand_size_preview()
@@ -849,10 +911,12 @@ func _update_expand_size_preview() -> void:
 	var right := int((_expand_inputs.get("Right") as SpinBox).value)
 	var top := int((_expand_inputs.get("Top") as SpinBox).value)
 	var bottom := int((_expand_inputs.get("Bottom") as SpinBox).value)
-	_expand_size_preview.text = "当前：%d × %d px    扩展后：%d × %d px" % [
+	_expand_size_preview.text = "当前：%d × %d px    调整后：%d × %d px" % [
 		canvas_size.x, canvas_size.y,
 		canvas_size.x + left + right, canvas_size.y + top + bottom,
 	]
+	if canvas_size.x + left + right < 1 or canvas_size.y + top + bottom < 1:
+		_expand_size_preview.text += "\n宽高必须至少为 1 px"
 
 
 func _confirm_expand_canvas() -> void:
@@ -860,7 +924,7 @@ func _confirm_expand_canvas() -> void:
 	var right := int((_expand_inputs["Right"] as SpinBox).value)
 	var top := int((_expand_inputs["Top"] as SpinBox).value)
 	var bottom := int((_expand_inputs["Bottom"] as SpinBox).value)
-	if left + right + top + bottom == 0:
+	if left == 0 and right == 0 and top == 0 and bottom == 0:
 		return
 	if expand_canvas_sides(left, right, top, bottom):
 		_expand_canvas_window.hide()
@@ -1009,6 +1073,8 @@ func _activate_tool_shortcut(keycode: int) -> bool:
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
+	if not _map_editor_mode and not _workbench_nearby:
+		return
 	#绘图工具下，右键只充当临时橡皮：按住切换，松开恢复，不改变长期工具选择。
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed and get_viewport().gui_get_hovered_control() != null:
@@ -1041,13 +1107,13 @@ func _input(event: InputEvent) -> void:
 			var expanded := true
 			match event.keycode:
 				KEY_LEFT:
-					expand_left()
+					expand_canvas(Vector2i.LEFT)
 				KEY_RIGHT:
-					expand_right()
+					expand_canvas(Vector2i.RIGHT)
 				KEY_UP:
-					expand_up()
+					expand_canvas(Vector2i.UP)
 				KEY_DOWN:
-					expand_down()
+					expand_canvas(Vector2i.DOWN)
 				_:
 					expanded = false
 			if expanded:

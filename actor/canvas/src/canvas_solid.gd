@@ -23,7 +23,7 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 
 #region 固化
 #把画布表面固化成动态刚体节点，并把结果打印到控制台
-func solidify(surface, world, editor_placed_nails := false, record_undo := true) -> void:
+func solidify(surface, world, editor_placed_nails := false) -> void:
 	if world == null:
 		push_error("CanvasSolid.solidify: world 为空")
 		return
@@ -38,13 +38,10 @@ func solidify(surface, world, editor_placed_nails := false, record_undo := true)
 	var shape = PixelShape.new()
 	var white = PixelShape.new()
 	var anchors: Dictionary = {}
-	var original_pixels: Dictionary = {}
 	for y in range(size.y):
 		for x in range(size.x):
 			var material: int = surface.material_at(x, y)
 			if material != 0:
-				if record_undo:
-					original_pixels[Vector2i(x, y)] = surface.black_image.get_pixel(x, y)
 				if material == InkPalette.WHITE.id:
 					white.set_pixel(x, y, material)
 				else:
@@ -67,7 +64,6 @@ func solidify(surface, world, editor_placed_nails := false, record_undo := true)
 	#每个连通分量做成一个刚体节点，add_body_node 进世界（类比 add_child）
 	var spawned := 0
 	var total_pixels := 0
-	var previous_nodes: Array = world.get_children()
 	for part in parts:
 		if _spawn_component(world, pos, part, anchors, editor_placed_nails):
 			spawned += 1
@@ -76,12 +72,6 @@ func solidify(surface, world, editor_placed_nails := false, record_undo := true)
 	#固化成功后清空画布上的蓝图墨水
 	if spawned > 0:
 		surface.clear(false)      # 这些墨水已经变成刚体带走了，不能还回瓶子
-		var created_nodes: Array = []
-		for node in world.get_children():
-			if node is PixelBody2D and not previous_nodes.has(node):
-				created_nodes.append(weakref(node))
-		if record_undo:
-			surface.push_undo_step({"solidified": created_nodes, "pixels": original_pixels})
 	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
 #endregion
 

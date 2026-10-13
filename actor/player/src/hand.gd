@@ -10,6 +10,9 @@ const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 ## 抓握态的美术贴图挂在渲染节点下（只画不物理），按下左键换成它。
 @onready var art_unfold: Node2D = $"../Visual/ArtUnfold"
 @onready var art_grab: Node2D = $"../Visual/ArtGrab"
+@onready var art_climb: Node2D = $"../Visual/ArtClimb"
+var _pose_initialized := false
+@export_range(0.0, 0.3, 0.01) var pose_transition_seconds := 0.08
 ## 手的所有可见内容（物理像素层 + 美术层 + 手臂曲线）都挂在 `Hand/Visual` 下，藏它一个就够。
 @onready var visual: Node2D = $"../Visual"
 ## 失能状态：不跟鼠标、不抓握、看不见。画布切到非"手"工具时由 Canvas 调 set_enabled。
@@ -57,6 +60,7 @@ func _ready() -> void:
 	#画布可能比手先 _ready（场景顺序里 SmallCanvas 排在 Player 前面），那时 set_enabled
 	#只能记下状态；真正落到可视与物理上放在这里。
 	_apply_enabled_state()
+	_update_pose(0.0, false, true)
 
 
 func _exit_tree() -> void:
@@ -250,29 +254,37 @@ func _limit_power(force: Vector2, torque: float, hand_position: Vector2, delta: 
 
 #region 抓握
 @export_group("抓握")
-## 指尖抓点：相对**手本质心**的局部偏移，单位 px。
-## 推导（换手、改图后照这个重算，别手调）：拿烘焙出来的 `player_hand_unfold_0.tres` 图，
-##   x = 图的宽度（最右列的右边缘）
-##   y = 最右那一列实心像素的**中位**
-##   再减去所有实心像素的质心。
-## 当前图 36x31：最右列 x=35 覆盖 y=10..14（中位 12.5），质心 (19.4548, 14.6215)
-##   → (36 - 19.4548, 12.5 - 14.6215) = (16.545, -2.121)
-const FINGERTIP := Vector2(16.545, -2.121)
-const GRAB_RADIUS := 0.72
+## 图层与物理剪影共用原点，物理手固定质心 (19.4548, 14.6215)。
+## 伸指模式在 (41,22) 附近检测；爬山模式在张开手的 (30,17) 附近检测。
+## 坐标减去质心得到偏移；姿态变化不改质量或惯量。
+const FINGERTIP := Vector2(21.545, 7.379)
+const GRAB_RADIUS := 3.0
+const CLIMB_ANCHOR := Vector2(10.545, 2.379)
+const CLIMB_GRAB_RADIUS := 6.0
+
+
+func _update_pose(delta: float, requested: bool, immediate := false) -> void:
+	var selected: Node2D = art_climb if rotate_grip else (art_grab if requested else art_unfold)
+	var snap: bool = immediate or not _pose_initialized or pose_transition_seconds <= 0.0
+	for art in [art_unfold, art_grab, art_climb]:
+		var goal := 1.0 if art == selected else 0.0
+		art.modulate.a = goal if snap else move_toward(art.modulate.a, goal, maxf(delta, 0.0) / pose_transition_seconds)
+		art.visible = art.modulate.a > 0.001
+	_pose_initialized = true
 
 func _update_grip(_delta: float) -> void:
 	var requested: bool = _grip_override if _grip_override != null else Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	if art_grab.visible != requested:
-		art_grab.visible = requested
-		art_unfold.visible = not requested
+	_update_pose(_delta, requested)
 	if not requested:
 		_release_grab()
 		return
 	if grip_joint != null and grip_joint.is_active():
 		return
 	_release_grab()
-	var tip: Vector2 = body.com_world() + FINGERTIP.rotated(body.rotation)
-	var hit = Query.closest_point(tip, GRAB_RADIUS, [body, player_body], physics_world)
+	var anchor := CLIMB_ANCHOR if rotate_grip else FINGERTIP
+	var radius := CLIMB_GRAB_RADIUS if rotate_grip else GRAB_RADIUS
+	var tip: Vector2 = body.com_world() + anchor.rotated(body.rotation)
+	var hit = Query.closest_point(tip, radius, [body, player_body, arm_body], physics_world)
 	if hit.hit and hit.body != null:
 		_begin_grab(hit.body, hit.point)
 
@@ -388,6 +400,7 @@ func reset_after_player_teleport() -> void:
 	arm_body.control_force = Vector2.ZERO
 	arm_body.control_torque = 0.0
 	_apply_enabled_state()
+	_update_pose(0.0, false, true)
 	_ensure_arm_joint()
 #endregion
 

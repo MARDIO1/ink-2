@@ -4,6 +4,9 @@ const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PJoint := preload("res://addons/pixel_destruction/physics/joint.gd")
 const HullFit := preload("res://addons/pixel_destruction/core/hull_fit.gd")
 const LIVING_TAG := "living"
+const RECOVERY_RAMP_SECONDS := 0.9
+const MAX_RECOVERY_ANGULAR_SPEED := 2.8
+const MAX_RECOVERY_ANGULAR_ACCELERATION := 120.0
 static var _outline_cache: Dictionary = {}
 
 ## 五个真实刚体共用 PixelWorld；动画只提供软马达目标，绝不直接移动碰撞体。
@@ -13,19 +16,23 @@ var self_contact_filters: Array = []
 var world_node: Node2D
 var visual: Node2D
 var torso_body: PBody
-var recovery_strength := 1.0
+var recovery_strength := 0.0
+var _recovery_progress := 0.0
+var _recovery_drive_scale := 1.0
 var standing_time := 1.0
 var foot_height_correction := 0.0
 var uses_animation_tracks := false
 var body_rest_rotation := 0.0
+var body_rest_position := Vector2.ZERO
 ## 盾兵的可破坏盾牌。null 表示无盾或已破碎脱离。
 var shield_body: PBody = null
 var shield_joint: PJoint = null
 var shield_holder: Dictionary = {}
 var shield_initial_pixels := 0
 var shield_broken := false
-## 握盾时左手抬起的额外旋转（弧度），破碎后回零。
-const SHIELD_HOLD_ARM_OFFSET := 0.55
+var shield_sole_offset := 0.0
+## 握盾时抬起左手；盾牌中心可以偏离掌心，破碎后放下。
+const SHIELD_HOLD_ARM_OFFSET := 1.15
 
 
 static func sprite_shape(sprite: Sprite2D, frame: Transform2D, material: int) -> PixelShape:
@@ -114,6 +121,22 @@ static func count_pixels(shape) -> int:
 	return shape.pixel_count()
 
 
+static func body_bone(visual_node: Node2D) -> Bone2D:
+	var path: NodePath = visual_node.BODY_BONE_PATH if "BODY_BONE_PATH" in visual_node else ^"Skeleton2D/Root/BodyBone"
+	return visual_node.get_node(path) as Bone2D
+
+
+static func limb_art(bone: Bone2D) -> Sprite2D:
+	var art := bone.get_node_or_null(str(bone.name) + "Art") as Sprite2D
+	return art if art != null else bone.get_node("Art") as Sprite2D
+
+
+static func body_art(visual_node: Node2D) -> Sprite2D:
+	var bone := body_bone(visual_node)
+	var art := bone.get_node_or_null("BodyArt") as Sprite2D
+	return art if art != null else bone.get_node("Art") as Sprite2D
+
+
 ## 十二方向支持平面：最多十二边，包住所有不透明像素，不随动画重新拟合。
 static func sprite_polygon(sprite: Sprite2D, frame: Transform2D) -> PackedVector2Array:
 	var key := sprite.texture.get_instance_id()
@@ -138,7 +161,12 @@ static func sprite_polygon(sprite: Sprite2D, frame: Transform2D) -> PackedVector
 	var transform := frame.affine_inverse() * sprite.global_transform
 	var points := PackedVector2Array()
 	for point in _outline_cache[key]:
-		points.append(transform * (point + offset))
+		var pixel: Vector2 = point
+		if sprite.flip_h:
+			pixel.x = sprite.texture.get_width() - pixel.x
+		if sprite.flip_v:
+			pixel.y = sprite.texture.get_height() - pixel.y
+		points.append(transform * (pixel + offset))
 	if points.size() < 3:
 		return points
 	var normals := PackedVector2Array()
@@ -173,7 +201,8 @@ func setup(monster: Node2D, pixel_world: Node2D, torso: PBody) -> void:
 	animation.stop()
 	visual._update_limb_rotations()
 	uses_animation_tracks = bool(visual.get("USE_ANIMATION_TRACKS")) if "USE_ANIMATION_TRACKS" in visual else false
-	body_rest_rotation = visual.get_node("Skeleton2D/Root/BodyBone").rotation
+	body_rest_rotation = body_bone(visual).rotation
+	body_rest_position = body_bone(visual).position
 	visual.solve_ik = false
 	visual.hand_drawn_wobble = false
 	# 双手在身体两侧自然下垂，略向外避开二维素材中重叠的大腿。
@@ -190,7 +219,7 @@ func setup(monster: Node2D, pixel_world: Node2D, torso: PBody) -> void:
 	torso.additional_solver_iterations = 32 if monster.has_shield else 8
 	for control: Dictionary in visual.LIMB_CONTROLS:
 		var bone: Bone2D = visual.get_node(control.bone)
-		var sprite: Sprite2D = bone.get_node(str(bone.name) + "Art")
+		var sprite := limb_art(bone)
 		var frame := Transform2D(bone.global_transform.x.angle(), bone.global_position)
 		var shape := sprite_shape(sprite, frame, monster.material_id)
 		shape.density_scale = monster.physics_density_scale
@@ -209,7 +238,7 @@ func setup(monster: Node2D, pixel_world: Node2D, torso: PBody) -> void:
 			joint.set_limits(-0.55, 0.55)
 		joint.set_motor_target(0.0, limb.inertia * 200.0, 100.0, 20.0)
 		parts.append({"bone": bone, "body": limb, "control": control,
-			"rest_angle": bone.rotation, "rest_position": bone.position})
+			"rest_angle": bone.rotation, "joint_rest_angle": bone.rotation, "rest_position": bone.position})
 		joints.append(joint)
 	# 二维美术的前后四肢会投影重叠，不能当作同一平面的实体互相顶住。
 	# 当前桥接层通过关节 contacts_enabled 排除一对刚体的接触：使用远超
@@ -230,6 +259,10 @@ func setup(monster: Node2D, pixel_world: Node2D, torso: PBody) -> void:
 ## 创建可破坏盾牌并绑定到身体朝向一侧；位置与尺寸使用怪物的导出参数。
 ## 握盾姿态在创建关节前烘焙，保证视觉与碰撞体使用同一个零位。
 func shield_position(monster: Node2D) -> Vector2:
+	var palm := visual.get_node_or_null("Skeleton2D/Root/BodyBone/LeftArm/LeftArmArt/PalmGrip") as Node2D
+	if palm != null:
+		var inward: Vector2 = visual.global_transform.x.normalized() * monster.shield_grip_inset * absf(monster.scale.x)
+		return world_node.to_local(palm.global_position + inward) + Vector2(0.0, shield_sole_offset).rotated(torso_body.rotation)
 	var offset: Vector2 = monster.shield_offset * monster.scale.abs()
 	if monster._current_facing > 0:
 		offset.x = -offset.x
@@ -242,7 +275,7 @@ func _setup_shield(monster: Node2D) -> void:
 	if shield_texture == null:
 		push_warning("盾兵盾牌贴图不存在：%s" % monster.shield_texture_path)
 		return
-	# 找到左手肢体（仅用于握盾姿态，不绑定盾牌）
+	# 保留掌心焊接点，但盾牌中心独立偏移，底缘对齐站立脚底。
 	var left_arm: Dictionary = {}
 	for part: Dictionary in parts:
 		if str(part.bone.name) == "LeftArm":
@@ -255,6 +288,22 @@ func _setup_shield(monster: Node2D) -> void:
 		monster.shield_scale * absf(monster.scale.x), true,
 		monster._current_facing > 0, monster.shield_height_scale)
 	shield_shape.density_scale = monster.physics_density_scale
+	shield_sole_offset = 0.0
+	var palm_marker := visual.get_node_or_null("Skeleton2D/Root/BodyBone/LeftArm/LeftArmArt/PalmGrip") as Node2D
+	if palm_marker != null:
+		var palm_position := world_node.to_local(palm_marker.global_position)
+		var sole := -INF
+		for part: Dictionary in parts:
+			if not str(part.bone.name).ends_with("Leg"):
+				continue
+			var art: Sprite2D = part.bone.get_node(str(part.bone.name) + "Art")
+			var bounds := Rect2(art.texture.get_image().get_used_rect())
+			bounds.position -= art.texture.get_size() * 0.5
+			for corner in [bounds.position, Vector2(bounds.end.x, bounds.position.y), bounds.end, Vector2(bounds.position.x, bounds.end.y)]:
+				var point := world_node.to_local(art.to_global(corner))
+				sole = maxf(sole, (point - palm_position).rotated(-torso_body.rotation).y)
+		if sole != -INF:
+			shield_sole_offset = sole - float(shield_shape.local_aabb().end.y)
 	shield_initial_pixels = count_pixels(shield_shape)
 	var shield_shapes: Array = [shield_shape]
 	if not monster._turning_shield_shapes.is_empty():
@@ -276,7 +325,9 @@ func _setup_shield(monster: Node2D) -> void:
 	shield_body.additional_solver_iterations = 32
 	world_node.world.add_body(shield_body, shield_shapes, Callable(world_node, "_density_of"), true)
 	# 盾牌由画面左侧的手臂握持，受击时与该手臂一起运动。
-	shield_joint = world_node.world.add_weld(left_arm.body, shield_body, shield_pos)
+	var palm := visual.get_node_or_null("Skeleton2D/Root/BodyBone/LeftArm/LeftArmArt/PalmGrip") as Node2D
+	var grip_anchor := world_node.to_local(palm.global_position) if palm != null else shield_pos
+	shield_joint = world_node.world.add_weld(left_arm.body, shield_body, grip_anchor)
 	if shield_joint != null:
 		shield_joint.contacts_enabled = false
 	var torso_filter: PJoint = world_node.world.add_rope(shield_body, torso_body,
@@ -309,7 +360,7 @@ func _align_standing_feet() -> void:
 				if not child.has_meta("standing_original_position"):
 					child.set_meta("standing_original_position", child.position)
 				child.position = child.get_meta("standing_original_position")
-		var sprite: Sprite2D = bone.get_node(str(bone.name) + "Art")
+		var sprite := limb_art(bone)
 		var polygon := sprite_polygon(sprite, visual.global_transform)
 		var bottom := -INF
 		for point in polygon:
@@ -320,7 +371,11 @@ func _align_standing_feet() -> void:
 	for leg: Dictionary in legs:
 		var adjustment: float = leg.bottom - common_bottom
 		foot_height_correction = maxf(foot_height_correction, adjustment)
-		var offset: Vector2 = leg.bone.transform.basis_xform_inv(Vector2(0.0, -adjustment))
+		var bone_frame: Transform2D = leg.bone.transform
+		if "BODY_BONE_PATH" in visual:
+			# 侧身角色的腿挂在预旋转躯干下，脚底偏移需包含该父变换。
+			bone_frame = visual.global_transform.affine_inverse() * leg.bone.global_transform
+		var offset := bone_frame.basis_xform_inv(Vector2(0.0, -adjustment))
 		for child in leg.bone.get_children():
 			if child is Sprite2D:
 				child.position += offset
@@ -332,29 +387,69 @@ func update_balance(delta: float, paused: bool, recovering: bool, walking: bool,
 		return
 	if paused:
 		torso_body.control_torque = 0.0
+		if shield_body != null:
+			shield_body.control_torque = 0.0
+		for part: Dictionary in parts:
+			part.body.control_torque = 0.0
 		return
 	standing_time = maxf(0.0, standing_time - delta)
 	if recovering:
+		_recovery_progress = 0.0
 		recovery_strength = 0.0
 	else:
-		recovery_strength = minf(1.0, recovery_strength + delta / 0.65)
+		_recovery_progress = minf(1.0, _recovery_progress + delta / RECOVERY_RAMP_SECONDS)
+		# 平滑重新接管，避免受击松开后突然把整套关节拉回零位。
+		recovery_strength = smoothstep(0.0, 1.0, _recovery_progress)
 	var gravity: Vector2 = world_node.world.gravity
+	var upward_speed := 0.0
+	if not gravity.is_zero_approx():
+		var momentum: Vector2 = torso_body.linear_velocity * torso_body.mass
+		var total_mass: float = torso_body.mass
+		for part: Dictionary in parts:
+			momentum += part.body.linear_velocity * part.body.mass
+			total_mass += part.body.mass
+		if shield_body != null and not shield_broken:
+			momentum += shield_body.linear_velocity * shield_body.mass
+			total_mass += shield_body.mass
+		upward_speed = maxf(0.0, -(momentum / maxf(total_mass, 0.001)).dot(gravity.normalized()))
+	# 已经向上离地时减小主动扶正，阻尼仍保留；不直接钳制受击线速度。
+	var desired_drive := lerpf(1.0, 0.15, smoothstep(20.0, 100.0, upward_speed))
+	var drive_rate := 20.0 if desired_drive < _recovery_drive_scale else 2.0
+	_recovery_drive_scale = move_toward(_recovery_drive_scale, desired_drive, delta * drive_rate)
+	var drive_strength := recovery_strength * _recovery_drive_scale
+	if shield_body != null:
+		shield_body.control_torque = 0.0
 	var upright := gravity.angle() - PI * 0.5 if not gravity.is_zero_approx() else 0.0
 	var error := wrapf(upright - torso_body.rotation, -PI, PI)
-	var acceleration := clampf(error * 500.0 - torso_body.angular_velocity * 44.0, -160.0, 160.0)
-	torso_body.control_torque = torso_body.inertia * acceleration * recovery_strength
+	var target_speed := clampf(error * 8.0, -MAX_RECOVERY_ANGULAR_SPEED, MAX_RECOVERY_ANGULAR_SPEED)
+	# 弹簧项渐入；恢复阶段的阻尼不随刚度削弱，先吸收旋转动量再扶正。
+	var acceleration := clampf((target_speed * drive_strength - torso_body.angular_velocity) * 50.0,
+		-MAX_RECOVERY_ANGULAR_ACCELERATION, MAX_RECOVERY_ANGULAR_ACCELERATION)
+	# 大角度倒地时需要克服绕支撑点的惯量，不能只按躯干质心惯量限力。
+	# 接近站立后平滑撤去这部分扶起能力，避免以倒地力度顶地回弹。
+	var support_inertia: float = torso_body.inertia + torso_body.mass * torso_body.local_com.length_squared()
+	var support_blend := 0.0 if gravity.is_zero_approx() else smoothstep(0.5, 1.0, absf(error))
+	support_blend *= 1.0 - smoothstep(0.0, 40.0, upward_speed)
+	var recovery_inertia: float = lerpf(torso_body.inertia,
+		minf(support_inertia, torso_body.inertia * 4.0), support_blend)
+	torso_body.control_torque = 0.0 if recovering else recovery_inertia * acceleration
 	if absf(torso_body.control_torque) > 0.01:
 		torso_body.awake = true
 		torso_body.sleep_timer = 0.0
 	for index in parts.size():
 		var part: Dictionary = parts[index]
 		var limb: PBody = part.body
+		limb.control_torque = 0.0
 		if recovering:
 			joints[index].motor_off()
 			continue
 		var desired := float(part.rest_angle)
 		# 没有实际水平移动时保持下垂零位，包括回正过程中；不能原地挥臂。
-		if walking and standing_time <= 0.0 and recovery_strength >= 1.0 and absf(torso_body.linear_velocity.x) > 20.0:
+		var holding_shield: bool = not shield_holder.is_empty() and part == shield_holder and shield_body != null and not shield_broken
+		# 滑动、被挤开或受击的速度不是行进驱动，不能触发摆臂再向接触注入能量。
+		# 底缘齐地的盾牌也不能随行走摆臂。
+		var has_walk_drive := absf(torso_body.control_force.x) > 0.001
+		if walking and has_walk_drive and not holding_shield and standing_time <= 0.0 and recovery_strength >= 1.0 and absf(torso_body.linear_velocity.x) > 20.0:
 			var bone: Bone2D = part.bone
 			if uses_animation_tracks:
 				var animation: AnimationPlayer = visual.get_node("AnimationPlayer")
@@ -373,10 +468,38 @@ func update_balance(delta: float, paused: bool, recovering: bool, walking: bool,
 			if str(bone.name).ends_with("Leg"):
 				# 没有实际行进驱动时不让动画交替抬脚，保持双脚承重。
 				desired = float(part.rest_angle)
-		var stiffness := 180.0 if str(part.bone.name).ends_with("Leg") else 120.0
-		var mirror_sign := -1.0 if visual.global_transform.determinant() < 0.0 else 1.0
-		joints[index].set_motor_target(wrapf(desired - part.rest_angle, -PI, PI) * mirror_sign,
-			limb.inertia * 200.0 * recovery_strength, stiffness * maxf(recovery_strength, 0.05), 25.0)
+		# 腿保留承重能力；增加阻尼比而非削弱支撑，避免半弯状态卡住。
+		var leg_stiffness := 180.0 if shield_body != null and not shield_broken else 230.0
+		var stiffness := leg_stiffness if str(part.bone.name).ends_with("Leg") else 120.0
+		# 回正要承受焊接盾牌的惯量与重力，不能只按手臂本身限力。
+		var pivot := limb.position
+		var load_inertia: float = limb.inertia
+		var motor_damping := 40.0 if str(part.bone.name).ends_with("Leg") else 32.0
+		var max_speed := MAX_RECOVERY_ANGULAR_SPEED
+		if not shield_holder.is_empty() and part == shield_holder and shield_body != null and not shield_broken:
+			load_inertia += limb.mass * limb.com_world().distance_squared_to(pivot)
+			load_inertia += shield_body.inertia + shield_body.mass * shield_body.com_world().distance_squared_to(pivot)
+			# 盾牌与手臂焊接，只由握盾关节回正；双重伺服在底缘接地时会注入额外能量。
+			# 对重载握盾臂使用略过阻尼伺服，避免重力下垂和回正过冲。
+			# 保留静态承重刚度，通过更强阻尼放慢重载回正，避免盾牌下垂。
+			stiffness = 900.0
+			motor_damping = 72.0
+			max_speed = 4.0
+		var mirror_sign := -1.0 if part.bone.get_parent().global_transform.determinant() < 0.0 else 1.0
+		var target := wrapf(desired - part.joint_rest_angle, -PI, PI) * mirror_sign
+		# 上抬反馈不能撤掉握盾臂的承重力，否则盾牌落地后会再次顶起角色。
+		var motor_strength := recovery_strength if holding_shield else drive_strength
+		var effective_stiffness := stiffness * maxf(motor_strength, 0.05)
+		var movement: float = joints[index].movement()
+		if absf(wrapf(target - movement, -PI, PI)) > 0.06 or recovery_strength < 1.0:
+			# 不能把尚未归位的肢体提前休眠，尤其是撑地后卡在半弯状态的腿。
+			limb.awake = true
+			limb.sleep_timer = 0.0
+		# 限制伺服误差对应的目标速度，不篡改受击速度或瞬移刚体。
+		var max_error := max_speed * motor_damping / effective_stiffness
+		var limited_target := movement + clampf(wrapf(target - movement, -PI, PI), -max_error, max_error)
+		joints[index].set_motor_target(limited_target,
+			load_inertia * 200.0 * motor_strength, effective_stiffness, motor_damping)
 	_check_shield_break(monster)
 
 
@@ -397,6 +520,7 @@ func _check_shield_break(monster: Node2D) -> void:
 	# 盾牌破碎：断开与左手的焊接，盾牌成为自由刚体可被打飞
 	shield_broken = true
 	monster.shield_broken = true
+	shield_body.control_torque = 0.0
 	# 脱落后以实际剩余像素绘制，不能隐藏贴图后留下不可见的自由刚体。
 	shield_body.internal_render = true
 	shield_body.tags.erase("monster_receiver")
@@ -447,10 +571,11 @@ func pause(paused: bool) -> void:
 
 
 func sync_from_node() -> void:
+	_recovery_drive_scale = 1.0
+	_recovery_progress = 1.0
 	recovery_strength = 1.0
 	standing_time = 1.0
-	visual.get_node("Skeleton2D/Root").position = Vector2.ZERO
-	visual.get_node("Skeleton2D/Root/BodyBone").rotation = body_rest_rotation
+	_reset_body_pose()
 	for part: Dictionary in parts:
 		var bone: Bone2D = part.bone
 		bone.position = part.rest_position
@@ -460,7 +585,7 @@ func sync_from_node() -> void:
 		limb.rotation = bone.global_transform.x.angle() - world_node.global_rotation
 		limb.update_aabb()
 		limb.compute_swept_aabb(0.0)
-	# 未破碎时跟随躯干的朝向一侧。
+	# 恢复固定的掌心偏移，不重新计算脚底高度，以免累积漂移。
 	if shield_body != null and not shield_broken:
 		shield_body.position = shield_position(visual.get_parent())
 		shield_body.rotation = torso_body.rotation
@@ -471,8 +596,7 @@ func sync_from_node() -> void:
 
 
 func update_pose(paused: bool) -> void:
-	visual.get_node("Skeleton2D/Root").position = Vector2.ZERO
-	visual.get_node("Skeleton2D/Root/BodyBone").rotation = body_rest_rotation
+	_reset_body_pose()
 	for index in parts.size():
 		var part: Dictionary = parts[index]
 		var bone: Bone2D = part.bone
@@ -489,6 +613,15 @@ func update_pose(paused: bool) -> void:
 		bone.rotation = parent.global_transform.basis_xform_inv(direction).angle()
 	# 遮罩也读取实际骨骼变换，不使用上一帧的 IK 变换。
 	visual._update_occlusion_materials()
+
+
+func _reset_body_pose() -> void:
+	var root_bone := visual.get_node_or_null("Skeleton2D/Root") as Node2D
+	if root_bone != null:
+		root_bone.position = Vector2.ZERO
+	var bone := body_bone(visual)
+	bone.position = body_rest_position
+	bone.rotation = body_rest_rotation
 
 
 func release() -> void:

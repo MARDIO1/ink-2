@@ -65,3 +65,23 @@ func bake():
 	result.rotation = global_rotation - get_node(world_path).global_rotation
 	result.tags[LIVING_TAG] = true
 	return result
+
+
+## 编辑器、重生和安全恢复共用世界坐标传送，重置身体、支撑及手部约束。
+func teleport_to(target: Vector2, target_rotation: float) -> void:
+	var level := get_node(world_path) as Node2D
+	var physics_body = body
+	global_position = target
+	global_rotation = target_rotation
+	physics_body.position = level.to_local(target)
+	physics_body.rotation = target_rotation - level.global_rotation
+	physics_body.linear_velocity = Vector2.ZERO
+	physics_body.angular_velocity = 0.0
+	physics_body.control_force = Vector2.ZERO
+	physics_body.control_torque = 0.0
+	physics_body.awake = true
+	physics_body.sleep_timer = 0.0
+	physics_body.refresh_com()
+	physics_body.update_aabb()
+	get_node("PlayerInput").support = null
+	get_node("Arm/Hand/HandControl").reset_after_player_teleport()

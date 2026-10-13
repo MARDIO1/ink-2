@@ -81,7 +81,7 @@ func _run() -> void:
 	canvas.canvas_size = Vector2i(32, 32)
 	await _press(KEY_F9)
 	valid = valid and surface.black_image.get_data() == before and canvas.canvas_size == Vector2i(320, 180)
-	# 回收保留钉子材质和固定点，沿用当前普通 Black 行为。
+	# 带钉子的实体回收时保留钉子材质和外观，下一次固化仍能固定。
 	var home: Vector2 = canvas.position
 	canvas.position = Vector2(5000, 5000)      # 挪到空地：只回收这块刚体，别顺带把地形也收走
 	canvas.solid.solidify(surface, scene)

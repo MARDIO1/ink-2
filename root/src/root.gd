@@ -49,14 +49,9 @@ func _show_level_select() -> void:
 	if not await _transition.begin(_transition.Style.PAGE, "翻开关卡目录…"):
 		return
 	var select := level_select_scene.instantiate() as Control
-	select.connect(&"level_chosen", _on_level_chosen)
+	select.connect(&"level_chosen", request_level_change)
 	_set_screen(select)
 	await _transition.finish()
-
-
-## 第三屏：关卡 + 成品 UI。⚠️ 关卡先挂、UI 后挂（见文件头）。
-func _on_level_chosen(path: String) -> void:
-	await request_level_change(path)
 
 
 ## 菜单和传送门共用异步加载入口，锁住期间拒绝其他切关请求。

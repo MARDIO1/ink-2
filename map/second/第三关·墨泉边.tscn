@@ -1,0 +1,194 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="3_shape"]
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="4_material"]
+[ext_resource type="Resource" path="res://ink/asset/black.tres" id="5_black"]
+[ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="6_player_mat"]
+[ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="7_hand_mat"]
+[ext_resource type="Resource" path="res://ink/asset/grey1.tres" id="8_grey"]
+[ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="9_highlight"]
+[ext_resource type="Resource" path="res://ink/asset/invisible.tres" id="10_invisible"]
+[ext_resource type="Resource" path="res://actor/nail/asset/nail.tres" id="11_nail"]
+[ext_resource type="Resource" path="res://ink/asset/red.tres" id="12_red"]
+[ext_resource type="Resource" path="res://ink/asset/yellow.tres" id="13_yellow"]
+[ext_resource type="PackedScene" path="res://actor/player/player.tscn" id="14_player"]
+[ext_resource type="Script" path="res://actor/fountain/src/ink_fountain.gd" id="15_01k4q"]
+[ext_resource type="PackedScene" path="res://actor/canvas/canvas.tscn" id="15_canvas"]
+[ext_resource type="Script" path="res://actor/player/src/player_camera.gd" id="16_camera"]
+[ext_resource type="Script" path="res://actor/canvas/src/canvas.gd" id="17_q7lou"]
+[ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="17_runtime"]
+[ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="18_creative"]
+[ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="19_debug"]
+[ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="21_01k4q"]
+[ext_resource type="Script" path="res://debug/creative/src/map_dialogue_trigger.gd" id="21_dialogue"]
+[ext_resource type="Texture2D" path="res://map/second/asset/house.svg" id="22_house"]
+[ext_resource type="PackedScene" path="res://actor/monster/bomb_side.tscn" id="22_q7lou"]
+[ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="23_01k4q"]
+[ext_resource type="PackedScene" path="res://actor/fountain/ink_fountain.tscn" id="23_fountain"]
+[ext_resource type="Script" path="res://actor/portal/src/map_portal.gd" id="25_portal"]
+[ext_resource type="Script" path="res://debug/hud/src/debug_hud.gd" id="28_vc7ke"]
+[ext_resource type="Script" path="res://root/src/simulation_runtime.gd" id="30_6fm3t"]
+[ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="31_vh8lw"]
+
+[sub_resource type="Image" id="Image_1mg4a"]
+data = {
+"data": PackedByteArray(0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"format": "Red8",
+"height": 6,
+"mipmaps": false,
+"width": 5
+}
+
+[node name="Main" type="Node2D" unique_id=1412278551]
+process_priority = 10
+script = ExtResource("1_world")
+max_linear_velocity = 1000.0
+max_angular_velocity = 60.0
+ccd_ignore_mass = 100.0
+min_fragment_pixels = 5
+debris_max_mass = 20.0
+debris_min_speed = 20.0
+materials = Array[ExtResource("4_material")]([ExtResource("5_black"), ExtResource("6_player_mat"), ExtResource("7_hand_mat"), ExtResource("8_grey"), ExtResource("9_highlight"), ExtResource("10_invisible"), ExtResource("11_nail"), ExtResource("12_red"), ExtResource("13_yellow")])
+densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0, 0.0, 1.0, 0.75, 0.45, 0.28])
+voxel_size = 1.0
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1045463392]
+process_physics_priority = 20
+position = Vector2(753.1196, 268.40262)
+process_callback = 0
+script = ExtResource("16_camera")
+
+[node name="Scenery" type="Node2D" parent="." unique_id=1673438660]
+
+[node name="House" type="Sprite2D" parent="Scenery" unique_id=398334370]
+position = Vector2(80, 300)
+scale = Vector2(0.52, 0.52)
+texture = ExtResource("22_house")
+
+[node name="WhiteRainScar" type="Polygon2D" parent="Scenery/House" unique_id=96233097]
+color = Color(1, 1, 1, 0.78)
+polygon = PackedVector2Array(-62, -188, -39, -208, -16, -195, -28, -163, -56, -159)
+
+[node name="InkFountain" type="Node2D" parent="Scenery" unique_id=742164594 groups=["ink_fountain"] instance=ExtResource("23_fountain")]
+position = Vector2(1760, 335)
+script = ExtResource("15_01k4q")
+
+[node name="SmallCanvas" type="Node2D" parent="." unique_id=2096653667 groups=["play_canvas"] instance=ExtResource("15_canvas")]
+process_physics_priority = 18
+z_index = -1
+position = Vector2(760, 90)
+script = ExtResource("17_q7lou")
+canvas_size = Vector2i(400, 280)
+
+[node name="MapCanvas" type="Node2D" parent="." unique_id=34613237 instance=ExtResource("15_canvas")]
+process_physics_priority = 18
+visible = false
+z_index = -1
+position = Vector2(-512, -256)
+script = ExtResource("17_q7lou")
+canvas_size = Vector2i(3072, 1024)
+active = false
+
+[node name="Ground" type="Node2D" parent="." unique_id=1008706456]
+position = Vector2(-420, 432)
+script = ExtResource("2_body")
+is_static = true
+
+[node name="Shape" type="Node2D" parent="Ground" unique_id=1184092152]
+visible = false
+script = ExtResource("3_shape")
+rect_size = Vector2i(3000, 48)
+
+[node name="BrokenWall" type="Node2D" parent="." unique_id=1033370696]
+position = Vector2(1390, 260.0022)
+script = ExtResource("2_body")
+
+[node name="Shape" type="Node2D" parent="BrokenWall" unique_id=1059963717]
+visible = false
+script = ExtResource("3_shape")
+rect_size = Vector2i(38, 172)
+
+[node name="Player" type="Node2D" parent="." unique_id=892724216 groups=["player"] instance=ExtResource("14_player")]
+position = Vector2(300, 315)
+script = ExtResource("21_01k4q")
+can_sleep = false
+
+[node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1989801454 groups=["player_spawn"]]
+position = Vector2(300, 315)
+
+[node name="Monsters" type="Node2D" parent="." unique_id=151386181]
+
+[node name="BombSide" type="Node2D" parent="Monsters" unique_id=1785532272 groups=["map_monster"] instance=ExtResource("22_q7lou")]
+process_priority = 100
+z_index = 1000
+position = Vector2(628.31995, 304.82416)
+script = ExtResource("23_01k4q")
+display_name = "炸弹狂"
+editor_pick_radius = 78.0
+editor_id = "monster-13344449-1"
+physical_enabled = true
+hit_polygon = PackedVector2Array()
+minimum_hit_speed = 15.0
+material_id = 6
+internal_render = false
+
+[node name="DialogueTriggers" type="Node2D" parent="." unique_id=311883970]
+
+[node name="Opening" type="Node2D" parent="DialogueTriggers" unique_id=1740918772]
+position = Vector2(340, 350)
+script = ExtResource("21_dialogue")
+lines = PackedStringArray("真倒霉，是吧？我是小墨瓶，平常专门给墨水人帮忙。", "刚才那是白色死神。它会把碰到的东西慢慢融掉，沾上的墨水人也会发疯。", "比如前面那个。先别跟它讲道理——它看起来已经把道理忘光了。")
+editor_id = "second-opening"
+
+[node name="Civilian" type="Node2D" parent="DialogueTriggers" unique_id=149793900]
+position = Vector2(1030, 350)
+script = ExtResource("21_dialogue")
+lines = PackedStringArray("救、救我……那场白雨把我的身体擦掉了一块。我不想变成它们……", "你再说下去，血条就要替你说完了。我们得先处理挡路的家伙。", "空手可不够。看到旁边的画布了吗？画一件趁手的武器吧。", "画完按 E 固化。只有变成实体，墨水才能握在手里。")
+editor_id = "second-civilian"
+
+[node name="FountainHint" type="Node2D" parent="DialogueTriggers" unique_id=191209348]
+position = Vector2(1550, 350)
+script = ExtResource("21_dialogue")
+lines = PackedStringArray("墨水就是生命。前面那座墨泉能把消耗补回来。", "靠近它，瓶子会自己装满。以后你也可以围着泉边画点喜欢的东西。")
+editor_id = "second-fountain-hint"
+
+[node name="Ending" type="Node2D" parent="DialogueTriggers" unique_id=916347590]
+position = Vector2(2050, 350)
+script = ExtResource("21_dialogue")
+lines = PackedStringArray("白雨不是天气，它像是在找什么。", "下一页，我们得找到雨落下来的地方。")
+editor_id = "second-ending"
+
+[node name="Portal" type="Node2D" parent="." unique_id=898186507]
+process_physics_priority = 100
+z_index = 4092
+z_as_relative = false
+position = Vector2(2260, 350)
+script = ExtResource("25_portal")
+
+[node name="debugHUD" type="CanvasLayer" parent="." unique_id=1193339687 groups=["debug_hud"] instance=ExtResource("19_debug")]
+visible = false
+script = ExtResource("28_vc7ke")
+
+[node name="SimulationRuntime" type="Node" parent="." unique_id=1274197441 instance=ExtResource("17_runtime")]
+process_physics_priority = 1
+script = ExtResource("30_6fm3t")
+
+[node name="Creative" type="Node" parent="." unique_id=1165040463]
+process_physics_priority = 15
+script = ExtResource("18_creative")
+map_path = "res://map/second/第二关·墨泉边.tscn"
+baked_map_path = "res://map/second/第二关·墨泉边.png"
+
+[node name="MapTexts" type="Node2D" parent="." unique_id=1911623855]
+
+[node name="Ink16" type="Node2D" parent="." unique_id=1708457563 groups=["ink_item"]]
+position = Vector2(-512, -256)
+script = ExtResource("31_vh8lw")
+
+[node name="@Node2D@493" type="Node2D" parent="Ink16" unique_id=1953714006]
+position = Vector2(1341, 655)
+script = ExtResource("3_shape")
+source = 3
+paint = SubResource("Image_1mg4a")
