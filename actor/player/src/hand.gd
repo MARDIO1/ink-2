@@ -159,7 +159,8 @@ func _calculate_motor(target_position: Vector2, hand_position: Vector2, delta: f
 	var stable := 1.0 / (1.0 + position_damping * delta + position_stiffness * delta * delta)
 	var acceleration := ((target_position - hand_position) * position_stiffness
 		- velocity * (position_damping + position_stiffness * delta)) * stable
-	var inverse_mass: float = _hand_side()["inv_mass"] + player_body.inv_mass
+	var side: Dictionary = _hand_side()
+	var inverse_mass: float = side["motor_inv_mass"] + player_body.inv_mass
 	if inverse_mass <= 0.0 or not is_finite(inverse_mass) or not acceleration.is_finite():
 		debug_p_force = Vector2.ZERO
 		debug_d_force = Vector2.ZERO
@@ -406,24 +407,31 @@ func reset_after_player_teleport() -> void:
 
 
 #region 负载与输入工具
-## 执行器手侧：自由手、焊接组合体、固定抓点；铰接时不合并物体惯量。
+## 执行器手侧：自由手、动态抓握组合体、固定抓点。
+## Hinge 只释放相对转动，抓点平移仍会拖动物体，所以线性约化质量必须算上物体；
+## 但不像 Weld 那样合并质心和惯量，保留物体绕抓点自由转动。
+## motor_inv_mass 用于从目标加速度求力；inv_mass 用于力直接施加到轻手时的保守功率预测。
 func _hand_side() -> Dictionary:
 	if grabbed_body != null and grabbed_body.is_static:
 		# 固定抓点的 Hinge 仍有绕指尖转动的动能，Weld 才完全固定。
 		var center: Vector2 = grip_joint.anchor_b_world() if rotate_grip else body.com_world()
 		var inertia: float = body.inertia + body.mass * body.com_world().distance_squared_to(center) if rotate_grip else 0.0
-		return {"center": center, "inertia": inertia, "inv_mass": 0.0, "inv_inertia": 1.0 / inertia if inertia > 0.0 else 0.0}
+		return {"center": center, "inertia": inertia, "motor_inv_mass": 0.0,
+			"inv_mass": 0.0, "inv_inertia": 1.0 / inertia if inertia > 0.0 else 0.0}
 	var mass: float = body.mass
 	var center: Vector2 = body.com_world()
 	var inertia: float = body.inertia
-	if grabbed_body != null and not rotate_grip:
+	var energy_inv_mass: float = body.inv_mass
+	if grabbed_body != null:
 		mass += grabbed_body.mass
-		if mass > 0.0:
+		if not rotate_grip and mass > 0.0:
 			center = (center * body.mass + grabbed_body.com_world() * grabbed_body.mass) / mass
-		inertia += grabbed_body.inertia + body.mass * body.com_world().distance_squared_to(center)
-		inertia += grabbed_body.mass * grabbed_body.com_world().distance_squared_to(center)
+			inertia += grabbed_body.inertia + body.mass * body.com_world().distance_squared_to(center)
+			inertia += grabbed_body.mass * grabbed_body.com_world().distance_squared_to(center)
+			energy_inv_mass = 1.0 / mass
 	return {"center": center, "inertia": inertia,
-		"inv_mass": 1.0 / mass if mass > 0.0 else 0.0,
+		"motor_inv_mass": 1.0 / mass if mass > 0.0 else 0.0,
+		"inv_mass": energy_inv_mass,
 		"inv_inertia": 1.0 / inertia if inertia > 0.0 else 0.0}
 
 ## 获得鼠标在世界坐标下的位置；没有摄像机时退化为相对位置。
