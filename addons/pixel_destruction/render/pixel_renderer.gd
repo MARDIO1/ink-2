@@ -111,6 +111,7 @@ func mark_all_dirty() -> void:
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
+
 ## 一次同步全部刚体（含回收已消失的）。
 ##
 ## ⚠️ 与逐帧路径的区别：逐帧路径靠 prune(_live_ids()) 回收，

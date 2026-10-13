@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Monster := preload("res://actor/monster/src/map_monster.gd")
+const MapImage := preload("res://debug/creative/src/map_imported_image.gd")
 var failures := 0
 var checks := 0
 var creative: Node
@@ -75,9 +76,12 @@ func _run() -> void:
 	camera.force_update_scroll()
 	var background := Image.create_empty(300, 400, false, Image.FORMAT_RGBA8)
 	background.fill(Color.BEIGE)
-	var image_frames: Array[Texture2D] = []
-	var backdrop: Sprite2D = creative.place_imported_image(center, true, image_frames, PackedFloat32Array(),
-		"pick_background.png", background.save_png_to_buffer(), "png")
+	var backdrop := MapImage.new() as Sprite2D
+	backdrop.name = "PickBackground"
+	backdrop.source_data = background.save_png_to_buffer()
+	backdrop.source_format = "png"
+	creative._ensure_image_container().add_child(backdrop, true)
+	backdrop.global_position = center - Vector2(150, 200)
 	_check("visible monster wins over image behind it", creative._pick_control_target(body_point) == tall)
 	creative.select_control_tool()
 	var fixture_ui := CanvasLayer.new()

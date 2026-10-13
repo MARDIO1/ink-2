@@ -1,5 +1,6 @@
 extends SceneTree
 
+const MapImage := preload("res://debug/creative/src/map_imported_image.gd")
 var failures := 0
 
 
@@ -19,6 +20,18 @@ func _disable_physics(node: Node) -> void:
 		_disable_physics(child)
 
 
+func _add_legacy_image(creative: Node, data: PackedByteArray, position: Vector2) -> Sprite2D:
+	var image := MapImage.new() as Sprite2D
+	image.name = "ImportedImage"
+	image.source_data = data
+	image.source_format = "png"
+	image.original_filename = "legacy.png"
+	creative._ensure_image_container().add_child(image, true)
+	image.global_position = position
+	image.owner = creative._level_root()
+	return image
+
+
 func _run() -> void:
 	var level: Node = load("res://map/main.tscn").instantiate()
 	root.add_child(level)
@@ -28,17 +41,21 @@ func _run() -> void:
 	creative.auto_save_edits = false
 	creative.active = true
 	creative._ensure_editor_resources()
-	_check("import button exists", creative._monster_palette.find_child("ImportImageButton", true, false) != null)
+	_check("import button removed", creative._monster_palette.find_child("ImportImageButton", true, false) == null)
+	_check("image file dialog removed", creative.find_child("ImportMapImage", true, false) == null)
 	var bitmap := Image.create_empty(4, 4, false, Image.FORMAT_RGBA8)
 	bitmap.fill(Color.TRANSPARENT)
 	bitmap.set_pixel(2, 1, Color.BLUE)
-	var path := "user://creative_image_import.png"
-	bitmap.save_png(path)
-	creative._on_image_file_selected(ProjectSettings.globalize_path(path))
-	_check("PNG selects placement tool", creative._monster_mode == creative.IMAGE_MODE_PLACE)
-	var image: Sprite2D = creative.place_imported_image(Vector2(100, 200))
-	_check("image placed at clicked center", image != null and image.global_position == Vector2(98, 198)
+	var data := bitmap.save_png_to_buffer()
+	var image: Sprite2D = _add_legacy_image(creative, data, Vector2(98, 198))
+	_check("existing image remains available", image != null and image.global_position == Vector2(98, 198)
 		and image.source_format == "png")
+	var surface: CanvasItem = level.get_node("SmallCanvas/CanvasSurface")
+	var ink: CanvasItem = level.get_node("SmallCanvas/CanvasSurface/BlackSprite")
+	var player_visual: CanvasItem = level.get_node("Player/Visual")
+	_check("paper < imported image < ink < player", surface.z_index == -2
+		and not surface.z_as_relative and image.z_index == -1 and not image.z_as_relative
+		and ink.z_index == 0 and not ink.z_as_relative and player_visual.z_index > ink.z_index)
 	_check("control tool picks image", creative._pick_control_target(Vector2(100, 200)) == image)
 	creative._selected_control_target = image
 	creative._resize_control_target(image, 1.0)
@@ -69,13 +86,10 @@ func _run() -> void:
 	creative._finish_layout_drag()
 	_check("mouse drag moves image", image.global_position == Vector2(118, 218))
 	_check("move undo", creative.undo_last_edit() and image.global_position == Vector2(98, 198))
-	_check("place undo", creative.undo_last_edit())
-	await process_frame
-	creative._on_image_file_selected(ProjectSettings.globalize_path(path))
-	var image2: Sprite2D = creative.place_imported_image(Vector2(100, 200))
+	var image2: Sprite2D = _add_legacy_image(creative, data, Vector2(98, 198))
 	_check("right-click delete action", creative.delete_imported_image(image2))
-	_check("delete undo restores image", creative.undo_last_edit()
-		and creative._find_imported_image_at(Vector2(100, 200)) != null)
+	_check("delete undo restores existing image", creative.undo_last_edit()
+		and creative._imported_images().size() == 2)
 	var packed := PackedScene.new()
 	var pack_ok := packed.pack(level) == OK
 	var restored_level = packed.instantiate() if pack_ok else null

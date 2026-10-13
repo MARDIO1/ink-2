@@ -36,6 +36,7 @@ func _run() -> void:
 	root.add_child(scene_root)
 	var image := MapImage.new() as Sprite2D
 	image.name = "ImportedImage"
+	image.z_index = 15 # 模拟旧地图里已经存下的错误层级。
 	var textures: Array[Texture2D] = [ImageTexture.create_from_image(png)]
 	image.frames = textures
 	image.frame_delays = PackedFloat32Array([0.1])
@@ -43,6 +44,7 @@ func _run() -> void:
 	image.source_format = "png"
 	image.original_filename = "demo.png"
 	scene_root.add_child(image)
+	check("legacy imported image layer migrates", image.z_index == -1 and not image.z_as_relative)
 	image.owner = scene_root
 	image.position = Vector2(15, 20)
 	image.scale = Vector2.ONE * 1.5

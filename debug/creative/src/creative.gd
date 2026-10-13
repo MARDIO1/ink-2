@@ -30,7 +30,6 @@ const CONTROL_MODE := -13
 const LAYOUT_MODE_PLACE_PORTAL := -14
 const LAYOUT_MODE_DELETE_PORTAL := -16
 const LAYOUT_MODE_FOUNTAIN := -17
-const IMAGE_MODE_PLACE := -18
 const LAYOUT_MODES := [
 	LAYOUT_MODE_MOVE_SPAWN,
 	LAYOUT_MODE_PLACE_RESPAWN,
@@ -40,7 +39,6 @@ const LAYOUT_MODES := [
 	LAYOUT_MODE_PLACE_PORTAL,
 	LAYOUT_MODE_DELETE_PORTAL,
 	LAYOUT_MODE_FOUNTAIN,
-	IMAGE_MODE_PLACE,
 ]
 const MONSTER_SCALE_STEP := 0.1
 ## 只保留非零正尺寸，避免退化碰撞体；不设玩法缩放上限。
@@ -56,7 +54,6 @@ const InkFountainScript := preload("res://actor/fountain/src/ink_fountain.gd")
 const InkFountainScene := preload("res://actor/fountain/ink_fountain.tscn")
 const MapPlacementOverlayScript := preload("res://debug/creative/src/map_placement_overlay.gd")
 const MapImportedImageScript := preload("res://debug/creative/src/map_imported_image.gd")
-const GifDecoder := preload("res://debug/creative/src/gif_decoder.gd")
 const PlayCanvasScene := preload("res://actor/canvas/canvas.tscn")
 const InkPalette := preload("res://ink/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
@@ -130,13 +127,6 @@ var _layout_drag_start := Vector2.ZERO
 var _layout_drag_start_scale := Vector2.ONE
 var _layout_drag_resizing := false
 var _selected_control_target = null
-var _image_file_dialog: FileDialog = null
-var _pending_image_frames: Array[Texture2D] = []
-var _pending_image_delays := PackedFloat32Array()
-var _pending_image_name := ""
-var _pending_image_bytes := PackedByteArray()
-var _pending_image_format := ""
-var _image_status: Label = null
 var _canvas = null
 var _map_canvas = null
 var _saved_layer := 1
@@ -493,7 +483,6 @@ func _ensure_editor_resources() -> void:
 	_build_monster_palette()
 	_build_dialogue_input_window()
 	_build_text_input_window()
-	_build_image_file_dialog()
 	_build_save_directory_dialog()
 	_build_map_save_window()
 	_ensure_spawn_point()
@@ -519,10 +508,6 @@ func _exit() -> void:
 		_finish_layout_drag()
 	_cancel_dialogue_input()
 	_cancel_text_input()
-	_pending_image_frames.clear()
-	_pending_image_bytes = PackedByteArray()
-	if _image_file_dialog != null:
-		_image_file_dialog.hide()
 	if _body != null:
 		_body.collision_layer = _saved_layer
 		_body.collision_mask = _saved_mask
@@ -771,17 +756,6 @@ func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
 				_layout_drag_resizing = is_instance_valid(_selected_control_target) \
 					and _selected_control_target.is_in_group(MapImportedImageScript.GROUP) \
 					and _selected_control_target.resize_handle_hit(world_position)
-			IMAGE_MODE_PLACE:
-				var placed_image := place_imported_image(world_position)
-				if placed_image != null:
-					_pending_image_frames.clear()
-					_pending_image_bytes = PackedByteArray()
-					select_control_tool()
-					_selected_control_target = placed_image
-					_set_imported_image_selection(placed_image)
-					_set_image_status("图片已放置；操纵模式下拖动移动，右下角或滚轮缩放")
-					_update_layout_status()
-				return true
 			LAYOUT_MODE_PLACE_RESPAWN:
 				place_respawn_point(world_position)
 				return true
@@ -1556,17 +1530,6 @@ func _build_monster_palette() -> void:
 			layout_button.pressed.connect(select_monster_tool.bind(int(tool[0])))
 		layout_grid.add_child(layout_button)
 		_layout_buttons[int(tool[0])] = layout_button
-	var import_button := Button.new()
-	import_button.name = "ImportImageButton"
-	import_button.text = "导入PNG/GIF"
-	import_button.tooltip_text = "选择本机图片，然后单击地图放置；操纵工具可移动和缩放"
-	import_button.focus_mode = Control.FOCUS_NONE
-	import_button.custom_minimum_size = Vector2(96.0, 44.0)
-	import_button.pressed.connect(_open_image_file_dialog)
-	layout_grid.add_child(import_button)
-	var portal_spacer := Control.new()
-	portal_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layout_grid.add_child(portal_spacer)
 	_portal_destination = PopupMenu.new()
 	_portal_destination.name = "PortalMapMenu"
 	_portal_destination.theme = EDITOR_THEME
@@ -1580,11 +1543,6 @@ func _build_monster_palette() -> void:
 	_layout_status_label.text = "出生点 1 个；复活点和画布可新增"
 	_layout_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(_layout_status_label)
-	_image_status = Label.new()
-	_image_status.name = "ImageImportStatus"
-	_image_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_image_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(_image_status)
 
 	_monster_status_label = Label.new()
 	_monster_status_label.name = "MonsterStatus"
@@ -2258,84 +2216,6 @@ func _remove_map_text_by_id(text_id: String) -> bool:
 
 
 #region 地图图片
-func _build_image_file_dialog() -> void:
-	if _image_file_dialog != null:
-		return
-	_image_file_dialog = FileDialog.new()
-	_image_file_dialog.name = "ImportMapImage"
-	_image_file_dialog.title = "导入地图图片"
-	_image_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
-	_image_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-	_image_file_dialog.add_filter("*.png", "PNG 图片")
-	_image_file_dialog.add_filter("*.gif", "GIF 动画")
-	_image_file_dialog.use_native_dialog = true
-	_image_file_dialog.file_selected.connect(_on_image_file_selected)
-	add_child(_image_file_dialog)
-
-
-func _open_image_file_dialog() -> void:
-	if not active:
-		return
-	if _image_file_dialog == null:
-		_build_image_file_dialog()
-	_image_file_dialog.popup_centered_ratio(0.75)
-
-
-func _on_image_file_selected(path: String) -> void:
-	_pending_image_frames.clear()
-	_pending_image_delays = PackedFloat32Array()
-	_pending_image_name = ""
-	_pending_image_bytes = PackedByteArray()
-	_pending_image_format = ""
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		_set_image_status("无法读取图片：%s" % path.get_file())
-		return
-	if file.get_length() > 64 * 1024 * 1024:
-		_set_image_status("图片文件过大（上限 64 MB）")
-		return
-	var bytes := file.get_buffer(file.get_length())
-	var images: Array[Image] = []
-	var extension := path.get_extension().to_lower()
-	if extension == "png":
-		var image := Image.new()
-		if image.load_png_from_buffer(bytes) != OK or image.is_empty():
-			_set_image_status("PNG 解码失败")
-			return
-		images.append(image)
-		_pending_image_delays.append(0.1)
-	elif extension == "gif":
-		var result: Dictionary = GifDecoder.decode(bytes)
-		if result.has("error"):
-			_set_image_status(str(result.error))
-			return
-		images = result.frames
-		_pending_image_delays = result.delays
-	else:
-		_set_image_status("只支持 PNG 或 GIF")
-		return
-	if images.is_empty() or images[0].get_width() > 2048 or images[0].get_height() > 2048:
-		_set_image_status("图片尺寸超出支持范围（最大 2048 × 2048）")
-		return
-	for image in images:
-		_pending_image_frames.append(ImageTexture.create_from_image(image))
-	_pending_image_name = path.get_file()
-	_pending_image_bytes = bytes
-	_pending_image_format = extension
-	if _monster_mode == IMAGE_MODE_PLACE:
-		_monster_mode = MONSTER_MODE_NONE
-	select_monster_tool(IMAGE_MODE_PLACE)
-	_set_image_status("已导入 %s（%d 帧）；左键单击地图放置" % [
-		_pending_image_name, _pending_image_frames.size()])
-
-
-func _set_image_status(message: String) -> void:
-	if _image_status != null:
-		_image_status.text = message
-	if message.begins_with("无法") or message.contains("失败") or message.contains("过大"):
-		push_warning("地图图片导入：" + message)
-
-
 func _ensure_image_container() -> Node2D:
 	var level := _level_root()
 	if level == null:
@@ -2349,35 +2229,27 @@ func _ensure_image_container() -> Node2D:
 	return container
 
 
-func place_imported_image(world_position: Vector2, record_undo := true,
-		frames: Array[Texture2D] = [], delays := PackedFloat32Array(), filename := "",
-		source_data := PackedByteArray(), source_format := "") -> Sprite2D:
-	var chosen_frames: Array[Texture2D] = frames if not frames.is_empty() or not source_data.is_empty() \
-		else _pending_image_frames
-	var chosen_data: PackedByteArray = source_data if not source_data.is_empty() else _pending_image_bytes
-	if chosen_data.is_empty():
+## 仅供撤销旧地图图片删除使用；不再提供导入或新放置入口。
+func _restore_deleted_image(source_data: PackedByteArray, source_format: String,
+		filename: String, world_position: Vector2, image_scale: Vector2) -> Sprite2D:
+	if source_data.is_empty():
 		return null
 	var container := _ensure_image_container()
 	if container == null:
 		return null
 	var image := MapImportedImageScript.new() as Sprite2D
 	image.name = "ImportedImage"
-	image.source_data = chosen_data
-	image.source_format = source_format if not source_format.is_empty() else _pending_image_format
-	image.frames = chosen_frames.duplicate()
-	image.frame_delays = delays if not delays.is_empty() or not source_data.is_empty() \
-		else _pending_image_delays
-	image.original_filename = filename if not filename.is_empty() else _pending_image_name
-	image.z_index = 15
+	image.source_data = source_data
+	image.source_format = source_format
+	image.original_filename = filename
 	container.add_child(image, true)
 	if image.texture == null:
 		container.remove_child(image)
 		image.queue_free()
 		return null
-	image.global_position = world_position - Vector2(image.texture.get_size()) * 0.5
+	image.global_position = world_position
+	image.scale = image_scale
 	image.owner = _level_root()
-	if record_undo:
-		_record_edit({"type": &"image_place", "target": image})
 	return image
 
 
@@ -2478,16 +2350,12 @@ func undo_last_edit() -> bool:
 				changed = true
 		&"text_place":
 			changed = _remove_map_text_by_id(str(edit.get("id", "")))
-		&"image_place":
-			changed = _undo_placed_layout_node(edit.get("target"))
-			_set_imported_image_selection(null)
 		&"image_delete":
-			var image = place_imported_image(edit.get("position", Vector2.ZERO), false,
-				[], PackedFloat32Array(), str(edit.get("filename", "")),
-				edit.get("source_data", PackedByteArray()), str(edit.get("source_format", "")))
+			var image = _restore_deleted_image(
+				edit.get("source_data", PackedByteArray()), str(edit.get("source_format", "")),
+				str(edit.get("filename", "")), edit.get("position", Vector2.ZERO),
+				edit.get("scale", Vector2.ONE))
 			if image != null:
-				image.global_position = edit.get("position", image.global_position)
-				image.scale = edit.get("scale", Vector2.ONE)
 				_rebind_history_target(edit.get("target"), image)
 				changed = true
 		&"text_delete":

@@ -36,7 +36,19 @@ func _test_bake() -> void:
 	node.add_child(shape)
 	var body = node.bake()
 	_check("saved white bakes as ghost", body.tags.has("white_ink") and body.collision_layer == 0 and body.collision_mask == 0 and not body.is_static)
+	node.is_static = true
+	var fixed_body = node.bake()
+	_check("fixed white scenery does not erase the map", fixed_body.is_static
+		and not fixed_body.tags.has("white_ink")
+		and fixed_body.collision_layer == 0 and fixed_body.collision_mask == 0)
 	node.free()
+	var world = World.new()
+	var tagged_static = _add(world, Rect2i(0, 0, 3, 4), Palette.WHITE.id)
+	tagged_static.make_static()
+	var rule = White.new()
+	rule.prepare_fixed(_context(world), 1.0 / 60.0)
+	_check("static body with legacy white tag is ignored", rule._whites.is_empty())
+	_cleanup(world, rule)
 
 func _context(world) -> Dictionary:
 	return {"world": world, "player_body": null, "protected_bodies": [], "services": {}}

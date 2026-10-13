@@ -22,6 +22,10 @@ var _elapsed := 0.0
 
 func _enter_tree() -> void:
 	add_to_group(GROUP, true)
+	# 纸页在 -2，导入图片在 -1，墨迹与实体从 0 开始绘制。
+	# 每次载入都覆盖旧地图存过的 z_index=15，修复已经导入的图片。
+	z_as_relative = false
+	z_index = -1
 	centered = false
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
