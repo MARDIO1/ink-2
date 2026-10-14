@@ -17,6 +17,8 @@ extends Node
 
 ## 任何真的变了的数值变化后发出（含被夹到 0 / max_ink）。消费者自己去读 `ratio()`。
 signal changed
+## 只在伤害入口实际扣掉黑墨时发出；画布消费等普通 reduce() 不算受伤。
+signal damaged(amount: float)
 ## 某一种墨水首次从正数降到 0 时发出；死亡规则只关心黑墨。
 signal depleted(material_id: int)
 
@@ -80,7 +82,12 @@ func reduce(material_id: int, amount: float) -> void:
 func damage(amount: float) -> void:
 	if not damage_enabled:
 		return
-	reduce(InkPalette.material_id_of(InkPalette.ink_at(0)), amount)
+	var black_id := InkPalette.material_id_of(InkPalette.ink_at(0))
+	var before := ink_of(black_id)
+	reduce(black_id, amount)
+	var applied := before - ink_of(black_id)
+	if applied > 0.0:
+		damaged.emit(applied)
 
 
 ## 唯一的写入口：夹取到 0..满瓶，只在真的变了时才广播。

@@ -7,6 +7,10 @@ extends Node
 @export var fall_death_threshold := 1000.0
 ## 死亡后多少秒重生。
 @export var respawn_delay := 3.0
+## 单次实际扣除的黑墨低于此值时不播放受伤音效。
+@export_range(0.0, 20000.0, 1.0, "or_greater") var hurt_sound_threshold := 100.0
+## 连续受伤时避免同一段声音过密重播。
+@export_range(0.0, 2.0, 0.01) var hurt_sound_cooldown := 0.25
 ## 玩家进入此范围后，才允许“脱离卡死”返回该点；不会跳到未经过的点。
 @export var checkpoint_visit_radius := 80.0
 const PLAYER_SPAWN_NAME := "PlayerSpawn"
@@ -45,6 +49,9 @@ var _death_effect: Node2D
 var _revive_effect: Node2D
 var _revive_nodes: Array[Dictionary] = []
 var _death_visual_duration := 1.2
+var _last_hurt_sound_ms := -1000000
+@onready var _hurt_sound: AudioStreamPlayer = $HurtSound
+@onready var _death_sound: AudioStreamPlayer = $DeathSound
 #endregion
 
 
@@ -58,6 +65,8 @@ func _ready() -> void:
 	_health = _player.get_node_or_null("InkHealth")
 	if _health != null and not _health.depleted.is_connected(_on_ink_depleted):
 		_health.depleted.connect(_on_ink_depleted)
+	if _health != null and not _health.damaged.is_connected(_on_health_damaged):
+		_health.damaged.connect(_on_health_damaged)
 	_build_death_ui()
 
 
@@ -116,10 +125,21 @@ func _build_death_ui() -> void:
 
 
 #region 死亡与重生
+func _on_health_damaged(amount: float) -> void:
+	var now_ms := Time.get_ticks_msec()
+	if _dead or amount < hurt_sound_threshold \
+			or now_ms - _last_hurt_sound_ms < roundi(hurt_sound_cooldown * 1000.0):
+		return
+	_last_hurt_sound_ms = now_ms
+	_hurt_sound.play()
+
+
 func _die(only_dissolve := false) -> void:
 	if _dead:
 		return
 	_dead = true
+	_hurt_sound.stop()
+	_death_sound.play()
 	_death_timer = respawn_delay
 	_death_visual_duration = 0.65 if only_dissolve else 1.2
 	_death_layer.visible = false

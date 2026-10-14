@@ -25,7 +25,7 @@ func _run() -> void:
 		and music.stream is AudioStreamOggVorbis
 		and (music.stream as AudioStreamOggVorbis).loop)
 
-	var level: Node = app.load_level(preload("res://map/main.tscn"))
+	var level: Node = app.load_level(preload("res://map/asset/imported/main.tscn"))
 	await process_frame
 	_check("level music switches and loops", music.playing
 		and music.stream.resource_path.ends_with("Cartoon Spy Groove.ogg")
@@ -35,13 +35,20 @@ func _run() -> void:
 	var feedback = runtime.get_node("HitFeedback")
 	var red = runtime.get_node("RedInk")
 	var yellow = runtime.get_node("YellowInk")
+	var death = level.get_node("Player/FallDeath")
+	var hurt_sound := death.get_node("HurtSound") as AudioStreamPlayer
+	var death_sound := death.get_node("DeathSound") as AudioStreamPlayer
 	_check("all four gameplay sounds are assigned", feedback.impact_stream != null
 		and red.explosion_stream != null and yellow.tension_stream != null
 		and yellow.release_stream != null)
+	_check("player hurt and death sounds are assigned", hurt_sound.stream != null
+		and death_sound.stream != null and death.hurt_sound_threshold > 0.0)
 	_check("gameplay sounds have no long preroll", feedback.impact_stream.get_length() < 0.5
 		and red.explosion_stream.get_length() < 1.1
 		and yellow.tension_stream.get_length() < 0.8
 		and yellow.release_stream.get_length() < 1.0)
+	_check("player sounds have no long preroll", hurt_sound.stream.get_length() < 1.3
+		and death_sound.stream.get_length() < 1.7)
 	_check("music sits clearly below strong sound effects", app.music_volume_db <= -20.0
 		and feedback.maximum_volume_db - app.music_volume_db >= 18.0
 		and red.loud_explosion_db - app.music_volume_db >= 18.0)

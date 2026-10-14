@@ -17,6 +17,8 @@ func _run() -> void:
 	var player = scene.get_node("Player")
 	var health = player.get_node("InkHealth")
 	var death = player.get_node("FallDeath")
+	var hurt_sound: AudioStreamPlayer = death.get_node("HurtSound")
+	var death_sound: AudioStreamPlayer = death.get_node("DeathSound")
 	var black_id: int = InkPalette.material_id_of(InkPalette.BLACK)
 	var grey_id: int = InkPalette.material_id_of(InkPalette.GREY)
 	var game_ui := preload("res://ui/game_ui.tscn").instantiate()
@@ -30,10 +32,17 @@ func _run() -> void:
 		and health.ink_of(grey_id) == health.max_of(grey_id) - 1234.0)
 	_check("HUD reads black health only", is_equal_approx(hud.bottle_fill.value, 100.0)
 		and hud.ink_meter.text == "黑墨 20000 px")
+	health.damage(death.hurt_sound_threshold - 1.0)
+	_check("damage below sound threshold stays silent", not hurt_sound.playing)
+	health.damage(death.hurt_sound_threshold)
+	_check("damage at sound threshold plays hurt sound", hurt_sound.playing)
+	hurt_sound.stop()
 
 	death._body = player.body
-	health.reduce(black_id, health.max_of(black_id))
-	_check("empty black ink triggers death", death._dead and health.ink_of(black_id) == 0.0)
+	health.damage(health.ink_of(black_id))
+	_check("empty black ink triggers death sound once", death._dead
+		and health.ink_of(black_id) == 0.0 and death_sound.playing and not hurt_sound.playing)
+	death_sound.stop()
 	death._respawn()
 	_check("respawn refills only black health", not death._dead
 		and health.ink_of(black_id) == health.max_of(black_id)
@@ -43,6 +52,7 @@ func _run() -> void:
 	scene.get_node("Player/Arm/Hand/HandControl")._remove_arm()
 	_release(scene.world)
 	scene.queue_free()
-	await process_frame
+	for _frame in 5:
+		await process_frame
 	print("[PlayerHealth] %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
