@@ -1,12 +1,12 @@
 extends SceneTree
 ## 黑墨喷溅验收：伤害事件 → 纯 shader 的喷溅表、阈值、去重、寿命；且不碰物理世界与墨水账。
 
-const InkSpray = preload("res://Ink/src/ink_spray.gd")
+const InkSpray = preload("res://ink/src/ink_spray.gd")
 const ImpactDamage = preload("res://root/src/impact_damage.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
-const InkPalette = preload("res://Ink/src/ink_palette.gd")
+const InkPalette = preload("res://ink/src/ink_palette.gd")
 
 var failures: int = 0
 var checks: int = 0

@@ -11,7 +11,7 @@
 [ext_resource type="AudioStream" path="res://sound/sfx/爆炸.ogg" id="9_explosion"]
 [ext_resource type="AudioStream" path="res://sound/sfx/弹簧紧绷.ogg" id="10_spring_tight"]
 [ext_resource type="AudioStream" path="res://sound/sfx/弹簧释放.ogg" id="11_spring_release"]
-[ext_resource type="Script" path="res://Ink/src/ink_spray.gd" id="12_spray"]
+[ext_resource type="Script" path="res://ink/src/ink_spray.gd" id="12_spray"]
 
 [node name="SimulationRuntime" type="Node"]
 script = ExtResource("1_simulation")

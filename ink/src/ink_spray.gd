@@ -12,8 +12,8 @@ extends Node2D
 ## 由 SimulationRuntime 通过 observe_damage 能力接口调用，本脚本不认识伤害规则。
 
 #region 依赖
-const InkPalette := preload("res://Ink/src/ink_palette.gd")
-const SPLAT_SHADER := preload("res://Ink/asset/ink_splat.gdshader")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
+const SPLAT_SHADER := preload("res://ink/asset/ink_splat.gdshader")
 ## 着色器里同时能演的喷溅条数。⚠️ 必须和 ink_splat.gdshader 里的数组长度 8 一致。
 const MAX_SPLATS := 8
 #endregion
