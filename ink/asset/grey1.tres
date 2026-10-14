@@ -7,4 +7,5 @@ script = ExtResource("1_mat")
 display_name = "grey1"
 id = 4
 color = Color(0.58, 0.58, 0.62, 1)
+friction = 0.0
 compress_strength = 200.0

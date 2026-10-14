@@ -2,6 +2,7 @@
 extends Node
 
 const Query := preload("res://addons/pixel_destruction/physics/query.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 
 @onready var body = $"..".body
 @onready var arm_body = $"../..".body
@@ -286,7 +287,7 @@ func _update_grip(_delta: float) -> void:
 	var radius := CLIMB_GRAB_RADIUS if rotate_grip else GRAB_RADIUS
 	var tip: Vector2 = body.com_world() + anchor.rotated(body.rotation)
 	var hit = Query.closest_point(tip, radius, [body, player_body, arm_body], physics_world)
-	if hit.hit and hit.body != null:
+	if hit.hit and hit.body != null and hit.material != InkPalette.GREY.id:
 		_begin_grab(hit.body, hit.point)
 
 
@@ -294,6 +295,10 @@ func _begin_grab(target_body, world_point: Vector2) -> bool:
 	if target_body == null or target_body == body or target_body == player_body \
 			or not physics_world.bodies.has(target_body):
 		return false
+	var cell := Vector2i(target_body.to_local(world_point).floor())
+	for shape in target_body.shapes:
+		if shape.get_pixel(cell.x, cell.y) == InkPalette.GREY.id:
+			return false
 	_ensure_arm_joint()
 	_release_grab()
 	# 关闭时 Weld 锁当前相对角；打开时 Hinge 保留抓点，交给现有 PD 力控驱动摆动。
