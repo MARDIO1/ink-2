@@ -74,14 +74,19 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 			continue
 		var point: Vector2 = impact.position
 		var normal: Vector2 = impact.normal
-		var a_origin: Vector2 = point - normal * 0.001
-		var b_origin: Vector2 = point + normal * (maxf(impact.dist, 0.0) + 0.001)
+		# 两侧各自的进体方向与入体采样点：由**像素自己**定，不信任原生法线的朝向（见 _entry）。
+		var a_entry: Dictionary = _entry(contact.a, point, normal)
+		var b_entry: Dictionary = _entry(contact.b, point, normal)
+		var a_origin: Vector2 = a_entry["origin"]
+		var b_origin: Vector2 = b_entry["origin"]
+		var a_dir: Vector2 = a_entry["dir"]
+		var b_dir: Vector2 = b_entry["dir"]
 		var a_material: int = ContactImpact.material_at(contact.a, a_origin)
 		var b_material: int = ContactImpact.material_at(contact.b, b_origin)
 		if a_material == 0 or b_material == 0:
 			continue
-		for side in [[contact.a, a_origin, -normal, a_material, b_material, -1.0],
-				[contact.b, b_origin, normal, b_material, a_material, 1.0]]:
+		for side in [[contact.a, a_origin, a_dir, a_material, b_material, -1.0],
+				[contact.b, b_origin, b_dir, b_material, a_material, 1.0]]:
 			var body: PBody = side[0]
 			# 玩家用生命值结算；其他生物的物理壳只负责阻挡和受力，不参与像素碎裂。
 			if body != player_body and body.tags.has(LIVING_TAG):
@@ -102,6 +107,30 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 			_damage_side(world, body, path, side[4], impact.impulse, player_body,
 				protected_bodies, result, side[1], side[2], seed, side[5])
 	return result
+
+
+## 一侧的「进体方向 + 入体采样点」。**原生接触法线的朝向不可信**：
+##
+## 实测（peak，手抓 16x16 从 60 px 高砸同一条平地的同一列）：
+##   · 矩形碰撞体地形（HEAD，1845 rects）：point=(61.53,230.0)=像素表面、n=(0,-1)、
+##     `_trace` 从 a_origin 走进 **113** 格 → 删除 54 px。
+##   · 凸多边形碰撞体地形（分块后，22 rects → op43 拟合）：point=(55.66,228.50)=**撞块底面上**、
+##     n=(0,+1)（与前者相反）、`_trace` 走 **0** 格 → 地形一个像素都不删。
+## 即 op43（pworld.gd:1367 的 `rects.size() <= poly_max_rects` 那条路）给出的是**反向法线 +
+## 把接触点放在对面刚体表面上**。而 `dist` 也不是真实间隙（实测 1.6 px 间隙照样报 0.498，
+## 那是 physics_step.gd:26 的软 CCD 预测距离）。
+##
+## 所以这里不再用 `point ± normal` 猜哪边是实体内部，而是沿 ±法线找**这一个刚体自己**的像素
+## （material_at 只查它自己的形状，不会串到对面），第一个命中的方向就是进体方向、
+## 那个像素就是入体采样点。找不到（真的没接触上）才退回原来的写法。
+@export var contact_probe_pixels: int = 3
+func _entry(body: PBody, point: Vector2, normal: Vector2) -> Dictionary:
+	for step in range(1, maxi(1, contact_probe_pixels) + 1):
+		for dir: Vector2 in [normal, -normal]:
+			var probe: Vector2 = point + dir * step
+			if ContactImpact.material_at(body, probe) != 0:
+				return {"dir": dir, "origin": probe}
+	return {"dir": normal, "origin": point + normal * 0.001}
 
 
 ## 轻碎片豁免：阈值直接用世界的 ccd_ignore_mass（0 = 关，引擎默认），与引擎
