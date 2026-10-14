@@ -53,16 +53,31 @@ static func material_id_of(material: Resource) -> int:
 	return material.id if material != null else 0
 
 
+## 颜色 -> 材质 id 的结果缓存。认色要按容差比 5 种颜色，实测 2.0 us/次，
+## 而每画一格就要认一次（`_set_pixel_raw` 的 `material_at`），命中率极高。
+## 色表是 const，映射不会变；上限只是防止外部读进来的图把表撑爆。
+static var _id_by_color := {}
+const ID_CACHE_LIMIT := 4096
+
+
 ## 画布像素颜色 -> 材质 id；透明或认不出来返回 0。
 static func material_id_at_color(color: Color) -> int:
 	if color.a <= 0.5:
 		return 0
+	var cached = _id_by_color.get(color)
+	if cached != null:
+		return cached
+	var material_id := 0
 	for entry in INKS:
 		if _close(color, color_of(entry["material"])):
-			return material_id_of(entry["material"])
-	if _close(color, nail_color()):
-		return nail_material_id()
-	return 0
+			material_id = material_id_of(entry["material"])
+			break
+	if material_id == 0 and _close(color, nail_color()):
+		material_id = nail_material_id()
+	if _id_by_color.size() >= ID_CACHE_LIMIT:
+		_id_by_color.clear()
+	_id_by_color[color] = material_id
+	return material_id
 
 
 ## 该材质是不是墨水（钉子不是）。

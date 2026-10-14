@@ -141,8 +141,7 @@ static func restore(canvas, state: Dictionary) -> void:
 	var size: Vector2i = state.size
 	var bytes: PackedByteArray = state.image.decompress(size.x * size.y * 4, FileAccess.COMPRESSION_FASTLZ)
 	surface.black_image = Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGBA8, bytes)
-	surface.black_texture = ImageTexture.create_from_image(surface.black_image)
-	surface.black_sprite.texture = surface.black_texture
+	surface.rebuild_ink_tiles()
 	surface.ink_px_by_material = state.ledger.duplicate()
 	surface._pending_ink.clear()
 	surface._rebuild_nails()

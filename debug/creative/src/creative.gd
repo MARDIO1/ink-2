@@ -2402,11 +2402,11 @@ func _run_edit_auto_save(revision: int) -> void:
 	if revision != _auto_save_revision or not active or not auto_save_edits:
 		return
 	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface") if _map_canvas != null else null
-	if surface != null and surface.has_method("save_ink"):
-		# 内容仍是 PNG 压缩数据，但 .snapshot 不会和编辑器的 PNG 导入线程争抢文件。
+	if surface != null and surface.has_method("request_snapshot"):
+		# 内容仍是 PNG 压缩数据，但 .snapshot 不会和编辑器的 PNG 导入线程争抢文件；
+		# 整图编码走后台线程，主线程不为它停帧。
 		var snapshot_path := map_path.get_basename() + ".edit.snapshot"
-		if surface.save_ink(snapshot_path) != OK:
-			return
+		surface.request_snapshot(snapshot_path)
 		edit_snapshot_path = snapshot_path
 		surface.saved_ink_path = snapshot_path
 
