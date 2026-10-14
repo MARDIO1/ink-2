@@ -9,7 +9,7 @@ func _initialize() -> void:
 
 func _run_ui_test() -> void:
 	var valid := true
-	var scene: Node = load("res://map/main.tscn").instantiate()
+	var scene: Node = load("res://map/asset/imported/main.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame
@@ -27,11 +27,11 @@ func _run_ui_test() -> void:
 	valid = valid and play_hand.size.is_equal_approx(Vector2(52.0, 52.0))
 	valid = valid and (play_grid.get_node("Brush") as Button).size.is_equal_approx(Vector2(32.0, 43.0))
 	valid = valid and (play_grid.get_node("Brush/Caption") as Label).text == "画笔"
-	valid = valid and play_canvas.get_node("WorkbenchUI/Buttons").position == Vector2(-42.0, 160.0)
+	valid = valid and play_canvas.get_node("WorkbenchUI/Buttons").position == Vector2(-44.0, 184.0)
 	var side_panel := play_canvas.get_node("SidePanel") as VBoxContainer
 	var side_slider := side_panel.get_node("Controls/BrushSizeSlider") as VSlider
 	var first_ink_button := side_panel.get_node("Controls/Colors/Ink0Button") as Button
-	valid = valid and side_panel.position == Vector2(play_size.x + 14.0, -22.0)
+	valid = valid and side_panel.position == Vector2(play_size.x + 16.0, 2.0)
 	valid = valid and side_slider.size.y >= 166.0
 	valid = valid and first_ink_button.size.is_equal_approx(Vector2(34.0, 34.0))
 	valid = valid and side_panel.get_node("Controls/Colors").get_child_count() == 4

@@ -50,6 +50,7 @@ extends Sprite2D
 ##    所以按 mass_quantum 量化，只在液面变化超过阈值时才重算 —— 不是每帧。
 
 const FluidPBF := preload("res://addons/pixel_destruction/fluid/fluid_pbf.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 
 @export_group("来源")
 ## 玩家物理节点（持有 PBody 的那个）。
@@ -58,7 +59,7 @@ const FluidPBF := preload("res://addons/pixel_destruction/fluid/fluid_pbf.gd")
 @export var mask_path := NodePath("../Visual")
 ## 像素世界节点：取重力方向，并用于重算质量。
 @export var world_path := NodePath("../../")
-## 墨水生命值节点：液面比例每帧从它的 ratio() 读，本图层不自己存 fill。
+## 墨水生命值节点：液面比例每帧从黑墨 ratio_of() 读，本图层不自己存 fill。
 @export var health_path := NodePath("../InkHealth")
 
 @export_group("墨水")
@@ -221,7 +222,8 @@ func _sync_visual() -> void:
 	offset = (_mask.offset + Vector2(_grid_origin)) / float(cell_px) - Vector2.ONE
 	scale = Vector2(cell_px, cell_px)
 	_sync_wobble_uniforms()
-	_fill = _health.ratio() if _health != null and _health.has_method("ratio") else 1.0
+	var black_id: int = InkPalette.material_id_of(InkPalette.BLACK)
+	_fill = _health.ratio_of(black_id) if _health != null and _health.has_method("ratio_of") else 1.0
 	visible = _fluid != null
 	if not visible:
 		return

@@ -185,6 +185,8 @@ func _run() -> void:
 
 	# --- 端到端：规则产生的伤害事件真的会喷 ---
 	# 规则侧这一下的等效伤害约 1.7 px，把阈值压到它下面，这里只验接线。
+	# 墨种数量在喷之前记下来：喷溅不该往色表里加墨（调色板现在有 5 种，含白墨）。
+	var ink_kinds_before: int = InkPalette.ink_count()
 	spray.min_damage = 1.0
 	spray._splats.clear()
 	var before: int = spray.sprayed_count
@@ -196,7 +198,7 @@ func _run() -> void:
 	_check("splats expire and the quad hides itself",
 		spray._splats.is_empty() and not rect.visible)
 	_check("spray never touches the physics world", world.bodies.size() == bodies_before)
-	_check("spray emits nothing into the ink ledger", InkPalette.ink_count() == 4)
+	_check("spray emits nothing into the ink ledger", InkPalette.ink_count() == ink_kinds_before)
 	spray.queue_free()
 	await process_frame
 	print("[InkSpray] %d checks, %d failures" % [checks, failures])

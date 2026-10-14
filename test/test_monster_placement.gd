@@ -4,7 +4,7 @@ const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 
 var MAPS := PackedStringArray([
 	"res://map/asset/imported/第一关.tscn",
-	"res://map/asset/imported/平路（新）.tscn",
+	"res://map/asset/imported/main.tscn",
 ])
 
 
@@ -24,10 +24,11 @@ func _run() -> void:
 			creative.auto_save_edits = false
 			creative.auto_save_on_exit = false
 			creative.set_active(true)
+			var initial_count: int = creative.monster_count()
 			for kind in [MapMonsterScript.Kind.LITTLE_SOLDIER, MapMonsterScript.Kind.BOMB_SIDE, MapMonsterScript.Kind.SHIELD_SOLDIER]:
 				var monster: Node2D = creative.place_monster(kind, Vector2(240 + kind * 60, 160))
 				valid = valid and monster != null and int(monster.kind) == kind
-			valid = valid and creative.monster_count() == 3
+			valid = valid and creative.monster_count() == initial_count + 3
 			var shield_button := creative._monster_buttons.back() as Button
 			shield_button.pressed.emit()
 			valid = valid and creative._monster_mode == MapMonsterScript.Kind.SHIELD_SOLDIER and shield_button.button_pressed

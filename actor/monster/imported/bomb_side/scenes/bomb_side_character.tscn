@@ -71,7 +71,7 @@ tracks/2/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
 "update": 0,
-"values": [3.2861901]
+"values": [-3.1405803]
 }
 tracks/3/type = "value"
 tracks/3/imported = false
@@ -83,7 +83,7 @@ tracks/3/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
 "update": 0,
-"values": [2.3445741]
+"values": [2.4872879]
 }
 tracks/4/type = "value"
 tracks/4/imported = false
@@ -95,7 +95,7 @@ tracks/4/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
 "update": 0,
-"values": [3.1221083]
+"values": [3.1211811]
 }
 tracks/5/type = "value"
 tracks/5/imported = false
@@ -107,7 +107,7 @@ tracks/5/keys = {
 "times": PackedFloat32Array(0),
 "transitions": PackedFloat32Array(1),
 "update": 0,
-"values": [2.9172397]
+"values": [-2.9849972]
 }
 
 [sub_resource type="Animation" id="Animation_idle"]
@@ -148,7 +148,7 @@ tracks/2/keys = {
 "times": PackedFloat32Array(0, 0.8, 1.6),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [3.3254001, 3.2454001, 3.3254001]
+"values": [-3.1013703, -3.1813703, -3.1013703]
 }
 tracks/3/type = "value"
 tracks/3/imported = false
@@ -160,7 +160,7 @@ tracks/3/keys = {
 "times": PackedFloat32Array(0, 0.8, 1.6),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [2.3037841, 2.3837841, 2.3037841]
+"values": [2.4464979, 2.5264979, 2.4464979]
 }
 
 [sub_resource type="Animation" id="Animation_throw"]
@@ -188,7 +188,7 @@ tracks/1/keys = {
 "times": PackedFloat32Array(0, 0.3, 0.62, 1.2),
 "transitions": PackedFloat32Array(1, 1, 1, 1),
 "update": 0,
-"values": [2.3445741, 3.1237841, 1.0237841, 2.3445741]
+"values": [2.4872879, 3.2664979, 1.1664979, 2.4872879]
 }
 
 [sub_resource type="Animation" id="Animation_walk"]
@@ -228,7 +228,7 @@ tracks/2/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [2.8954001, 3.6454001, 2.8954001]
+"values": [-3.5313703, -2.7813703, -3.5313703]
 }
 tracks/3/type = "value"
 tracks/3/imported = false
@@ -240,7 +240,7 @@ tracks/3/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [2.7037841, 1.9537841, 2.7037841]
+"values": [2.8464979, 2.0964979, 2.8464979]
 }
 tracks/4/type = "value"
 tracks/4/imported = false
@@ -252,7 +252,7 @@ tracks/4/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [3.5013183, 2.7513183, 3.5013183]
+"values": [3.5003911, 2.7503911, 3.5003911]
 }
 tracks/5/type = "value"
 tracks/5/imported = false
@@ -264,7 +264,7 @@ tracks/5/keys = {
 "times": PackedFloat32Array(0, 0.5, 1),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [2.5464497, 3.2964497, 2.5464497]
+"values": [-3.3557872, -2.6057872, -3.3557872]
 }
 
 [sub_resource type="AnimationLibrary" id="AnimationLibrary_main"]
@@ -282,63 +282,74 @@ script = ExtResource("9_occlusion_rig")
 scale = Vector2(-1, 1)
 
 [node name="BodyHead" type="Bone2D" parent="Skeleton2D" unique_id=796774335]
-rotation = -1.5708
-rest = Transform2D(-3.61999e-06, -1, 1, -3.61999e-06, 0, 0)
+auto_calculate_length_and_angle = false
+length = 290
+position = Vector2(0, 0)
+rotation = -1.5707999
+rest = Transform2D(-0.0000036, -1, 1, -0.0000036, 0, 0)
 
 [node name="LeftArm" type="Bone2D" parent="Skeleton2D/BodyHead" unique_id=1169884724]
-position = Vector2(121.49928, -76.3241)
-rotation = 3.28619
-rest = Transform2D(-0.989564, -0.144094, 0.144094, -0.989564, 121.49928, -76.3241)
+auto_calculate_length_and_angle = false
+length = 136.6302338
+position = Vector2(121.16996, -56.6406822)
+rotation = -3.1405804
+rest = Transform2D(-0.9999995, -0.0010122, 0.0010122, -0.9999995, 121.16996, -56.6406822)
 
 [node name="Art" type="Sprite2D" parent="Skeleton2D/BodyHead/LeftArm" unique_id=935337217]
 z_index = 4
 texture_filter = 1
-position = Vector2(-29.716148, 37.09438)
-rotation = -1.5566128
+position = Vector2(-35.0276871, 52.1442413)
+rotation = -1.4130276
 texture = ExtResource("3_far_arm")
 centered = false
 flip_h = true
 
 [node name="RightArm" type="Bone2D" parent="Skeleton2D/BodyHead" unique_id=675911783]
-position = Vector2(112.28148, 33.63707)
-rotation = 2.3445742
-rest = Transform2D(-0.698842, 0.715276, -0.715276, -0.698842, 112.28148, 33.63707)
+auto_calculate_length_and_angle = false
+length = 129.3885193
+position = Vector2(120.4819565, 44.8469505)
+rotation = 2.487288
+rest = Transform2D(-0.7934713, 0.6086076, -0.6086076, -0.7934713, 120.4819565, 44.8469505)
 
 [node name="Art" type="Sprite2D" parent="Skeleton2D/BodyHead/RightArm" unique_id=728888459]
 material = SubResource("Occlusion_right_arm")
 texture_filter = 1
-position = Vector2(-32.32074, 36.51534)
-rotation = -1.3374226
+position = Vector2(-27.1141663, 54.6266823)
+rotation = -1.4801364
 texture = ExtResource("4_near_arm")
 centered = false
 flip_h = true
 
 [node name="LeftLeg" type="Bone2D" parent="Skeleton2D/BodyHead" unique_id=1053964376]
-position = Vector2(-21.99971, -47.999874)
-rotation = 3.1221082
-rest = Transform2D(-0.99981, 0.019483, -0.019483, -0.99981, -21.99971, -47.999874)
+auto_calculate_length_and_angle = false
+length = 113.9772034
+position = Vector2(-32.6096802, -53.06353)
+rotation = 3.121181
+rest = Transform2D(-0.9997917, 0.0204102, -0.0204102, -0.9997917, -32.6096802, -53.06353)
 
 [node name="Art" type="Sprite2D" parent="Skeleton2D/BodyHead/LeftLeg" unique_id=1912960932]
 z_index = 3
 material = SubResource("Occlusion_left_leg")
 texture_filter = 1
-position = Vector2(-44.474228, 62.395393)
-rotation = -1.5513183
+position = Vector2(-55.0364685, 57.0749779)
+rotation = -1.5503911
 texture = ExtResource("5_far_leg")
 centered = false
 flip_h = true
 
 [node name="RightLeg" type="Bone2D" parent="Skeleton2D/BodyHead" unique_id=1851966131]
-position = Vector2(-21.99987, 36.00013)
-rotation = 2.9172397
-rest = Transform2D(-0.974938, 0.222476, -0.222476, -0.974938, -21.99987, 36.00013)
+auto_calculate_length_and_angle = false
+length = 100.4514389
+position = Vector2(-37.0549736, 76.6947327)
+rotation = -2.9849973
+rest = Transform2D(-0.987764, -0.1559562, 0.1559562, -0.987764, -37.0549736, 76.6947327)
 
 [node name="Art" type="Sprite2D" parent="Skeleton2D/BodyHead/RightLeg" unique_id=1091319082]
 z_index = 1
 material = SubResource("Occlusion_right_leg")
 texture_filter = 1
-position = Vector2(-38.716404, 37.06558)
-rotation = -1.3464496
+position = Vector2(-30.6842117, 91.3478394)
+rotation = -1.727398
 texture = ExtResource("6_near_leg")
 centered = false
 flip_h = true
@@ -347,37 +358,47 @@ flip_h = true
 z_index = 2
 material = SubResource("Occlusion_body")
 texture_filter = 1
-position = Vector2(426.25104, -298.7485)
-rotation = 1.5708
+position = Vector2(426.2510376, -298.7485046)
+rotation = 1.5707999
 texture = ExtResource("2_body")
 centered = false
 flip_h = true
 
 [node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead/LeftArm"]
+rotation = -1.4130276
+position = Vector2(-35.0276871, 52.1442413)
 visible = false
 texture = ExtResource("11_left_arm_mask")
 centered = false
 flip_h = true
 
 [node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead/LeftLeg"]
+rotation = -1.5503911
+position = Vector2(-55.0364685, 57.0749779)
 visible = false
 texture = ExtResource("12_left_leg_mask")
 centered = false
 flip_h = true
 
 [node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead"]
+rotation = 1.5707999
+position = Vector2(426.2510376, -298.7485046)
 visible = false
 texture = ExtResource("13_body_mask")
 centered = false
 flip_h = true
 
 [node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead/RightLeg"]
+rotation = -1.727398
+position = Vector2(-30.6842117, 91.3478394)
 visible = false
 texture = ExtResource("14_right_leg_mask")
 centered = false
 flip_h = true
 
 [node name="OcclusionMask" type="Sprite2D" parent="Skeleton2D/BodyHead/RightArm"]
+rotation = -1.4801364
+position = Vector2(-27.1141663, 54.6266823)
 visible = false
 texture = ExtResource("15_right_arm_mask")
 centered = false

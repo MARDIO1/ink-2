@@ -3,8 +3,24 @@ extends SceneTree
 func _initialize() -> void:
 	call_deferred("_run")
 
+func _shield_above_feet(monster: Node2D) -> bool:
+	var sole := -INF
+	for part in monster._ragdoll.parts:
+		if not str(part.bone.name).ends_with("Leg"):
+			continue
+		var art: Sprite2D = part.bone.get_node(str(part.bone.name) + "Art")
+		var local := Rect2(art.texture.get_image().get_used_rect())
+		local.position -= art.texture.get_size() * 0.5
+		var visible_bounds: Rect2 = art.global_transform * local
+		sole = maxf(sole, visible_bounds.end.y)
+	var shield = monster._ragdoll.shield_body
+	shield.update_aabb()
+	var shield_bottom: float = monster._find_physics_world().to_global(shield.aabb.end).y
+	print("[ShieldFacing] shield bottom / sole: ", shield_bottom, " / ", sole)
+	return absf(shield_bottom - sole) < 0.1
+
 func _run() -> void:
-	var level := (load("res://map/main.tscn") as PackedScene).instantiate()
+	var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
 	root.add_child(level)
 	await process_frame
 	await physics_frame
@@ -31,6 +47,13 @@ func _run() -> void:
 	var head: Sprite2D = monster.get_node("Visual/Skeleton2D/Root/BodyBone/BodyArt")
 	var head_left := head.global_transform
 	var shield_left: Vector2 = monster._ragdoll.shield_body.position
+	var palm: Node2D = monster.get_node("Visual/Skeleton2D/Root/BodyBone/LeftArm/LeftArmArt/PalmGrip")
+	var inward: Vector2 = monster.get_node("Visual").global_transform.x.normalized() * monster.shield_grip_inset * absf(monster.scale.x)
+	valid = valid and absf(level.to_global(shield_left).x - (palm.global_position + inward).x) < 0.01
+	valid = valid and is_equal_approx(monster.shield_grip_inset, 8.0)
+	valid = valid and is_equal_approx(monster.shield_scale, 0.45 * 1.5)
+	valid = valid and is_equal_approx(monster.shield_scale * monster.shield_height_scale, 0.9)
+	valid = valid and _shield_above_feet(monster)
 	var initial_rotation: float = monster.global_rotation
 	var initial_count: int = monster._ragdoll.shield_initial_pixels
 	var shield_bounds: Rect2i = monster._ragdoll.shield_body.shapes[0].local_aabb()
@@ -67,6 +90,9 @@ func _run() -> void:
 		valid = valid and part.bone.global_position.distance_to(level.to_global(part.body.position)) < 0.01
 	valid = valid and head.global_transform.y.distance_to(mirrored.basis_xform(head_left.y)) < 0.01
 	valid = valid and monster._ragdoll.shield_body.position.x > monster.body.position.x
+	inward = monster.get_node("Visual").global_transform.x.normalized() * monster.shield_grip_inset * absf(monster.scale.x)
+	valid = valid and absf(level.to_global(monster._ragdoll.shield_body.position).x - (palm.global_position + inward).x) < 0.01
+	valid = valid and _shield_above_feet(monster)
 	valid = valid and is_equal_approx(shield_left.y, monster._ragdoll.shield_body.position.y)
 	valid = valid and monster._ragdoll.shield_body.shapes[0].pixel_count() == damaged_count
 	valid = valid and monster._ragdoll.shield_initial_pixels == initial_count

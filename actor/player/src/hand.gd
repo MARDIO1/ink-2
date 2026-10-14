@@ -10,6 +10,9 @@ const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 ## 抓握态的美术贴图挂在渲染节点下（只画不物理），按下左键换成它。
 @onready var art_unfold: Node2D = $"../Visual/ArtUnfold"
 @onready var art_grab: Node2D = $"../Visual/ArtGrab"
+@onready var art_climb: Node2D = $"../Visual/ArtClimb"
+var _pose_initialized := false
+@export_range(0.0, 0.3, 0.01) var pose_transition_seconds := 0.08
 ## 手的所有可见内容（物理像素层 + 美术层 + 手臂曲线）都挂在 `Hand/Visual` 下，藏它一个就够。
 @onready var visual: Node2D = $"../Visual"
 ## 失能状态：不跟鼠标、不抓握、看不见。画布切到非"手"工具时由 Canvas 调 set_enabled。
@@ -37,6 +40,12 @@ var debug_force_vector: Vector2 = Vector2.ZERO
 
 #region 生命周期
 func _ready() -> void:
+	var config: Resource = $"../../..".controller_config
+	if config != null:
+		max_force = config.hand_max_force
+		max_power = config.hand_max_power
+		position_stiffness = config.hand_position_stiffness
+		position_damping = config.hand_position_damping
 	process_physics_priority = -10
 	# 仅提高手所在约束岛的精度，不增加全世界的碰撞检测次数。
 	body.additional_solver_iterations = 32
@@ -51,6 +60,7 @@ func _ready() -> void:
 	#画布可能比手先 _ready（场景顺序里 SmallCanvas 排在 Player 前面），那时 set_enabled
 	#只能记下状态；真正落到可视与物理上放在这里。
 	_apply_enabled_state()
+	_update_pose(0.0, false, true)
 
 
 func _exit_tree() -> void:
@@ -149,7 +159,8 @@ func _calculate_motor(target_position: Vector2, hand_position: Vector2, delta: f
 	var stable := 1.0 / (1.0 + position_damping * delta + position_stiffness * delta * delta)
 	var acceleration := ((target_position - hand_position) * position_stiffness
 		- velocity * (position_damping + position_stiffness * delta)) * stable
-	var inverse_mass: float = _hand_side()["inv_mass"] + player_body.inv_mass
+	var side: Dictionary = _hand_side()
+	var inverse_mass: float = side["motor_inv_mass"] + player_body.inv_mass
 	if inverse_mass <= 0.0 or not is_finite(inverse_mass) or not acceleration.is_finite():
 		debug_p_force = Vector2.ZERO
 		debug_d_force = Vector2.ZERO
@@ -244,29 +255,37 @@ func _limit_power(force: Vector2, torque: float, hand_position: Vector2, delta: 
 
 #region 抓握
 @export_group("抓握")
-## 指尖抓点：相对**手本质心**的局部偏移，单位 px。
-## 推导（换手、改图后照这个重算，别手调）：拿烘焙出来的 `player_hand_unfold_0.tres` 图，
-##   x = 图的宽度（最右列的右边缘）
-##   y = 最右那一列实心像素的**中位**
-##   再减去所有实心像素的质心。
-## 当前图 36x31：最右列 x=35 覆盖 y=10..14（中位 12.5），质心 (19.4548, 14.6215)
-##   → (36 - 19.4548, 12.5 - 14.6215) = (16.545, -2.121)
-const FINGERTIP := Vector2(16.545, -2.121)
-const GRAB_RADIUS := 0.72
+## 图层与物理剪影共用原点，物理手固定质心 (19.4548, 14.6215)。
+## 伸指模式在 (41,22) 附近检测；爬山模式在张开手的 (30,17) 附近检测。
+## 坐标减去质心得到偏移；姿态变化不改质量或惯量。
+const FINGERTIP := Vector2(21.545, 7.379)
+const GRAB_RADIUS := 3.0
+const CLIMB_ANCHOR := Vector2(10.545, 2.379)
+const CLIMB_GRAB_RADIUS := 6.0
+
+
+func _update_pose(delta: float, requested: bool, immediate := false) -> void:
+	var selected: Node2D = art_climb if rotate_grip else (art_grab if requested else art_unfold)
+	var snap: bool = immediate or not _pose_initialized or pose_transition_seconds <= 0.0
+	for art in [art_unfold, art_grab, art_climb]:
+		var goal := 1.0 if art == selected else 0.0
+		art.modulate.a = goal if snap else move_toward(art.modulate.a, goal, maxf(delta, 0.0) / pose_transition_seconds)
+		art.visible = art.modulate.a > 0.001
+	_pose_initialized = true
 
 func _update_grip(_delta: float) -> void:
 	var requested: bool = _grip_override if _grip_override != null else Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	if art_grab.visible != requested:
-		art_grab.visible = requested
-		art_unfold.visible = not requested
+	_update_pose(_delta, requested)
 	if not requested:
 		_release_grab()
 		return
 	if grip_joint != null and grip_joint.is_active():
 		return
 	_release_grab()
-	var tip: Vector2 = body.com_world() + FINGERTIP.rotated(body.rotation)
-	var hit = Query.closest_point(tip, GRAB_RADIUS, [body, player_body], physics_world)
+	var anchor := CLIMB_ANCHOR if rotate_grip else FINGERTIP
+	var radius := CLIMB_GRAB_RADIUS if rotate_grip else GRAB_RADIUS
+	var tip: Vector2 = body.com_world() + anchor.rotated(body.rotation)
+	var hit = Query.closest_point(tip, radius, [body, player_body, arm_body], physics_world)
 	if hit.hit and hit.body != null:
 		_begin_grab(hit.body, hit.point)
 
@@ -299,6 +318,12 @@ func _release_grab() -> void:
 	_remove_joint(grip_joint)
 	grip_joint = null
 	grabbed_body = null
+
+
+## 抓住静态世界时，脚不能再提供平移或跳跃动力；身体只能由手臂约束/马达带动。
+func locks_foot_translation() -> bool:
+	return grabbed_body != null and grabbed_body.is_static \
+		and grip_joint != null and grip_joint.is_active()
 
 
 func _remove_joint(joint) -> void:
@@ -376,29 +401,37 @@ func reset_after_player_teleport() -> void:
 	arm_body.control_force = Vector2.ZERO
 	arm_body.control_torque = 0.0
 	_apply_enabled_state()
+	_update_pose(0.0, false, true)
 	_ensure_arm_joint()
 #endregion
 
 
 #region 负载与输入工具
-## 执行器手侧：自由手、焊接组合体、固定抓点；铰接时不合并物体惯量。
+## 执行器手侧：自由手、动态抓握组合体、固定抓点。
+## Hinge 只释放相对转动，抓点平移仍会拖动物体，所以线性约化质量必须算上物体；
+## 但不像 Weld 那样合并质心和惯量，保留物体绕抓点自由转动。
+## motor_inv_mass 用于从目标加速度求力；inv_mass 用于力直接施加到轻手时的保守功率预测。
 func _hand_side() -> Dictionary:
 	if grabbed_body != null and grabbed_body.is_static:
 		# 固定抓点的 Hinge 仍有绕指尖转动的动能，Weld 才完全固定。
 		var center: Vector2 = grip_joint.anchor_b_world() if rotate_grip else body.com_world()
 		var inertia: float = body.inertia + body.mass * body.com_world().distance_squared_to(center) if rotate_grip else 0.0
-		return {"center": center, "inertia": inertia, "inv_mass": 0.0, "inv_inertia": 1.0 / inertia if inertia > 0.0 else 0.0}
+		return {"center": center, "inertia": inertia, "motor_inv_mass": 0.0,
+			"inv_mass": 0.0, "inv_inertia": 1.0 / inertia if inertia > 0.0 else 0.0}
 	var mass: float = body.mass
 	var center: Vector2 = body.com_world()
 	var inertia: float = body.inertia
-	if grabbed_body != null and not rotate_grip:
+	var energy_inv_mass: float = body.inv_mass
+	if grabbed_body != null:
 		mass += grabbed_body.mass
-		if mass > 0.0:
+		if not rotate_grip and mass > 0.0:
 			center = (center * body.mass + grabbed_body.com_world() * grabbed_body.mass) / mass
-		inertia += grabbed_body.inertia + body.mass * body.com_world().distance_squared_to(center)
-		inertia += grabbed_body.mass * grabbed_body.com_world().distance_squared_to(center)
+			inertia += grabbed_body.inertia + body.mass * body.com_world().distance_squared_to(center)
+			inertia += grabbed_body.mass * grabbed_body.com_world().distance_squared_to(center)
+			energy_inv_mass = 1.0 / mass
 	return {"center": center, "inertia": inertia,
-		"inv_mass": 1.0 / mass if mass > 0.0 else 0.0,
+		"motor_inv_mass": 1.0 / mass if mass > 0.0 else 0.0,
+		"inv_mass": energy_inv_mass,
 		"inv_inertia": 1.0 / inertia if inertia > 0.0 else 0.0}
 
 ## 获得鼠标在世界坐标下的位置；没有摄像机时退化为相对位置。

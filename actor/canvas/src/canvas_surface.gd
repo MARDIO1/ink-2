@@ -25,6 +25,8 @@ var _dirty_hi := Vector2i(-(1 << 30), -(1 << 30))
 @onready var black_tiles: Node2D = $BlackTiles
 @onready var nail_layer: Node2D = $NailLayer
 @onready var bounds: CollisionShape2D = $Bounds
+@onready var rod_layer: Node2D = $YellowRodLayer
+var _rod_drawing := false
 func _ready() -> void:
 	black_tiles.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
@@ -39,11 +41,6 @@ func _exit_tree() -> void:
 		WorkerThreadPool.wait_for_task_completion(_snapshot_task)
 		_snapshot_task = -1
 #endregion
-
-
-func _restore_saved_ink() -> void:
-	if not saved_ink_path.is_empty() and FileAccess.file_exists(saved_ink_path):
-		load_ink(saved_ink_path)
 
 
 #region 外观
@@ -70,7 +67,7 @@ func _restore_saved_ink() -> void:
 		queue_redraw()
 ## 画布边框线宽，单位 px。
 @export var border_width := 2.0
-## 地图编辑自动保存使用的未固化画布快照；场景载入完成后自动恢复。
+## 地图编辑自动保存使用的快照路径；由 Creative 按需恢复。
 @export_file("*.res", "*.tres") var saved_ink_path := ""
 
 #纸底和边框由表面画，黑色墨水由 BlackTiles 的瓦片盖在上面
@@ -101,6 +98,9 @@ func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	_poll_snapshot()
+	if _rod_drawing:
+		rod_layer.extend(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
+		return
 	var yellow = yellow_rule()
 	if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
 		yellow.extend(self, _mouse_point())
@@ -138,6 +138,9 @@ var _shape_delta := 0
 ## 当前工具；切换时中断正在进行的笔画或形状。
 @export var tool: Tool = Tool.HAND:
 	set(value):
+		if _rod_drawing:
+			rod_layer.finish(rod_layer.last_point)
+			_rod_drawing = false
 		if is_node_ready() and not Engine.is_editor_hint():
 			var yellow = yellow_rule()
 			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
@@ -153,7 +156,16 @@ var _shape_delta := 0
 		_painting = false
 		_shaping = false
 ## 当前选中的墨水（`ink/src/ink_palette.gd` 的 INKS 下标）；右侧面板改它。
-@export var selected_ink: int = 0
+@export var selected_ink: int = 0:
+	set(value):
+		if selected_ink != value and is_node_ready():
+			if _rod_drawing:
+				rod_layer.finish(rod_layer.last_point)
+				_rod_drawing = false
+			var yellow = yellow_rule()
+			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
+				yellow.cancel()
+		selected_ink = value
 
 
 ## 当前墨水的画布颜色。
@@ -178,15 +190,26 @@ func _is_nail(color: Color) -> bool:
 func _on_mouse_button(button: InputEventMouseButton) -> void:
 	var yellow = yellow_rule()
 	if button.button_index == MOUSE_BUTTON_LEFT and yellow != null:
+		if not button.pressed and _rod_drawing:
+			rod_layer.finish(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
+			_rod_drawing = false
+			return
 		if not button.pressed and yellow.drawing != null and yellow.drawing.source_surface == self:
 			yellow.finish(self, _mouse_point())
 			return
-		if button.pressed and ink_material_id() == InkPalette.YELLOW.id and tool == Tool.BRUSH:
-			yellow.begin(self, _mouse_point())
-			return
-		if button.pressed and ink_material_id() == InkPalette.YELLOW.id and tool in [Tool.RECT, Tool.CIRCLE, Tool.BUCKET]:
-			return
+		if button.pressed and ink_material_id() == InkPalette.YELLOW.id:
+			if tool in [Tool.BRUSH, Tool.ERASER] and _inside(_mouse_point()):
+				_rod_drawing = true
+				rod_layer.begin(_mouse_point(), tool == Tool.ERASER)
+				return
+			if tool == Tool.LINE:
+				yellow.begin(self, _mouse_point())
+				return
+			if tool in [Tool.RECT, Tool.CIRCLE, Tool.BUCKET, Tool.NAIL]:
+				return
 	if button.button_index == MOUSE_BUTTON_MIDDLE:
+		if ink_material_id() == InkPalette.YELLOW.id:
+			return
 		_painting = false
 		if button.pressed:
 			_begin_undo_step()
@@ -445,19 +468,15 @@ func _resize() -> void:
 	bounds.position = Vector2(canvas_size) * 0.5
 	if not _preserve_next_resize:
 		_reset()
+	if rod_layer != null:
+		rod_layer.resize(canvas_size)
 	queue_redraw()
 
 
-## 扩大画布时保留已有像素、墨水账本和钉子。
-## content_offset 表示旧内容在新画布中的左上角；扩左/扩上时分别传入正的 x/y 偏移。
+## 调整画布时平移并裁切像素与钉子，同时保留墨水账本。
+## content_offset 表示旧内容在新画布中的偏移；负值会裁掉对应边缘。
 func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZERO) -> bool:
-	new_size = Vector2i(maxi(new_size.x, 1), maxi(new_size.y, 1))
-	if content_offset.x < 0 or content_offset.y < 0:
-		push_error("CanvasSurface: content_offset 不能为负数")
-		return false
-	if content_offset.x + canvas_size.x > new_size.x \
-	or content_offset.y + canvas_size.y > new_size.y:
-		push_error("CanvasSurface: 新画布装不下旧内容")
+	if new_size.x < 1 or new_size.y < 1:
 		return false
 	if new_size == canvas_size and content_offset == Vector2i.ZERO:
 		return true
@@ -481,16 +500,22 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 	expanded.blit_rect(old_image, Rect2i(Vector2i.ZERO, old_size), content_offset)
 	black_image = expanded
 	rebuild_ink_tiles()
+	if rod_layer != null:
+		rod_layer.resize(new_size, content_offset)
 
 	nail_layer.clear()
 	for nail in old_nails:
-		nail_layer.add(Vector2i(nail) + content_offset)
+		var shifted := Vector2i(nail) + content_offset
+		if Rect2i(Vector2i.ZERO, new_size).has_point(shifted):
+			nail_layer.add(shifted)
 	queue_redraw()
 	return true
 
 
 #重建透明画布，透明像素在纸底下露出来
 func _reset() -> void:
+	if rod_layer != null and black_image != null:
+		rod_layer.clear()
 	_refund_all_ink()                  # 画布被重建：把还挂在画布上的墨水还给瓶子
 	black_image = Image.create_empty(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8)
 	black_image.fill(Color.TRANSPARENT)
@@ -505,6 +530,7 @@ func clear(refund := true) -> void:
 	var yellow = yellow_rule()
 	if refund and yellow != null:
 		yellow.clear_drafts(self)
+		rod_layer.clear()
 	if refund:
 		_refund_all_ink()
 	else:
@@ -524,6 +550,11 @@ func clear(refund := true) -> void:
 func write_pixel(pixel: Vector2i, color: Color) -> bool:
 	if pixel.x < 0 or pixel.y < 0 or pixel.x >= canvas_size.x or pixel.y >= canvas_size.y:
 		return false
+	if InkPalette.material_id_at_color(color) == InkPalette.YELLOW.id:
+		var health = _health_node()
+		if health != null and not ink_free:
+			health.add(InkPalette.YELLOW.id, 1)
+		return true
 	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
 	_mark_dirty(pixel)
@@ -930,22 +961,11 @@ func undo_last_edit() -> bool:
 	_painting = false
 	_cancel_undo_step()
 	var step: Dictionary = _undo_steps.pop_back()
+	if step.has("rod_pixels"):
+		rod_layer.undo(step)
+		return true
 	if step.has("transaction"):
 		get_parent().History.restore(get_parent(), step.transaction)
-		return true
-	if step.has("solidified"):
-		var canvas = get_parent()
-		for reference in step.solidified:
-			var node = reference.get_ref()
-			if not is_instance_valid(node) or node.is_queued_for_deletion():
-				continue
-			canvas.solid._remove_all_nails(canvas.world, node.body)
-			canvas.world.remove_body_node(node)
-			canvas.world.remove_child(node)
-			node.queue_free()
-		for pixel: Vector2i in step.pixels:
-			write_pixel(pixel, step.pixels[pixel])
-		refresh()
 		return true
 	if step.has("yellow"):
 		var yellow = yellow_rule()
@@ -1134,7 +1154,10 @@ func _save_snapshot(path: String) -> Error:
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
 		return FileAccess.get_open_error()
-	file.store_buffer(black_image.save_png_to_buffer())
+	file.store_buffer("INK2".to_ascii_buffer())
+	var rule = yellow_rule()
+	file.store_var({"black": black_image.save_png_to_buffer(), "rod": rod_layer.pixels.save_png_to_buffer(), "anchors": rod_layer.anchor_points,
+		"springs": rule.draft_data(self) if rule != null else []})
 	file.flush()
 	file.close()
 	if FileAccess.file_exists(path):
@@ -1163,9 +1186,16 @@ func load_ink(path: String) -> Error:
 		push_error("Canvas file missing: " + path)
 		return ERR_FILE_NOT_FOUND
 	var image: Image
+	var rod_data: Dictionary = {}
 	if path.get_extension().to_lower() == "snapshot":
 		image = Image.new()
-		var load_error := image.load_png_from_buffer(FileAccess.get_file_as_bytes(path))
+		var bytes := FileAccess.get_file_as_bytes(path)
+		if bytes.slice(0, 4).get_string_from_ascii() == "INK2":
+			var snapshot := FileAccess.open(path, FileAccess.READ)
+			snapshot.get_buffer(4)
+			rod_data = snapshot.get_var()
+			bytes = rod_data.black
+		var load_error := image.load_png_from_buffer(bytes)
 		if load_error != OK:
 			push_error("Canvas snapshot decode failed: %s (%d)" % [path, load_error])
 			return load_error
@@ -1182,6 +1212,18 @@ func load_ink(path: String) -> Error:
 	black_image.convert(Image.FORMAT_RGBA8)
 	rebuild_ink_tiles()
 	_rebuild_loaded_metadata()
+	if not rod_data.is_empty():
+		var rods := Image.new()
+		rods.load_png_from_buffer(rod_data.rod)
+		rod_layer.pixels = rods
+		rod_layer.anchor_points = rod_data.anchors
+		rod_layer.refresh()
+		var health = _health_node()
+		if not ink_free and health != null:
+			health.reduce(InkPalette.YELLOW.id, rod_layer.make_shape().pixel_count())
+		var rule = yellow_rule()
+		if rule != null:
+			rule.restore_drafts(self, rod_data.get("springs", []), not ink_free)
 	print("CANVAS loaded: ", ProjectSettings.globalize_path(path))
 	return OK
 

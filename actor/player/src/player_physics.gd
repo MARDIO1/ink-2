@@ -5,6 +5,8 @@ const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_
 
 ## 所属 PixelWorld 的相对路径。
 @export var world_path := NodePath("..")
+## 只在玩家根节点赋值；手和连杆沿用各自场景参数。
+@export var controller_config: Resource
 ## 应用于所有直接子形状的密度倍率。
 @export var shape_density_scale := 1.0
 ## 生物实体标记；反向栅格化时跳过。
@@ -13,9 +15,20 @@ const LIVING_TAG := "living"
 #region 碰撞伤害
 ## 累计世界结算器给出的伤害，作为调试统计；实际生命值同步交给 InkHealth。
 var collision_damage: float = 0.0
+## 粒子等表现层连接这里；每个 impact 含 position、normal、amount、impulse、attacker_material。
+signal collision_damaged(amount: float, impacts: Array)
+signal corrosion_damaged(amount: float)
+
+## 覆盖腐蚀只扣血，保留玩家形状，并遵守创造模式伤害闸门。
+func apply_corrosion_damage(amount: float) -> void:
+	var health := get_node_or_null("InkHealth")
+	if amount <= 0.0 or health == null or not health.damage_enabled:
+		return
+	health.damage(amount)
+	corrosion_damaged.emit(amount)
 
 
-func apply_collision_damage(amount: float) -> void:
+func apply_collision_damage(amount: float, impacts: Array = []) -> void:
 	var damage: float = maxf(amount, 0.0)
 	collision_damage += damage
 	if damage <= 0.0:
@@ -23,6 +36,7 @@ func apply_collision_damage(amount: float) -> void:
 	var health := get_node_or_null("InkHealth")
 	if health != null:
 		health.damage(damage)
+	collision_damaged.emit(damage, impacts)
 #endregion
 
 
@@ -31,6 +45,8 @@ func _bake_lazily():
 
 
 func collect_shapes() -> Array:
+	if controller_config != null:
+		shape_density_scale = controller_config.body_density_scale
 	var shapes: Array = []
 	for child in get_children():
 		# Arm 和 Hand 是独立刚体，不属于玩家主体形状。
@@ -49,3 +65,23 @@ func bake():
 	result.rotation = global_rotation - get_node(world_path).global_rotation
 	result.tags[LIVING_TAG] = true
 	return result
+
+
+## 编辑器、重生和安全恢复共用世界坐标传送，重置身体、支撑及手部约束。
+func teleport_to(target: Vector2, target_rotation: float) -> void:
+	var level := get_node(world_path) as Node2D
+	var physics_body = body
+	global_position = target
+	global_rotation = target_rotation
+	physics_body.position = level.to_local(target)
+	physics_body.rotation = target_rotation - level.global_rotation
+	physics_body.linear_velocity = Vector2.ZERO
+	physics_body.angular_velocity = 0.0
+	physics_body.control_force = Vector2.ZERO
+	physics_body.control_torque = 0.0
+	physics_body.awake = true
+	physics_body.sleep_timer = 0.0
+	physics_body.refresh_com()
+	physics_body.update_aabb()
+	get_node("PlayerInput").support = null
+	get_node("Arm/Hand/HandControl").reset_after_player_teleport()

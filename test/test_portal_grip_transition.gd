@@ -17,7 +17,7 @@ func _run() -> void:
 	root.add_child(app)
 	current_scene = app
 	root.get_node("SceneTransition").duration = 0.01
-	for path in ["res://map/asset/imported/扉页（教程关）.tscn", "res://map/asset/imported/第一关.tscn", "res://map/asset/imported/扉页（教程关）.tscn", "res://map/asset/imported/第一关.tscn"]:
+	for path in ["res://map/asset/imported/扉页.tscn", "res://map/asset/imported/第一关.tscn", "res://map/asset/imported/扉页.tscn", "res://map/asset/imported/第一关.tscn"]:
 		await app.request_level_change(path)
 		await process_frame
 		await process_frame
@@ -26,13 +26,19 @@ func _run() -> void:
 		_check(path.get_file() + " hand enabled", hand.enabled and hand.is_physics_processing())
 		_check(path.get_file() + " query belongs to live world", is_same(Query._bodies, level.world.bodies))
 		var target = null
+		var hit = null
 		for candidate in level.world.bodies:
 			if candidate != hand.body and candidate != hand.player_body and candidate != hand.arm_body and not candidate.shapes.is_empty():
-				target = candidate
-				break
+				for shape in candidate.shapes:
+					var candidate_hit = Query.closest_point_on_shape(shape, candidate.com_world())
+					if candidate_hit.hit:
+						target = candidate
+						hit = candidate_hit
+						break
+				if target != null:
+					break
 		_check("target exists", target != null)
 		if target != null:
-			var hit = Query.closest_point_on_shape(target.shapes[0], target.com_world())
 			hand._remove_arm()
 			hand.body.rotation = 0.0
 			hand.body.position = hit.point - hand.FINGERTIP - hand.body.local_com

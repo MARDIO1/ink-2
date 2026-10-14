@@ -80,6 +80,7 @@ var _body_art_rest_scale := Vector2.ONE
 
 
 func _ready() -> void:
+	process_priority = 200
 	var body_art := get_node_or_null("Skeleton2D/Root/BodyBone/BodyArt") as Sprite2D
 	if body_art != null:
 		_body_art_rest_position = body_art.position
@@ -119,6 +120,20 @@ func _update_body_wobble(delta: float) -> void:
 
 
 func _update_occlusion_materials() -> void:
+	# 重绘部件的遮罩与美术同尺寸；使用最终姿势更新，包含物理受击和脚底对齐。
+	for part: StringName in PART_BONES:
+		var bone := get_part_bone(part)
+		if bone == null:
+			continue
+		var art_name := "BodyArt" if part == &"body" else str(bone.name) + "Art"
+		var art := bone.get_node_or_null(art_name) as Sprite2D
+		var mask := bone.get_node_or_null(art_name.replace("Art", "OcclusionMask")) as Sprite2D
+		if art != null and mask != null:
+			mask.transform = art.transform
+			mask.centered = art.centered
+			mask.offset = art.offset
+			mask.flip_h = art.flip_h
+			mask.flip_v = art.flip_v
 	for art_path: NodePath in OCCLUDERS:
 		var art := get_node_or_null(art_path) as Sprite2D
 		if art == null or not art.material is ShaderMaterial:

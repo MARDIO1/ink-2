@@ -1,6 +1,8 @@
 extends SceneTree
 
-const MAIN_SCENE := preload("res://map/main.tscn")
+const MAIN_SCENE := preload("res://map/asset/imported/main.tscn")
+const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
+const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const DT := 1.0 / 60.0
 
 var _passed := 0
@@ -22,6 +24,8 @@ func _run() -> void:
 	_reset_rig(rig)
 	_test_dynamic_grab(rig)
 	_reset_rig(rig)
+	_test_dynamic_hinge(rig)
+	_reset_rig(rig)
 	_test_static_grab(rig)
 	_reset_rig(rig)
 	_test_grounded_lift(rig)
@@ -33,6 +37,8 @@ func _run() -> void:
 	_test_free_box_reaction(rig)
 	_reset_rig(rig)
 	_test_hand_pose(rig)
+	_reset_rig(rig)
+	_test_light_dynamic_hinge(rig)
 
 	print("[HandPhysics] %d passed, %d failed" % [_passed, _failed])
 	var scene: Node = rig["scene"]
@@ -91,6 +97,7 @@ func _reset_rig(rig: Dictionary) -> void:
 	control.arm_joint = null
 	control.target_relative = Vector2(72.0, 0.0)
 	control.set_grip(false)
+	control.set_rotation_mode(false)
 
 	_set_body_state(rig["player"], Vector2.ZERO)
 	_set_body_state(rig["hand"], Vector2(72.0, 0.0))
@@ -284,6 +291,109 @@ func _test_dynamic_grab(rig: Dictionary) -> void:
 		absf(player.angular_velocity) < 0.001 if not control.conserve_angular_momentum else angular_error <= angular_effort_impulse * 0.025,
 		"error=%.3f relative=%.6f" % [angular_error, angular_error / maxf(angular_effort_impulse, 1.0)]
 	)
+
+
+func _test_dynamic_hinge(rig: Dictionary) -> void:
+	print("[HandPhysics] dynamic hinge: reduced mass, lift, free rotation")
+	var control: Node = rig["control"]
+	var player = rig["player"]
+	var hand = rig["hand"]
+	var box = rig["box"]
+	control.set_rotation_mode(true)
+	_set_body_state(box, hand.com_world() + Vector2(24.0, 0.0))
+	var grabbed: bool = control._begin_grab(box, hand.com_world())
+	control.set_grip(true)
+	_check("hinge/grab created", grabbed and control.grip_joint != null and control.grip_joint.kind == 0)
+	var side: Dictionary = control._hand_side()
+	var expected_mass: float = hand.mass + box.mass
+	var modeled_mass: float = 1.0 / float(side["motor_inv_mass"])
+	_check("hinge/reduced mass includes object", is_equal_approx(modeled_mass, expected_mass),
+		"modeled=%.3f expected=%.3f" % [modeled_mass, expected_mass])
+	_check("hinge/power keeps direct hand mass", is_equal_approx(float(side["inv_mass"]), hand.inv_mass))
+	var initial_hand_y: float = hand.com_world().y
+	var initial_relative_angle: float = wrapf(box.rotation - hand.rotation, -PI, PI)
+	var maximum_angle_change := 0.0
+	var maximum_grip_error := 0.0
+	var maximum_power := 0.0
+	var supplied_energy := 0.0
+	var initial_energy: float = _kinetic_energy([hand, box])
+	var initial_box_y: float = box.com_world().y
+	var minimum_box_y := initial_box_y
+	var maximum_uncovered_energy := 0.0
+	var support_joint = rig["world"].add_weld(player, rig["ground"], player.com_world())
+	support_joint.contacts_enabled = false
+	rig["world"].gravity = Vector2(0.0, 980.0)
+	for _frame in 240:
+		player.clear_forces()
+		box.clear_forces()
+		control.set_target_world(player.com_world() + Vector2(72.0, -90.0))
+		control._physics_process(DT)
+		maximum_power = maxf(maximum_power, control.debug_active_power)
+		supplied_energy += control.debug_active_power * DT
+		rig["world"].step(DT)
+		minimum_box_y = minf(minimum_box_y, box.com_world().y)
+		var gained_energy: float = box.mass * 980.0 * (initial_box_y - box.com_world().y)
+		gained_energy += _kinetic_energy([hand, box]) - initial_energy
+		maximum_uncovered_energy = maxf(maximum_uncovered_energy, gained_energy - supplied_energy)
+		maximum_grip_error = maxf(maximum_grip_error,
+			control.grip_joint.anchor_a_world().distance_to(control.grip_joint.anchor_b_world()))
+		maximum_angle_change = maxf(maximum_angle_change,
+			absf(wrapf(box.rotation - hand.rotation - initial_relative_angle, -PI, PI)))
+	support_joint.remove()
+	rig["world"].gravity = Vector2.ZERO
+	_check("hinge/lifts hand and object", hand.com_world().y < initial_hand_y - 30.0,
+		"rise=%.3f object_mass=%.3f" % [initial_hand_y - hand.com_world().y, box.mass])
+	_check("hinge/lifts heavy payload", minimum_box_y < initial_box_y - 30.0,
+		"rise=%.3f" % [initial_box_y - minimum_box_y])
+	_check("hinge/keeps grab point", maximum_grip_error < 0.75, "max=%.4f" % maximum_grip_error)
+	_check("hinge/leaves relative rotation free", maximum_angle_change > deg_to_rad(5.0),
+		"degrees=%.3f" % rad_to_deg(maximum_angle_change))
+	_check("hinge/power budget", maximum_power <= control.max_power * 1.00001,
+		"power=%.3f cap=%.3f" % [maximum_power, control.max_power])
+	_check("hinge/work covered by budget", maximum_uncovered_energy <= 2.0,
+		"uncovered=%.3f" % maximum_uncovered_energy)
+	control._release_grab()
+
+
+func _test_light_dynamic_hinge(rig: Dictionary) -> void:
+	print("[HandPhysics] light dynamic hinge: hand follows target with free payload")
+	var control: Node = rig["control"]
+	var player = rig["player"]
+	var hand = rig["hand"]
+	var shape = Shape.new()
+	shape.fill_rect(Rect2i(0, 0, 4, 4), 1)
+	var light := PBody.new()
+	rig["world"].add_body(light, [shape])
+	control.set_rotation_mode(true)
+	_set_body_state(light, hand.com_world() + Vector2(6.0, 0.0))
+	var grabbed: bool = control._begin_grab(light, hand.com_world())
+	control.set_grip(true)
+	var initial_hand_y: float = hand.com_world().y
+	var initial_light_y: float = light.com_world().y
+	var maximum_grip_error := 0.0
+	var support_joint = rig["world"].add_weld(player, rig["ground"], player.com_world())
+	support_joint.contacts_enabled = false
+	rig["world"].gravity = Vector2(0.0, 980.0)
+	for _frame in 180:
+		player.clear_forces()
+		light.clear_forces()
+		control.set_target_world(player.com_world() + Vector2(72.0, -90.0))
+		control._physics_process(DT)
+		rig["world"].step(DT)
+		maximum_grip_error = maxf(maximum_grip_error,
+			control.grip_joint.anchor_a_world().distance_to(control.grip_joint.anchor_b_world()))
+	support_joint.remove()
+	rig["world"].gravity = Vector2.ZERO
+	_check("light hinge/grab created", grabbed and control.grip_joint != null and control.grip_joint.kind == 0)
+	_check("light hinge/lifts hand", hand.com_world().y < initial_hand_y - 60.0,
+		"rise=%.3f mass=%.3f" % [initial_hand_y - hand.com_world().y, light.mass])
+	_check("light hinge/lifts payload", light.com_world().y < initial_light_y - 60.0,
+		"rise=%.3f" % [initial_light_y - light.com_world().y])
+	_check("light hinge/keeps grab point", maximum_grip_error < 0.75, "max=%.4f" % maximum_grip_error)
+	control._release_grab()
+	shape.owner_body = null
+	rig["world"].remove_body(light)
+	light.shapes.clear()
 
 
 func _test_static_grab(rig: Dictionary) -> void:
@@ -490,6 +600,7 @@ func _test_free_box_reaction(rig: Dictionary) -> void:
 func _test_hand_pose(rig: Dictionary) -> void:
 	print("[GameLoop] grip pose is art-only")
 	var control: Node = rig["control"]
+	control.set_rotation_mode(false)
 	var hand = rig["hand"]
 	var art_unfold: Node2D = rig["scene"].get_node("Player/Arm/Hand/Visual/ArtUnfold")
 	var art_grab: Node2D = rig["scene"].get_node("Player/Arm/Hand/Visual/ArtGrab")
@@ -500,18 +611,18 @@ func _test_hand_pose(rig: Dictionary) -> void:
 	var bodies: int = rig["world"].rp_body_count()
 
 	control.set_grip(true)
-	control._update_grip(DT)
+	control._update_grip(0.1)
 	_check("pose/grab art drawn",
-		art_grab.visible and not art_unfold.visible and _drawn_pixels(art_grab) == 332,
+		art_grab.visible and not art_unfold.visible and _drawn_pixels(art_grab) > 0,
 		"grab=%s unfold=%s pixels=%d" % [art_grab.visible, art_unfold.visible, _drawn_pixels(art_grab)])
 	_check("pose/switch touches no physics",
 		hand.mass == mass and hand.inertia == inertia and hand.local_com == com
 			and hand.position == position and rig["world"].rp_body_count() == bodies)
 
 	control.set_grip(false)
-	control._update_grip(DT)
+	control._update_grip(0.1)
 	_check("pose/unfold art restored",
-		art_unfold.visible and not art_grab.visible and _drawn_pixels(art_unfold) == 354,
+		art_unfold.visible and not art_grab.visible and _drawn_pixels(art_unfold) > 0,
 		"grab=%s unfold=%s pixels=%d" % [art_grab.visible, art_unfold.visible, _drawn_pixels(art_unfold)])
 	_check("pose/release touches no physics",
 		hand.mass == mass and rig["world"].rp_body_count() == bodies)

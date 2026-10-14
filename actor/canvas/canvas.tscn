@@ -17,6 +17,7 @@
 [ext_resource type="Script" path="res://actor/canvas/src/selection_overlay.gd" id="15_selection_overlay"]
 [ext_resource type="Texture2D" path="res://ui/asset/select_delete.tres" id="16_select_delete"]
 [ext_resource type="Texture2D" path="res://actor/canvas/asset/lined_paper.png" id="17_lined_paper"]
+[ext_resource type="Script" path="res://actor/yellow/src/yellow_rod_layer.gd" id="18_rod"]
 
 [sub_resource type="RectangleShape2D" id="CanvasBounds"]
 resource_local_to_scene = true
@@ -76,6 +77,8 @@ script = ExtResource("1_canvas")
 canvas_size = Vector2i(400, 280)
 
 [node name="CanvasFrame" type="TextureRect" parent="." unique_id=983819660]
+z_index = -2
+z_as_relative = false
 texture_filter = 1
 offset_left = -14.0
 offset_top = -14.0
@@ -86,6 +89,8 @@ texture = ExtResource("14_canvas_frame")
 expand_mode = 1
 
 [node name="CanvasSurface" type="Area2D" parent="." unique_id=1494527103]
+z_index = -2
+z_as_relative = false
 collision_layer = 0
 collision_mask = 0
 input_pickable = false
@@ -104,9 +109,15 @@ shape = SubResource("CanvasBounds")
 
 [node name="BlackTiles" type="Node2D" parent="CanvasSurface" unique_id=106269176]
 texture_filter = 1
+z_as_relative = false
 
 [node name="NailLayer" type="Node2D" parent="CanvasSurface" unique_id=1721133058]
+z_index = 1
+z_as_relative = false
 script = ExtResource("4_nail_script")
+
+[node name="YellowRodLayer" type="Node2D" parent="CanvasSurface"]
+script = ExtResource("18_rod")
 
 [node name="SelectionOverlay" type="Node2D" parent="CanvasSurface"]
 z_index = 100

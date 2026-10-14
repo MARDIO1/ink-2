@@ -73,10 +73,11 @@ func _physics_process(delta: float) -> void:
 		var result: Dictionary = _step(_main.fixed_dt)
 		_player.apply_collision_damage(result.player_damage)
 		_observe_damage(result.hits)
+		_player.apply_collision_damage(result.player_damage, result.player_impacts)
 		if not result.removals.is_empty():
 			var nodes: Array = _main._body_nodes.duplicate()
-			commit(_main.world, result.removals, result.get("bursts", {}), true)
-			_physics.sync_after_commit(nodes)
+			var committed := commit(_main.world, result.removals, result.get("bursts", {}), true)
+			_physics.sync_after_commit(nodes, committed.changed)
 		_physics.apply_radial_impulses(result.get("impulses", []))
 		_physics.flush_blast_dust()
 		_elapsed -= _main.fixed_dt
@@ -95,6 +96,9 @@ func _physics_process(delta: float) -> void:
 func _step(delta: float) -> Dictionary:
 	var start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var count: int = _physics.prepare_fixed(delta)
+	for extension in _extensions:
+		if extension.has_method("prepare_fixed"):
+			extension.prepare_fixed(_context(), delta)
 	_reaction_scale = 1.0
 	var result: Dictionary = _empty_result()
 	for i in count:
@@ -112,13 +116,14 @@ func _step(delta: float) -> Dictionary:
 
 ## 生成规则共享的只读上下文；服务表用于规则间依赖接口，不暴露具体脚本类型。
 func _context() -> Dictionary:
-	return {"world": _main.world, "player_body": _player.body,
+	return {"world": _main.world, "pixel_world": _main, "player_node": _player, "player_body": _player.body,
 		"protected_bodies": _protected, "services": _services}
 
 
 ## 创建统一效果包，所有规则都通过这些通用字段向物理层提交结果。
 func _empty_result() -> Dictionary:
-	return {"removals": {}, "player_damage": 0.0, "bursts": {}, "impulses": [], "hits": []}
+	return {"removals": {}, "player_damage": 0.0, "player_impacts": [], "hits": [],
+		"bursts": {}, "impulses": []}
 
 
 ## 合并多个规则的伤害、删除、分片和冲量效果，并保留最低连锁反应倍率。
@@ -126,6 +131,8 @@ func _merge_result(target: Dictionary, source: Dictionary) -> void:
 	target.player_damage += source.get("player_damage", 0.0)
 	if not source.get("hits", []).is_empty():
 		target.hits.append_array(source.hits)
+	if not source.get("player_impacts", []).is_empty():
+		target.player_impacts.append_array(source.player_impacts)
 	if not source.get("impulses", []).is_empty():
 		target.impulses.append_array(source.impulses)
 		_reaction_scale = minf(_reaction_scale, source.get("reaction_scale", 1.0))

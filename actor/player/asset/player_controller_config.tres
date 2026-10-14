@@ -1,0 +1,7 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://actor/player/src/player_controller_config.gd" id="1_config"]
+
+[resource]
+script = ExtResource("1_config")
+hand_position_damping = 12.0

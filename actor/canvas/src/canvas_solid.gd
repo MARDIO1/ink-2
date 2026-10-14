@@ -23,7 +23,7 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 
 #region 固化
 #把画布表面固化成动态刚体节点，并把结果打印到控制台
-func solidify(surface, world, editor_placed_nails := false, record_undo := true) -> void:
+func solidify(surface, world, editor_placed_nails := false) -> void:
 	if world == null:
 		push_error("CanvasSolid.solidify: world 为空")
 		return
@@ -36,21 +36,25 @@ func solidify(surface, world, editor_placed_nails := false, record_undo := true)
 
 	#先收集墨水，再只扫描实体与画布相交的局部区域。
 	var shape = PixelShape.new()
+	var white = PixelShape.new()
 	var anchors: Dictionary = {}
-	var original_pixels: Dictionary = {}
 	for y in range(size.y):
 		for x in range(size.x):
 			var material: int = surface.material_at(x, y)
 			if material != 0:
-				if record_undo:
-					original_pixels[Vector2i(x, y)] = surface.black_image.get_pixel(x, y)
-				shape.set_pixel(x, y, material)
+				if material == InkPalette.WHITE.id:
+					white.set_pixel(x, y, material)
+				else:
+					shape.set_pixel(x, y, material)
 				if material == InkPalette.nail_material_id():
 					anchors[Vector2i(x, y)] = true
 	var ink_pixels: int = shape.pixel_count()
 	var rejected_pixels: int = _remove_overlaps(shape, surface, world.world.bodies)
 
 	var parts: Array = Destruction.split(shape, 1)
+	# 白墨独立载体允许覆盖现有实体；断开的笔迹也共用一个速度。
+	if not white.is_empty():
+		parts.append(white)
 	if parts.is_empty():
 		if ink_pixels > 0:
 			surface.clear()
@@ -60,7 +64,6 @@ func solidify(surface, world, editor_placed_nails := false, record_undo := true)
 	#每个连通分量做成一个刚体节点，add_body_node 进世界（类比 add_child）
 	var spawned := 0
 	var total_pixels := 0
-	var previous_nodes: Array = world.get_children()
 	for part in parts:
 		if _spawn_component(world, pos, part, anchors, editor_placed_nails):
 			spawned += 1
@@ -69,12 +72,6 @@ func solidify(surface, world, editor_placed_nails := false, record_undo := true)
 	#固化成功后清空画布上的蓝图墨水
 	if spawned > 0:
 		surface.clear(false)      # 这些墨水已经变成刚体带走了，不能还回瓶子
-		var created_nodes: Array = []
-		for node in world.get_children():
-			if node is PixelBody2D and not previous_nodes.has(node):
-				created_nodes.append(weakref(node))
-		if record_undo:
-			surface.push_undo_step({"solidified": created_nodes, "pixels": original_pixels})
 	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
 #endregion
 
@@ -204,7 +201,7 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		var needs_plan := not keep_bodies and not fully_inside
 		if needs_plan:
 			_collect_nail_anchors(world, body, anchors)
-		pixels += _sample_body(surface, body, plan, needs_plan)
+		pixels += _sample_body(surface, body, plan, needs_plan, not keep_bodies)
 		if keep_bodies:
 			continue
 		# 完整落在画布内的刚体无需走昂贵的 fracture/split；采样后整体移除即可。
@@ -444,7 +441,7 @@ func _collect_nail_anchors(world, body, anchors: Dictionary) -> void:
 ## 把一个刚体**落在画布里的**像素按材质颜色写回画布，返回写进画布的像素数。
 ## `plan`（{shape: {Vector2i: true}}）收下画布内的全部像素（含钉子），调用方据此把它们从刚体上摘掉；
 ## `anchors`（同上分组）收下刚体上的全部钉子像素，供摘除后的分片判定静态。
-func _sample_body(surface, body, plan: Dictionary, collect_plan := true) -> int:
+func _sample_body(surface, body, plan: Dictionary, collect_plan := true, refund_yellow := true) -> int:
 	var written := 0
 	for shape in body.shapes:
 		# 按占用 chunk 遍历真实像素，跳过 AABB 内的大量空白。
@@ -459,6 +456,8 @@ func _sample_body(surface, body, plan: Dictionary, collect_plan := true) -> int:
 				var x: int = base_x + index % Bits.SIZE
 				var y: int = base_y + (index >> 3)
 				var material: int = chunk.mat[index]
+				if material == InkPalette.YELLOW.id and not refund_yellow:
+					continue
 				var world_point: Vector2 = body.to_world(Vector2(x + 0.5, y + 0.5))
 				var local: Vector2 = surface.to_local(world_point)
 				var target := Vector2i((local - Vector2(0.5, 0.5)).round())

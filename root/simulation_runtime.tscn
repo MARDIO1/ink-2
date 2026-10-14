@@ -5,6 +5,7 @@
 [ext_resource type="Script" path="res://root/src/impact_damage.gd" id="3_damage"]
 [ext_resource type="Script" path="res://ink/src/red_ink.gd" id="4_red"]
 [ext_resource type="Script" path="res://ink/src/yellow_ink.gd" id="5_yellow"]
+[ext_resource type="Script" path="res://ink/src/white_ink.gd" id="12_white"]
 [ext_resource type="Script" path="res://root/src/hit_feedback.gd" id="6_feedback"]
 [ext_resource type="Script" path="res://root/src/monster_contacts.gd" id="7_monsters"]
 [ext_resource type="AudioStream" path="res://sound/sfx/普通敲击.ogg" id="8_impact"]
@@ -40,3 +41,5 @@ release_stream = ExtResource("11_spring_release")
 
 [node name="InkSpray" type="Node2D" parent="."]
 script = ExtResource("12_spray")
+[node name="WhiteInk" type="Node" parent="."]
+script = ExtResource("12_white")

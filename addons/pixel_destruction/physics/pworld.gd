@@ -1158,8 +1158,8 @@ func _rp_create_missing() -> void:
 		off += 4
 		_rp_u8(props, 16)
 		_rp_u32(props, b.rapier_id)
-		_rp_f64(props, rp_linear_damping)
-		_rp_f64(props, rp_angular_damping)
+		_rp_f64(props, b.tags.get("linear_damping", rp_linear_damping))
+		_rp_f64(props, b.tags.get("angular_damping", rp_angular_damping))
 		_rp_u8(props, 17)
 		_rp_u32(props, b.rapier_id)
 		_rp_f64(props, b.gravity_scale)
@@ -3260,7 +3260,7 @@ func _break_joints_over_threshold(cands: Array) -> void:
 ##    放到外面调就变成"先卡一帧、下一帧才清掉"（实测那一帧 346 ms）。
 ##
 ## ⚠️ 两个阈值都必须 > 0 才生效（默认 0 = 关 -> 8 条逐位基准不动）。
-func cull_fast_debris() -> int:
+func cull_fast_debris(excluded: Array = []) -> int:
 	# ⚠️ 只有**质量**阈值是总开关；debris_min_speed <= 0 = **不限速度**（只按质量清）。
 	#
 	#    为什么这样定（甲方实测踩到）：他把 speed 设成 1 期望"清掉小碎片"，结果一个都没清 ——
@@ -3274,7 +3274,7 @@ func cull_fast_debris() -> int:
 	var removed := 0
 	for i in range(bodies.size() - 1, -1, -1):
 		var b: PBody = bodies[i]
-		if b.is_static or b.frozen or b.mass > debris_max_mass:
+		if b.is_static or b.frozen or b.mass > debris_max_mass or excluded.has(b):
 			continue
 		# ⚠️ 判据用 **_motion_of**（线速度 + |角速度| x 外接半径），与子步估计**同一个度量**。
 		#    只看线速度会漏掉质量放大的那个通道：Δω = J·r/I，而 **I ∝ m** ——
@@ -3465,6 +3465,7 @@ func detach(body: PBody, damage) -> Array:
 ## 返回 {removed: int, body_alive: bool, fragments: Array}。
 func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0,
 		dynamic_fragments: bool = false, static_anchors: Dictionary = {}) -> Dictionary:
+	var stage_start := Time.get_ticks_usec() if profile_enabled else 0
 	# ① 删除**前**的速度场与质心（下面要用它给存活块和碎片定速度）
 	var old_com := body.com_world()
 	var v_old := body.linear_velocity
@@ -3491,21 +3492,38 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 		var y0 := 1 << 30
 		var x1 := -(1 << 30)
 		var y1 := -(1 << 30)
+		var chunk_masks := {}
 		for px in mask:
 			var p: Vector2i = px
-			if s.get_pixel(p.x, p.y) != 0:
-				s.clear_pixel(p.x, p.y)
-				removed += 1
-			changed_chunks[PixelShape.make_key(p.x >> 3, p.y >> 3)] = true
+			var key := PixelShape.make_key(p.x >> 3, p.y >> 3)
+			chunk_masks[key] = int(chunk_masks.get(key, 0)) | (1 << ((p.y & 7) * 8 + (p.x & 7)))
 			x0 = mini(x0, p.x)
 			y0 = mini(y0, p.y)
 			x1 = maxi(x1, p.x)
 			y1 = maxi(y1, p.y)
+		# 同一块只记脏一次；整块删除不再逐像素清理材质。
+		for key: int in chunk_masks:
+			var chunk = s.chunks.get(key)
+			if chunk == null:
+				continue
+			var before: int = chunk.count()
+			var keep: int = ~int(chunk_masks[key])
+			if (chunk.occ & keep) == 0:
+				s.chunks.erase(key)
+				removed += before
+			else:
+				chunk.apply_keep_mask(keep)
+				removed += before - chunk.count()
+			s.mark_dirty_key(key)
+			changed_chunks[key] = true
 		if x1 >= x0:
 			dirty[s] = Rect2i(x0, y0, x1 - x0 + 2, y1 - y0 + 2)
 
 	if removed == 0:
 		return {"removed": 0, "body_alive": true, "fragments": [], "downgraded": []}
+	if profile_enabled:
+		profile_counts.erase_us = Time.get_ticks_usec() - stage_start
+		stage_start = Time.get_ticks_usec()
 
 	# ③ 分裂：默认最大块留在原 body；有钉子时优先保留最大的含钉子块。
 	var kept: Array = []
@@ -3515,7 +3533,7 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 		# ⚠️⚠️ 被删光的 shape **不能留下**：split() 对空 shape 会返回 1 个空块，
 		#    于是 kept 非空 -> 原体永远不会消失。实测：全删 1600 像素后
 		#    body_alive 仍然是 true（闸门 ② 抓到的）。
-		if s.pixel_count() <= 0:
+		if not Destruction._has_min_pixels(s, 1):
 			continue
 		# 未改的形状不扫描；已证明局部仍连通时保留原对象。
 		if not dirty.has(s):
@@ -3546,6 +3564,9 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 				loose.append({"shape": parts[i2], "anchored": anchored[i2]})
 
 	# ④ 全删光 -> 原体消失
+	if profile_enabled:
+		profile_counts.connectivity_us = Time.get_ticks_usec() - stage_start
+		stage_start = Time.get_ticks_usec()
 	if kept.is_empty():
 		remove_body(body)
 		return {"removed": removed, "body_alive": false, "fragments": [], "downgraded": []}
@@ -3558,12 +3579,12 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 	# ⚠️ 三个 Callable 都要传：不传 -> 母体质量按"像素数"算错、摩擦/恢复被清成 0。
 	if anchor_mode:
 		body.is_static = kept_anchored
-	# ⚠️⚠️ 断出碎片时**不能**传 changed_chunks：split(adopt=true) 会把 PixelChunk **对象**
-	#    搬到新 shape 上 —— 块键还是那些键，但内容已经不是缓存里记的那份了 ✗
-	#    （闸门"甜甜圈：质量属性仍然逐位正确"当场抓到）。这时退回全量重算。
-	var hint: Variant = changed_chunks if loose.is_empty() else null
+	# 分片仅继承整块未变的质量缓存；切口块仍重算。
+	var hint: Variant = changed_chunks
 	body.rebuild(kept, density_callable(), max_rects_per_shape, Rect2i(),
 		friction_callable(), restitution_callable(), dirty, hint)
+	if profile_enabled:
+		profile_counts.rebuild_us = Time.get_ticks_usec() - stage_start
 	var r_keep := body.com_world() - old_com
 	body.linear_velocity = v_old + w_old * Vector2(-r_keep.y, r_keep.x)
 	body.angular_velocity = w_old

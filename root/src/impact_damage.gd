@@ -10,6 +10,8 @@ const ContactImpact := preload("res://root/src/contact_impact.gd")
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
 ## 碰撞冲量转为破坏预算的倍率；越大越容易删像素。
 @export var damage_scale: float = 0.012
+## 玩家生命扣除倍率；只放大最终黑墨损失，不改变材料裂纹、删除预算或冲量。
+@export var player_damage_multiplier: float = 100.0
 ## 触发损坏的最小接近速度，单位 px/s；低于该值不结算，避免静态压力损坏。
 @export var min_approach: float = 300.0
 ## 厚度支撑累加上限，以表面材料强度归一化；超过后不再增加减伤。
@@ -46,15 +48,23 @@ func resolve_contacts(context: Dictionary, contacts: Array) -> Dictionary:
 
 
 #region 碰撞结算
-## 返回 {removals: {PBody: {PixelShape: {Vector2i: true}}}, player_damage: float, hits: Array}。
+## 返回删除计划、玩家总伤害和逐次 player_impacts（供受击表现读取）。
 ## 重叠删除取并集；每条 lane 独立消费预算，未满一个像素的余量舍弃。
 ## hits 是每次真正落地的伤害事件（位置、喷出方向、等效像素伤害、受击材料），只给表现层看。
 func calculate(world, contacts: Array, player_body: PBody = null, protected_bodies: Array = []) -> Dictionary:
-	var result: Dictionary = {"removals": {}, "player_damage": 0.0, "hits": []}
+	var result: Dictionary = {"removals": {}, "player_damage": 0.0, "player_impacts": []}
 	# 轻碎片豁免：一个子步只建一次集合，别在每对接触上重建（见 _dust_bodies）。
 	var dust: Dictionary = ContactImpact.dust_bodies(world, player_body, protected_bodies)
 	for contact in contacts:
 		if contact.approach <= min_approach:
+			continue
+		# 同伴与自己的部件不会互相撕裂盾牌；真实碰撞约束仍保留。
+		if contact.a.tags.has("monster_receiver") and contact.b.tags.has("monster_receiver"):
+			continue
+		# 敌人落地的承重冲量不能切掉脚下地面或盾牌底缘，否则每次回正
+		# 都会改变支撑几何，形成塌地、再落地和弹起的循环。
+		if (contact.a.tags.has("monster_receiver") and contact.b.is_static) \
+			or (contact.b.tags.has("monster_receiver") and contact.a.is_static):
 			continue
 		# 两头都是灰尘：两侧都被豁免，连冲量合成都不必算。
 		if dust.has(contact.a) and dust.has(contact.b):
@@ -138,8 +148,19 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 		_record_hit(result, origin, direction, dealt, path[0].material, body == player_body)
 	if body == player_body:
 		# InkHealth 以像素计量；普通材料会用 budget / strength 个等效像素消费预算，
-		# 玩家不删形状，但扣除同样数量的墨水，避免把原始强度预算误当成像素数。
-		result.player_damage += dealt
+		# 玩家不删形状；倍率只调生命损失，不反向改变通用材料破坏。
+		var damage: float = budget / surface_strength * maxf(player_damage_multiplier, 0.0)
+		result.player_damage += damage
+		if damage > 0.0:
+			if not result.has("player_impacts"):
+				result.player_impacts = []
+			result.player_impacts.append({
+				"position": origin,
+				"normal": -direction.normalized() if not direction.is_zero_approx() else Vector2.ZERO,
+				"amount": damage,
+				"impulse": impulse,
+				"attacker_material": attacker_material,
+			})
 		return
 	if not origin.is_finite() or direction.is_zero_approx():
 		_consume_path(world, body, path, budget, result)
@@ -186,18 +207,7 @@ func _consume_path(world, body: PBody, path: Array, budget: float, result: Dicti
 #endregion
 
 
-#region 接触合成
-## 把同一碰撞对的多个接触点按冲量合成为一次面冲击。
-func _impact(points: Array) -> Dictionary:
-	return ContactImpact.summarize(points)
-#endregion
-
 #region 像素路径
-## 返回世界点所在的刚体像素材质；空白位置返回 0。
-func _material_at(body: PBody, point: Vector2) -> int:
-	return ContactImpact.material_at(body, point)
-
-
 ## 局部网格 DDA：每个进入的像素只访问一次；第一处空洞停止，跨材料继续。
 ## 支撑已饱和且累计像素成本覆盖未经减伤的预算时，后续深度不再影响结果。
 func _trace(body: PBody, origin: Vector2, direction: Vector2, world = null,
@@ -318,6 +328,13 @@ func apply_impulse_damage(world, body: PBody, origin: Vector2, direction: Vector
 		impulse: float, player_body: PBody, protected_bodies: Array,
 		result: Dictionary, attacker_material: int = 0) -> void:
 	if body == null or protected_bodies.has(body) or direction.is_zero_approx() or impulse <= 0.0:
+		return
+	# 爆炸射线沿同一血量入口伤害生物，不把躯干/四肢当墨水打碎。
+	# 盾牌不带 living 标记，继续走原来的可破坏像素逻辑；打盾不扣本体血。
+	var monster_ref: WeakRef = body.tags.get("monster_receiver")
+	var monster = monster_ref.get_ref() if monster_ref != null else null
+	if monster != null and body.tags.has(LIVING_TAG):
+		monster.apply_damage(impulse * monster.contact_damage_scale, body)
 		return
 	var strength: float = world.material_strength(ContactImpact.material_at(body, origin)).x
 	if strength <= 0.0 and body != player_body:

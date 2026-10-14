@@ -35,13 +35,14 @@ func paint(rect: Rect2i) -> void:
 	surface.refresh()
 
 func run() -> void:
-	scene = load("res://map/main.tscn").instantiate()
+	scene = load("res://map/asset/imported/main.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame
 	await process_frame
 	canvas = scene.get_node("SmallCanvas")
 	surface = canvas.surface
+	surface.tool = surface.Tool.LINE
 	rule = scene.get_node("SimulationRuntime/YellowInk")
 	health = scene.get_node("Player/InkHealth")
 	canvas.position = Vector2(5000, 5000)
@@ -54,6 +55,7 @@ func run() -> void:
 	check("valid black endpoints submit independently", draw(Vector2(30, 30), Vector2(130, 30)))
 	var first = rule.strokes[-1]
 	var area: int = first.original_area
+	check("normal canvas uses compact yellow raster", first.compact_raster)
 	check("area charges only path, terminals excluded", health.ink_of(Palette.YELLOW.id) == before - area)
 	check("yellow leaves underlying black unchanged", surface.material_at(30, 30) == Palette.BLACK.id
 		and surface.material_at(70, 30) == 0)
@@ -64,6 +66,14 @@ func run() -> void:
 	check("yellow stroke undo refunds precisely", surface.undo_last_edit()
 		and rule.strokes.size() == 1 and health.ink_of(Palette.YELLOW.id) == before - area)
 	check("yellow cannot anchor to another yellow", not draw(Vector2(70, 30), Vector2(130, 30)))
+	var rod_layer = surface.rod_layer
+	rod_layer.begin(Vector2(30.5, 30.5), true)
+	rod_layer.finish(Vector2(30.5, 30.5))
+	check("yellow eraser deletes spring by terminal and refunds ink", rule.strokes.is_empty() and health.ink_of(Palette.YELLOW.id) == before)
+	check("terminal erase undo restores paid spring", surface.undo_last_edit() and rule.strokes.size() == 1 and health.ink_of(Palette.YELLOW.id) == before - area)
+	first = rule.strokes[-1]
+	check("dashed spring has visible gaps and remains structurally intact", first.dash_spans.size() > 1 and first.connected() and first.cells.size() < 600)
+	check("spring terminals render above yellow line", first.endpoint_a.z_index > first.visual.z_index and first.endpoint_b.z_index > first.visual.z_index)
 	canvas.generate()
 	check("solidification creates one native spring and no yellow body", first.joint != null
 		and first.joint.contacts_enabled and first.rest_length == 100.0)
@@ -104,7 +114,6 @@ func run() -> void:
 	b.update_aabb()
 	first.update_visual()
 	var refund_before: float = health.ink_of(Palette.YELLOW.id)
-	first.rng.seed = 42
 	first.erode(20)
 	check("wear changes area without changing endpoint sprites", first.cells.size() < area
 		and first.endpoint_a.texture != null and first.endpoint_b.texture != null)
@@ -152,37 +161,89 @@ func run() -> void:
 	quit(1 if failures else 0)
 
 func _test_erosion() -> void:
+	var dashed_probe = Stroke.new()
+	dashed_probe.compact_raster = true
+	dashed_probe.preview = true
+	dashed_probe.path = PackedVector2Array([Vector2(0.5, 0.5), Vector2(300.5, 0.5)])
+	dashed_probe.brush_width = 11
+	scene.add_child(dashed_probe)
+	dashed_probe.build_pixels()
+	dashed_probe.state = Stroke.State.ACTIVE
+	for batch in 100:
+		if dashed_probe.state != Stroke.State.ACTIVE:
+			break
+		dashed_probe.erode(10)
+	check("wear cuts a dashed segment without treating initial gaps as cracks", dashed_probe.state == Stroke.State.DYING and dashed_probe.cells.size() > 0)
+	dashed_probe.queue_free()
+	var deterministic: Array = []
+	for copy in 2:
+		var probe = Stroke.new()
+		probe.dashed = false
+		probe.preview = true
+		probe.path = PackedVector2Array([Vector2(0.5, 0.5), Vector2(300.5, 0.5)])
+		probe.brush_width = 11
+		scene.add_child(probe)
+		probe.build_pixels()
+		probe.state = Stroke.State.ACTIVE
+		probe.erode(3)
+		deterministic.append(probe)
+	check("identical yellow strokes always produce the same wear sequence",
+		deterministic[0].worn == deterministic[1].worn)
+	check("fixed cracks start at 44, 50 and 56 percent around stroke middle",
+		absf(deterministic[0].worn[0].x - 132.0) <= 1.0
+		and absf(deterministic[0].worn[1].x - 150.0) <= 1.0
+		and absf(deterministic[0].worn[2].x - 168.0) <= 1.0)
+	for probe in deterministic:
+		probe.queue_free()
 	var stroke = Stroke.new()
+	stroke.dashed = false
 	stroke.path = PackedVector2Array([Vector2(0.5, 0.5), Vector2(300.5, 0.5)])
 	stroke.brush_width = 11
 	scene.add_child(stroke)
 	stroke.state = Stroke.State.ACTIVE
-	stroke.rng.seed = 123
 	var start: int = Time.get_ticks_usec()
 	var iterations: int = 0
 	while stroke.state == Stroke.State.ACTIVE and iterations < 100:
 		stroke.erode(20)
 		iterations += 1
 	var elapsed: int = Time.get_ticks_usec() - start
-	check("growing random damage eventually cuts across path", stroke.state == Stroke.State.DYING)
+	check("fixed middle cracks eventually cut across path", stroke.state == Stroke.State.DYING)
 	check("damage retains refundable pixels after cut", not stroke.cells.is_empty())
 	print("WEAR area=", stroke.original_area, " batches=", iterations, " total_us=", elapsed,
 		" avg_batch_us=", elapsed / maxi(1, iterations))
 	stroke.queue_free()
 	var large = Stroke.new()
+	large.dashed = false
 	large.preview = true
 	large.path = PackedVector2Array([Vector2(-1000.5, -10.5), Vector2(1000.5, -10.5)])
 	large.brush_width = 25
 	scene.add_child(large)
 	check("large negative-coordinate stroke builds connected native occupancy", large.build_pixels() and large.connected())
 	large.state = Stroke.State.ACTIVE
-	large.rng.seed = 456
 	start = Time.get_ticks_usec()
 	large.erode(256)
 	elapsed = Time.get_ticks_usec() - start
 	check("large wear batch deletes exactly its budget", large.cells.size() == large.original_area - 256)
 	print("LARGE_WEAR area=", large.original_area, " batch_us=", elapsed)
 	large.queue_free()
+	var very_long = Stroke.new()
+	very_long.preview = true
+	very_long.compact_raster = true
+	very_long.path = PackedVector2Array([Vector2(-5000.5, -5000.5), Vector2(5000.5, 5000.5)])
+	very_long.brush_width = 7
+	scene.add_child(very_long)
+	var long_built: bool = very_long.build_pixels()
+	check("long dashed yellow has no artificial length cap",
+		long_built and very_long.compact_raster and very_long.original_area > 40000
+		and very_long.connected())
+	check("compact long constraint avoids a giant diagonal texture",
+		long_built and very_long.bounds.size.y <= very_long.brush_width + 2
+		and very_long.bounds.size.x > 10000)
+	check("compact long constraint still maps both terminal centres to world endpoints",
+		long_built
+		and very_long.pixel_world(very_long.raster_path[0]).distance_to(scene.to_global(very_long.path[0])) < 0.01
+		and very_long.pixel_world(very_long.raster_path[-1]).distance_to(scene.to_global(very_long.path[-1])) < 0.01)
+	very_long.queue_free()
 
 func _test_serialization() -> void:
 	paint(Rect2i(20, 180, 30, 30))
@@ -263,11 +324,12 @@ func _render_sample() -> void:
 	surface.clear()
 	paint(Rect2i(20, 130, 30, 30))
 	paint(Rect2i(180, 130, 30, 30))
-	check("curved stroke submits for render", draw(Vector2(35, 145), Vector2(195, 145), [Vector2(70, 80), Vector2(150, 80)]))
+	check("straight spring submits for render", draw(Vector2(35, 145), Vector2(195, 145)))
 	canvas.generate()
 	var stroke = rule.strokes[-1]
-	stroke.rng.seed = 42
 	stroke.erode(4)
+	paint(Rect2i(20, 130, 30, 30))
+	paint(Rect2i(180, 130, 30, 30))
 	check("crossing stroke submits for overlap render", draw(Vector2(35, 145), Vector2(195, 145)))
 	canvas.generate()
 	var camera = scene.get_node("Camera2D")

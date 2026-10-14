@@ -69,6 +69,15 @@ func observe_removals(_context: Dictionary, body: PBody, removals: Dictionary,
 	var groups: Dictionary = {}
 	var size: int = maxi(1, event_chunk_size)
 	for shape in removals:
+		# 无红墨的形状无需逐个检查整条消融路径；材质扫描由字节数组原生执行。
+		if removals[shape].size() > shape.chunks.size():
+			var contains_red := false
+			for chunk in shape.chunks.values():
+				if chunk.mat.has(RED_ID):
+					contains_red = true
+					break
+			if not contains_red:
+				continue
 		for cell: Vector2i in removals[shape]:
 			if shape.get_pixel(cell.x, cell.y) != RED_ID:
 				continue

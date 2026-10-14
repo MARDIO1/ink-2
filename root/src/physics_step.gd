@@ -118,17 +118,25 @@ func _push_knob(world, name: String, value) -> bool:
 func prepare_fixed(delta: float) -> int:
 	var physics = _main.world
 	var size: Vector2 = _camera.get_viewport_rect().size / _camera.zoom * freeze_view_scale
-	physics.cull_freeze(Rect2(_camera.get_screen_center_position() - size * 0.5, size), [_player.body])
+	var keep: Array = [_player.body]
+	for body in physics.bodies:
+		if body.tags.has("white_ink"):
+			keep.append(body)
+	physics.cull_freeze(Rect2(_camera.get_screen_center_position() - size * 0.5, size), keep)
 	for body in physics.bodies:
 		# 相机范围恢复活动不能覆盖地图编辑器显式设置的冻结状态。
 		if bool(body.tags.get("editor_physics_paused", false)):
 			physics.freeze(body)
 		body.refresh_com()
-	var culled: Array = cull_dust(physics)
-	physics.last_debris_removed = culled.size()
-	if not culled.is_empty():
+	# 游戏层先清一遍：这样才拿得到被清刚体的灰尘条目，交给 DebrisDust 淡出 0.55 s。
+	# 引擎 step() 里另有一道原生闸门（pworld.gd:2122）兜底，正常情况下这里返回 0。
+	var fading: Array = cull_dust(physics)
+	if not fading.is_empty():
+		_spawn_culled_dust(fading)
+	var culled: int = physics.cull_fast_debris(keep)
+	physics.last_debris_removed = fading.size() + culled
+	if culled > 0 or not fading.is_empty():
 		_drop_culled_nodes()
-		_spawn_culled_dust(culled)
 	last_speed_clamped = _clamp_speeds(physics)
 	var requested: int = physics._compute_substeps(delta)
 	var count: int = _apply_substep_budget(physics, requested)
@@ -173,9 +181,9 @@ func contacts(world) -> Array:
 	return contacts
 
 ## 同步分片后的节点数组，并回收已经失去 PBody 的节点。
-func sync_after_commit(previous_nodes: Array) -> void:
+func sync_after_commit(previous_nodes: Array, changed: Variant = null) -> void:
 	var start: int = Time.get_ticks_usec() if profile_enabled else 0
-	_main.sync_world_bodies()
+	_main.sync_world_bodies(changed)
 	var live: Dictionary = {}
 	for body in _main.world.bodies:
 		live[body] = true
