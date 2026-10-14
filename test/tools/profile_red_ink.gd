@@ -2,7 +2,7 @@ extends SceneTree
 ## 有窗口的真实 Rapier 碰撞、游戏固定步、分片、渲染和 F1 采样闭环。
 const Fixtures = preload("res://test/test_red_ink.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
-const MAIN = preload("res://map/main.tscn")
+const MAIN = preload("res://map/asset/imported/main.tscn")
 const Palette = preload("res://ink/src/ink_palette.gd")
 const Destruction = preload("res://addons/pixel_destruction/core/destruction.gd")
 

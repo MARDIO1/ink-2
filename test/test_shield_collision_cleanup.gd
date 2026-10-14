@@ -24,7 +24,7 @@ func _run() -> void:
 		var shape = Ragdoll.texture_shape(texture, 1, 128, 1.0, true, mirrored)
 		_check("transparent window, mirrored=%s" % mirrored,
 			shape.pixel_count() == 24 and shape.get_pixel(0, 0) == 0)
-	var level := (load("res://map/main.tscn") as PackedScene).instantiate()
+	var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
 	root.add_child(level)
 	# 本测试同帧反复重建刚体，不用于测量游戏帧耗时。
 	level.get_node("debugHUD").process_mode = Node.PROCESS_MODE_DISABLED

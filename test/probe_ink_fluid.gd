@@ -7,7 +7,7 @@ var _scene = null
 var _frames := 0
 
 func _initialize() -> void:
-	_scene = load("res://map/main.tscn").instantiate()
+	_scene = load("res://map/asset/imported/main.tscn").instantiate()
 	root.add_child(_scene)
 
 func _process(_d: float) -> bool:

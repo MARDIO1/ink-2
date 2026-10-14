@@ -1,7 +1,7 @@
 extends SceneTree
 
 const ROOT_SCENE := preload("res://root/root.tscn")
-const MAP_SCENE := preload("res://map/main.tscn")
+const MAP_SCENE := preload("res://map/asset/imported/main.tscn")
 #平路（新）已被重命名/删除；换一张真实存在的关卡当"另一张地图"。
 const ALTERNATE_MAP_PATH := "res://map/asset/imported/扉页（教程关）.tscn"
 
