@@ -53,14 +53,15 @@ func _run() -> void:
 	print("[Canvas] 连续直线工具: ", "PASS" if line_valid else "FAIL")
 	canvas._shape_tool = CanvasSurfaceScript.Tool.RECT
 	canvas._apply_tool(CanvasSurfaceScript.Tool.RECT)
-	canvas._select_shape_tool()
+	#形状按钮现在是弹出菜单：直接走"选中某个形状"那条路。
+	canvas._on_shape_picked(CanvasSurfaceScript.Tool.CIRCLE)
 	var shape_cycle_valid: bool = surface.tool == CanvasSurfaceScript.Tool.CIRCLE
-	canvas._select_shape_tool()
+	canvas._on_shape_picked(CanvasSurfaceScript.Tool.LINE)
 	shape_cycle_valid = shape_cycle_valid and surface.tool == CanvasSurfaceScript.Tool.LINE
-	canvas._select_shape_tool()
+	canvas._on_shape_picked(CanvasSurfaceScript.Tool.RECT)
 	shape_cycle_valid = shape_cycle_valid and surface.tool == CanvasSurfaceScript.Tool.RECT
 	valid = valid and shape_cycle_valid
-	print("[Canvas] 形状按钮三态循环: ", "PASS" if shape_cycle_valid else "FAIL")
+	print("[Canvas] 形状菜单三种形状: ", "PASS" if shape_cycle_valid else "FAIL")
 	surface.tool = saved_tool
 	surface.brush_size = saved_brush_size
 	# 画一个实心笔划，确认编辑器范围改造没有破坏固化。
@@ -86,7 +87,8 @@ func _run() -> void:
 	canvas.position = Vector2(5000, 5000)      # 挪到空地：只回收这块刚体，别顺带把地形也收走
 	canvas.solid.solidify(surface, scene)
 	canvas.return_to_canvas()
-	valid = valid and surface.is_solid(20, 20) and not surface.is_solid(30, 20)
+	#钉子是作为"钉子"回来的（材质 4），不是被写回成墨水；is_solid 只看 alpha，认不出两者。
+	valid = valid and surface.is_solid(20, 20) and surface.material_at(30, 20) == InkPalette.nail_material_id()
 	await process_frame
 	canvas.position = home
 	#只回收画布内的部分：刚体跨在画布边上时，画布外的那半边留在世界里。

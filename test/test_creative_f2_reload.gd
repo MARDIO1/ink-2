@@ -2,7 +2,8 @@ extends SceneTree
 
 const ROOT_SCENE := preload("res://root/root.tscn")
 const MAP_SCENE := preload("res://map/main.tscn")
-const ALTERNATE_MAP_PATH := "res://map/asset/imported/平路（新）.tscn"
+#平路（新）已被重命名/删除；换一张真实存在的关卡当"另一张地图"。
+const ALTERNATE_MAP_PATH := "res://map/asset/imported/扉页（教程关）.tscn"
 
 
 func _initialize() -> void:
@@ -96,6 +97,11 @@ func _run() -> void:
 	map_surface.write_pixel(Vector2i(20, 20), Color.BLACK)
 	map_surface.refresh()
 	restored_creative._record_edit({"type": &"autosave_probe"})
+	# 编辑快照改由后台线程写盘（整图 PNG 编码不再占主线程），等它真的落盘再读。
+	var snapshot_wait := 4.0
+	while not FileAccess.file_exists(snapshot_path) and snapshot_wait > 0.0:
+		await create_timer(0.05).timeout
+		snapshot_wait -= 0.05
 	await create_timer(0.12).timeout
 	valid = valid and FileAccess.file_exists(autosave_path)
 	var snapshot := Image.new()
