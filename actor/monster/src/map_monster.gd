@@ -11,6 +11,7 @@ const MONSTER_TAG := "map_monster"
 const Ragdoll := preload("res://actor/monster/src/monster_ragdoll.gd")
 const HealthBar := preload("res://actor/monster/src/monster_health_bar.gd")
 const DeathEffect := preload("res://actor/effects/character_death.gd")
+const Attack := preload("res://actor/monster/src/monster_attack.gd")
 signal health_changed(current: float, maximum: float)
 signal died
 const HEALTH_MULTIPLIER := 5.0
@@ -20,6 +21,8 @@ var _health_bar: Sprite2D
 var _dead := false
 @export var contact_damage_scale := 0.001
 var _ragdoll: RefCounted
+var _attack: RefCounted
+@export var attacks_enabled := true
 
 ## 前两个编号只为兼容旧地图与测试保留，已不再对应可放置场景或美术资源。
 ## 新放置栏只会提供 BOMB_SIDE 和后续的 SHIELD_SOLDIER。
@@ -119,6 +122,7 @@ func _ready() -> void:
 	max_health = (2000.0 if kind == Kind.SHIELD_SOLDIER else (500.0 if kind == Kind.BOMB_SIDE else 1000.0)) * HEALTH_MULTIPLIER
 	health = max_health
 	if not Engine.is_editor_hint():
+		_attack = Attack.new()
 		_health_bar = HealthBar.new()
 		_health_bar.name = "MonsterHealthBar"
 		add_child(_health_bar)
@@ -289,10 +293,12 @@ func _physics_process(delta: float) -> void:
 	_hit_cooldown = maxf(0.0, _hit_cooldown - delta)
 	_hit_recovery = maxf(0.0, _hit_recovery - delta)
 	if physical_enabled:
-		_update_walk_state()
+		if _attack != null:
+			_attack.update(self, delta)
+		_update_walk_state(_attack == null or not _attack.busy())
 		if _ragdoll != null:
 			_ragdoll.update_balance(delta, _editor_physics_paused, _hit_recovery > 0.0, walking, self)
-		# 实体小兵的攻击只走已求解接触；不再用手心点与速度猜测命中。
+		# 玩家对小怪的受击仍由已求解接触送入；主动攻击有独立单次命中窗口。
 		return
 	if _hit_cooldown > 0.0:
 		return
@@ -369,6 +375,8 @@ func receive_contact_impact(point: Vector2, impulse: Vector2, hit_body = null, a
 	if attack:
 		apply_damage(impulse.length() * contact_damage_scale, hit_body)
 	_hit_recovery = 0.45
+	if _attack != null:
+		_attack.cancel(self)
 	# 接触报告仍在遍历原生碰撞对，此时删除刚体会使后续接触句柄失效。
 	# 朝向在下一物理帧起点即时刷新，受击回调只更新停走状态。
 	_update_walk_state(false)
@@ -622,6 +630,15 @@ func _refresh_physics_for_facing() -> void:
 		_ragdoll.shield_body.angular_velocity = angular_velocity
 	_ragdoll.update_pose(_editor_physics_paused)
 	_sync_shield_visual()
+
+
+## 攻击蓄力前锁定朝向；仅镜像横轴，并刷新对应物理形状。
+func face_direction(direction: int) -> void:
+	if direction == _current_facing or _visual == null or _editor_physics_paused:
+		return
+	_current_facing = direction
+	_visual.scale.x = absf(_visual.scale.x) * (1.0 if direction < 0 else -1.0)
+	_refresh_physics_for_facing()
 
 
 func _create_shield_visual() -> void:

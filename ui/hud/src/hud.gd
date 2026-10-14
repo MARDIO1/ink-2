@@ -1,5 +1,5 @@
 extends CanvasLayer
-## 成品 HUD：瓶内液面显示玩家黑墨生命值（来源 InkHealth），顶部横条只留空框。
+## 成品 HUD：瓶内液面、顶部血条和数字共用 InkHealth 的黑墨生命值。
 ## Tab 在成品 HUD 与 debugHUD 之间切换。
 
 ## 退出按钮先打开 ESC 菜单，由菜单决定继续、回主菜单或退出。
@@ -18,6 +18,7 @@ const DEBUG_HUD_GROUP := "debug_hud"
 @export var debug_hud_path: NodePath = ^"../debugHUD"
 
 @onready var bottle_fill: TextureProgressBar = $Root/HealthUI/BottleFill
+@onready var health_bar: ProgressBar = $Root/HealthUI/HealthBar
 @onready var ink_meter: Label = $Root/HealthUI/InkMeter
 var debug_hud = null
 
@@ -43,10 +44,12 @@ func _ready() -> void:
 func _refresh_ink() -> void:
 	if _health == null:
 		bottle_fill.value = bar_ratio * 100.0
+		health_bar.value = bottle_fill.value
 		ink_meter.text = "墨水 -- px"
 		return
 	var black_id: int = InkPalette.material_id_of(InkPalette.BLACK)
 	bottle_fill.value = _health.ratio_of(black_id) * 100.0
+	health_bar.value = bottle_fill.value
 	#只读瓶子自己的余量。画布各有各的账，屏幕上不该出现"全局已消耗"这种和画布绑在一起的概念。
 	ink_meter.text = "黑墨 %d px" % int(round(_health.ink_of(black_id)))
 

@@ -5,6 +5,8 @@
 [ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/near_arm_normalized_4x.png" id="4_near_arm"]
 [ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/far_leg-mono-source-transparent-mono-source-transparent_normalized_4x.png" id="5_far_leg"]
 [ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/near_leg-mono-source-transparent_normalized_4x.png" id="6_near_leg"]
+[ext_resource type="Texture2D" path="res://actor/monster/imported/bomb_side/art/projectiles/red_ink_bomb_short_fuse.png" id="7_bomb"]
+[ext_resource type="Script" path="res://actor/monster/imported/bomb_side/scripts/bomb_ink_art.gd" id="8_bomb_ink"]
 
 [ext_resource type="Script" path="res://actor/monster/imported/bomb_side/scripts/bomb_side_rig.gd" id="9_occlusion_rig"]
 [ext_resource type="Shader" path="res://actor/monster/imported/bomb_side/shaders/part_occlusion.gdshader" id="10_occlusion_shader"]
@@ -319,6 +321,17 @@ rotation = -1.4801364
 texture = ExtResource("4_near_arm")
 centered = false
 flip_h = true
+
+[node name="BombArt" type="Sprite2D" parent="Skeleton2D/BodyHead/RightArm"]
+script = ExtResource("8_bomb_ink")
+z_index = 5
+texture_filter = 1
+position = Vector2(81.7743, -67.9979)
+rotation = -0.916488
+scale = Vector2(0.3, 0.3)
+texture = ExtResource("7_bomb")
+centered = false
+offset = Vector2(-640, -820)
 
 [node name="LeftLeg" type="Bone2D" parent="Skeleton2D/BodyHead" unique_id=1053964376]
 auto_calculate_length_and_angle = false

@@ -47,7 +47,13 @@ func _run() -> void:
 		_check("no corpse colliders or motors", released)
 		var effect = get_nodes_in_group(&"character_death_effect").back()
 		effects.append(effect)
-		_check("five part snapshot and shield preserved", effect.pieces.size() == (6 if kind == 3 else 5))
+		_check("five part snapshot and held item preserved", effect.pieces.size() == (5 if kind == 1 else 6))
+		if kind == 2:
+			var bomb_mask_valid := false
+			for piece in effect.pieces:
+				if piece.sprite.name == "BombArt":
+					bomb_mask_valid = piece.mask == piece.sprite.texture
+			_check("held bomb uses its own solid mask", bomb_mask_valid)
 		_check("enemy death uses visible lower edge when rotated", effect._origin.distance_to(expected_foot) < 0.01)
 		_check("enemy death has no extra draw effects", not effect.has_method("_draw")
 			and effect.get_children().all(func(child): return child is Sprite2D))

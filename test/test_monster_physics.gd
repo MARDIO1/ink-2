@@ -140,6 +140,7 @@ func _run() -> void:
 	var monster_body = monster.body if monster != null else null
 	# 本测试隔离碰撞求解；高速撞墙不能先触发死亡并删除被测角色。
 	monster.contact_damage_scale = 0.0
+	monster.attacks_enabled = false # 本回归只验证碰撞，不让主动攻击干扰测量。
 	_protect_shield(monster)
 	var ground_body = level.get_node("Ground").body
 	# 碰撞回归需要完整地面；像素破坏另测，不能让下落或撞击删除测试支撑。

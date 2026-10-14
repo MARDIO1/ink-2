@@ -10,7 +10,7 @@ func check(label: String, condition: bool) -> void:
 	valid = valid and condition
 
 func run() -> void:
-	var level := (load("res://map/main.tscn") as PackedScene).instantiate()
+	var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
 	var creative = level.get_node("Creative")
 	creative.auto_save_edits = false
 	creative.auto_save_on_exit = false
@@ -33,12 +33,19 @@ func run() -> void:
 	check("latest mirrored skeleton", visual.get_node("Skeleton2D").scale == Vector2(-1, 1))
 	check("five original bones", visual.find_children("*", "Bone2D", true, false).size() == 5)
 	check("five masks", visual.find_children("OcclusionMask", "Sprite2D", true, false).size() == 5)
+	var right_arm := visual.get_node("Skeleton2D/BodyHead/RightArm") as Bone2D
+	var bomb := right_arm.get_node("BombArt") as Sprite2D
+	check("solid red bomb attached to right hand", bomb.get_meta(&"ink_material_id", 0) == 8
+		and bomb.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST)
+	var grip_transform := bomb.transform
 	var animation: AnimationPlayer = visual.get_node("AnimationPlayer")
 	for animation_name in [&"idle", &"walk", &"throw"]:
 		check("animation " + str(animation_name), animation.has_animation(animation_name))
 		animation.play(animation_name)
 		animation.seek(0.55, true)
 		visual.update_masks()
+		check("held bomb follows right arm in " + str(animation_name), bomb.transform.is_equal_approx(grip_transform)
+			and bomb.global_transform.is_equal_approx(right_arm.global_transform * grip_transform))
 		var aligned := true
 		for index in visual.FRONT_TO_BACK.size():
 			var bone := visual.get_node(visual.FRONT_TO_BACK[index])
@@ -62,7 +69,8 @@ func run() -> void:
 					var local: Vector2 = art.get_rect().position + Vector2(image.get_width() - x if art.flip_h else x, y + 1)
 					bottom = maxf(bottom, monster.to_local(art.to_global(local)).y)
 	print("[BombSideImport] visible bottom relative to placement origin = ", bottom)
-	check("feet match placement origin", absf(bottom) < 0.1)
+	# 实体版本按像素碰撞轮廓校准脚底，允许一像素以内的光栅化差异。
+	check("feet match placement origin", absf(bottom) < 1.0)
 	check("undo placement", creative.undo_last_edit())
 	await process_frame
 	check("undo removes bomb", creative.monster_count() == count)

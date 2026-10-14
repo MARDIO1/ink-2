@@ -39,6 +39,7 @@ func _ready() -> void:
 	for i in InkPalette.ink_count():
 		_ink[InkPalette.material_id_of(InkPalette.ink_at(i))] = max_ink
 	_sync_total()
+	changed.emit()
 
 
 #region 接口
@@ -78,7 +79,7 @@ func reduce(material_id: int, amount: float) -> void:
 
 ## 伤害统一入口（碰撞伤害接过来时走这里）。先扣色表里的第一种墨水。
 func damage(amount: float) -> void:
-	if not damage_enabled:
+	if not damage_enabled or not is_finite(amount) or amount <= 0.0:
 		return
 	reduce(InkPalette.material_id_of(InkPalette.ink_at(0)), amount)
 
@@ -87,10 +88,13 @@ func damage(amount: float) -> void:
 func _write(material_id: int, value: float) -> void:
 	var previous: float = ink_of(material_id)
 	var bounded: float = clampf(value, 0.0, maxf(max_ink, 0.0))
-	if is_equal_approx(bounded, previous):
+	if bounded == previous:
 		return
 	_ink[material_id] = bounded
 	_sync_total()
+	# 生命 UI 必须在 depleted/死亡回调前看到当前分色余额；不能用所有颜色
+	# 总量的近似相等来吞掉很小的黑墨变化或归零通知。
+	changed.emit()
 	if previous > 0.0 and bounded <= 0.0:
 		depleted.emit(material_id)
 
@@ -100,8 +104,5 @@ func _sync_total() -> void:
 	var total := 0.0
 	for amount in _ink.values():
 		total += amount
-	if is_equal_approx(total, ink):
-		return
 	ink = total
-	changed.emit()
 #endregion
