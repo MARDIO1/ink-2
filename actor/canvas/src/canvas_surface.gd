@@ -17,6 +17,7 @@ var black_texture: ImageTexture
 @onready var black_sprite: Sprite2D = $BlackSprite
 @onready var nail_layer: Node2D = $NailLayer
 @onready var bounds: CollisionShape2D = $Bounds
+@onready var blue_layer: Node2D = $BlueWireLayer
 @onready var rod_layer: Node2D = $YellowRodLayer
 var _rod_drawing := false
 func _ready() -> void:
@@ -81,6 +82,13 @@ func _input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	var blue = blue_rule()
+	if blue != null and blue.drawing != null and blue.drawing.source_surface == self:
+		blue.extend(self, _mouse_point())
+		return
+	if blue_layer.drawing:
+		blue_layer.extend(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
+		return
 	if _rod_drawing:
 		rod_layer.extend(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
 		return
@@ -105,6 +113,7 @@ var _last_point := Vector2.ZERO
 var _undo_steps: Array[Dictionary] = []
 var _undo_capture := {}
 var _undo_capturing := false
+var _blue_undo := {}
 const MAX_UNDO_STEPS := 64
 ## 框选删除只负责交互与预览；真正删除由 Canvas 完成，因为固化实体属于 PixelWorld。
 var _selecting := false
@@ -135,6 +144,8 @@ var _shape_delta := 0
 			_cancel_undo_step()
 		elif _painting:
 			_commit_undo_step()
+		if is_node_ready():
+			_finish_blue_edit()
 		tool = value
 		_painting = false
 		_shaping = false
@@ -148,6 +159,8 @@ var _shape_delta := 0
 			var yellow = yellow_rule()
 			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
 				yellow.cancel()
+		if is_node_ready() and selected_ink != value:
+			_finish_blue_edit()
 		selected_ink = value
 
 
@@ -171,6 +184,21 @@ func _is_nail(color: Color) -> bool:
 
 
 func _on_mouse_button(button: InputEventMouseButton) -> void:
+	var blue = blue_rule()
+	if button.button_index == MOUSE_BUTTON_LEFT and blue != null:
+		if not button.pressed and blue_layer.drawing:
+			blue_layer.finish()
+			return
+		if not button.pressed and blue.drawing != null and blue.drawing.source_surface == self:
+			blue.finish(self, _mouse_point())
+			return
+		if button.pressed and ink_material_id() == InkPalette.BLUE.id and tool in [Tool.BRUSH, Tool.LINE, Tool.RECT, Tool.CIRCLE, Tool.BUCKET, Tool.NAIL]:
+			if _inside(_mouse_point()):
+				if tool == Tool.LINE:
+					blue.begin(self, _mouse_point())
+				elif tool == Tool.BRUSH:
+					blue_layer.begin(_mouse_point())
+			return
 	var yellow = yellow_rule()
 	if button.button_index == MOUSE_BUTTON_LEFT and yellow != null:
 		if not button.pressed and _rod_drawing:
@@ -253,6 +281,16 @@ func _stroke_color():
 		Tool.NAIL:
 			return nail_color()
 	return null
+
+func blue_rule():
+	return get_node_or_null("../../SimulationRuntime/BlueInk")
+
+func _finish_blue_edit() -> void:
+	if blue_layer != null and blue_layer.drawing:
+		blue_layer.finish()
+	var blue = blue_rule()
+	if blue != null and blue.drawing != null and blue.drawing.source_surface == self:
+		blue.cancel()
 
 func yellow_rule():
 	return get_node_or_null("../../SimulationRuntime/YellowInk")
@@ -346,6 +384,7 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 		_revert_shape()
 	_painting = false
 	_shaping = false
+	var old_blue: PackedVector2Array = blue_layer.cells.duplicate()
 	var old_image := black_image
 	var old_size := canvas_size
 	var old_nails: Array = nail_layer.nails.keys()
@@ -355,6 +394,13 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 	canvas_size = new_size
 	_preserve_next_resize = false
 
+	blue_layer.mask.clear()
+	for point in old_blue:
+		var at := Vector2i(point) + content_offset
+		if Rect2i(Vector2i.ZERO, new_size).has_point(at):
+			blue_layer.mask[at] = true
+	blue_layer.refresh()
+	blue_layer.build_widths()
 	var expanded := Image.create_empty(new_size.x, new_size.y, false, Image.FORMAT_RGBA8)
 	expanded.fill(Color.TRANSPARENT)
 	expanded.blit_rect(old_image, Rect2i(Vector2i.ZERO, old_size), content_offset)
@@ -375,6 +421,8 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 
 #重建透明画布，透明像素在 BlackSprite 下露出纸底
 func _reset() -> void:
+	if blue_layer != null:
+		blue_layer.clear()
 	if rod_layer != null and black_image != null:
 		rod_layer.clear()
 	_refund_all_ink()                  # 画布被重建：把还挂在画布上的墨水还给瓶子
@@ -388,6 +436,9 @@ func _reset() -> void:
 #refund = true：把画布上剩的墨水还回瓶子（"重绘"按钮）。
 #refund = false：这些墨水已经随固化变成刚体带走了，不能再还。
 func clear(refund := true) -> void:
+	if refund and blue_rule() != null:
+		blue_rule().clear_drafts(self)
+	blue_layer.clear()
 	var yellow = yellow_rule()
 	if refund and yellow != null:
 		yellow.clear_drafts(self)
@@ -444,6 +495,7 @@ func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 	for i in range(steps + 1):
 		delta += _stamp(from.lerp(to, float(i) / float(steps)), color, room - delta)
 	black_texture.update(black_image)
+	blue_layer.refresh()
 	_flush_ink()
 
 
@@ -497,6 +549,11 @@ func _collect_stamp(out: Dictionary, center: Vector2) -> void:
 #只改像素 + 同步钉子外观层，不碰任何账本。
 func _set_pixel_raw(pixel: Vector2i, color: Color) -> void:
 	_track_undo_pixel(pixel)
+	if color.a <= 0.5:
+		blue_layer.erase(pixel)
+		var blue = blue_rule()
+		if blue != null:
+			blue.erase_draft_anchor(self, pixel)
 	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
 	if _is_nail(color):
@@ -511,6 +568,8 @@ func _set_pixel_raw(pixel: Vector2i, color: Color) -> void:
 #allowance 是本笔还剩多少 px 可画（擦除传大数）。
 func _write_pixel(pixel: Vector2i, color: Color, allowance: int) -> int:
 	if pixel.x < 0 or pixel.y < 0 or pixel.x >= canvas_size.x or pixel.y >= canvas_size.y:
+		return 0
+	if color.a > 0.5 and blue_layer.mask.has(pixel) and color != InkPalette.BLACK.color:
 		return 0
 	var had: bool = black_image.get_pixelv(pixel).a > 0.5
 	var want: bool = color.a > 0.5
@@ -735,17 +794,20 @@ func erase_rect(rect: Rect2i) -> bool:
 	for y in range(clipped.position.y, clipped.end.y):
 		for x in range(clipped.position.x, clipped.end.x):
 			var pixel := Vector2i(x, y)
-			if black_image.get_pixelv(pixel).a <= 0.5:
+			if black_image.get_pixelv(pixel).a <= 0.5 and not blue_layer.mask.has(pixel):
 				continue
 			_set_pixel_raw(pixel, Color.TRANSPARENT)
 			changed = true
 	if changed:
 		black_texture.update(black_image)
+		blue_layer.refresh()
 		_flush_ink()
 	return changed
 
 
 func _begin_undo_step() -> void:
+	if not _undo_capturing and blue_layer != null:
+		_blue_undo = {"cells": blue_layer.cells.duplicate(), "motors": blue_rule().capture(self) if blue_rule() != null else [], "ledger": ink_px_of(InkPalette.BLUE.id)}
 	_undo_capture = {}
 	_undo_capturing = true
 
@@ -760,6 +822,9 @@ func _commit_undo_step() -> void:
 	if not _undo_capturing:
 		return
 	_undo_capturing = false
+	if not _blue_undo.is_empty() and (blue_layer.cells != _blue_undo.cells or ink_px_of(InkPalette.BLUE.id) != _blue_undo.ledger or (blue_rule() != null and blue_rule().draft_data(self).size() != _blue_undo.motors.size())):
+		_undo_capture["blue"] = _blue_undo
+	_blue_undo = {}
 	if _undo_capture.is_empty():
 		_undo_capture = {}
 		return
@@ -806,8 +871,16 @@ func undo_last_edit() -> bool:
 						break
 			yellow.undo(stroke, self)
 		return true
+	var blue_saved: Dictionary = step.get("blue", {})
+	step.erase("blue")
 	for pixel: Vector2i in step:
 		_set_pixel_raw(pixel, step[pixel])
+	if not blue_saved.is_empty():
+		blue_layer.cells = blue_saved.cells
+		blue_layer.rebuild()
+		if blue_rule() != null:
+			blue_rule().restore(self, blue_saved.motors)
+		_bump_ink(InkPalette.BLUE.id, int(blue_saved.ledger) - ink_px_of(InkPalette.BLUE.id))
 	black_texture.update(black_image)
 	_flush_ink()
 	return true
@@ -845,7 +918,7 @@ func _ink_room(material_id: int) -> int:
 	var health = _health_node()
 	if health == null:
 		return 1 << 30
-	return maxi(0, int(health.ink_of(material_id)))
+	return (1 << 30) if ink_free else maxi(0, int(health.ink_of(material_id)))
 
 
 #惰性解析墨水源：Player 可能比画布晚就绪。
@@ -932,7 +1005,8 @@ func _save_snapshot(path: String) -> Error:
 	file.store_buffer("INK2".to_ascii_buffer())
 	var rule = yellow_rule()
 	file.store_var({"black": black_image.save_png_to_buffer(), "rod": rod_layer.pixels.save_png_to_buffer(), "anchors": rod_layer.anchor_points,
-		"springs": rule.draft_data(self) if rule != null else []})
+		"springs": rule.draft_data(self) if rule != null else [], "blue": blue_layer.cells,
+		"motors": blue_rule().draft_data(self) if blue_rule() != null else []})
 	file.flush()
 	file.close()
 	if FileAccess.file_exists(path):
@@ -999,6 +1073,12 @@ func load_ink(path: String) -> Error:
 		var rule = yellow_rule()
 		if rule != null:
 			rule.restore_drafts(self, rod_data.get("springs", []), not ink_free)
+		blue_layer.cells = rod_data.get("blue", PackedVector2Array())
+		blue_layer.rebuild()
+		_bump_ink(InkPalette.BLUE.id, blue_layer.cells.size())
+		if blue_rule() != null:
+			blue_rule().restore_draft_data(self, rod_data.get("motors", []))
+		_flush_ink()
 	print("CANVAS loaded: ", ProjectSettings.globalize_path(path))
 	return OK
 

@@ -19,6 +19,8 @@
 [ext_resource type="Texture2D" path="res://actor/canvas/asset/lined_paper.png" id="17_lined_paper"]
 [ext_resource type="Script" path="res://actor/yellow/src/yellow_rod_layer.gd" id="18_rod"]
 
+[ext_resource type="Script" path="res://actor/blue/src/blue_wire_layer.gd" id="19_blue"]
+
 [sub_resource type="RectangleShape2D" id="CanvasBounds"]
 resource_local_to_scene = true
 size = Vector2(400, 280)
@@ -119,6 +121,9 @@ script = ExtResource("4_nail_script")
 
 [node name="YellowRodLayer" type="Node2D" parent="CanvasSurface"]
 script = ExtResource("18_rod")
+
+[node name="BlueWireLayer" type="Node2D" parent="CanvasSurface"]
+script = ExtResource("19_blue")
 
 [node name="SelectionOverlay" type="Node2D" parent="CanvasSurface"]
 z_index = 100

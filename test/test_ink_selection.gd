@@ -28,7 +28,14 @@ func _run() -> void:
 	var play: Node = level.get_node("SmallCanvas")
 	_check("play initial selection visible", _verify(play._ink_buttons, play.surface.selected_ink))
 	_check("play palette includes every ink", play._ink_buttons.size() == play.InkPalette.ink_count())
-	var white_index: int = play.InkPalette.ink_count() - 1
+	var white_index: int = -1
+	var blue_index: int = -1
+	for index in play.InkPalette.ink_count():
+		if play.InkPalette.ink_at(index) == play.InkPalette.WHITE:
+			white_index = index
+		if play.InkPalette.ink_at(index) == play.InkPalette.BLUE:
+			blue_index = index
+	_check("blue entry registered", blue_index >= 0)
 	_check("white entry uses white material", play.InkPalette.ink_at(white_index) == play.InkPalette.WHITE)
 	var white_button: Button = play._ink_buttons[white_index]
 	var black_button: Button = play._ink_buttons[0]
@@ -53,7 +60,7 @@ func _run() -> void:
 	_check("editor colors share one row", (creative._editor_ink_buttons[white_index].get_parent() as GridContainer).columns == creative.InkPalette.ink_count())
 	_check("editor white matches other color buttons", creative._editor_ink_buttons[white_index].custom_minimum_size == creative._editor_ink_buttons[0].custom_minimum_size
 		and creative._editor_ink_buttons[white_index].get_node("InkSelectionIndicator").contrast == Color.BLACK)
-	for index in [1, 2, 3, white_index, 0]:
+	for index in [1, 2, 3, white_index, blue_index, 0]:
 		creative._editor_ink_buttons[index].pressed.emit()
 		_check("editor click updates canvas and indicator", creative._map_canvas.surface.selected_ink == index and _verify(creative._editor_ink_buttons, index))
 		_check("editor label names actual ink", creative._editor_ink_label.text.ends_with(creative.InkPalette.ink_name(index)))

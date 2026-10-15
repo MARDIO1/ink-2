@@ -18,7 +18,7 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 
 
 #region 装载
-## 白墨沿用刚体运动和渲染；无碰撞，不参与普通查询和爆炸。
+## 白墨沿用刚体运动和渲染；普通白墨接触后关闭碰撞，圆形扫掠从生成起无碰撞。
 func bake():
 	var result = super.bake()
 	var white := false

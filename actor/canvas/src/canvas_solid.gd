@@ -48,6 +48,11 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 					shape.set_pixel(x, y, material)
 				if material == InkPalette.nail_material_id():
 					anchors[Vector2i(x, y)] = true
+	var blue = surface.blue_rule()
+	var blue_pixels: Dictionary = surface.blue_layer.mask.duplicate()
+	if blue != null:
+		blue.merge_shape(surface, shape)
+	var previous: Array = world.world.bodies.duplicate()
 	var ink_pixels: int = shape.pixel_count()
 	var rejected_pixels: int = _remove_overlaps(shape, surface, world.world.bodies)
 
@@ -71,6 +76,12 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 
 	#固化成功后清空画布上的蓝图墨水
 	if spawned > 0:
+		if blue != null:
+			var created: Array = []
+			for body in world.world.bodies:
+				if not previous.has(body):
+					created.append(body)
+			blue.attach_wires(surface, created, blue_pixels)
 		surface.clear(false)      # 这些墨水已经变成刚体带走了，不能还回瓶子
 	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
 #endregion
@@ -234,6 +245,8 @@ func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
 	var clipped := local_rect.intersection(Rect2i(Vector2i.ZERO, surface.canvas_size))
 	if clipped.size.x <= 0 or clipped.size.y <= 0:
 		return 0
+	if surface.blue_rule() != null:
+		surface.blue_rule().reclaim(surface, clipped)
 	var world_rect := Rect2(surface.to_global(Vector2(clipped.position)), Vector2(clipped.size))
 	var targets: Array = []
 	for child in world.get_children():
@@ -375,6 +388,9 @@ func _sample_body_rect(surface, body, local_rect: Rect2i, plan: Dictionary) -> i
 				if not plan.has(shape):
 					plan[shape] = {}
 				plan[shape][shape_pixel] = true
+				if material == InkPalette.BLUE.id:
+					sampled += 1
+					continue
 				var color: Color = surface.nail_color() if material == InkPalette.nail_material_id() \
 					else InkPalette.color_for_material_id(material)
 				if color.a > 0.0:
@@ -468,6 +484,8 @@ func _sample_body(surface, body, plan: Dictionary, collect_plan := true, refund_
 					if not plan.has(shape):
 						plan[shape] = {}
 					plan[shape][Vector2i(x, y)] = true
+				if material == InkPalette.BLUE.id:
+					continue
 				# 钉子和墨水一起返回蓝图，再次固化时仍作为锚点。
 				var color = _canvas_color(surface, material)
 				if color == null:
