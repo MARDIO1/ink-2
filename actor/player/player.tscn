@@ -13,6 +13,8 @@
 [ext_resource type="Script" path="res://actor/player/src/fall_death.gd" id="15_fall_death"]
 [ext_resource type="Material" path="res://actor/player/asset/player_liquid_wobble.tres" id="15_liquid_wobble"]
 [ext_resource type="Resource" path="res://actor/player/asset/player_controller_config.tres" id="16_controller"]
+[ext_resource type="AudioStream" path="res://sound/sfx/玩家受伤.ogg" id="17_hurt"]
+[ext_resource type="AudioStream" path="res://sound/sfx/玩家死亡.ogg" id="18_death"]
 
 [sub_resource type="Image" id="Image_jqpk3"]
 data = {
@@ -74,5 +76,11 @@ script = ExtResource("2_input")
 
 [node name="FallDeath" type="Node" parent="."]
 script = ExtResource("15_fall_death")
+
+[node name="HurtSound" type="AudioStreamPlayer" parent="FallDeath"]
+stream = ExtResource("17_hurt")
+
+[node name="DeathSound" type="AudioStreamPlayer" parent="FallDeath"]
+stream = ExtResource("18_death")
 
 [node name="Arm" parent="." unique_id=1691926357 instance=ExtResource("11_hand")]

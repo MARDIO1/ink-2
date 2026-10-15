@@ -22,7 +22,7 @@ var _stage := 0
 
 
 func _initialize() -> void:
-	_scene = load("res://map/main.tscn").instantiate()
+	_scene = load("res://map/asset/imported/main.tscn").instantiate()
 	root.add_child(_scene)
 	_start = Engine.get_physics_frames()
 

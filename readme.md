@@ -16,6 +16,7 @@
 - [脚](actor/player/doc/脚.md)
 - [手](actor/player/doc/手.md)
 - [墨水](actor/player/doc/墨水.md)
+- [黑墨喷溅](Ink/doc/黑墨喷溅.md)
 - [生命值](actor/player/doc/生命值.md)
 - [画布](actor/canvas/doc/画布.md)
 - [创造模式 / 地图编辑器](debug/creative/doc/创造模式.md)

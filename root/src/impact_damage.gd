@@ -50,11 +50,15 @@ func resolve_contacts(context: Dictionary, contacts: Array) -> Dictionary:
 #region 碰撞结算
 ## 返回删除计划、玩家总伤害和逐次 player_impacts（供受击表现读取）。
 ## 重叠删除取并集；每条 lane 独立消费预算，未满一个像素的余量舍弃。
+## hits 是每次真正落地的伤害事件（位置、喷出方向、等效像素伤害、受击材料），只给表现层看。
 func calculate(world, contacts: Array, player_body: PBody = null, protected_bodies: Array = []) -> Dictionary:
 	var result: Dictionary = {"removals": {}, "player_damage": 0.0, "player_impacts": []}
 	# 轻碎片豁免：一个子步只建一次集合，别在每对接触上重建（见 _dust_bodies）。
 	var dust: Dictionary = ContactImpact.dust_bodies(world, player_body, protected_bodies)
 	for contact in contacts:
+		# 只负责落地的物体保留真实碰撞，但不触发通用撞击破坏。
+		if contact.a.tags.has("no_impact_damage") or contact.b.tags.has("no_impact_damage"):
+			continue
 		if contact.approach <= min_approach:
 			continue
 		# 同伴与自己的部件不会互相撕裂盾牌；真实碰撞约束仍保留。
@@ -73,14 +77,19 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 			continue
 		var point: Vector2 = impact.position
 		var normal: Vector2 = impact.normal
-		var a_origin: Vector2 = point - normal * 0.001
-		var b_origin: Vector2 = point + normal * (maxf(impact.dist, 0.0) + 0.001)
+		# 两侧各自的进体方向与入体采样点：由**像素自己**定，不信任原生法线的朝向（见 _entry）。
+		var a_entry: Dictionary = _entry(contact.a, point, normal)
+		var b_entry: Dictionary = _entry(contact.b, point, normal)
+		var a_origin: Vector2 = a_entry["origin"]
+		var b_origin: Vector2 = b_entry["origin"]
+		var a_dir: Vector2 = a_entry["dir"]
+		var b_dir: Vector2 = b_entry["dir"]
 		var a_material: int = ContactImpact.material_at(contact.a, a_origin)
 		var b_material: int = ContactImpact.material_at(contact.b, b_origin)
 		if a_material == 0 or b_material == 0:
 			continue
-		for side in [[contact.a, a_origin, -normal, a_material, b_material, -1.0],
-				[contact.b, b_origin, normal, b_material, a_material, 1.0]]:
+		for side in [[contact.a, a_origin, a_dir, a_material, b_material, -1.0],
+				[contact.b, b_origin, b_dir, b_material, a_material, 1.0]]:
 			var body: PBody = side[0]
 			var other: PBody = contact.b if body == contact.a else contact.a
 			# 主动攻击和炸弹按独立命中窗口扣血，不能再叠加同一次碰撞伤害。
@@ -105,6 +114,30 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 			_damage_side(world, body, path, side[4], impact.impulse, player_body,
 				protected_bodies, result, side[1], side[2], seed, side[5])
 	return result
+
+
+## 一侧的「进体方向 + 入体采样点」。**原生接触法线的朝向不可信**：
+##
+## 实测（peak，手抓 16x16 从 60 px 高砸同一条平地的同一列）：
+##   · 矩形碰撞体地形（HEAD，1845 rects）：point=(61.53,230.0)=像素表面、n=(0,-1)、
+##     `_trace` 从 a_origin 走进 **113** 格 → 删除 54 px。
+##   · 凸多边形碰撞体地形（分块后，22 rects → op43 拟合）：point=(55.66,228.50)=**撞块底面上**、
+##     n=(0,+1)（与前者相反）、`_trace` 走 **0** 格 → 地形一个像素都不删。
+## 即 op43（pworld.gd:1367 的 `rects.size() <= poly_max_rects` 那条路）给出的是**反向法线 +
+## 把接触点放在对面刚体表面上**。而 `dist` 也不是真实间隙（实测 1.6 px 间隙照样报 0.498，
+## 那是 physics_step.gd:26 的软 CCD 预测距离）。
+##
+## 所以这里不再用 `point ± normal` 猜哪边是实体内部，而是沿 ±法线找**这一个刚体自己**的像素
+## （material_at 只查它自己的形状，不会串到对面），第一个命中的方向就是进体方向、
+## 那个像素就是入体采样点。找不到（真的没接触上）才退回原来的写法。
+@export var contact_probe_pixels: int = 3
+func _entry(body: PBody, point: Vector2, normal: Vector2) -> Dictionary:
+	for step in range(1, maxi(1, contact_probe_pixels) + 1):
+		for dir: Vector2 in [normal, -normal]:
+			var probe: Vector2 = point + dir * step
+			if ContactImpact.material_at(body, probe) != 0:
+				return {"dir": dir, "origin": probe}
+	return {"dir": normal, "origin": point + normal * 0.001}
 
 
 ## 轻碎片豁免：阈值直接用世界的 ccd_ignore_mass（0 = 关，引擎默认），与引擎
@@ -145,6 +178,10 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 				break
 	var factor: float = min_thickness_factor + (1.0 - min_thickness_factor) / (1.0 + thickness_scale * log(1.0 + support))
 	var budget: float = damage_scale * impulse * attacker_strength / surface_strength * factor
+	var dealt: float = budget / surface_strength
+	# 位置无效的调用（不传 origin 的老接口）没有可演的位置，不记事件。
+	if origin.is_finite() and not direction.is_zero_approx():
+		_record_hit(result, origin, direction, dealt, path[0].material, body == player_body)
 	if body == player_body:
 		# InkHealth 以像素计量；普通材料会用 budget / strength 个等效像素消费预算，
 		# 玩家不删形状；倍率只调生命损失，不反向改变通用材料破坏。
@@ -172,6 +209,18 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 		var angle: float = deg_to_rad((spread * crack_spread_degrees + jitter) * mirror)
 		_crack_path(body, origin, direction.rotated(angle), world,
 			branch_budget, seed + i * 97, mirror, result)
+
+
+## 记录一次落地的伤害事件给表现层（喷溅、闪光）。budget 已被减伤折过，dealt 就是等效受损像素数。
+##
+## ⚠️ direction 是**受击方被推的方向**（也是 _trace 的进体方向）：砸地时朝上、被侧面撞击时朝撞击方向。
+## 不要翻成"从表面朝外" —— 那对砸地就是朝下插进地面，墨会往地里溅。
+func _record_hit(result: Dictionary, origin: Vector2, direction: Vector2, amount: float,
+		material: int, player: bool) -> void:
+	if not result.has("hits"):
+		result["hits"] = []
+	result["hits"].append({"position": origin, "direction": direction.normalized(),
+		"amount": amount, "material": material, "player": player})
 
 
 ## 根据等效像素预算选择一到四条主裂纹。

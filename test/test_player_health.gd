@@ -17,6 +17,8 @@ func _run() -> void:
 	var player = scene.get_node("Player")
 	var health = player.get_node("InkHealth")
 	var death = player.get_node("FallDeath")
+	var hurt_sound: AudioStreamPlayer = death.get_node("HurtSound")
+	var death_sound: AudioStreamPlayer = death.get_node("DeathSound")
 	var black_id: int = InkPalette.material_id_of(InkPalette.BLACK)
 	var grey_id: int = InkPalette.material_id_of(InkPalette.GREY)
 	var game_ui := preload("res://ui/game_ui.tscn").instantiate()
@@ -33,15 +35,24 @@ func _run() -> void:
 	player.apply_collision_damage(5000.0)
 	_check("nonlethal damage refreshes both meters", hud.health_bar.value == 75.0
 		and hud.bottle_fill.value == 75.0 and hud.ink_meter.text == "黑墨 15000 px" and not death._dead)
+	hurt_sound.stop()
+	health.damage(death.hurt_sound_threshold - 1.0)
+	_check("damage below sound threshold stays silent", not hurt_sound.playing)
+	health.damage(death.hurt_sound_threshold)
+	_check("damage at sound threshold plays hurt sound", hurt_sound.playing)
+	hurt_sound.stop()
 	# 黑墨只有极小余量时，其他颜色总量的近似相等不能吞掉归零 UI 通知。
 	health.reduce(black_id, health.ink_of(black_id) - 0.01)
 	var ui_zero_before_death := [false]
 	health.depleted.connect(func(_material): ui_zero_before_death[0] = hud.health_bar.value == 0.0 and hud.bottle_fill.value == 0.0)
 
 	death._body = player.body
-	health.reduce(black_id, health.max_of(black_id))
+	health.damage(health.max_of(black_id))
 	_check("empty black ink triggers death", death._dead and health.ink_of(black_id) == 0.0)
 	_check("HUD reaches zero before depleted callback", ui_zero_before_death[0] and hud.ink_meter.text == "黑墨 0 px")
+	_check("empty black ink triggers death sound once", death._dead
+		and health.ink_of(black_id) == 0.0 and death_sound.playing and not hurt_sound.playing)
+	death_sound.stop()
 	death._respawn()
 	_check("respawn refills only black health", not death._dead
 		and health.ink_of(black_id) == health.max_of(black_id)
@@ -52,6 +63,7 @@ func _run() -> void:
 	scene.get_node("Player/Arm/Hand/HandControl")._remove_arm()
 	_release(scene.world)
 	scene.queue_free()
-	await process_frame
+	for _frame in 5:
+		await process_frame
 	print("[PlayerHealth] %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

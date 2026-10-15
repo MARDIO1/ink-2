@@ -8,7 +8,7 @@ extends SceneTree
 ##   876 矩形（真实地图规模）下一个 2x2 的碎片以 40000 px/s 飞过 = 334 子步 = 593 ms/固定步。
 ## 这份闸门守的是「那件事不会再发生」，以及「别用穿模以外的方式换帧时间」。
 
-const MAIN := preload("res://map/main.tscn")
+const MAIN := preload("res://map/asset/imported/main.tscn")
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const PWorld := preload("res://addons/pixel_destruction/physics/pworld.gd")

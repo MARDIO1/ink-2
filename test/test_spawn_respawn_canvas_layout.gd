@@ -7,7 +7,7 @@ func _initialize() -> void:
 
 func _run_layout_test() -> void:
 	var valid := true
-	var scene: Node = load("res://map/main.tscn").instantiate()
+	var scene: Node = load("res://map/asset/imported/main.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame

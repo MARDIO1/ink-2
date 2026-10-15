@@ -13,17 +13,33 @@ const InkPalette := preload("res://ink/src/ink_palette.gd")
 #endregion
 
 #region 初始化
-var black_texture: ImageTexture
-@onready var black_sprite: Sprite2D = $BlackSprite
+## 黑墨瓦片边长。整张画布仍是一张 CPU Image，但上传按瓦片走：4352x1328 的整图
+## 重传实测 2.5 ms/次（22 MB），而一笔只碰到一两块 512 瓦片（每块约 0.1 ms）。
+const TILE_SIZE := 512
+## 瓦片键（画布坐标 / TILE_SIZE）-> {"image": Image, "texture": ImageTexture, "sprite": Sprite2D}。
+## 只有真的画到某块时才建 —— 空画布一张贴图都不占，也不上传。
+var _tiles := {}
+## 尚未上传的像素范围（闭区间；lo > hi 表示没有脏像素）。
+var _dirty_lo := Vector2i(1 << 30, 1 << 30)
+var _dirty_hi := Vector2i(-(1 << 30), -(1 << 30))
+@onready var black_tiles: Node2D = $BlackTiles
 @onready var nail_layer: Node2D = $NailLayer
 @onready var bounds: CollisionShape2D = $Bounds
 @onready var rod_layer: Node2D = $YellowRodLayer
 var _rod_drawing := false
 func _ready() -> void:
-	black_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	black_tiles.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_resize()
 	# 地图编辑快照由 Creative 在首次进入编辑器时按需恢复；游戏启动时不读盘。
+
+
+# ⚠️ 后台写盘任务必须等回来：它的 Callable 是 static、只带一份 Image 副本，
+#    但节点先被释放而任务还在写文件时，退出过程会读到写了一半的快照。
+func _exit_tree() -> void:
+	if _snapshot_task != -1:
+		WorkerThreadPool.wait_for_task_completion(_snapshot_task)
+		_snapshot_task = -1
 #endregion
 
 
@@ -54,7 +70,7 @@ func _ready() -> void:
 ## 地图编辑自动保存使用的快照路径；由 Creative 按需恢复。
 @export_file("*.res", "*.tres") var saved_ink_path := ""
 
-#纸底和边框由表面画，黑色墨水由 BlackSprite 盖在上面
+#纸底和边框由表面画，黑色墨水由 BlackTiles 的瓦片盖在上面
 func _draw() -> void:
 	var rect := Rect2(Vector2.ZERO, Vector2(canvas_size))
 	draw_rect(rect, background_color, true)
@@ -81,6 +97,7 @@ func _input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	_poll_snapshot()
 	if _rod_drawing:
 		rod_layer.extend(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
 		return
@@ -321,13 +338,136 @@ var black_image: Image
 var _preserve_next_resize := false
 
 
+#region 黑墨瓦片
+## 上传脏范围覆盖到的瓦片；没碰到的块一次都不传。
+## 契约：改 black_image 之前必须先标脏（_mark_dirty / mark_dirty_rect），
+## 否则那部分只活在 CPU 上，画面不动。
+func _flush_texture() -> void:
+	if _dirty_hi.x < _dirty_lo.x:
+		return
+	var rect := Rect2i(_dirty_lo, _dirty_hi - _dirty_lo + Vector2i.ONE)
+	_dirty_lo = Vector2i(1 << 30, 1 << 30)
+	_dirty_hi = Vector2i(-(1 << 30), -(1 << 30))
+	_upload_rect(rect)
+
+
+func _mark_dirty(pixel: Vector2i) -> void:
+	_dirty_lo.x = mini(_dirty_lo.x, pixel.x)
+	_dirty_lo.y = mini(_dirty_lo.y, pixel.y)
+	_dirty_hi.x = maxi(_dirty_hi.x, pixel.x)
+	_dirty_hi.y = maxi(_dirty_hi.y, pixel.y)
+
+
+func mark_dirty_rect(rect: Rect2i) -> void:
+	if not rect.has_area():
+		return
+	_mark_dirty(rect.position)
+	_mark_dirty(rect.end - Vector2i.ONE)
+
+
+## 整张 CPU 图被换掉（读盘、撤销还原、扩展画布）之后重建瓦片：
+## 旧瓦片全丢，只按真的有不透明像素的范围重建；空图因此一张贴图都不建。
+func rebuild_ink_tiles() -> void:
+	_free_tiles()
+	var used := black_image.get_used_rect()
+	if used.has_area():
+		mark_dirty_rect(used)
+	_flush_texture()
+
+
+func _free_tiles() -> void:
+	for key in _tiles:
+		var sprite: Sprite2D = _tiles[key]["sprite"]
+		black_tiles.remove_child(sprite)
+		sprite.queue_free()
+	_tiles.clear()
+	_dirty_lo = Vector2i(1 << 30, 1 << 30)
+	_dirty_hi = Vector2i(-(1 << 30), -(1 << 30))
+
+
+## rect 覆盖到的瓦片键。整图级操作（擦除、重数账本、重建钉子）都从这里出发，
+## 空块再交给 _tile_content 判掉 —— 这就是"分治"的粒度。
+func _tile_keys(rect: Rect2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var last := (canvas_size - Vector2i.ONE) / TILE_SIZE
+	var first := (rect.position / TILE_SIZE).max(Vector2i.ZERO)
+	var end := ((rect.end - Vector2i.ONE) / TILE_SIZE).min(last)
+	for ty in range(first.y, end.y + 1):
+		for tx in range(first.x, end.x + 1):
+			out.append(Vector2i(tx, ty))
+	return out
+
+
+func _upload_rect(rect: Rect2i) -> void:
+	for key in _tile_keys(rect):
+		_upload_tile(key, rect)
+
+
+## 这一块里真的有内容的范围（画布坐标）；整块空返回空矩形。
+## 懒算 + 缓存：任何上传都把它置脏，下次问再重算 —— 一次原生 get_used_rect，
+## 不用 GDScript 扫。整图操作因此只碰"真的有墨的那一小块"。
+func _tile_content(key: Vector2i) -> Rect2i:
+	var tile = _tiles.get(key)
+	if tile == null:
+		return Rect2i()
+	if not tile["stale"]:
+		return tile["content"]
+	var origin := key * TILE_SIZE
+	var size := (canvas_size - origin).min(Vector2i(TILE_SIZE, TILE_SIZE))
+	var box := Rect2i()
+	if size.x > 0 and size.y > 0:
+		var content := black_image.get_region(Rect2i(origin, size)).get_used_rect()
+		if content.has_area():
+			box = Rect2i(origin + content.position, content.size)
+	tile["content"] = box
+	tile["stale"] = false
+	return box
+
+
+## 画布上所有真的有内容的块范围。整图级重数/重建按它遍历。
+func _content_boxes() -> Array[Rect2i]:
+	var boxes: Array[Rect2i] = []
+	for key in _tile_keys(Rect2i(Vector2i.ZERO, canvas_size)):
+		var box := _tile_content(key)
+		if box.has_area():
+			boxes.append(box)
+	return boxes
+
+
+func _upload_tile(key: Vector2i, rect: Rect2i) -> void:
+	var origin := key * TILE_SIZE
+	var tile_rect := Rect2i(origin, (canvas_size - origin).min(Vector2i(TILE_SIZE, TILE_SIZE)))
+	var hit := rect.intersection(tile_rect)
+	if not hit.has_area():
+		return
+	var tile = _tiles.get(key)
+	if tile == null:
+		var image := Image.create_empty(tile_rect.size.x, tile_rect.size.y, false, Image.FORMAT_RGBA8)
+		image.fill(Color.TRANSPARENT)
+		var texture := ImageTexture.create_from_image(image)
+		var sprite := Sprite2D.new()
+		sprite.centered = false
+		sprite.position = Vector2(origin)
+		sprite.texture = texture
+		black_tiles.add_child(sprite)
+		tile = {"image": image, "texture": texture, "sprite": sprite,
+			"content": Rect2i(), "stale": true}
+		_tiles[key] = tile
+	# blit_rect 是原样拷贝（不混合），正好把瓦片对齐到画布坐标。
+	var tile_image: Image = tile["image"]
+	var tile_texture: ImageTexture = tile["texture"]
+	tile_image.blit_rect(black_image, hit, hit.position - origin)
+	tile_texture.update(tile_image)
+	tile["stale"] = true          # 内容变了：这块的内容框要重算
+#endregion
+
+
 func _resize() -> void:
 	# Area 只表达可编辑的画布范围，不参与游戏刚体碰撞。
 	bounds.shape.size = Vector2(canvas_size)
 	bounds.position = Vector2(canvas_size) * 0.5
 	if not _preserve_next_resize:
 		_reset()
-	black_sprite.texture = black_texture
 	if rod_layer != null:
 		rod_layer.resize(canvas_size)
 	queue_redraw()
@@ -359,8 +499,7 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 	expanded.fill(Color.TRANSPARENT)
 	expanded.blit_rect(old_image, Rect2i(Vector2i.ZERO, old_size), content_offset)
 	black_image = expanded
-	black_texture = ImageTexture.create_from_image(black_image)
-	black_sprite.texture = black_texture
+	rebuild_ink_tiles()
 	if rod_layer != null:
 		rod_layer.resize(new_size, content_offset)
 
@@ -373,14 +512,14 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 	return true
 
 
-#重建透明画布，透明像素在 BlackSprite 下露出纸底
+#重建透明画布，透明像素在纸底下露出来
 func _reset() -> void:
 	if rod_layer != null and black_image != null:
 		rod_layer.clear()
 	_refund_all_ink()                  # 画布被重建：把还挂在画布上的墨水还给瓶子
 	black_image = Image.create_empty(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8)
 	black_image.fill(Color.TRANSPARENT)
-	black_texture = ImageTexture.create_from_image(black_image)
+	_free_tiles()
 	nail_layer.clear()
 
 
@@ -398,7 +537,7 @@ func clear(refund := true) -> void:
 		_flush_ink()                   # 这些墨已经随固化带走了，不能再还
 		ink_px_by_material = {}
 	black_image.fill(Color.TRANSPARENT)
-	black_texture.update(black_image)
+	_free_tiles()                      # 画布空了：贴图一起丢掉，不用再传一遍空白
 	nail_layer.clear()
 	queue_redraw()
 
@@ -418,6 +557,7 @@ func write_pixel(pixel: Vector2i, color: Color) -> bool:
 		return true
 	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
+	_mark_dirty(pixel)
 	if InkPalette.material_id_at_color(color) == InkPalette.nail_material_id():
 		nail_layer.add(pixel)
 	else:
@@ -429,7 +569,7 @@ func write_pixel(pixel: Vector2i, color: Color) -> bool:
 
 ## 把 CPU 像素缓冲刷到贴图；批量写入后调用一次。
 func refresh() -> void:
-	black_texture.update(black_image)
+	_flush_texture()
 	_flush_ink()
 
 
@@ -443,7 +583,7 @@ func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 	var steps := maxi(1, int(ceil(from.distance_to(to))))
 	for i in range(steps + 1):
 		delta += _stamp(from.lerp(to, float(i) / float(steps)), color, room - delta)
-	black_texture.update(black_image)
+	_flush_texture()
 	_flush_ink()
 
 
@@ -499,6 +639,7 @@ func _set_pixel_raw(pixel: Vector2i, color: Color) -> void:
 	_track_undo_pixel(pixel)
 	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
+	_mark_dirty(pixel)
 	if _is_nail(color):
 		nail_layer.add(pixel)
 	else:
@@ -512,7 +653,12 @@ func _set_pixel_raw(pixel: Vector2i, color: Color) -> void:
 func _write_pixel(pixel: Vector2i, color: Color, allowance: int) -> int:
 	if pixel.x < 0 or pixel.y < 0 or pixel.x >= canvas_size.x or pixel.y >= canvas_size.y:
 		return 0
-	var had: bool = black_image.get_pixelv(pixel).a > 0.5
+	var current := black_image.get_pixelv(pixel)
+	#和现状逐位相同就什么都不做：不写、不记账、也不进撤销。
+	#否则"擦空白"会推出一堆没改变任何像素的撤销步，每个都触发一次整图自动保存。
+	if current == color:
+		return 0
+	var had: bool = current.a > 0.5
 	var want: bool = color.a > 0.5
 	if want and not had and allowance <= 0:
 		return 0
@@ -532,7 +678,7 @@ func _place_nail(point: Vector2) -> void:
 	var delta := _write_pixel(Vector2i(point.floor()), nail_color(), 1 << 30)
 	if delta == 0:
 		return
-	black_texture.update(black_image)
+	_flush_texture()
 	_flush_ink()
 
 
@@ -554,18 +700,22 @@ func _update_shape() -> void:
 	_revert_shape()
 	var to: Vector2 = _mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size))
 	var pixels := _shape_pixels(_shape_origin, to)
+	var color := ink_color()
 	var room := _ink_room(ink_material_id())
 	var delta := 0
 	for pixel: Vector2i in pixels:
-		var had: bool = black_image.get_pixelv(pixel).a > 0.5
+		var prior := black_image.get_pixelv(pixel)
+		if prior == color:
+			continue                      # 已经是这个颜色：不用记也不用重画
+		var had: bool = prior.a > 0.5
 		if not had and delta >= room:
 			continue                      # 墨水不够：剩下的格子不落笔
-		_shape_saved[pixel] = black_image.get_pixelv(pixel)
-		_set_pixel_raw(pixel, ink_color())
+		_shape_saved[pixel] = prior
+		_set_pixel_raw(pixel, color)
 		if not had:
 			delta += 1
 	_shape_delta = delta
-	black_texture.update(black_image)
+	_flush_texture()
 	_flush_ink()
 
 
@@ -578,7 +728,7 @@ func _revert_shape() -> void:
 		_set_pixel_raw(pixel, prior)
 	_shape_saved.clear()
 	_shape_delta = 0
-	black_texture.update(black_image)
+	_flush_texture()
 
 
 #松手定型：像素已经落在画布上了，这里只把这一笔的账记到瓶子上。
@@ -713,13 +863,14 @@ func _bucket_fill(point: Vector2) -> bool:
 	for idx: int in targets:
 		var target := Vector2i(idx % w, idx / w)
 		_track_undo_pixel(target)
+		_mark_dirty(target)
 		var at := idx * 4
 		data[at] = pixel[0]
 		data[at + 1] = pixel[1]
 		data[at + 2] = pixel[2]
 		data[at + 3] = pixel[3]
 	black_image.set_data(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8, data)
-	black_texture.update(black_image)
+	_flush_texture()
 	_bump_ink(ink_material_id(), targets.size())
 	_flush_ink()
 	return true
@@ -731,18 +882,39 @@ func _bucket_fill(point: Vector2) -> bool:
 ## 两部分会作为同一个撤销步骤被 Ctrl+Z 恢复。
 func erase_rect(rect: Rect2i) -> bool:
 	var clipped := rect.intersection(Rect2i(Vector2i.ZERO, canvas_size))
+	if not clipped.has_area():
+		return false
+	#分治：按瓦片走。整块空的直接跳过（一个字节都不扫），有内容的块也只扫自己的
+	#内容框 —— 全选整张地图时，代价只和"真有墨的地方"成正比，跟画布多大无关。
+	_flush_texture()                  # 先落地未上传的写入，瓦片集合才是完整的
 	var changed := false
-	for y in range(clipped.position.y, clipped.end.y):
-		for x in range(clipped.position.x, clipped.end.x):
-			var pixel := Vector2i(x, y)
-			if black_image.get_pixelv(pixel).a <= 0.5:
-				continue
-			_set_pixel_raw(pixel, Color.TRANSPARENT)
-			changed = true
+	for key in _tile_keys(clipped):
+		var box := _tile_content(key).intersection(clipped)
+		if box.has_area():
+			changed = _erase_box(box) or changed
 	if changed:
-		black_texture.update(black_image)
+		_flush_texture()
 		_flush_ink()
 	return changed
+
+
+## 把一个矩形里的有墨格子擦成透明。先按原始字节挑出有墨的格子再擦：
+## 框里绝大多数格子是空的，逐格 get_pixelv 白付一次引擎调用（600x400 实测 18.9 ms）。
+func _erase_box(box: Rect2i) -> bool:
+	var width := canvas_size.x
+	var data := black_image.get_data()
+	var targets := PackedInt32Array()
+	for y in range(box.position.y, box.end.y):
+		var row := y * width
+		for x in range(box.position.x, box.end.x):
+			if data[(row + x) * 4 + 3] > 127:
+				targets.append(row + x)
+	if targets.is_empty():
+		return false
+	data = PackedByteArray()          # 放开引用，下面的写入才不触发整图写时复制
+	for index in targets:
+		_set_pixel_raw(Vector2i(index % width, index / width), Color.TRANSPARENT)
+	return true
 
 
 func _begin_undo_step() -> void:
@@ -808,7 +980,7 @@ func undo_last_edit() -> bool:
 		return true
 	for pixel: Vector2i in step:
 		_set_pixel_raw(pixel, step[pixel])
-	black_texture.update(black_image)
+	_flush_texture()
 	_flush_ink()
 	return true
 #endregion
@@ -903,6 +1075,59 @@ func _refund_all_ink() -> void:
 
 
 #region 画布复现文件
+## 自动保存的 .edit.snapshot 是整张画布的 PNG（PNG 没有增量接口，只能整图编码）。
+## 4352x1328 实测编码 120~160 ms —— 放主线程就是每笔卡十帧，所以拷一份整图
+## 交给 WorkerThreadPool，主线程只付一次内存拷贝（约 3 ms）。
+var _snapshot_task := -1
+var _snapshot_path := ""
+var _snapshot_again := false
+
+
+## 请后台把当前画布写进快照；上一个任务没写完时，新请求合并成一次补写。
+func request_snapshot(path: String) -> void:
+	if black_image == null:
+		return
+	_snapshot_path = path
+	_snapshot_again = true
+	_start_snapshot()
+
+
+func _start_snapshot() -> void:
+	if _snapshot_task != -1 or not _snapshot_again:
+		return
+	_snapshot_again = false
+	var copy := Image.new()
+	copy.copy_from(black_image)
+	_snapshot_task = WorkerThreadPool.add_task(
+		_write_snapshot.bind(copy, _snapshot_path), false, "canvas snapshot")
+
+
+func _poll_snapshot() -> void:
+	if _snapshot_task == -1 or not WorkerThreadPool.is_task_completed(_snapshot_task):
+		return
+	WorkerThreadPool.wait_for_task_completion(_snapshot_task)
+	_snapshot_task = -1
+	_start_snapshot()
+
+
+## 线程里跑的写盘：只碰自己那份 Image 和字符串，所以可以是 static。
+static func _write_snapshot(image: Image, path: String) -> void:
+	var absolute := ProjectSettings.globalize_path(path)
+	var temporary := absolute + ".tmp"
+	DirAccess.make_dir_recursive_absolute(absolute.get_base_dir())
+	var file := FileAccess.open(temporary, FileAccess.WRITE)
+	if file == null:
+		push_error("Canvas snapshot open failed: %s (%d)" % [path, FileAccess.get_open_error()])
+		return
+	file.store_buffer(image.save_png_to_buffer())
+	file.flush()
+	file.close()
+	if FileAccess.file_exists(path) and DirAccess.remove_absolute(absolute) != OK:
+		DirAccess.remove_absolute(temporary)
+		return
+	DirAccess.rename_absolute(temporary, absolute)
+
+
 ## 保存 CPU 像素缓冲，包含颜色、透明度和尺寸；不读取 GPU，不触发固化。
 func save_ink(path: String) -> Error:
 	var error: Error
@@ -985,7 +1210,7 @@ func load_ink(path: String) -> Error:
 	get_parent().canvas_size = image.get_size()
 	black_image = image
 	black_image.convert(Image.FORMAT_RGBA8)
-	black_texture.update(black_image)
+	rebuild_ink_tiles()
 	_rebuild_loaded_metadata()
 	if not rod_data.is_empty():
 		var rods := Image.new()
@@ -1003,31 +1228,68 @@ func load_ink(path: String) -> Error:
 	return OK
 
 
-## 读盘后一次遍历同时重建钉子和墨水账，避免大画布连续全图扫描两遍。
+## 读盘后重建钉子和墨水账：按块分治，只扫各块的内容框（空块一个字节都不扫）。
 func _rebuild_loaded_metadata() -> void:
 	nail_layer.clear()
 	ink_px_by_material = {}
 	_pending_ink = {}
-	var data := black_image.get_data()
+	var nail_id := InkPalette.nail_material_id()
 	var width := canvas_size.x
-	for index in range(canvas_size.x * canvas_size.y):
-		var at := index * 4
-		if data[at + 3] <= 127:
-			continue
-		var material_id := InkPalette.material_id_at_color(Color8(
-			data[at], data[at + 1], data[at + 2], data[at + 3]
-		))
-		if material_id == InkPalette.nail_material_id():
-			nail_layer.add(Vector2i(index % width, index / width))
-		elif InkPalette.is_ink(material_id):
-			ink_px_by_material[material_id] = ink_px_of(material_id) + 1
+	var data := black_image.get_data()
+	for box in _content_boxes():
+		for y in range(box.position.y, box.end.y):
+			var row := y * width
+			for x in range(box.position.x, box.end.x):
+				var at := (row + x) * 4
+				if data[at + 3] <= 127:
+					continue
+				var material_id := InkPalette.material_id_at_color(Color8(
+					data[at], data[at + 1], data[at + 2], data[at + 3]
+				))
+				if material_id == nail_id:
+					nail_layer.add(Vector2i(x, y))
+				elif InkPalette.is_ink(material_id):
+					ink_px_by_material[material_id] = ink_px_of(material_id) + 1
 
 
-#按像素颜色重建钉子外观层；只在读盘时走一次。
+#按像素重新数一遍画布自己的账 —— 读盘、以及怀疑账本漂了的时候用。
+#⚠️ 只走一次性路径。按块分治：代价 = 各块内容框之和，不是整张画布。
+func recount_ink_px() -> void:
+	ink_px_by_material = {}
+	_pending_ink = {}
+	_flush_texture()                  # 先落地未上传的写入，块集合才是完整的
+	var width := canvas_size.x
+	var data := black_image.get_data()
+	for box in _content_boxes():
+		for y in range(box.position.y, box.end.y):
+			var row := y * width
+			for x in range(box.position.x, box.end.x):
+				var at := (row + x) * 4
+				if data[at + 3] <= 127:
+					continue
+				var material_id := InkPalette.material_id_at_color(Color8(
+					data[at], data[at + 1], data[at + 2], data[at + 3]
+				))
+				if InkPalette.is_ink(material_id):
+					ink_px_by_material[material_id] = ink_px_of(material_id) + 1
+
+
+#按像素颜色重建钉子外观层；只在读盘时走一次。同样只扫各块的内容框。
 func _rebuild_nails() -> void:
 	nail_layer.clear()
-	for y in range(canvas_size.y):
-		for x in range(canvas_size.x):
-			if material_at(x, y) == InkPalette.nail_material_id():
-				nail_layer.add(Vector2i(x, y))
+	var nail_id := InkPalette.nail_material_id()
+	var width := canvas_size.x
+	var data := black_image.get_data()
+	for box in _content_boxes():
+		for y in range(box.position.y, box.end.y):
+			var row := y * width
+			for x in range(box.position.x, box.end.x):
+				var at := (row + x) * 4
+				if data[at + 3] <= 127:
+					continue
+				var material_id := InkPalette.material_id_at_color(Color8(
+					data[at], data[at + 1], data[at + 2], data[at + 3]
+				))
+				if material_id == nail_id:
+					nail_layer.add(Vector2i(x, y))
 #endregion
