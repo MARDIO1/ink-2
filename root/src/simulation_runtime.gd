@@ -80,6 +80,8 @@ func _physics_process(delta: float) -> void:
 			var carved := carve(_main.world, result.carves)
 			committed.changed.append_array(carved.changed)
 			_physics.sync_after_commit(nodes, committed.changed)
+		if not result.fuel_removals.is_empty():
+			commit_fuel(_main.world, result.fuel_removals)
 		_physics.apply_radial_impulses(result.get("impulses", []))
 		_physics.flush_blast_dust()
 		_elapsed -= _main.fixed_dt
@@ -125,7 +127,7 @@ func _context() -> Dictionary:
 ## 创建统一效果包，所有规则都通过这些通用字段向物理层提交结果。
 func _empty_result() -> Dictionary:
 	return {"removals": {}, "player_damage": 0.0, "player_impacts": [], "hits": [],
-		"bursts": {}, "impulses": [], "carves": {}}
+		"bursts": {}, "impulses": [], "carves": {}, "fuel_removals": {}}
 
 
 ## 合并多个规则的伤害、删除、分片和冲量效果，并保留最低连锁反应倍率。
@@ -149,6 +151,8 @@ func _merge_result(target: Dictionary, source: Dictionary) -> void:
 				target.removals[body][shape] = source.removals[body][shape]
 			else:
 				target.removals[body][shape].merge(source.removals[body][shape], true)
+	for body in source.get("fuel_removals", {}):
+		target.fuel_removals.get_or_add(body, {}).merge(source.fuel_removals[body], true)
 	for body in source.get("carves", {}):
 		var plan: Dictionary = target.carves.get_or_add(body, {})
 		for shape in source.carves[body]:
@@ -204,6 +208,22 @@ func commit(world, removals: Dictionary, bursts: Dictionary = {},
 			if extension.has_method("observe_removals"):
 				extension.observe_removals(_context(), body, removals[body], _reaction_scale)
 	return _physics.commit(world, removals, bursts, defer_dust)
+
+
+## 正常燃料消耗：不触发伤害观察，仍更新质量、碰撞与结构分离。
+func commit_fuel(world, removals: Dictionary) -> Dictionary:
+	# 燃料消耗绕过爆炸观察，只复用底层结构更新与锚点迁移。
+	var valid := {}
+	for body in removals:
+		if not world.bodies.has(body):
+			continue
+		for shape in removals[body]:
+			if body.shapes.has(shape):
+				valid.get_or_add(body, {})[shape] = removals[body][shape]
+	var nodes: Array = _main._body_nodes.duplicate()
+	var result: Dictionary = _physics.commit(world, valid, {}, true)
+	_physics.sync_after_commit(nodes, result.changed)
+	return result
 
 
 ## 把本轮落地的伤害事件交给表现层扩展（墨汁喷溅等），不参与物理结果。

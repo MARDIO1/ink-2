@@ -1,0 +1,11 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "blue"
+id = 11
+color = Color(0.06, 0.38, 0.95, 1)
+compress_strength = 15.0
+shear_strength = 4.5

@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://root/src/simulation_runtime.gd" id="1_simulation"]
 [ext_resource type="Script" path="res://root/src/physics_step.gd" id="2_physics"]
@@ -14,6 +14,8 @@
 [ext_resource type="AudioStream" path="res://sound/sfx/弹簧紧绷.ogg" id="10_spring_tight"]
 [ext_resource type="AudioStream" path="res://sound/sfx/弹簧释放.ogg" id="11_spring_release"]
 [ext_resource type="Script" path="res://ink/src/ink_spray.gd" id="12_spray"]
+
+[ext_resource type="Script" path="res://ink/src/blue_ink.gd" id="14_blue"]
 
 [node name="SimulationRuntime" type="Node"]
 script = ExtResource("1_simulation")
@@ -47,3 +49,6 @@ script = ExtResource("12_white")
 
 [node name="WhiteSweep" type="Node" parent="."]
 script = ExtResource("13_white_sweep")
+
+[node name="BlueInk" type="Node" parent="."]
+script = ExtResource("14_blue")

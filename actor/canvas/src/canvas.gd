@@ -87,7 +87,10 @@ func _ready() -> void:
 	_workbench_home_transform = workbench.transform
 	var rod_pixels: Image = surface.rod_layer.pixels.duplicate() if surface.rod_layer.pixels != null else null
 	var rod_anchors: PackedVector2Array = surface.rod_layer.anchor_points.duplicate()
+	var blue_cells: PackedVector2Array = surface.blue_layer.cells.duplicate()
 	surface.canvas_size = canvas_size
+	surface.blue_layer.cells = blue_cells
+	surface.blue_layer.rebuild()
 	# 已保存的独立黄色层不能被首次 Canvas 尺寸同步清空。
 	if rod_pixels != null and rod_pixels.get_used_rect().has_area():
 		surface.rod_layer.pixels = rod_pixels
@@ -198,6 +201,8 @@ func generate(record_undo := true) -> void:
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.solidify(surface)
+	if surface.blue_rule() != null:
+		surface.blue_rule().solidify(surface)
 	if record_undo:
 		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
@@ -222,6 +227,8 @@ func return_to_canvas(record_undo := true, keep_yellow_drafts := false) -> void:
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.reclaim(surface, keep_yellow_drafts or _map_editor_mode)
+	if surface.blue_rule() != null:
+		surface.blue_rule().reclaim(surface)
 	solid.rasterize(surface, world)
 	if record_undo:
 		History.commit(self, state)

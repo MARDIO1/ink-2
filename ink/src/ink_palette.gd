@@ -13,6 +13,7 @@ const BLACK := preload("res://ink/asset/black.tres")
 const GREY := preload("res://ink/asset/grey1.tres")
 const RED := preload("res://ink/asset/red.tres")
 const YELLOW := preload("res://ink/asset/yellow.tres")
+const BLUE := preload("res://ink/asset/blue.tres")
 const WHITE := preload("res://ink/asset/white.tres")
 ## 钉子**不是墨水**：它有自己的贴图，只是借像素材质存一个 id。
 const NAIL := preload("res://actor/nail/asset/nail.tres")
@@ -22,6 +23,7 @@ const INKS: Array = [
 	{"name": "红墨", "material": RED},
 	{"name": "黄墨", "material": YELLOW},
 	{"name": "白墨", "material": WHITE},
+	{"name": "蓝墨", "material": BLUE},
 ]
 #endregion
 

@@ -16,8 +16,9 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 	var surface = canvas.surface
 	surface._commit_undo_step()
 	surface._flush_ink()
+	var blue_state: Array = surface.blue_rule().capture(surface, include_bodies, selection if selection.has_area() else Rect2(surface.global_position, Vector2(surface.canvas_size))) if surface.blue_rule() != null else []
 	var data: PackedByteArray = surface.black_image.get_data()
-	var state := {"size": surface.canvas_size, "position": canvas.position,
+	var state := {"blue_before": surface.blue_rule().object_ids() if surface.blue_rule() != null else {}, "blue_remove": {}, "blue": blue_state, "blue_cells": surface.blue_layer.cells.duplicate(), "blue_active": include_bodies, "size": surface.canvas_size, "position": canvas.position,
 		"rod_image": surface.rod_layer.pixels.duplicate(), "rod_anchors": surface.rod_layer.anchor_points.duplicate(),
 		"image": data.compress(FileAccess.COMPRESSION_FASTLZ), "ledger": surface.ink_px_by_material.duplicate(),
 		"bodies": [], "before_ids": {}, "remove_ids": {}, "yellow": [], "hinges": [], "health": {}, "health_delta": {}}
@@ -69,6 +70,13 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 	return state
 
 static func commit(canvas, state: Dictionary) -> void:
+	if canvas.surface.blue_rule() != null:
+		for entry in state.blue:
+			state.blue_remove[entry.id] = true
+		for id in canvas.surface.blue_rule().object_ids():
+			if not state.blue_before.has(id):
+				state.blue_remove[id] = true
+	state.erase("blue_before")
 	for node in canvas.world.get_children():
 		if node is BodyNode and not node.is_queued_for_deletion() and not node.body.tags.has("living"):
 			var id := identity(node)
@@ -170,6 +178,10 @@ static func restore(canvas, state: Dictionary) -> void:
 		surface.rod_layer.pixels = state.rod_image.duplicate()
 		surface.rod_layer.anchor_points = state.rod_anchors.duplicate()
 		surface.rod_layer.refresh()
+	surface.blue_layer.cells = state.get("blue_cells", PackedVector2Array())
+	surface.blue_layer.rebuild()
+	if surface.blue_rule() != null:
+		surface.blue_rule().restore(surface, state.get("blue", []), state.get("blue_remove", {}))
 	surface.ink_px_by_material = state.ledger.duplicate()
 	surface._pending_ink.clear()
 	surface._rebuild_nails()

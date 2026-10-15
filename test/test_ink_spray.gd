@@ -203,4 +203,3 @@ func _run() -> void:
 	await process_frame
 	print("[InkSpray] %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
-
