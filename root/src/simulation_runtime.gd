@@ -71,6 +71,7 @@ func _physics_process(delta: float) -> void:
 	var steps: int = 0
 	while _elapsed >= _main.fixed_dt and steps < _main.max_substeps:
 		var result: Dictionary = _step(_main.fixed_dt)
+		_observe_damage(result.hits)
 		_player.apply_collision_damage(result.player_damage, result.player_impacts)
 		if not result.removals.is_empty() or not result.carves.is_empty():
 			_merge_carves_into_damage(result)
@@ -125,13 +126,15 @@ func _context() -> Dictionary:
 
 ## 创建统一效果包，所有规则都通过这些通用字段向物理层提交结果。
 func _empty_result() -> Dictionary:
-	return {"removals": {}, "player_damage": 0.0, "player_impacts": [],
+	return {"removals": {}, "player_damage": 0.0, "player_impacts": [], "hits": [],
 		"bursts": {}, "impulses": [], "carves": {}, "fuel_removals": {}}
 
 
 ## 合并多个规则的伤害、删除、分片和冲量效果，并保留最低连锁反应倍率。
 func _merge_result(target: Dictionary, source: Dictionary) -> void:
 	target.player_damage += source.get("player_damage", 0.0)
+	if not source.get("hits", []).is_empty():
+		target.hits.append_array(source.hits)
 	if not source.get("player_impacts", []).is_empty():
 		target.player_impacts.append_array(source.player_impacts)
 	if not source.get("impulses", []).is_empty():
@@ -221,6 +224,16 @@ func commit_fuel(world, removals: Dictionary) -> Dictionary:
 	var result: Dictionary = _physics.commit(world, valid, {}, true)
 	_physics.sync_after_commit(nodes, result.changed)
 	return result
+
+
+## 把本轮落地的伤害事件交给表现层扩展（墨汁喷溅等），不参与物理结果。
+func _observe_damage(hits: Array) -> void:
+	if hits.is_empty():
+		return
+	var context: Dictionary = _context()
+	for extension in _extensions:
+		if extension.has_method("observe_damage"):
+			extension.observe_damage(context, hits)
 
 
 ## 提交只改变面积、不产生独立碎片的像素蚀除。

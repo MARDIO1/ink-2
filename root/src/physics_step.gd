@@ -129,9 +129,14 @@ func prepare_fixed(delta: float) -> int:
 		if bool(body.tags.get("editor_physics_paused", false)):
 			physics.freeze(body)
 		body.refresh_com()
+	# 游戏层先清一遍：这样才拿得到被清刚体的灰尘条目，交给 DebrisDust 淡出 0.55 s。
+	# 引擎 step() 里另有一道原生闸门（pworld.gd:2122）兜底，正常情况下这里返回 0。
+	var fading: Array = cull_dust(physics)
+	if not fading.is_empty():
+		_spawn_culled_dust(fading)
 	var culled: int = physics.cull_fast_debris(keep)
-	physics.last_debris_removed = culled
-	if culled > 0:
+	physics.last_debris_removed = fading.size() + culled
+	if culled > 0 or not fading.is_empty():
 		_drop_culled_nodes()
 	last_speed_clamped = _clamp_speeds(physics)
 	var requested: int = physics._compute_substeps(delta)
@@ -207,8 +212,59 @@ func sync_render() -> void:
 	if profile_enabled:
 		_profile.render_sync_us = _profile.get("render_sync_us", 0) + Time.get_ticks_usec() - start
 
-## cull_fast_debris() 直接删除 PBody；这里恢复节点数组对齐并回收失效节点。
-## 交互体由引擎排除，渲染同步留给本固定步末尾。
+## 灰尘闸门（游戏侧实现）：判据与引擎 `PWorld.cull_fast_debris()` **逐条一致**，一个字都不改：
+##   mass <= debris_max_mass，且（`debris_min_speed` > 0 时）|v| + |ω|·r >= debris_min_speed；
+##   交互体（抓着的 / 挂关节的）由 `_interactive_bodies()` 排除。
+## 小笔触（1px 短线，mass = 像素数，很容易 <= 20）也照样走这条 —— 它本来就是"灰尘"。
+##
+## ⚠️ 唯一的差别：删之前先把像素采成灰尘条目**交回调用方**。引擎那一个直接 remove_body，
+##    画面上就是"啪"地硬弹掉（实测：11 px 笔触第 3 帧消失，全程没进灰尘层）；
+##    这里交给 `DebrisDust` 淡出 0.55 s 再没。
+##
+## 返回值：每个被清刚体的灰尘条目（`DebrisDust.spawn` 的入参）。
+func cull_dust(physics) -> Array:
+	var culled: Array = []
+	if physics.debris_max_mass <= 0.0:
+		return culled
+	var keep: Dictionary = physics._interactive_bodies()
+	# ⚠️ 必须**倒着**遍历：remove_body 走 `bodies.erase`（保序），下标小于 i 的不受影响。
+	for i in range(physics.bodies.size() - 1, -1, -1):
+		var body = physics.bodies[i]
+		if body.is_static or body.frozen or body.mass > physics.debris_max_mass:
+			continue
+		if physics.debris_min_speed > 0.0 and physics._motion_of(body) < physics.debris_min_speed:
+			continue
+		if keep.has(body):
+			continue
+		culled.append(_dust_entries(body))
+		physics.remove_body(body)
+	return culled
+
+
+## 把一个刚体拆成灰尘条目：像素原样，位姿与速度照抄。
+## 形状坐标是**刚体局部**坐标，所以每条都配刚体自己的位姿 —— 与引擎 `result.downgraded` 同一约定。
+func _dust_entries(body) -> Array:
+	var out: Array = []
+	var velocity: Vector2 = body.linear_velocity
+	for shape in body.shapes:
+		if shape == null or shape.is_empty():
+			continue
+		shape.owner_body = null
+		out.append({"shape": shape, "position": body.position, "rotation": body.rotation,
+			"velocity": velocity})
+	return out
+
+
+## 把闸门清掉的刚体交给纯视觉灰尘层淡出（`lifetime` 0.55 s），而不是让它们硬弹掉。
+func _spawn_culled_dust(culled: Array) -> void:
+	if _dust == null:
+		return
+	for entries in culled:
+		_dust.spawn(entries)
+
+
+## cull_dust() 直接删除 PBody；这里恢复节点数组对齐并回收失效节点。
+## 交互体由闸门排除，渲染同步留给本固定步末尾。
 func _drop_culled_nodes() -> void:
 	var live: Dictionary = {}
 	for body in _main.world.bodies:

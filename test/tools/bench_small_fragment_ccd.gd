@@ -8,7 +8,7 @@ extends SceneTree
 ##   每子步   ~ 全世界总矩形数                                     <- 所有刚体陪跑
 ## 而「又轻又快的小碎片」正好是最容易造出高运动的东西（Δv = J/m，轻 100 倍就快 100 倍）。
 
-const MAIN := preload("res://map/main.tscn")
+const MAIN := preload("res://map/asset/imported/main.tscn")
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 

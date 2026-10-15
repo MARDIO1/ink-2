@@ -7,7 +7,7 @@ extends SceneTree
 ##    "一个字都没打印"，看着像引擎卡死。要排查就把输出重定向到文件（*> out.txt）。
 ##    （旧名字 max_linear_velocity 现在叫 rp_max_linear_velocity，点号访问不存在
 ##    就是这种死法 —— 而 w.get("...") 在这里也报错，原因没查清。）
-const MAIN := preload("res://map/main.tscn")
+const MAIN := preload("res://map/asset/imported/main.tscn")
 
 
 func _initialize() -> void:

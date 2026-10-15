@@ -52,6 +52,20 @@ func run() -> void:
 		quit(0)
 		return
 	check("blue palette and bottle registered", Palette.ink_count() == 6 and blue_before > 0.0)
+	surface.brush_size = 3
+	surface.blue_layer.begin(Vector2(180.5, 120.5))
+	surface.blue_layer.extend(Vector2(190.5, 120.5))
+	surface.blue_layer.finish()
+	var isolated_wire_count: int = surface.blue_layer.cells.size()
+	surface._begin_undo_step()
+	var isolated_erased: bool = surface.erase_rect(Rect2i(175, 115, 22, 12))
+	surface._commit_undo_step()
+	check("selection erases blue without black tiles", isolated_erased and surface.blue_layer.cells.is_empty())
+	check("selection erase undo restores blue-only wire", surface.undo_last_edit() and surface.blue_layer.cells.size() == isolated_wire_count)
+	surface._begin_undo_step()
+	surface.erase_rect(Rect2i(175, 115, 22, 12))
+	surface._commit_undo_step()
+	check("blue-only selection erase refunds bottle", surface.blue_layer.cells.is_empty() and health.ink_of(Palette.BLUE.id) == blue_before)
 	paint(Rect2i(20, 20, 80, 25), Color.BLACK)
 	paint(Rect2i(10, 25, 10, 12), Palette.RED.color)
 	surface.brush_size = 5

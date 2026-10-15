@@ -109,10 +109,9 @@ tool = 1
 position = Vector2(200, 140)
 shape = SubResource("CanvasBounds")
 
-[node name="BlackSprite" type="Sprite2D" parent="CanvasSurface" unique_id=106269176]
-z_as_relative = false
+[node name="BlackTiles" type="Node2D" parent="CanvasSurface" unique_id=106269176]
 texture_filter = 1
-centered = false
+z_as_relative = false
 
 [node name="NailLayer" type="Node2D" parent="CanvasSurface" unique_id=1721133058]
 z_index = 1

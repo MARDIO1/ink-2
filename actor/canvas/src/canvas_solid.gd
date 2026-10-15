@@ -11,6 +11,7 @@ const INK_GROUP := "ink_item"
 ## 生物实体标记；玩家、手、NPC 都带它，反向栅格化时跳过。
 const LIVING_TAG := "living"
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
+const PixelChunk := preload("res://addons/pixel_destruction/core/pixel_chunk.gd")
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
@@ -18,6 +19,19 @@ const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_
 const PixelBody2D := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
+#endregion
+
+
+#region 分块常量
+## 固化分块边长（px）：静态的连通分量按它切块，每个非空块（内再按连通分量拆）出一个刚体。
+##
+## 破坏的代价是 O(命中刚体)：fracture 要重分解整块 + 全量连通标注 + 渲染同步，
+## 打一个像素的洞也付这一块的账。整张地形做成一个刚体时这笔账没有上限
+## （peak.tscn：565,857 px / 9,475 chunk / 1 形状），块大小就是它的上限。
+## 同时它还是一次切断能掉下来的碎片上限（commit 走 dynamic_fragments=true）。
+## 不要再调大：块的 AABB 越大，单次命中的最坏耗时越长、掉下来的碎片越夸张。
+## 也不要为了块数调小：矩形数够多时引擎改用凸多边形拟合，碰撞体反而更少。
+const BLOCK_SIZE := 256
 #endregion
 
 
@@ -34,20 +48,14 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	var pos: Vector2 = surface.global_position
 	var size: Vector2i = surface.canvas_size
 
-	#先收集墨水，再只扫描实体与画布相交的局部区域。
+	# 先按块收集墨水（块级拷贝，见 _scan_block），再只扫描实体与画布相交的局部区域。
 	var shape = PixelShape.new()
 	var white = PixelShape.new()
 	var anchors: Dictionary = {}
-	for y in range(size.y):
-		for x in range(size.x):
-			var material: int = surface.material_at(x, y)
-			if material != 0:
-				if material == InkPalette.WHITE.id:
-					white.set_pixel(x, y, material)
-				else:
-					shape.set_pixel(x, y, material)
-				if material == InkPalette.nail_material_id():
-					anchors[Vector2i(x, y)] = true
+	# 颜色 -> 材质缓存；认色本身仍走色表，见 _scan_block。
+	var color_table: Dictionary = {}
+	for block in _block_rects(surface, size):
+		_scan_block(surface, block, shape, white, anchors, color_table)
 	var blue = surface.blue_rule()
 	var blue_pixels: Dictionary = surface.blue_layer.mask.duplicate()
 	if blue != null:
@@ -56,34 +64,150 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	var ink_pixels: int = shape.pixel_count()
 	var rejected_pixels: int = _remove_overlaps(shape, surface, world.world.bodies)
 
-	var parts: Array = Destruction.split(shape, 1)
+	# 连通分量 -> 刚体。静态岛再按 BLOCK_SIZE 切块：破坏代价于是以块封顶。
+	# 岛的静态判据与原来一致（岛内有没有钉子像素），不能改成按块判：
+	# 一块远离钉子的地形不该因为自己没钉子就掉下来。
+	var spawned := 0
+	var total_pixels := 0
+	for island in Destruction.split(shape, 1, true):
+		var island_anchors: Dictionary = {}
+		for point: Vector2i in anchors:
+			if island.get_pixel(point.x, point.y) == InkPalette.nail_material_id():
+				island_anchors[point] = true
+		var is_static := not island_anchors.is_empty()
+		if not is_static:
+			# 没有钉子的墨是"会掉下来的一整张网"：按块切会让它自己散架，保持整块。
+			if _spawn_component(world, pos, island, island_anchors, editor_placed_nails, false):
+				spawned += 1
+				total_pixels += island.pixel_count()
+			continue
+		for piece in _block_pieces(island):
+			# 块内再拆一次连通分量：多岛屿的 shape 会让 add_body_node 再造一批
+			# 没有节点的刚体（存关卡时整块丢掉），所以这里自己先拆干净。
+			# piece 用完即丢，允许 adopt 直接搬 chunk 对象。
+			for part in Destruction.split(piece, 1, true):
+				if _spawn_component(world, pos, part, island_anchors, editor_placed_nails, true):
+					spawned += 1
+					total_pixels += part.pixel_count()
 	# 白墨独立载体允许覆盖现有实体；断开的笔迹也共用一个速度。
 	if not white.is_empty():
-		parts.append(white)
-	if parts.is_empty():
+		if _spawn_component(world, pos, white, {}, editor_placed_nails, false):
+			spawned += 1
+			total_pixels += white.pixel_count()
+
+	if spawned == 0:
 		if ink_pixels > 0:
 			surface.clear()
 		print("SOLID bodies=0 pixels=0 rejected=%d" % rejected_pixels)
 		return
 
-	#每个连通分量做成一个刚体节点，add_body_node 进世界（类比 add_child）
-	var spawned := 0
-	var total_pixels := 0
-	for part in parts:
-		if _spawn_component(world, pos, part, anchors, editor_placed_nails):
-			spawned += 1
-			total_pixels += part.pixel_count()
-
 	#固化成功后清空画布上的蓝图墨水
-	if spawned > 0:
-		if blue != null:
-			var created: Array = []
-			for body in world.world.bodies:
-				if not previous.has(body):
-					created.append(body)
-			blue.attach_wires(surface, created, blue_pixels)
-		surface.clear(false)      # 这些墨水已经变成刚体带走了，不能还回瓶子
+	if blue != null:
+		var created: Array = []
+		for body in world.world.bodies:
+			if not previous.has(body):
+				created.append(body)
+		blue.attach_wires(surface, created, blue_pixels)
+	surface.clear(false)      # 这些墨水已经变成刚体带走了，不能还回瓶子
 	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
+
+
+## 画布按 BLOCK_SIZE 切出来的块（画布坐标，已裁到画布与 black_image 内）。
+## 只返回与画布有内容的范围相交的块：空白块连扫描都不用做。
+func _block_rects(surface, size: Vector2i) -> Array[Rect2i]:
+	var out: Array[Rect2i] = []
+	var full: Rect2i = Rect2i(Vector2i.ZERO, size).intersection(
+		Rect2i(Vector2i.ZERO, surface.black_image.get_size()))
+	var used: Rect2i = surface.black_image.get_used_rect().intersection(full)
+	if not used.has_area():
+		return out
+	var first := used.position / BLOCK_SIZE
+	var last := (used.end - Vector2i.ONE) / BLOCK_SIZE
+	for by in range(first.y, last.y + 1):
+		for bx in range(first.x, last.x + 1):
+			var block := Rect2i(bx * BLOCK_SIZE, by * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+			block = block.intersection(full)
+			if block.has_area():
+				out.append(block)
+	return out
+
+
+## 把一个岛按 BLOCK_SIZE 切成块形状。
+## 块边界与 chunk 边界对齐（256 = 32 x 8），所以每个 chunk 整块属于一个块 ——
+## 搬的是 PixelChunk 对象本身，不复制像素，也不重建位图。
+func _block_pieces(island) -> Array:
+	var pieces: Dictionary = {}
+	for key: int in island.chunks:
+		var block_key: int = ((PixelShape.key_x(key) >> 5) << 32) \
+			| (PixelShape.key_y(key) >> 5 & 0xFFFFFFFF)
+		var piece = pieces.get(block_key)
+		if piece == null:
+			piece = PixelShape.new()
+			pieces[block_key] = piece
+		piece.chunks[key] = island.chunks[key]
+	var keys: Array = pieces.keys()
+	keys.sort()
+	var out: Array = []
+	for key: int in keys:
+		out.append(pieces[key])
+	return out
+
+
+## 扫一个块：非白墨写进 "ink"，白墨写进共享的 "white"，钉子像素登记到 "anchors"。
+## 块只是扫描的单位：形状的 chunk 键用画布坐标，所以按块扫出来的内容与整张画布一次扫完
+## 完全等价（白墨本来就跨块共用一张形状）。
+##
+## 像素按块级拷贝，不能逐像素 surface.material_at() + shape.set_pixel()：
+## 后者每个像素过一次 Image.get_pixel 和三次字典操作，4352x1328 的画布实测 2.0 s；
+## 这里一次 get_region 拿到整块 RGBA 缓冲，逐像素只读一个 alpha 字节、直接写目标
+## PixelChunk，同一张画布实测 0.7 s。
+##
+## 形状的 chunk 键用画布坐标：固化出的形状局部坐标必须等于画布坐标 ——
+## _spawn_component 的 local_aabb()、PixelShape2D.position、回收与破坏路径都按这个约定。
+func _scan_block(surface, block: Rect2i, ink, white, anchors: Dictionary,
+		color_table: Dictionary) -> void:
+	var data: PackedByteArray = surface.black_image.get_region(block).get_data()
+	var width: int = block.size.x
+	var origin_x: int = block.position.x
+	var origin_y: int = block.position.y
+	var white_id: int = InkPalette.WHITE.id
+	var nail_id: int = InkPalette.nail_material_id()
+	var last_key := -1
+	var last_target = null
+	var chunk = null
+	for ly in range(block.size.y):
+		var y: int = origin_y + ly
+		var bit_y: int = (y & 7) << 3
+		var row: int = ly * width * 4
+		for lx in range(width):
+			var offset: int = row + lx * 4
+			var alpha: int = data[offset + 3]
+			if alpha <= 127:
+				continue
+			# 认色仍走色表（缓存只是省掉重复比对），否则"什么算墨水"会和画布分叉。
+			var color_key: int = (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | alpha
+			var material: int = color_table.get(color_key, -1)
+			if material < 0:
+				material = InkPalette.material_id_at_color(
+					Color8(data[offset], data[offset + 1], data[offset + 2], alpha))
+				color_table[color_key] = material
+			if material == 0:
+				continue
+			var x: int = origin_x + lx
+			var target = white if material == white_id else ink
+			var key: int = PixelShape.make_key(x >> 3, y >> 3)
+			if key != last_key or target != last_target:
+				last_key = key
+				last_target = target
+				chunk = target.chunks.get(key)
+				if chunk == null:
+					chunk = PixelChunk.new()
+					target.chunks[key] = chunk
+			var bit: int = (x & 7) + bit_y
+			chunk.occ |= 1 << bit
+			chunk.mat[bit] = material
+			if material == nail_id:
+				anchors[Vector2i(x, y)] = true
 #endregion
 
 
@@ -127,14 +251,17 @@ func _remove_overlaps(shape, surface, bodies: Array) -> int:
 #⚠️ 形状用 `PixelShape2D(source = PAINT)` + 内嵌 Image，而**不是**自造的 CanvasShape：
 #   后者装的是 RefCounted 的 PixelShape，PackedScene 存不下来 ——
 #   而 F5 是直接 pack 整个关卡，所以运行时就必须是"能存"的形态。
-func _spawn_component(world, pos, part, anchors: Dictionary, editor_placed_nails := false) -> bool:
+## is_static 由**岛**决定（岛里有钉子像素），不是由这一个分块决定：
+## 一块远离钉子的地形也必须钉住，否则分块会把它切成会掉下来的碎块。
+func _spawn_component(world, pos, part, anchors: Dictionary, editor_placed_nails := false,
+		is_static := false) -> bool:
 	var local_anchors: Dictionary = {}
 	for point: Vector2i in anchors:
 		if part.get_pixel(point.x, point.y) == InkPalette.nail_material_id():
 			local_anchors[point] = true
 	var body_node := InkItem.new()
 	body_node.name = "Ink%d" % world.get_child_count()
-	body_node.is_static = not local_anchors.is_empty()
+	body_node.is_static = is_static
 	body_node.hide_nails_in_play = editor_placed_nails
 	body_node.add_to_group(INK_GROUP, true)
 	var rect: Rect2i = part.local_aabb()

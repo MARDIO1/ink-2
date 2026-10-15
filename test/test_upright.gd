@@ -10,7 +10,7 @@ extends SceneTree
 ##   6. 手抓住世界、脚仍踩在地上时力矩照常出力（抓握不吞回复力矩）；
 ##   另外每条路径都要求 |力矩| <= max_upright_torque。
 
-const MAIN = preload("res://map/main.tscn")
+const MAIN = preload("res://map/asset/imported/main.tscn")
 
 var failures := 0
 var checks := 0

@@ -13,6 +13,7 @@
 [ext_resource type="AudioStream" path="res://sound/sfx/爆炸.ogg" id="9_explosion"]
 [ext_resource type="AudioStream" path="res://sound/sfx/弹簧紧绷.ogg" id="10_spring_tight"]
 [ext_resource type="AudioStream" path="res://sound/sfx/弹簧释放.ogg" id="11_spring_release"]
+[ext_resource type="Script" path="res://ink/src/ink_spray.gd" id="12_spray"]
 
 [ext_resource type="Script" path="res://ink/src/blue_ink.gd" id="14_blue"]
 
@@ -41,6 +42,8 @@ script = ExtResource("5_yellow")
 tension_stream = ExtResource("10_spring_tight")
 release_stream = ExtResource("11_spring_release")
 
+[node name="InkSpray" type="Node2D" parent="."]
+script = ExtResource("12_spray")
 [node name="WhiteInk" type="Node" parent="."]
 script = ExtResource("12_white")
 
