@@ -56,6 +56,9 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 	# 轻碎片豁免：一个子步只建一次集合，别在每对接触上重建（见 _dust_bodies）。
 	var dust: Dictionary = ContactImpact.dust_bodies(world, player_body, protected_bodies)
 	for contact in contacts:
+		# 只负责落地的物体保留真实碰撞，但不触发通用撞击破坏。
+		if contact.a.tags.has("no_impact_damage") or contact.b.tags.has("no_impact_damage"):
+			continue
 		if contact.approach <= min_approach:
 			continue
 		# 同伴与自己的部件不会互相撕裂盾牌；真实碰撞约束仍保留。

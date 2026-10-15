@@ -5,6 +5,7 @@ signal body_fractured(world, body, pieces: Array)
 
 #region 依赖
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
+const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const DebrisDust := preload("res://root/src/debris_dust.gd")
 const Query := preload("res://addons/pixel_destruction/physics/query.gd")
 const ANCHOR_TAG: String = "static_anchor_points"
@@ -366,6 +367,59 @@ func commit(physics, removals: Dictionary, bursts: Dictionary = {},
 	if not defer_dust:
 		flush_blast_dust()
 	return {"changed": changed, "calls": removals.size(), "replacements": replacements}
+
+
+## 删除像素并重建原刚体，但不做连通域分裂；用于允许复合孤岛的渐进蚀除。
+func carve(physics, removals: Dictionary) -> Dictionary:
+	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
+	var changed: Array = []
+	var removed := 0
+	for body in removals:
+		if not physics.bodies.has(body):
+			continue
+		var old_com: Vector2 = body.com_world()
+		var old_velocity: Vector2 = body.linear_velocity
+		var old_angular: float = body.angular_velocity
+		var dirty: Dictionary = {}
+		var changed_chunks: Dictionary = {}
+		for shape in body.shapes:
+			var mask: Dictionary = removals[body].get(shape, {})
+			if mask.is_empty():
+				continue
+			var bounds := Rect2i()
+			var has_bounds := false
+			for cell: Vector2i in mask:
+				if shape.get_pixel(cell.x, cell.y) == 0:
+					continue
+				shape.clear_pixel(cell.x, cell.y)
+				changed_chunks[Shape.make_key(cell.x >> 3, cell.y >> 3)] = true
+				var pixel_rect := Rect2i(cell, Vector2i.ONE)
+				bounds = bounds.merge(pixel_rect) if has_bounds else pixel_rect
+				has_bounds = true
+				removed += 1
+			if has_bounds:
+				dirty[shape] = bounds.grow(1)
+		var kept: Array = body.shapes.filter(func(shape): return shape.pixel_count() > 0)
+		if kept.is_empty():
+			physics.remove_body(body)
+			body_fractured.emit(physics, body, [])
+			continue
+		body.rebuild(kept, physics.density_callable(), physics.max_rects_per_shape,
+			Rect2i(), physics.friction_callable(), physics.restitution_callable(),
+			dirty, changed_chunks)
+		var offset: Vector2 = body.com_world() - old_com
+		body.linear_velocity = old_velocity + old_angular * Vector2(-offset.y, offset.x)
+		body.angular_velocity = old_angular
+		body.awake = true
+		body.sleep_timer = 0.0
+		_update_anchors(body, body.tags.get(ANCHOR_TAG, {}))
+		body_fractured.emit(physics, body, [body])
+		changed.append(body)
+	if profile_enabled:
+		_profile.carve_us = _profile.get("carve_us", 0) + Time.get_ticks_usec() - profile_start
+		_profile.carve_calls = _profile.get("carve_calls", 0) + removals.size()
+		_profile.removed_pixels = _profile.get("removed_pixels", 0) + removed
+	return {"changed": changed, "calls": removals.size(), "removed": removed}
 
 
 ## 第二轮只查破坏后的几何并施力，不生成伤害、不搜索旧体对应的最近碎片。

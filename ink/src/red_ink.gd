@@ -67,6 +67,7 @@ func observe_removals(_context: Dictionary, body: PBody, removals: Dictionary,
 		retention: float = 1.0) -> void:
 	var start: int = Time.get_ticks_usec() if _profile_enabled else 0
 	var groups: Dictionary = {}
+	var white_corrosion: Dictionary = body.tags.get("white_corrosion", {})
 	var size: int = maxi(1, event_chunk_size)
 	for shape in removals:
 		# 无红墨的形状无需逐个检查整条消融路径；材质扫描由字节数组原生执行。
@@ -79,6 +80,10 @@ func observe_removals(_context: Dictionary, body: PBody, removals: Dictionary,
 			if not contains_red:
 				continue
 		for cell: Vector2i in removals[shape]:
+			if white_corrosion.get(shape, {}).has(cell):
+				if _profile_enabled:
+					_profile.white_suppressed = _profile.get("white_suppressed", 0) + 1
+				continue
 			if shape.get_pixel(cell.x, cell.y) != RED_ID:
 				continue
 			var key: Vector2i = Vector2i(floori(float(cell.x) / size), floori(float(cell.y) / size))

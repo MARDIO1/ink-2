@@ -74,9 +74,12 @@ func _physics_process(delta: float) -> void:
 		_player.apply_collision_damage(result.player_damage)
 		_observe_damage(result.hits)
 		_player.apply_collision_damage(result.player_damage, result.player_impacts)
-		if not result.removals.is_empty():
+		if not result.removals.is_empty() or not result.carves.is_empty():
+			_merge_carves_into_damage(result)
 			var nodes: Array = _main._body_nodes.duplicate()
 			var committed := commit(_main.world, result.removals, result.get("bursts", {}), true)
+			var carved := carve(_main.world, result.carves)
+			committed.changed.append_array(carved.changed)
 			_physics.sync_after_commit(nodes, committed.changed)
 		_physics.apply_radial_impulses(result.get("impulses", []))
 		_physics.flush_blast_dust()
@@ -123,7 +126,7 @@ func _context() -> Dictionary:
 ## 创建统一效果包，所有规则都通过这些通用字段向物理层提交结果。
 func _empty_result() -> Dictionary:
 	return {"removals": {}, "player_damage": 0.0, "player_impacts": [], "hits": [],
-		"bursts": {}, "impulses": []}
+		"bursts": {}, "impulses": [], "carves": {}}
 
 
 ## 合并多个规则的伤害、删除、分片和冲量效果，并保留最低连锁反应倍率。
@@ -147,6 +150,20 @@ func _merge_result(target: Dictionary, source: Dictionary) -> void:
 				target.removals[body][shape] = source.removals[body][shape]
 			else:
 				target.removals[body][shape].merge(source.removals[body][shape], true)
+	for body in source.get("carves", {}):
+		var plan: Dictionary = target.carves.get_or_add(body, {})
+		for shape in source.carves[body]:
+			plan.get_or_add(shape, {}).merge(source.carves[body][shape], true)
+
+
+## 同一物块若还受到普通伤害，只提交一次，并保留普通伤害的结构分裂语义。
+func _merge_carves_into_damage(result: Dictionary) -> void:
+	for body in result.carves.keys():
+		if not result.removals.has(body):
+			continue
+		for shape in result.carves[body]:
+			result.removals[body].get_or_add(shape, {}).merge(result.carves[body][shape], true)
+		result.carves.erase(body)
 #endregion
 
 
@@ -198,6 +215,15 @@ func _observe_damage(hits: Array) -> void:
 	for extension in _extensions:
 		if extension.has_method("observe_damage"):
 			extension.observe_damage(context, hits)
+
+
+## 提交只改变面积、不产生独立碎片的像素蚀除。
+func carve(world, removals: Dictionary) -> Dictionary:
+	for body in removals:
+		for extension in _extensions:
+			if extension.has_method("observe_removals"):
+				extension.observe_removals(_context(), body, removals[body], _reaction_scale)
+	return _physics.carve(world, removals)
 
 
 ## 提供给测试与诊断工具的接触读取入口，仍由 PhysicsStep 完成引擎查询。
