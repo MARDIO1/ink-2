@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dib458nn2dngj"
-path="res://.godot/imported/黑墨喷溅-实拍.png-3ec8913578fa55064c0452fa219cbc50.ctex"
+uid="uid://dmxdg34m6gya2"
+path="res://.godot/imported/黑墨喷溅-实拍.png-3b5967e4e443bb85dc01e4698b448407.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Ink/doc/黑墨喷溅-实拍.png"
-dest_files=["res://.godot/imported/黑墨喷溅-实拍.png-3ec8913578fa55064c0452fa219cbc50.ctex"]
+source_file="res://ink/doc/黑墨喷溅-实拍.png"
+dest_files=["res://.godot/imported/黑墨喷溅-实拍.png-3b5967e4e443bb85dc01e4698b448407.ctex"]
 
 [params]
 
