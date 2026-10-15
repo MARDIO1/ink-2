@@ -11,8 +11,8 @@ extends Node
 @export_range(0.0, 20000.0, 1.0, "or_greater") var hurt_sound_threshold := 100.0
 ## 连续受伤时避免同一段声音过密重播。
 @export_range(0.0, 2.0, 0.01) var hurt_sound_cooldown := 0.25
-## 玩家进入此范围后，才允许“脱离卡死”返回该点；不会跳到未经过的点。
-@export var checkpoint_visit_radius := 80.0
+## 玩家中心进入以复活点为中心的此矩形后，死亡复活与“脱离卡死”才可选择该点。
+@export var checkpoint_visit_size := Vector2(200.0, 200.0)
 const PLAYER_SPAWN_NAME := "PlayerSpawn"
 const PLAYER_SPAWN_GROUP := &"player_spawn"
 const RESPAWN_POINT_PREFIX := "RespawnPoint"
@@ -213,13 +213,14 @@ func _restore_death_state() -> void:
 
 
 func _respawn() -> void:
+	# 在清除死亡标记前选点，避免死亡期间的位移解锁新复活点。
+	var spawn := _find_respawn_target()
 	_clear_revive_visual()
 	_restore_death_state()
 	_dead = false
 	_death_layer.visible = false
 	_peak_y = INF
 
-	var spawn := _find_respawn_target()
 	if _body == null:
 		return
 
@@ -277,7 +278,7 @@ func _refill_black_ink() -> void:
 	_health.add(black_id, _health.max_of(black_id) - _health.ink_of(black_id))
 
 
-## 暂停菜单也可调用。不回血、不更改普通死亡的最近复活点规则。
+## 暂停菜单也可调用。不回血；与普通死亡共用已路过的复活点。
 func escape_stuck(skipped: Array = [], search = null) -> bool:
 	if _editor_active() or recovering:
 		return false
@@ -291,10 +292,7 @@ func escape_stuck(skipped: Array = [], search = null) -> bool:
 	get_tree().paused = true
 	_update_visited_points()
 	var level := _level_root() as Node2D
-	var points: Array = []
-	for point in _visited_points:
-		if is_instance_valid(point) and point.is_inside_tree():
-			points.append(point)
+	var points := _valid_visited_points()
 	var current_position: Vector2 = _body.com_world()
 	points.sort_custom(func(a, b): return level.to_local(a.global_position).distance_squared_to(current_position) < level.to_local(b.global_position).distance_squared_to(current_position))
 	var targets: Array = []
@@ -383,6 +381,13 @@ func _editor_active() -> bool:
 
 
 func _update_visited_points() -> void:
+	if _editor_active() or _dead:
+		return
+	var level := _level_root() as Node2D
+	if level == null:
+		return
+	if _body == null:
+		_body = _player.get("body")
 	if not _checkpoints_initialized:
 		_checkpoints_initialized = true
 		_checkpoints = _collect_respawn_points(_level_root())
@@ -391,32 +396,37 @@ func _update_visited_points() -> void:
 			_checkpoints.append(spawn)
 			if not _visited_points.has(spawn):
 				_visited_points.append(spawn) # 关卡出生点始终是安全回退目标。
-	var position: Vector2 = _body.com_world() if _body != null else _player.global_position
+	var position: Vector2 = _body.com_world() if _body != null else level.to_local(_player.global_position)
+	var half_size := checkpoint_visit_size.abs() * 0.5
 	for point in _checkpoints:
-		if is_instance_valid(point) and not _visited_points.has(point) \
-				and point.global_position.distance_squared_to(position) <= checkpoint_visit_radius * checkpoint_visit_radius:
+		if not is_instance_valid(point) or point.is_queued_for_deletion() \
+		or not level.is_ancestor_of(point) or _visited_points.has(point):
+			continue
+		var distance: Vector2 = (level.to_local(point.global_position) - position).abs()
+		if distance.x <= half_size.x and distance.y <= half_size.y:
 			_visited_points.append(point)
+
+
+func _valid_visited_points() -> Array:
+	var level := _level_root()
+	return _visited_points.filter(func(point):
+		return is_instance_valid(point) and not point.is_queued_for_deletion() and level.is_ancestor_of(point)
+	)
 
 
 #endregion
 
 
 #region 复活点查找
-## 在唯一出生点 PlayerSpawn 和全部 RespawnPoint 中统一计算距离，自动选择
-## 离死亡位置最近的目标。旧地图的 PlayerSpawn2 等也兼容为复活点。
+## 仅在本关已路过的点中选最近的目标；出生点始终可作为安全回退。
 func _find_respawn_target() -> Marker2D:
-	var root: Node = _player
-	while root.get_parent() != null and root.get_parent().name != "Level":
-		root = root.get_parent()
+	_update_visited_points()
+	var level := _level_root() as Node2D
 	var best: Marker2D = null
 	var best_dist := INF
-	var death_position: Vector2 = _body.com_world() if _body != null else _player.global_position
-	var candidates := _collect_respawn_points(root)
-	var player_spawn := _find_player_spawn(root)
-	if player_spawn != null:
-		candidates.append(player_spawn)
-	for s in candidates:
-		var d: float = s.global_position.distance_to(death_position)
+	var death_position: Vector2 = _body.com_world() if _body != null else level.to_local(_player.global_position)
+	for s in _valid_visited_points():
+		var d: float = level.to_local(s.global_position).distance_squared_to(death_position)
 		if d < best_dist:
 			best_dist = d
 			best = s

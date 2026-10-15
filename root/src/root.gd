@@ -1,12 +1,12 @@
 extends Node
+signal level_changed(level: Node)
 ## 全局根（`project.godot` 的唯一主场景）：**主菜单 → 关卡选择 → 关卡**，全程只换 `UI` 容器的子场景。
 ##
 ## `Level` / `UI` 是两个空容器：
 ##   · 换屏 = 换 `UI` 的子场景（主菜单 / 关卡选择 / 成品 UI）；
 ##   · 切关卡 = 换 `Level` 的子场景（旧的整棵释放），UI 不动。
 ## 「回主菜单」= 重新进 root（`ui/esc` / `ui/hud` 都走这条），第一屏又是主菜单。
-## ⚠️ 成品 UI 必须等关卡挂好再挂：`ui/hud` 的 `_ready` 只抓一次玩家的 `InkHealth`，
-##    先挂 UI 再选关卡，墨水条会永远停在占位。
+## 成品 HUD 监听 level_changed，重载地图时重新绑定玩家墨水与调试面板。
 ## 关卡里放什么见 `doc/文件组织.md`：世界（PixelWorld）+ 道具 + 玩家 + 相机 + SimulationRuntime 实例 + 创造模式。
 
 @export var menu_scene: PackedScene = preload("res://ui/menu/menu.tscn")
@@ -113,6 +113,7 @@ func load_level(scene: PackedScene) -> Node:
 	var level := scene.instantiate()
 	level_root.add_child(level)
 	_play_music(level_music)
+	level_changed.emit(level)
 	return level
 
 

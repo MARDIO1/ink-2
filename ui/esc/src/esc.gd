@@ -5,6 +5,10 @@ extends CanvasLayer
 const ROOT_SCENE := "res://root/root.tscn"
 
 @onready var continue_button: Button = $Center/Panel/Buttons/ContinueButton
+@onready var sound_page: VBoxContainer = $Center/Panel/SoundPage
+@onready var music_slider: HSlider = $Center/Panel/SoundPage/MusicSlider
+@onready var sfx_slider: HSlider = $Center/Panel/SoundPage/SfxSlider
+@onready var audio_settings: Node = get_node("/root/AudioSettings")
 var _recovery_busy := false
 var _recovery_status: Label
 
@@ -30,16 +34,56 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		if _recovery_busy:
 			return
+		if visible and sound_page.visible:
+			_on_sound_back_pressed()
+			return
 		_set_open(not visible)
 
 
 func _set_open(open: bool) -> void:
+	if sound_page.visible:
+		audio_settings.save_settings()
+	sound_page.hide()
+	$Center/Panel/Buttons.show()
 	visible = open
 	get_tree().paused = open
 	if open:
 		var recovery := _recovery_controller()
 		$Center/Panel/Buttons/EscapeStuckButton.disabled = recovery == null or recovery._editor_active()
 		continue_button.grab_focus()
+
+
+func _on_sound_button_pressed() -> void:
+	if _recovery_busy:
+		return
+	$Center/Panel/Buttons.hide()
+	sound_page.show()
+	music_slider.set_value_no_signal(audio_settings.music_volume * 100.0)
+	sfx_slider.set_value_no_signal(audio_settings.sfx_volume * 100.0)
+	_update_volume_labels()
+	music_slider.grab_focus()
+
+
+func _on_music_volume_changed(value: float) -> void:
+	audio_settings.set_music_volume(value / 100.0)
+	_update_volume_labels()
+
+
+func _on_sfx_volume_changed(value: float) -> void:
+	audio_settings.set_sfx_volume(value / 100.0)
+	_update_volume_labels()
+
+
+func _update_volume_labels() -> void:
+	$Center/Panel/SoundPage/MusicRow/Value.text = "%d%%" % roundi(music_slider.value)
+	$Center/Panel/SoundPage/SfxRow/Value.text = "%d%%" % roundi(sfx_slider.value)
+
+
+func _on_sound_back_pressed() -> void:
+	audio_settings.save_settings()
+	sound_page.hide()
+	$Center/Panel/Buttons.show()
+	$Center/Panel/Buttons/SoundButton.grab_focus()
 
 
 func _on_continue_button_pressed() -> void:

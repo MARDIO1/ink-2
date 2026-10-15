@@ -24,26 +24,52 @@ const DEBUG_HUD_GROUP := "debug_hud"
 var debug_hud = null
 
 var _health = null
+var _debug_enabled := false
+var _bound_level: Node
+var _level_router: Node
 
 
 func _ready() -> void:
-	var explicit_hud := get_node_or_null(debug_hud_path)
-	debug_hud = explicit_hud if explicit_hud != null else get_tree().get_first_node_in_group(DEBUG_HUD_GROUP)
-	if debug_hud != null:
-		debug_hud.visible = false
-		debug_hud.forces.enabled = false   # 力采样默认开着：Tab 没按过就不能让它一直跑
-	_health = get_node_or_null(health_path)
-	if _health == null:
-		var player := get_tree().get_first_node_in_group(PLAYER_GROUP)
-		_health = player.get_node_or_null("InkHealth") if player != null else null
-	if _health != null:
+	_level_router = get_tree().get_first_node_in_group(&"level_router")
+	if _level_router != null:
+		_level_router.level_changed.connect(_bind_level)
+	_bind_level(_current_level())
+
+
+func _current_level() -> Node:
+	if is_instance_valid(_level_router) and _level_router.level_root.get_child_count() > 0:
+		return _level_router.level_root.get_child(0)
+	var player := get_tree().get_first_node_in_group(PLAYER_GROUP)
+	return player.get_parent() if player != null else null
+
+
+## F2 会替换关卡，但成品 UI 继续复用；重新绑定调试面板与生命值信号。
+func _bind_level(level: Node) -> void:
+	if is_instance_valid(_health) and _health.changed.is_connected(_refresh_ink):
+		_health.changed.disconnect(_refresh_ink)
+	_bound_level = level
+	debug_hud = level.get_node_or_null("debugHUD") if level != null else get_node_or_null(debug_hud_path)
+	if debug_hud == null:
+		debug_hud = get_tree().get_first_node_in_group(DEBUG_HUD_GROUP)
+	_health = level.get_node_or_null("Player/InkHealth") if level != null else get_node_or_null(health_path)
+	if is_instance_valid(_health):
 		_health.changed.connect(_refresh_ink)
+	_apply_debug_visibility()
 	_refresh_ink()
+
+
+func _apply_debug_visibility() -> void:
+	var enabled: bool = _debug_enabled and is_instance_valid(debug_hud)
+	if is_instance_valid(debug_hud):
+		debug_hud.visible = enabled
+		debug_hud.forces.enabled = enabled
+		debug_hud.forces.queue_redraw()
+	visible = not enabled
 
 
 ## 瓶内液面 = 黑墨生命值。只有接不到生命值节点时才退回 bar_ratio 占位。
 func _refresh_ink() -> void:
-	if _health == null:
+	if not is_instance_valid(_health):
 		bottle_fill.value = bar_ratio * 100.0
 		health_bar.value = bottle_fill.value
 		color_ink_bar.set_health(null)
@@ -60,21 +86,27 @@ func _refresh_ink() -> void:
 ## 走 `_input` 不走 `_unhandled_input`：画布工具按钮（`Canvas/Buttons/*`）点过之后会占住焦点，
 ## 那时 Godot 的 GUI 会把 Tab 当 ui_focus_next 吃掉，`_unhandled_input` 收不到。
 func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("debug"):
-		get_viewport().set_input_as_handled()
-		_switch_debug_hud()
-
-
-func _switch_debug_hud() -> void:
-	if debug_hud == null:
+	var blueprints := get_node_or_null("/root/Blueprints")
+	if blueprints != null and blueprints.is_world_input_blocked():
 		return
-	debug_hud.visible = not debug_hud.visible
-	debug_hud.forces.enabled = debug_hud.visible
-	debug_hud.forces.queue_redraw()
-	visible = not debug_hud.visible
+	if event.is_action_pressed("debug"):
+		if _switch_debug_hud():
+			get_viewport().set_input_as_handled()
+
+
+func _switch_debug_hud() -> bool:
+	var level := _current_level()
+	if not is_instance_valid(debug_hud) or debug_hud.is_queued_for_deletion() or level != _bound_level:
+		_bind_level(level)
+	if not is_instance_valid(debug_hud):
+		return false
+	_debug_enabled = not _debug_enabled
+	_apply_debug_visibility()
+	return true
 
 
 func _on_exit_button_pressed() -> void:
+	get_node("/root/Blueprints").cancel_placement()
 	var esc_menu := get_tree().get_first_node_in_group(&"esc_menu")
 	if esc_menu == null:
 		esc_menu = ESC_SCENE.instantiate()
@@ -83,6 +115,11 @@ func _on_exit_button_pressed() -> void:
 
 
 func _on_log_button_pressed() -> void:
+	get_node("/root/Blueprints").cancel_placement()
 	var dialogue := get_tree().get_first_node_in_group(&"dialogue_box")
 	if dialogue != null and dialogue.has_method("toggle_log"):
 		dialogue.toggle_log()
+
+
+func _on_blueprint_button_pressed() -> void:
+	get_node("/root/Blueprints").open_library()

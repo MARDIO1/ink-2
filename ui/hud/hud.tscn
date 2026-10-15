@@ -125,5 +125,20 @@ texture_normal = ExtResource("6_log")
 ignore_texture_size = true
 stretch_mode = 5
 
+[node name="BlueprintButton" type="Button" parent="Root"]
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -240.0
+offset_top = 20.0
+offset_right = -172.0
+offset_bottom = 78.0
+grow_horizontal = 0
+focus_mode = 0
+tooltip_text = "蓝图手册：查看、管理与放置蓝图"
+mouse_default_cursor_shape = 2
+text = "蓝图"
+
+[connection signal="pressed" from="Root/BlueprintButton" to="." method="_on_blueprint_button_pressed"]
 [connection signal="pressed" from="Root/ExitButton" to="." method="_on_exit_button_pressed"]
 [connection signal="pressed" from="Root/LogButton" to="." method="_on_log_button_pressed"]

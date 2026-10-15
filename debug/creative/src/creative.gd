@@ -56,9 +56,13 @@ const MapPlacementOverlayScript := preload("res://debug/creative/src/map_placeme
 const MapImportedImageScript := preload("res://debug/creative/src/map_imported_image.gd")
 const PlayCanvasScene := preload("res://actor/canvas/canvas.tscn")
 const InkPalette := preload("res://ink/src/ink_palette.gd")
+const CanvasSurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
+const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 var _editor_ink_buttons: Array[Button] = []
 var _editor_ink_label: Label
+var _gear_button: Button
+var _gear8_button: Button
 const MAP_TEXT_FONT_PATH := "res://ui/map_text/asset/Muyao-Softbrush.ttf"
 const MONSTER_SCENES: Array[PackedScene] = [
 	preload("res://actor/monster/bomb_side.tscn"),
@@ -130,6 +134,7 @@ var _layout_drag_offset := Vector2.ZERO
 var _layout_drag_start := Vector2.ZERO
 var _layout_drag_start_scale := Vector2.ONE
 var _layout_drag_resizing := false
+var _gear_drag_history: Dictionary = {}
 var _selected_control_target = null
 var _canvas = null
 var _map_canvas = null
@@ -266,6 +271,9 @@ func _bind_paths_to_current_level() -> void:
 ## 放置放在普通输入阶段处理，优先于地图画布的绘制/物件输入；
 ## 旧地图中某些旧节点会提前消费 unhandled 输入，导致看起来选择了大盾却无法落下。
 func _input(event: InputEvent) -> void:
+	var blueprints := get_node_or_null("/root/Blueprints")
+	if blueprints != null and blueprints.blocks_world_event(event):
+		return
 	# F2 进入编辑器时可能在本次输入处理中立刻替换整个关卡。
 	# 先保留当前 Viewport，避免旧 Creative 节点脱离场景树后 get_viewport() 返回 null。
 	var viewport := get_viewport()
@@ -936,6 +944,10 @@ func _handle_layout_mouse_motion(event: InputEventMouse) -> bool:
 	var target_position := world_position + _layout_drag_offset
 	if _layout_drag_target.global_position.is_equal_approx(target_position):
 		return true
+	if _layout_drag_target is GearBearing:
+		_layout_drag_target.move_editor_drag(target_position)
+		_refresh_layout_overlay(_layout_drag_target)
+		return true
 	_layout_drag_target.global_position = target_position
 	if _layout_drag_target.is_in_group(&"map_monster"):
 		_pending_monster_move = _layout_drag_target
@@ -951,12 +963,21 @@ func _begin_layout_drag(target, world_position: Vector2) -> void:
 	if target == null:
 		_refresh_layout_overlay()
 		return
+	if target is GearBearing:
+		# 共用画布事务保存轮体和轴承，避免撤销创建后历史仍引用已释放的节点。
+		var bounds: Rect2 = Rect2(_map_canvas.surface.global_position, Vector2(_map_canvas.canvas_size))
+		bounds = bounds.merge(target.yellow_anchor.body.aabb)
+		_gear_drag_history = _map_canvas.History.capture(_map_canvas, true, bounds)
+		_gear_drag_history["bounds"] = bounds
+		if not target.begin_editor_drag():
+			_gear_drag_history.clear()
+			return
 	_layout_drag_target = target
 	_layout_drag_offset = target.global_position - world_position
 	_layout_drag_start = target.global_position
 	_layout_drag_start_scale = target.scale
 	_layout_drag_resizing = false
-	if target.is_in_group(&"map_monster"):
+	if target.is_in_group(&"map_monster") or target is GearBearing:
 		_lock_monster_drag_view()
 	_refresh_layout_overlay(target)
 	if _monster_mode == CONTROL_MODE:
@@ -969,6 +990,21 @@ func _finish_layout_drag() -> void:
 	_unlock_monster_drag_view()
 	var target = _layout_drag_target
 	_layout_drag_target = null
+	if is_instance_valid(target) and target is GearBearing:
+		var moved: bool = not target.global_position.is_equal_approx(_layout_drag_start)
+		if moved:
+			var cell := Vector2i(_map_canvas.surface.to_local(target.global_position).floor())
+			if _map_canvas.surface._inside(Vector2(cell)) and _map_canvas.surface.material_at(cell.x, cell.y) != 0:
+				_map_canvas.generate(false)
+			target.finish_editor_drag()
+			_gear_drag_history.bounds = _gear_drag_history.bounds.merge(target.yellow_anchor.body.aabb)
+			_map_canvas.History.commit(_map_canvas, _gear_drag_history)
+		else:
+			target.finish_editor_drag(true)
+		_gear_drag_history = {}
+		_refresh_layout_overlay(target)
+		_layout_drag_resizing = false
+		return
 	if is_instance_valid(target) and (not target.global_position.is_equal_approx(_layout_drag_start)
 		or not target.scale.is_equal_approx(_layout_drag_start_scale)):
 		_record_edit({
@@ -982,6 +1018,9 @@ func _finish_layout_drag() -> void:
 
 
 func _cancel_layout_drag() -> void:
+	if is_instance_valid(_layout_drag_target) and _layout_drag_target is GearBearing:
+		_layout_drag_target.finish_editor_drag(true)
+	_gear_drag_history = {}
 	_flush_monster_drag_move()
 	_unlock_monster_drag_view()
 	_layout_drag_target = null
@@ -999,6 +1038,7 @@ func _pick_control_target(world_position: Vector2, resizable_only := false):
 	]
 	if not resizable_only:
 		candidates.append_array([
+			_pick_gear(world_position),
 			_pick_portal(world_position),
 			_find_dialogue_trigger_at(world_position),
 			_pick_spawn_point(world_position),
@@ -1015,6 +1055,20 @@ func _pick_control_target(world_position: Vector2, resizable_only := false):
 				top = candidate
 				top_z = z
 	return top
+
+
+func _pick_gear(world_position: Vector2):
+	var level := _level_root()
+	if level == null:
+		return null
+	var children := level.get_children()
+	children.reverse()
+	for child in children:
+		if child is GearBearing and not child.is_queued_for_deletion() \
+		and child.editor_hit_test(world_position):
+			child._process(0.0)
+			return child
+	return null
 
 
 func _control_target_z(target: CanvasItem) -> int:
@@ -1104,6 +1158,8 @@ func _control_target_name(target) -> String:
 		return "左键拖动对象；滚轮缩放；右键删除怪物、画布、文本、对话、图片、传送门或墨泉"
 	if target.is_in_group(MapImportedImageScript.GROUP):
 		return "图片：拖动定位，右下角或滚轮缩放，右键删除"
+	if target is GearBearing:
+		return "齿轮：左键拖动整体及轴心，松开后重新连接支座"
 	if target.is_in_group(MapMonsterScript.GROUP):
 		return "怪物"
 	if target is Label and target.is_in_group(MapTextScript.GROUP):
@@ -1611,6 +1667,37 @@ func _build_monster_palette() -> void:
 	var color_separator := HSeparator.new()
 	column.add_child(color_separator)
 
+	var mechanism_title := Label.new()
+	mechanism_title.name = "MechanismTitle"
+	mechanism_title.text = "机关部件"
+	mechanism_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mechanism_title.theme_type_variation = &"TitleLabel"
+	column.add_child(mechanism_title)
+	var mechanism_grid := GridContainer.new()
+	mechanism_grid.name = "MechanismGrid"
+	mechanism_grid.columns = 3
+	column.add_child(mechanism_grid)
+	_gear8_button = Button.new()
+	_gear8_button.name = "Gear8ToolButton"
+	_gear8_button.text = "八齿齿轮"
+	_gear8_button.tooltip_text = "八齿齿轮：按下定圆心，拖动定半径；使用当前墨水颜色；操纵工具可移动"
+	_gear8_button.toggle_mode = true
+	_gear8_button.focus_mode = Control.FOCUS_NONE
+	_gear8_button.custom_minimum_size = Vector2(96.0, 44.0)
+	_gear8_button.pressed.connect(select_gear_tool.bind(8))
+	mechanism_grid.add_child(_gear8_button)
+	_gear_button = Button.new()
+	_gear_button.name = "GearToolButton"
+	_gear_button.text = "十二齿齿轮"
+	_gear_button.tooltip_text = "十二齿齿轮：按下定圆心，拖动定半径；使用当前墨水颜色；操纵工具可移动；再次点击退出"
+	_gear_button.toggle_mode = true
+	_gear_button.focus_mode = Control.FOCUS_NONE
+	_gear_button.custom_minimum_size = Vector2(96.0, 44.0)
+	_gear_button.pressed.connect(select_gear_tool.bind(12))
+	mechanism_grid.add_child(_gear_button)
+	_sync_gear_button()
+	column.add_child(HSeparator.new())
+
 	var title := Label.new()
 	title.name = "MonsterTitle"
 	title.text = "小怪放置"
@@ -1842,7 +1929,8 @@ func select_monster_tool(mode: int) -> void:
 	elif mode == _monster_mode:
 		mode = MONSTER_MODE_NONE
 	_monster_mode = mode
-	if mode != MONSTER_MODE_NONE and _map_canvas != null:
+	if _map_canvas != null and (mode != MONSTER_MODE_NONE \
+	or _map_canvas.surface.tool in [CanvasSurfaceScript.Tool.GEAR, CanvasSurfaceScript.Tool.GEAR_8]):
 		# 普通手不在画布上落笔；放怪期间用它避免一次单击同时画墨。
 		_syncing_canvas_tool = true
 		_map_canvas.set_tool(0)
@@ -1858,6 +1946,26 @@ func select_monster_tool(mode: int) -> void:
 	_refresh_layout_overlay()
 
 
+func select_gear_tool(teeth := 12) -> void:
+	if not active or _map_canvas == null or not _map_canvas._map_editor_mode:
+		return
+	var gear_tool: int = CanvasSurfaceScript.Tool.GEAR_8 if teeth == 8 else CanvasSurfaceScript.Tool.GEAR
+	if _map_canvas.surface.tool == gear_tool:
+		_map_canvas.set_tool(CanvasSurfaceScript.Tool.HAND)
+		return
+	select_monster_tool(MONSTER_MODE_NONE)
+	_map_canvas.set_tool(gear_tool)
+
+
+func _sync_gear_button() -> void:
+	if _gear8_button != null:
+		_gear8_button.set_pressed_no_signal(_map_canvas != null \
+			and _map_canvas.surface.tool == CanvasSurfaceScript.Tool.GEAR_8)
+	if _gear_button != null:
+		_gear_button.set_pressed_no_signal(_map_canvas != null \
+			and _map_canvas.surface.tool == CanvasSurfaceScript.Tool.GEAR)
+
+
 func select_control_tool() -> void:
 	if _monster_mode == CONTROL_MODE:
 		return
@@ -1865,6 +1973,7 @@ func select_control_tool() -> void:
 
 
 func _update_monster_buttons() -> void:
+	_sync_gear_button()
 	for index in _monster_buttons.size():
 		_monster_buttons[index].set_pressed_no_signal(_monster_mode == int(_monster_buttons[index].get_meta("monster_kind")))
 	if _delete_monster_button != null:
@@ -1887,6 +1996,7 @@ func _update_monster_buttons() -> void:
 
 
 func _on_canvas_tool_changed(_tool: int) -> void:
+	_sync_gear_button()
 	if _syncing_canvas_tool or _monster_mode == MONSTER_MODE_NONE:
 		return
 	_monster_mode = MONSTER_MODE_NONE
@@ -2584,6 +2694,8 @@ func _clear_edit_history() -> void:
 
 ## 按绘图与小怪编辑发生的实际顺序撤销，供 Ctrl+Z 和自动测试调用。
 func undo_last_edit() -> bool:
+	if is_instance_valid(_layout_drag_target) and _layout_drag_target is GearBearing:
+		_cancel_layout_drag()
 	if _edit_history.is_empty():
 		return false
 	var edit: Dictionary = _edit_history.pop_back()
@@ -2738,6 +2850,8 @@ func _capture_redo_data(edit: Dictionary) -> Dictionary:
 
 ## 取消最近一次撤销；与 Ctrl+Z 共用按时间排序的编辑记录。
 func redo_last_edit() -> bool:
+	if is_instance_valid(_layout_drag_target) and _layout_drag_target is GearBearing:
+		_cancel_layout_drag()
 	if _redo_history.is_empty():
 		return false
 	var item: Dictionary = _redo_history.pop_back()
@@ -3109,6 +3223,8 @@ func _run_edit_auto_save(revision: int) -> void:
 func _run_full_edit_auto_save(revision: int) -> void:
 	if revision != _auto_save_revision or not active or not auto_save_edits:
 		return
+	if is_instance_valid(_layout_drag_target) and _layout_drag_target is GearBearing:
+		return # 松手后的事务会重新安排保存，不能打包临时解除轴承的状态。
 	export_map_to(map_path, false)
 
 
@@ -3168,6 +3284,8 @@ func _activate_restored_editor(finish_transition := false) -> void:
 
 ## 保存入口始终写出可直接运行的 `.tscn`。prepare_canvas=false 仅供自动测试或只打包当前状态使用。
 func export_map_to(save_path: String, prepare_canvas := true) -> Error:
+	if is_instance_valid(_layout_drag_target) and _layout_drag_target is GearBearing:
+		_finish_layout_drag()
 	var scene := _level_root()
 	if scene == null:
 		push_error("Creative: 找不到关卡根")

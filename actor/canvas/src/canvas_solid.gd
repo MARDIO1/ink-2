@@ -6,6 +6,7 @@ extends Node
 
 const InkPalette := preload("res://ink/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
+const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const ANCHOR_TAG := "static_anchor_points"
 ## 墨水物品所在的组；存关卡时用它区分"画出来的东西"和地形/生物。
 const INK_GROUP := "ink_item"
@@ -63,7 +64,12 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 		blue.merge_shape(surface, shape)
 	var previous: Array = world.world.bodies.duplicate()
 	var ink_pixels: int = shape.pixel_count()
-	var rejected_pixels: int = _remove_overlaps(shape, surface, world.world.bodies)
+	var overlap_bodies: Array = world.world.bodies.duplicate()
+	# 齿轮通过轴承与支座分层重叠；墨化后再固化不能把支座的轴心挖掉。
+	for child in world.get_children():
+		if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
+			overlap_bodies.erase(child.yellow_anchor.body)
+	var rejected_pixels: int = _remove_overlaps(shape, surface, overlap_bodies)
 
 	# 连通分量 -> 刚体。静态岛再按 BLOCK_SIZE 切块：破坏代价于是以块封顶。
 	# 岛的静态判据与原来一致（岛内有没有钉子像素），不能改成按块判：
@@ -318,13 +324,19 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		return
 	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
 	var targets: Array = []
+	# 齿轮保持独立部件，避免墨化时与背后的支座焊成一个静态岛。
+	var gears := {}
+	if not keep_bodies:
+		for child in world.get_children():
+			if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
+				gears[child.yellow_anchor.body] = true
 	for child in world.get_children():
 		#⚠️ 只认刚体节点本身：Nail 这种外观节点也带 body 属性，
 		#   按 body 过滤会把它当刚体收走 —— remove_body_node 参数类型不符，直接报错/崩溃。
 		if not child is PixelBody2D:
 			continue
 		var body = child.get("body")
-		if body == null or body.tags.has(LIVING_TAG):
+		if body == null or body.tags.has(LIVING_TAG) or gears.has(body):
 			continue
 		if body.aabb.intersects(canvas_rect):
 			targets.append(child)
@@ -477,6 +489,9 @@ func sync_serializable_bodies(world) -> void:
 			world._body_nodes[index] = body_node
 		_write_body_node(body_node, body, world)
 	world.realign_body_nodes()
+	for child in world.get_children():
+		if child is GearBearing and not child.is_queued_for_deletion():
+			child._process(0.0)
 
 
 ## 画布回收属于编辑操作，留在画布外的像素必须继续作为可编辑实体存在。

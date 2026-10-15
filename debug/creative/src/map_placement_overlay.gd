@@ -29,6 +29,14 @@ func _draw() -> void:
 	for canvas in play_canvases:
 		if is_instance_valid(canvas):
 			_draw_canvas(canvas)
+	if is_instance_valid(selected) and selected.has_method("editor_outline"):
+		var outline: PackedVector2Array = selected.editor_outline()
+		for index in outline.size():
+			draw_line(to_local(outline[index]), to_local(outline[(index + 1) % outline.size()]), SELECTED_COLOR, 2.0, true)
+		var center := to_local(selected.global_position)
+		draw_arc(center, 7.0, 0.0, TAU, 24, CANVAS_COLOR, 2.0, true)
+		draw_line(center - Vector2(11, 0), center + Vector2(11, 0), CANVAS_COLOR, 1.0, true)
+		draw_line(center - Vector2(0, 11), center + Vector2(0, 11), CANVAS_COLOR, 1.0, true)
 
 
 func _draw_point(point: Node2D, color: Color, label: String) -> void:

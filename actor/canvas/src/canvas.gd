@@ -11,6 +11,7 @@ const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
 const YellowHinge := preload("res://actor/yellow/src/yellow_hinge.gd")
+const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const InkPalette := preload("res://ink/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
@@ -203,6 +204,9 @@ func generate(record_undo := true) -> void:
 		yellow.solidify(surface)
 	if surface.blue_rule() != null:
 		surface.blue_rule().solidify(surface)
+	for child in world.get_children():
+		if child is GearBearing and not child.is_queued_for_deletion():
+			child._process(0.0)
 	if record_undo:
 		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
@@ -214,7 +218,7 @@ func return_to_canvas(record_undo := true, keep_yellow_drafts := false) -> void:
 	if keep_yellow_drafts or _map_editor_mode:
 		# 黄墨连杆转回蓝图时，保存轴点并移除旧关节；下次固化重新创建。
 		for child in world.get_children().duplicate():
-			if not child is YellowHinge:
+			if not child is YellowHinge or child is GearBearing:
 				continue
 			var point: Vector2 = surface.to_local(world.to_global(child.yellow_position))
 			if not surface._inside(point):
@@ -583,6 +587,8 @@ func set_screen_fixed(on: bool) -> void:
 ## 两种模式都显示完整工具栏；地图编辑模式额外显示钉子与扩展画布。
 func set_map_editor_mode(on: bool) -> void:
 	_map_editor_mode = on
+	if not on and surface.tool in [SurfaceScript.Tool.GEAR, SurfaceScript.Tool.GEAR_8]:
+		_apply_tool(SurfaceScript.Tool.HAND)
 	tool_grid.get_node("Brush").visible = true
 	tool_grid.get_node("Eraser").visible = true
 	tool_grid.get_node("Shape").visible = true
@@ -1122,6 +1128,8 @@ func _open_shape_popup() -> void:
 
 ## 选中某个形状后切换工具并更新按钮提示。
 func _on_shape_picked(id: int) -> void:
+	if id not in [SurfaceScript.Tool.RECT, SurfaceScript.Tool.CIRCLE, SurfaceScript.Tool.LINE]:
+		return
 	_shape_tool = id
 	_apply_tool(id)
 	_update_shape_tooltip(id)
@@ -1142,6 +1150,8 @@ func _update_shape_tooltip(tool: int) -> void:
 
 
 func _apply_tool(tool: int) -> void:
+	if tool in [SurfaceScript.Tool.GEAR, SurfaceScript.Tool.GEAR_8] and not _map_editor_mode:
+		return
 	surface.tool = tool
 	hand_button.set_pressed_no_signal(tool == SurfaceScript.Tool.HAND)
 	tool_grid.get_node("Brush").set_pressed_no_signal(tool == SurfaceScript.Tool.BRUSH)
@@ -1202,6 +1212,9 @@ func _try_delete_selection_at(point: Vector2i) -> bool:
 
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
+		return
+	var blueprints := get_node_or_null("/root/Blueprints")
+	if blueprints != null and blueprints.blocks_world_event(event):
 		return
 	if not _map_editor_mode and not _workbench_nearby:
 		return

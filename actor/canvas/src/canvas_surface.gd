@@ -12,6 +12,8 @@ signal edit_committed
 
 const InkPalette := preload("res://ink/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
+const GearTool := preload("res://actor/canvas/src/gear_tool.gd")
+var gear_tool: Node2D
 #endregion
 
 #region 初始化
@@ -31,6 +33,10 @@ var _dirty_hi := Vector2i(-(1 << 30), -(1 << 30))
 @onready var rod_layer: Node2D = $YellowRodLayer
 var _rod_drawing := false
 func _ready() -> void:
+	gear_tool = GearTool.new()
+	gear_tool.name = "GearTool"
+	gear_tool.z_index = 12
+	add_child(gear_tool)
 	black_tiles.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_resize()
@@ -88,6 +94,9 @@ func _draw() -> void:
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
+	var blueprints := get_node_or_null("/root/Blueprints")
+	if blueprints != null and blueprints.blocks_world_event(event):
+		return
 	if event is InputEventMouseButton:
 		# 工具栏是屏幕固定 GUI，但本节点使用全局输入；若不主动拦截，按钮点击会同时
 		# 穿透到背后的世界画布。松开事件仍要放行，用来正确结束已开始的笔画/形状。
@@ -101,6 +110,9 @@ func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	_poll_snapshot()
+	if gear_tool != null and gear_tool.dragging:
+		gear_tool.update_preview(_mouse_point())
+		return
 	var low_now: bool = not ink_free and get_parent().active \
 	and _ink_room(ink_material_id()) < MIN_PAINT_INK
 	if low_now and not _low_ink_announced:
@@ -132,7 +144,7 @@ func _process(_delta: float) -> void:
 
 ## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；
 ## 直线按拖拽起终点绘制；墨水桶灌满封闭空区。LINE 追加在末尾以保持旧地图工具枚举值兼容。
-enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE, SELECT_CIRCLE }
+enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE, SELECT_CIRCLE, GEAR, GEAR_8 }
 
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
@@ -166,6 +178,8 @@ const MIN_PAINT_INK := 1000
 ## 当前工具；切换时中断正在进行的笔画或形状。
 @export var tool: Tool = Tool.HAND:
 	set(value):
+		if gear_tool != null:
+			gear_tool.cancel()
 		if _rod_drawing:
 			_finish_rod_stroke(rod_layer.last_point)
 		if is_node_ready() and not Engine.is_editor_hint():
@@ -222,6 +236,13 @@ func _is_nail(color: Color) -> bool:
 
 
 func _on_mouse_button(button: InputEventMouseButton) -> void:
+	if tool in [Tool.GEAR, Tool.GEAR_8]:
+		if button.button_index == MOUSE_BUTTON_LEFT:
+			if button.pressed and _inside(_mouse_point()):
+				gear_tool.begin(_mouse_point(), 8 if tool == Tool.GEAR_8 else 12)
+			elif not button.pressed:
+				gear_tool.finish(_mouse_point())
+		return
 	if button.pressed and button.button_index == MOUSE_BUTTON_LEFT \
 	and tool in [Tool.BRUSH, Tool.NAIL, Tool.RECT, Tool.CIRCLE, Tool.LINE, Tool.BUCKET] \
 	and _inside(_mouse_point()):
@@ -713,6 +734,8 @@ func clear(refund := true) -> void:
 	if refund and blue_rule() != null:
 		blue_rule().clear_drafts(self)
 	blue_layer.clear()
+	if gear_tool != null:
+		gear_tool.cancel()
 	var yellow = yellow_rule()
 	if refund and yellow != null:
 		yellow.clear_drafts(self)
@@ -1217,6 +1240,8 @@ func _cancel_undo_step() -> void:
 
 ## 撤销最近一次完整的画笔、橡皮、形状、墨水桶或钉子操作。
 func undo_last_edit() -> bool:
+	if gear_tool != null:
+		gear_tool.cancel()
 	if _undo_steps.is_empty():
 		return false
 	_cancel_selection()
@@ -1257,15 +1282,11 @@ func undo_last_edit() -> bool:
 		_redo_steps.append({"undo": step, "after": after})
 		return true
 	var blue_saved: Dictionary = step.get("blue", {})
-	step.erase("blue")
-	for pixel: Vector2i in step:
-		_set_pixel_raw(pixel, step[pixel])
+	for pixel in step:
+		if pixel is Vector2i:
+			_set_pixel_raw(pixel, step[pixel])
 	if not blue_saved.is_empty():
-		blue_layer.cells = blue_saved.cells
-		blue_layer.rebuild()
-		if blue_rule() != null:
-			blue_rule().restore(self, blue_saved.motors)
-		_bump_ink(InkPalette.BLUE.id, int(blue_saved.ledger) - ink_px_of(InkPalette.BLUE.id))
+		_restore_blue_edit(blue_saved)
 	_flush_texture()
 	_flush_ink()
 	_redo_steps.append({"undo": step, "after": after})
@@ -1274,6 +1295,8 @@ func undo_last_edit() -> bool:
 
 ## Ctrl+Y：回到撤销前的状态，并保留同一操作供再次 Ctrl+Z。
 func redo_last_edit() -> bool:
+	if gear_tool != null:
+		gear_tool.cancel()
 	if _redo_steps.is_empty():
 		return false
 	_cancel_selection()
@@ -1289,8 +1312,11 @@ func redo_last_edit() -> bool:
 		if after.has("black_pixels"):
 			_restore_black_pixels(after.black_pixels)
 	else:
-		for pixel: Vector2i in after:
-			_set_pixel_raw(pixel, after[pixel])
+		for pixel in after:
+			if pixel is Vector2i:
+				_set_pixel_raw(pixel, after[pixel])
+		if after.has("blue"):
+			_restore_blue_edit(after.blue)
 		_flush_texture()
 		_flush_ink()
 	_undo_steps.append(step)
@@ -1302,7 +1328,10 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 		return {"bucket_after": black_image.get_data(),
 			"bucket_material": step.bucket_material, "bucket_count": step.bucket_count}
 	if step.has("transaction") or step.has("yellow"):
-		var state: Dictionary = get_parent().History.capture(get_parent(), step.has("transaction"))
+		var bounds: Rect2 = step.get("transaction", {}).get("bounds", Rect2())
+		var state: Dictionary = get_parent().History.capture(get_parent(), step.has("transaction"), bounds)
+		if bounds.has_area():
+			state["bounds"] = bounds
 		if step.has("transaction"):
 			for id in step.transaction.remove_ids:
 				state.remove_ids[id] = true
@@ -1316,13 +1345,33 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 			current.rod_springs = yellow_rule().draft_data(self)
 		if step.has("black_pixels"):
 			current.black_pixels = {}
-			for cell: Vector2i in step.black_pixels:
-				current.black_pixels[cell] = black_image.get_pixelv(cell)
+			for cell in step.black_pixels:
+				if cell is Vector2i:
+					current.black_pixels[cell] = black_image.get_pixelv(cell)
+			if step.black_pixels.has("blue"):
+				current.black_pixels["blue"] = _capture_blue_edit()
 		return current
 	var current := {}
-	for pixel: Vector2i in step:
-		current[pixel] = black_image.get_pixelv(pixel)
+	for pixel in step:
+		if pixel is Vector2i:
+			current[pixel] = black_image.get_pixelv(pixel)
+	if step.has("blue"):
+		current["blue"] = _capture_blue_edit()
 	return current
+
+
+func _capture_blue_edit() -> Dictionary:
+	return {"cells": blue_layer.cells.duplicate(),
+		"motors": blue_rule().capture(self) if blue_rule() != null else [],
+		"ledger": ink_px_of(InkPalette.BLUE.id)}
+
+
+func _restore_blue_edit(state: Dictionary) -> void:
+	blue_layer.cells = state.cells
+	blue_layer.rebuild()
+	if blue_rule() != null:
+		blue_rule().restore(self, state.motors)
+	_bump_ink(InkPalette.BLUE.id, int(state.ledger) - ink_px_of(InkPalette.BLUE.id))
 
 
 func _restore_bucket_image(data: PackedByteArray, material_id: int, count: int) -> void:
@@ -1333,8 +1382,11 @@ func _restore_bucket_image(data: PackedByteArray, material_id: int, count: int) 
 
 
 func _restore_black_pixels(pixels: Dictionary) -> void:
-	for cell: Vector2i in pixels:
-		_set_pixel_raw(cell, pixels[cell])
+	for cell in pixels:
+		if cell is Vector2i:
+			_set_pixel_raw(cell, pixels[cell])
+	if pixels.has("blue"):
+		_restore_blue_edit(pixels.blue)
 	_flush_texture()
 	_flush_ink()
 

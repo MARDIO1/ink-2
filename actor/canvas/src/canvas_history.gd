@@ -4,6 +4,7 @@ const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const Stroke := preload("res://actor/yellow/src/yellow_stroke.gd")
 const Hinge := preload("res://actor/yellow/src/yellow_hinge.gd")
+const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const Palette := preload("res://ink/src/ink_palette.gd")
 const TOKEN := &"canvas_undo_identity"
 
@@ -24,7 +25,13 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 		"bodies": [], "before_ids": {}, "remove_ids": {}, "yellow": [], "hinges": [], "health": {}, "health_delta": {}}
 	for child in canvas.world.get_children():
 		if child is Hinge and not child.is_queued_for_deletion():
-			if not child.yellow_anchor.is_empty() and not child.black_anchor.is_empty():
+			if child is GearBearing and not child.yellow_anchor.is_empty():
+				child._process(0.0)
+				if not child.is_queued_for_deletion():
+					state.hinges.append([child.yellow_position, child.black_position,
+						{"material": child.gear_material, "support_material": child.support_material,
+						"world": child.fixed_to_world, "wheel_path": child.wheel_path, "teeth": child.teeth}])
+			elif not child.yellow_anchor.is_empty() and not child.black_anchor.is_empty():
 				state.hinges.append([Stroke.anchor_world(child.yellow_anchor), Stroke.anchor_world(child.black_anchor)])
 	var bounds := selection if selection.has_area() else Rect2(surface.global_position, Vector2(surface.canvas_size))
 	canvas.world.realign_body_nodes()
@@ -39,6 +46,8 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 		if not include_bodies or not body.aabb.intersects(bounds):
 			continue
 		var saved := InkItem.new()
+		if is_instance_valid(node):
+			saved.name = node.name
 		canvas.solid._write_body_node(saved, body, saved)
 		saved.initial_velocity = body.linear_velocity
 		saved.initial_angular_velocity = body.angular_velocity
@@ -125,7 +134,13 @@ static func restore(canvas, state: Dictionary) -> void:
 		var body = canvas.world.add_body_node(node)
 		body.tags[TOKEN] = saved.id
 	for saved in state.get("hinges", []):
-		var hinge := Hinge.new()
+		var hinge = GearBearing.new() if saved.size() > 2 else Hinge.new()
+		if hinge is GearBearing:
+			hinge.gear_material = saved[2].material
+			hinge.support_material = saved[2].support_material
+			hinge.fixed_to_world = saved[2].world
+			hinge.wheel_path = saved[2].wheel_path
+			hinge.teeth = saved[2].get("teeth", 12)
 		hinge.yellow_position = saved[0]
 		hinge.black_position = saved[1]
 		canvas.world.add_child(hinge)
