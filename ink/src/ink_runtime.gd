@@ -30,8 +30,10 @@ func _on_node_added(node: Node) -> void:
 	# PackedScene 装载时 node_added 可能早于脚本赋值；下一拍再识别世界。
 	_inject_world.call_deferred(node)
 
-func _inject_world(node: Node) -> void:
-	if not is_instance_valid(node):
+func _inject_world(node: Variant) -> void:
+	# 撤销会在 node_added 的延迟回调执行前移除临时实体。
+	# 参数若声明为 Node，已释放对象会在进入函数前触发类型转换错误。
+	if not is_instance_valid(node) or not node is Node:
 		return
 	var script: Script = node.get_script()
 	if script == null or not script.resource_path.ends_with("nodes/pixel_world.gd"):

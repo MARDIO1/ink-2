@@ -94,6 +94,8 @@ var _hit_recovery := 0.0
 var _animation: AnimationPlayer
 var _shield_visual: Sprite2D
 var _shield_visual_revision: Array = []
+var _shield_count_revision: Array = []
+var _shield_remaining_pixels := 0
 ## 盾兵当前朝向：1=面朝右，-1=面朝左。变化时需重建 ragdoll 以翻转肢体与盾牌。
 var _current_facing := -1
 var _turning_shield_shapes: Array = []
@@ -258,6 +260,30 @@ func sync_physics_from_node(rebuild_shape := false) -> void:
 		physics_world.world.freeze(physics_body)
 	else:
 		physics_world.world.unfreeze(physics_body)
+
+
+## 编辑拖动只平移已冻结的组件，复用形状、关节和包围盒，不逐次扫描像素。
+func sync_editor_translation() -> void:
+	if not _editor_physics_paused or _body == null:
+		sync_physics_from_node()
+		return
+	var physics_world := _find_physics_world()
+	if physics_world == null:
+		return
+	var shift: Vector2 = physics_world.to_local(global_position) - _body.position
+	if shift.is_zero_approx():
+		return
+	var bodies: Array = [_body]
+	if _ragdoll != null:
+		for part in _ragdoll.parts:
+			bodies.append(part.body)
+		if _ragdoll.shield_body != null:
+			bodies.append(_ragdoll.shield_body)
+	for physics_body in bodies:
+		physics_body.position += shift
+		physics_body.aabb.position += shift
+		physics_body.swept_aabb.position += shift
+		physics_body.refresh_com()
 
 
 ## 编辑模式冻结碰撞壳；游玩模式恢复动力学。
@@ -658,6 +684,7 @@ func _create_shield_visual() -> void:
 	_shield_visual.offset = _shield_visual.texture.get_size() * 0.5 \
 		- (Vector2(bounds.position) + Vector2(bounds.size) * 0.5)
 	_shield_visual_revision.clear()
+	_shield_count_revision.clear()
 	_shield_visual.visible = not shield_broken
 
 
@@ -674,10 +701,16 @@ func _sync_shield_visual() -> void:
 		return
 	var facing_scale := 1.0 if _current_facing < 0 else -1.0
 	var size := shield_scale * absf(scale.x)
-	var remaining_pixels := 0
+	var count_revision: Array = [shield_body.id]
 	for shape in shield_body.shapes:
-		remaining_pixels += shape.pixel_count()
-	if remaining_pixels < _ragdoll.shield_initial_pixels:
+		count_revision.append(shape)
+		count_revision.append(shape.revision)
+	if count_revision != _shield_count_revision:
+		_shield_count_revision = count_revision
+		_shield_remaining_pixels = 0
+		for shape in shield_body.shapes:
+			_shield_remaining_pixels += shape.pixel_count()
+	if _shield_remaining_pixels < _ragdoll.shield_initial_pixels:
 		_sync_damaged_shield_texture(shield_body)
 		_shield_visual.global_transform = Transform2D(
 			physics_world.global_rotation + shield_body.rotation,

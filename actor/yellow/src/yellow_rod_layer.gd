@@ -6,6 +6,7 @@ const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const Hinge := preload("res://actor/yellow/src/yellow_hinge.gd")
 const Stroke := preload("res://actor/yellow/src/yellow_stroke.gd")
+const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 @export var pixels: Image
 @export var anchor_points: PackedVector2Array = []
 var texture: ImageTexture
@@ -36,7 +37,10 @@ func resize(size: Vector2i, offset := Vector2i.ZERO) -> void:
 	refresh()
 
 func refresh() -> void:
-	texture = ImageTexture.create_from_image(pixels)
+	if texture != null and texture.get_size() == Vector2(pixels.get_size()):
+		texture.update(pixels)
+	else:
+		texture = ImageTexture.create_from_image(pixels)
 	queue_redraw()
 
 func _draw() -> void:
@@ -74,16 +78,20 @@ func extend(point: Vector2) -> void:
 	var out := {}
 	source_surface._brush_line(out, last_point, point)
 	var health = source_surface._health_node()
-	var room: int = int(source_surface._ink_room(Palette.YELLOW.id))
+	var room: int = int(source_surface._drawable_ink_room(Palette.YELLOW.id))
+	var visual_changed := false
 	for cell: Vector2i in out:
 		if not source_surface._inside(Vector2(cell)):
 			continue
 		var had: bool = pixels.get_pixelv(cell).a > 0
 		if had == not erasing or (not erasing and room <= 0):
+			if not erasing and not had and room <= 0:
+				source_surface._warn_ink_shortage(source_surface.MIN_PAINT_INK)
 			continue
 		if not changed.has(cell):
 			changed[cell] = had
 		pixels.set_pixelv(cell, Color.TRANSPARENT if erasing else Palette.YELLOW.color)
+		visual_changed = true
 		var delta := -1 if erasing else 1
 		ink_delta += delta
 		if not source_surface.ink_free and health != null:
@@ -93,11 +101,15 @@ func extend(point: Vector2) -> void:
 		for index in range(anchor_points.size() - 1, -1, -1):
 			if pixels.get_pixelv(Vector2i(anchor_points[index].floor())).a <= 0:
 				anchor_points.remove_at(index)
+				visual_changed = true
 		source_surface.yellow_rule().erase_spring_ends(source_surface, last_point, point)
 	last_point = point
-	refresh()
+	if not erasing and source_surface._ink_room(Palette.YELLOW.id) < source_surface.MIN_PAINT_INK:
+		source_surface._warn_ink_shortage(source_surface.MIN_PAINT_INK)
+	if visual_changed:
+		refresh()
 
-func finish(point: Vector2) -> void:
+func finish(point: Vector2, record_undo := true) -> Dictionary:
 	extend(point)
 	if not erasing:
 		for candidate in [start_point if start_is_black else Vector2.INF, point.floor() + Vector2.ONE * 0.5 if _black(point) else Vector2.INF]:
@@ -108,8 +120,71 @@ func finish(point: Vector2) -> void:
 	if springs_changed:
 		step["rod_springs"] = prior_springs
 	if not changed.is_empty() or prior_anchors != anchor_points or springs_changed:
-		source_surface.push_undo_step(step)
+		if record_undo:
+			source_surface.push_undo_step(step)
+		refresh()
+		return step
 	refresh()
+	return {}
+
+
+## 框删直接清理独立的黄墨像素；事务快照负责统一撤销和墨水账。
+func erase_rect(rect: Rect2i, mask: Dictionary = {}) -> bool:
+	var clipped := rect.intersection(Rect2i(Vector2i.ZERO, pixels.get_size()))
+	var removed := 0
+	for y in range(clipped.position.y, clipped.end.y):
+		for x in range(clipped.position.x, clipped.end.x):
+			if not SelectionMask.contains(mask, Vector2i(x, y)):
+				continue
+			if pixels.get_pixel(x, y).a <= 0.5:
+				continue
+			pixels.set_pixel(x, y, Color.TRANSPARENT)
+			removed += 1
+	if removed == 0:
+		return false
+	for index in range(anchor_points.size() - 1, -1, -1):
+		var anchor := Vector2i(anchor_points[index].floor())
+		if clipped.has_point(anchor) and SelectionMask.contains(mask, anchor):
+			anchor_points.remove_at(index)
+	if not source_surface.ink_free:
+		var health = source_surface._health_node()
+		if health != null:
+			health.add(Palette.YELLOW.id, removed)
+	refresh()
+	return true
+
+
+func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> bool:
+	if offset == Vector2i.ZERO:
+		return false
+	var source := {}
+	for y in range(rect.position.y, rect.end.y):
+		for x in range(rect.position.x, rect.end.x):
+			var point := Vector2i(x, y)
+			if not SelectionMask.contains(mask, point):
+				continue
+			if pixels.get_pixelv(point).a > 0.5:
+				source[point] = pixels.get_pixelv(point)
+	if source.is_empty():
+		return false
+	for point: Vector2i in source:
+		pixels.set_pixelv(point, Color.TRANSPARENT)
+	var overwritten := 0
+	for point: Vector2i in source:
+		var target: Vector2i = point + offset
+		if pixels.get_pixelv(target).a > 0.5:
+			overwritten += 1
+		pixels.set_pixelv(target, source[point])
+	for index in anchor_points.size():
+		var anchor := Vector2i(anchor_points[index].floor())
+		if rect.has_point(anchor) and SelectionMask.contains(mask, anchor):
+			anchor_points[index] += Vector2(offset)
+	if overwritten > 0 and not source_surface.ink_free:
+		var health = source_surface._health_node()
+		if health != null:
+			health.add(Palette.YELLOW.id, overwritten)
+	refresh()
+	return true
 
 func undo(step: Dictionary) -> void:
 	for cell: Vector2i in step.rod_pixels:

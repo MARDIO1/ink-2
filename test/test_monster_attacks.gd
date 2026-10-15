@@ -147,15 +147,44 @@ func _run() -> void:
 	var before: float = health.ink_of(1)
 	var red = level.get_node("SimulationRuntime/RedInk")
 	var pending_count: int = red._pending.size()
-	bomb.detonate()
+	for second in 20:
+		bomb._physics_process(1.0)
+	_check("idle grenade never auto ignites or expires", level.world.bodies.has(projectile_body)
+		and red._pending.size() == pending_count and health.ink_of(1) == before)
+	_check("no demo explosion or timed detonation entry", not bomb.has_method("detonate")
+		and not bomb.get_script().get_source_code().contains("func _draw"))
+	var saved_position: Vector2 = projectile_body.position
+	projectile_body.position += Vector2(5000, 0)
+	projectile_body.refresh_com()
+	projectile_body.update_aabb()
+	bomb._physics_process(0.0)
+	_check("separated grenade restores ordinary shooter collision", bomb.exclusions.is_empty()
+		and level.world.joints.size() == joint_count)
+	projectile_body.position = saved_position
+	projectile_body.refresh_com()
+	projectile_body.update_aabb()
+	# 用普通破坏提交模拟裂纹触及红墨；游戏手雷本身不再提交点火计划。
+	var removals: Dictionary = {}
+	for ink_shape in projectile_body.shapes:
+		var cells: Dictionary = {}
+		var bounds: Rect2i = ink_shape.local_aabb()
+		for y in range(bounds.position.y, bounds.end.y):
+			for x in range(bounds.position.x, bounds.end.x):
+				if ink_shape.get_pixel(x, y) == 8:
+					cells[Vector2i(x, y)] = true
+		removals[ink_shape] = cells
+	var runtime = level.get_node("SimulationRuntime")
+	var previous_nodes: Array = level._body_nodes.duplicate()
+	var committed: Dictionary = runtime.commit(level.world, {projectile_body: removals}, {}, true)
+	level.get_node("SimulationRuntime/PhysicsStep").sync_after_commit(previous_nodes, committed.changed)
 	var queued_count: int = red._pending.size()
-	_check("fuse queues shared red ink reaction instead of fixed damage", queued_count > pending_count and health.ink_of(1) == before)
+	_check("ordinary damage queues shared red ink reaction", queued_count > pending_count and health.ink_of(1) == before)
 	var energy := 0.0
 	for event in red._pending.slice(pending_count):
 		energy += float(event.energy)
 	_check("shared blast energy equals actual red pixel count", is_equal_approx(energy, red_pixels))
-	bomb.detonate()
-	_check("no duplicate red ink reaction", red._pending.size() == queued_count)
+	bomb._physics_process(1.0)
+	_check("grenade cleanup cannot enqueue another explosion", red._pending.size() == queued_count)
 	_check("explosion clears native collider and exclusion joints", projectile_body.rapier_id == 0
 		and level.world.bodies.size() == body_count and level.world.joints.size() == joint_count)
 	_check("projectile shape owner cycle cleared", projectile_body.shapes.all(func(shape): return shape.owner_body == null))

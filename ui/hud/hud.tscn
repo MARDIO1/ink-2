@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Texture2D" path="res://ui/hud/asset/health_hud.tres" id="1_health"]
 [ext_resource type="Texture2D" path="res://ui/esc/asset/exit.tres" id="2_exit"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://ui/hud/src/hud.gd" id="4_script"]
 [ext_resource type="Texture2D" path="res://ui/hud/asset/bottle_fill.svg" id="5_bottle_fill"]
 [ext_resource type="Texture2D" path="res://ui/hud/asset/dialogue_log.png" id="6_log"]
+[ext_resource type="Script" path="res://ui/hud/src/color_ink_bar.gd" id="7_color_ink_bar"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_health"]
 
@@ -48,6 +49,7 @@ texture_progress = ExtResource("5_bottle_fill")
 tint_progress = Color(0.0352941, 0.0313726, 0.0235294, 1)
 
 [node name="HealthBar" type="ProgressBar" parent="Root/HealthUI" groups=["health_ui"]]
+modulate = Color(1, 1, 1, 0)
 layout_mode = 0
 offset_left = 164.0
 offset_top = 20.0
@@ -59,6 +61,15 @@ theme_override_styles/fill = SubResource("StyleBoxFlat_health")
 step = 0.0
 value = 72.0
 show_percentage = false
+
+[node name="ColorInkBar" type="Control" parent="Root/HealthUI" groups=["health_ui"]]
+layout_mode = 0
+offset_left = 164.0
+offset_top = 20.0
+offset_right = 552.0
+offset_bottom = 60.0
+mouse_filter = 2
+script = ExtResource("7_color_ink_bar")
 
 [node name="HealthArt" type="TextureRect" parent="Root/HealthUI" groups=["health_ui"]]
 texture_filter = 1

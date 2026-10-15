@@ -32,15 +32,15 @@ func _run() -> void:
 		and health.ink_of(grey_id) == health.max_of(grey_id) - 1234.0)
 	_check("HUD reads black health only", is_equal_approx(hud.bottle_fill.value, 100.0)
 		and hud.health_bar.value == 100.0 and hud.ink_meter.text == "黑墨 20000 px")
-	player.apply_collision_damage(5000.0)
-	_check("nonlethal damage refreshes both meters", hud.health_bar.value == 75.0
-		and hud.bottle_fill.value == 75.0 and hud.ink_meter.text == "黑墨 15000 px" and not death._dead)
-	hurt_sound.stop()
 	health.damage(death.hurt_sound_threshold - 1.0)
 	_check("damage below sound threshold stays silent", not hurt_sound.playing)
 	health.damage(death.hurt_sound_threshold)
 	_check("damage at sound threshold plays hurt sound", hurt_sound.playing)
 	hurt_sound.stop()
+	health.add(black_id, health.max_of(black_id))
+	player.apply_collision_damage(5000.0)
+	_check("nonlethal damage refreshes both meters", hud.health_bar.value == 75.0
+		and hud.bottle_fill.value == 75.0 and hud.ink_meter.text == "黑墨 15000 px" and not death._dead)
 	# 黑墨只有极小余量时，其他颜色总量的近似相等不能吞掉归零 UI 通知。
 	health.reduce(black_id, health.ink_of(black_id) - 0.01)
 	var ui_zero_before_death := [false]

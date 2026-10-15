@@ -253,7 +253,7 @@ expand_icon = true
 [node name="SelectDelete" type="Button" parent="WorkbenchUI/Buttons/Grid"]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-tooltip_text = "框选删除（6）\n拖拽矩形，同时删除未固化与已固化内容；Ctrl+Z 撤销"
+tooltip_text = "框选（6）\n左键拖动选区和内容；Ctrl+左键只移动选框；框内右键删除"
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52

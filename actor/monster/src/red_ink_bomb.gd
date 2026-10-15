@@ -3,10 +3,7 @@ extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
 const Palette := preload("res://ink/src/ink_palette.gd")
 var level: Node2D
 var art: Sprite2D
-var age := 0.0
-var fuse := 1.2
-var landed := false
-var exploded := false
+var _disposed := false
 var exclusions: Array = []
 var _launch_velocity := Vector2.ZERO
 
@@ -55,7 +52,7 @@ static func spawn(host: Node2D, source: Sprite2D, shooter: Node2D, target: Vecto
 
 
 func _bake_lazily():
-	return null if exploded else level.add_body_node(self)
+	return null if _disposed else level.add_body_node(self)
 
 
 func build_shape():
@@ -96,52 +93,24 @@ func bake():
 	return result
 
 
-func _physics_process(delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	var creative := level.get_node_or_null("Creative")
 	if creative != null and creative.active:
 		queue_free()
 		return
-	if exploded or _body == null or not level.world.bodies.has(_body):
+	if _disposed or _body == null or not level.world.bodies.has(_body):
 		queue_free()
 		return
 	position = _body.position
 	rotation = _body.rotation
-	age += delta
-	if not landed and age > 0.15:
-		for index in level.world.contact_pair_count():
-			var pair: Dictionary = level.world.contact_info(index)
-			if pair.id_a == _body.rapier_id or pair.id_b == _body.rapier_id:
-				landed = true
-				break
-	if landed:
-		fuse -= delta
-	if fuse <= 0.0 or age >= 4.0:
-		detonate()
-
-
-func detonate() -> void:
-	if exploded or _body == null or not level.world.bodies.has(_body):
-		return
-	var runtime := level.get_node_or_null("SimulationRuntime")
-	if runtime == null:
-		return
-	exploded = true
-	var plan: Dictionary = {}
-	for shape in _body.shapes:
-		var cells: Dictionary = {}
-		var bounds: Rect2i = shape.local_aabb()
-		for y in range(bounds.position.y, bounds.end.y):
-			for x in range(bounds.position.x, bounds.end.x):
-				if shape.get_pixel(x, y) == Palette.RED.id:
-					cells[Vector2i(x, y)] = true
-		if not cells.is_empty():
-			plan[shape] = cells
-	# 删除前由公共 commit 通知 RedInk，下一固定步采用与画布相同的
-	# 爆炸、破坏、连锁、冲量、灰尘和音效，不再独立扣血或放大贴图。
-	var previous_nodes: Array = level._body_nodes.duplicate()
-	var result: Dictionary = runtime.commit(level.world, {_body: plan}, {}, true)
-	level.get_node("SimulationRuntime/PhysicsStep").sync_after_commit(previous_nodes, result.changed)
-	queue_free()
+	# 仅在出手时避免与手臂重叠；离开投掷者后恢复普通红墨的全部碰撞。
+	var overlaps_shooter := false
+	for joint in exclusions:
+		if joint.body_b != null and _body.aabb.intersects(joint.body_b.aabb):
+			overlaps_shooter = true
+			break
+	if not overlaps_shooter:
+		_clear_exclusions()
 
 
 func _on_body_fractured(_world, source, pieces: Array) -> void:
@@ -155,15 +124,11 @@ func _on_body_fractured(_world, source, pieces: Array) -> void:
 
 
 func _cleanup_body() -> void:
+	_disposed = true
 	if _body == null:
 		return
 	if is_instance_valid(level):
-		for joint in exclusions:
-			if level.world.joints.has(joint):
-				level.world.remove_joint(joint)
-			joint.body_a = null
-			joint.body_b = null
-		exclusions.clear()
+		_clear_exclusions()
 		level.realign_body_nodes()
 		if level.world.bodies.has(_body):
 			level.remove_body_node(self)
@@ -171,6 +136,15 @@ func _cleanup_body() -> void:
 	for shape in _body.shapes:
 		shape.owner_body = null
 	_body = null
+
+
+func _clear_exclusions() -> void:
+	for joint in exclusions:
+		if level.world.joints.has(joint):
+			level.world.remove_joint(joint)
+		joint.body_a = null
+		joint.body_b = null
+	exclusions.clear()
 
 
 func _exit_tree() -> void:

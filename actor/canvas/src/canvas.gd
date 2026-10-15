@@ -10,6 +10,7 @@ signal editor_control_requested
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
+const YellowHinge := preload("res://actor/yellow/src/yellow_hinge.gd")
 const InkPalette := preload("res://ink/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
@@ -53,6 +54,9 @@ const TOOL_SHORTCUT_ORDER := [
 var _expand_canvas_window: Window
 var _expand_inputs: Dictionary = {}
 var _expand_size_preview: Label
+var _ink_warning_panel: PanelContainer
+var _ink_warning_label: Label
+var _ink_warning_token := 0
 #endregion
 
 
@@ -103,11 +107,56 @@ func _ready() -> void:
 	if not Engine.is_editor_hint():
 		_build_side_panel()
 		_build_shape_popup()
+		_build_selection_popup()
 		_bind_buttons()
-		surface.selection_delete_requested.connect(_delete_selection)
+		surface.selection_move_requested.connect(_move_selection)
+		surface.ink_shortage.connect(_show_ink_shortage)
 		# 进入正常游戏时始终从“手”开始，不能继承地图保存时的画笔状态。
 		_apply_tool(SurfaceScript.Tool.HAND if active else surface.tool)
 #endregion
+
+
+## 墨水不足时在屏幕顶端提示一次；拖动过程不会逐帧反复弹出。
+func _show_ink_shortage(required: int, available: int) -> void:
+	if not active:
+		return
+	if _ink_warning_panel == null:
+		var layer := CanvasLayer.new()
+		layer.layer = 100
+		layer.name = "InkWarningLayer"
+		add_child(layer)
+		_ink_warning_panel = PanelContainer.new()
+		_ink_warning_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+		_ink_warning_panel.anchor_left = 0.5
+		_ink_warning_panel.anchor_right = 0.5
+		_ink_warning_panel.offset_left = -270.0
+		_ink_warning_panel.offset_top = 26.0
+		_ink_warning_panel.offset_right = 270.0
+		_ink_warning_panel.offset_bottom = 74.0
+		_ink_warning_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var background := StyleBoxFlat.new()
+		background.bg_color = Color(0.97, 0.95, 0.83, 0.96)
+		background.border_color = Color(0.04, 0.04, 0.03)
+		background.set_border_width_all(2)
+		_ink_warning_panel.add_theme_stylebox_override("panel", background)
+		layer.add_child(_ink_warning_panel)
+		_ink_warning_label = Label.new()
+		_ink_warning_label.theme = EditorTheme
+		_ink_warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_ink_warning_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_ink_warning_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_ink_warning_label.add_theme_font_size_override("font_size", 20)
+		_ink_warning_panel.add_child(_ink_warning_label)
+	if required <= SurfaceScript.MIN_PAINT_INK:
+		_ink_warning_label.text = "墨水低于 1000 px，无法作画（剩余 %d px）" % available
+	else:
+		_ink_warning_label.text = "墨水不足：完成绘制需 %d px，剩余 %d px" % [required, available]
+	_ink_warning_panel.visible = true
+	_ink_warning_token += 1
+	var token := _ink_warning_token
+	await get_tree().create_timer(2.4).timeout
+	if is_instance_valid(_ink_warning_panel) and token == _ink_warning_token:
+		_ink_warning_panel.visible = false
 
 
 #region 功能接口
@@ -155,13 +204,27 @@ func generate(record_undo := true) -> void:
 
 
 ## 画布范围内的实体重采样回墨水。
-func return_to_canvas() -> void:
-	var state := History.capture(self, true)
+func return_to_canvas(record_undo := true, keep_yellow_drafts := false) -> void:
+	var state: Dictionary = History.capture(self, true) if record_undo else {}
+	if keep_yellow_drafts or _map_editor_mode:
+		# 黄墨连杆转回蓝图时，保存轴点并移除旧关节；下次固化重新创建。
+		for child in world.get_children().duplicate():
+			if not child is YellowHinge:
+				continue
+			var point: Vector2 = surface.to_local(world.to_global(child.yellow_position))
+			if not surface._inside(point):
+				continue
+			if not surface.rod_layer.anchor_points.has(point):
+				surface.rod_layer.anchor_points.append(point)
+			child.remove_joint()
+			world.remove_child(child)
+			child.queue_free()
 	var yellow = surface.yellow_rule()
 	if yellow != null:
-		yellow.reclaim(surface)
+		yellow.reclaim(surface, keep_yellow_drafts or _map_editor_mode)
 	solid.rasterize(surface, world)
-	History.commit(self, state)
+	if record_undo:
+		History.commit(self, state)
 
 
 ## 地图编辑模式清理已经整体掉出画布的固化墨水。
@@ -205,14 +268,38 @@ func clear_solidified_bodies_outside_canvas() -> int:
 
 
 ## 未固化墨水与已固化实体一起框删，并合并成一个画布撤销步骤。
-func _delete_selection(rect: Rect2i) -> void:
+func _delete_selection(rect: Rect2i, mask: Dictionary = {}) -> void:
 	# 同一事务保存蓝图和实体，撤销时各自回到删除前的状态。
 	var state := History.capture(self, true, Rect2(surface.to_global(Vector2(rect.position)), Vector2(rect.size)))
-	var removed: int = solid.rasterize_rect(surface, world, rect)
+	var removed: int = solid.rasterize_rect(surface, world, rect, {}, mask)
 	if removed > 0:
 		solid.sync_serializable_bodies(world)
-	surface.erase_rect(rect)
+	surface.erase_rect(rect, mask)
+	surface.rod_layer.erase_rect(rect, mask)
+	var yellow = surface.yellow_rule()
+	if yellow != null:
+		yellow.erase_strokes_in_rect(surface, rect, mask)
 	History.commit(self, state)
+	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
+
+
+## 框选拖动：固化像素先回收到画布，再与普通/黄色图层一起搬移。
+func _move_selection(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> void:
+	if offset == Vector2i.ZERO:
+		return
+	var state := History.capture(self, true,
+		Rect2(surface.to_global(Vector2(rect.position)), Vector2(rect.size)))
+	var moved_physical: Dictionary = {}
+	var removed: int = solid.rasterize_rect(surface, world, rect, moved_physical, mask)
+	var moved_black: bool = surface.move_rect(rect, offset, mask)
+	var moved_yellow: bool = surface.rod_layer.move_rect(rect, offset, mask)
+	var yellow = surface.yellow_rule()
+	var moved_spring: bool = yellow.move_drafts_in_rect(surface, rect, offset, mask) if yellow != null else false
+	if removed > 0:
+		solid.spawn_moved_pixels(surface, world, moved_physical, offset, _map_editor_mode)
+		solid.sync_serializable_bodies(world)
+	if removed > 0 or moved_black or moved_yellow or moved_spring:
+		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 
@@ -520,7 +607,7 @@ func _prepare_workbench_structure() -> void:
 	var order := TOOL_SHORTCUT_ORDER
 	var captions := {
 		"Brush": "画笔", "Eraser": "橡皮", "Shape": "形状", "Bucket": "填充",
-		"Redraw": "清空", "SelectDelete": "框删", "Generate": "固化",
+		"Redraw": "清空", "SelectDelete": "框选", "Generate": "固化",
 		"ReturnToCanvas": "墨化", "Nail": "钉子", "ExpandCanvas": "扩展",
 	}
 	for index in order.size():
@@ -803,6 +890,7 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("Nail").pressed.connect(set_tool.bind(SurfaceScript.Tool.NAIL))
 	tool_grid.get_node("Bucket").pressed.connect(set_tool.bind(SurfaceScript.Tool.BUCKET))
 	tool_grid.get_node("SelectDelete").pressed.connect(set_tool.bind(SurfaceScript.Tool.SELECT_DELETE))
+	tool_grid.get_node("SelectDelete").gui_input.connect(_on_selection_button_input)
 	tool_grid.get_node("Redraw").pressed.connect(clear_canvas)
 	tool_grid.get_node("Generate").pressed.connect(generate)
 	tool_grid.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
@@ -975,6 +1063,7 @@ func _update_nail_visibility_tooltip(show_nails: bool) -> void:
 
 var _shape_tool: int = SurfaceScript.Tool.RECT
 var _shape_popup: PopupMenu
+var _selection_popup: PopupMenu
 var _temporary_eraser := false
 
 
@@ -988,6 +1077,28 @@ func _build_shape_popup() -> void:
 	_shape_popup.id_pressed.connect(_on_shape_picked)
 	_shape_popup.popup_hide.connect(_on_shape_popup_hide)
 	add_child(_shape_popup)
+
+
+## 左键沿用矩形框选；右键选择矩形或圆形，不占用额外工具栏位置。
+func _build_selection_popup() -> void:
+	_selection_popup = PopupMenu.new()
+	_selection_popup.name = "SelectionPopup"
+	_selection_popup.add_item("矩形框选", SurfaceScript.Tool.SELECT_DELETE)
+	_selection_popup.add_item("圆形框选", SurfaceScript.Tool.SELECT_CIRCLE)
+	_selection_popup.id_pressed.connect(_on_selection_picked)
+	add_child(_selection_popup)
+
+
+func _on_selection_button_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		_selection_popup.position = Vector2i(get_viewport().get_mouse_position())
+		_selection_popup.reset_size()
+		_selection_popup.popup()
+		get_viewport().set_input_as_handled()
+
+
+func _on_selection_picked(id: int) -> void:
+	_apply_tool(id)
 
 
 ## 点击形状按钮时在鼠标位置弹出三个选项。
@@ -1034,7 +1145,11 @@ func _apply_tool(tool: int) -> void:
 	)
 	tool_grid.get_node("Nail").set_pressed_no_signal(tool == SurfaceScript.Tool.NAIL)
 	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
-	tool_grid.get_node("SelectDelete").set_pressed_no_signal(tool == SurfaceScript.Tool.SELECT_DELETE)
+	tool_grid.get_node("SelectDelete").set_pressed_no_signal(
+		tool in [SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE])
+	tool_grid.get_node("SelectDelete").tooltip_text = (
+		"%s（6）\n左键拖动选区和内容；Ctrl+左键只移动选框；框内右键删除\n按钮上右键切换矩形 / 圆形选区，Ctrl+Z 撤销" %
+		("圆形框选" if tool == SurfaceScript.Tool.SELECT_CIRCLE else "框选"))
 	_sync_hand_enabled(tool)
 	if tool in [SurfaceScript.Tool.RECT, SurfaceScript.Tool.CIRCLE, SurfaceScript.Tool.LINE]:
 		_update_shape_tooltip(tool)
@@ -1070,10 +1185,25 @@ func _activate_tool_shortcut(keycode: int) -> bool:
 	return true
 
 
+func _try_delete_selection_at(point: Vector2i) -> bool:
+	if not surface.has_selection() or not surface._selection_contains(point):
+		return false
+	_delete_selection(surface.selection_rect(), surface.selection_mask())
+	surface.clear_selected_area()
+	return true
+
+
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
 	if not _map_editor_mode and not _workbench_nearby:
+		return
+	# 框选工具下，在选区内按右键直接删除；工具栏上的右键仍由弹出菜单处理。
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT \
+	and event.pressed and surface.tool in [SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE]:
+		if get_viewport().gui_get_hovered_control() == null \
+		and _try_delete_selection_at(Vector2i(surface._mouse_point().floor())):
+			get_viewport().set_input_as_handled()
 		return
 	#绘图工具下，右键只充当临时橡皮：按住切换，松开恢复，不改变长期工具选择。
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
@@ -1092,10 +1222,22 @@ func _input(event: InputEvent) -> void:
 		var focus := get_viewport().gui_get_focus_owner()
 		if focus is LineEdit or focus is TextEdit \
 		or (_shape_popup != null and _shape_popup.visible) \
+		or (_selection_popup != null and _selection_popup.visible) \
 		or (_expand_canvas_window != null and _expand_canvas_window.visible):
+			return
+		if event.keycode == KEY_BACKSPACE and surface.tool in [
+			SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE] \
+		and surface.has_selection():
+			_delete_selection(surface.selection_rect(), surface.selection_mask())
+			surface.clear_selected_area()
+			get_viewport().set_input_as_handled()
 			return
 		if not _map_editor_mode and event.ctrl_pressed and event.keycode == KEY_Z:
 			surface.undo_last_edit()
+			get_viewport().set_input_as_handled()
+			return
+		if not _map_editor_mode and event.ctrl_pressed and event.keycode == KEY_Y:
+			surface.redo_last_edit()
 			get_viewport().set_input_as_handled()
 			return
 		if not event.ctrl_pressed and not event.alt_pressed and not event.meta_pressed \

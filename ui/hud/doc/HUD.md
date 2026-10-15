@@ -4,18 +4,18 @@
 `game_ui.tscn` 由 `root/root.tscn` 挂在 `UI` 容器下，所以 HUD 与关卡不在同一棵子树。
 **瓶内液面 = 墨水量**（`Root/BottleFill`，`TextureProgressBar` + `fill_mode=3` 自下而上 +
 `ui/hud/asset/bottle_fill.svg` 当瓶形遮罩），瓶身线稿 `Root/HealthArt`
-（`ui/hud/asset/health_hud.tres`）盖在液面之上；顶部 `Root/HealthUI/HealthBar` 也显示同一份黑墨生命值，底层为黑色进度填充，上层保留原线稿边框。
+（`ui/hud/asset/health_hud.tres`）盖在液面之上；顶部横条 `ColorInkBar` 分为灰、红、黄、白四段，各段按自身剩余量显示，并在相邻已填满段的接缝处渐变混色。`HealthBar` 仍同步黑墨数值供旧逻辑读取，但其旧黑色填充不再显示。
 右上角 `Root/ExitButton`（`ui/esc/asset/exit.tres`）回主菜单；它左侧的 `Root/LogButton`
 使用 `ui/hud/asset/dialogue_log.png`，打开本次游玩中已经实际显示过的对话记录。
 
-`BottleFill / HealthBar / HealthArt / InkMeter` 属于 `health_ui` 组。进入创造/地图编辑模式时只隐藏这四个
+`BottleFill / HealthBar / ColorInkBar / HealthArt / InkMeter` 属于 `health_ui` 组。进入创造/地图编辑模式时只隐藏这些
 血量相关节点，退出时恢复它们进入前的显隐状态；`ExitButton` 不在该组，因此编辑时仍可用。
 
 ## 横条数据源
 
 `hud.gd` 的 `health_path`（默认 `^"../Player/InkHealth"`，找不到就按 `player` 组找）指向玩家墨水生命值节点
 `actor/player/src/ink_health.gd`。`_ready()` 里连 `changed` 并读一次 `ratio_of(BLACK.id)`，
-以后每次 `add()` / `reduce()` 都把 `BottleFill.value` 和 `HealthBar.value` 设成黑墨比例乘以 100。两个进度条的 `step=0`，不会把非整数血量比例舍入成不同显示。黑墨归零时先发 `changed` 刷新 UI，再发 `depleted` 触发死亡；复活补充黑墨后同步回满。
+以后每次 `add()` / `reduce()` 都把 `BottleFill.value` 和兼容用的 `HealthBar.value` 设成黑墨比例乘以 100，同时按灰、红、黄、白各自的 `ratio_of()` 与 `ink_of()` 更新四个横条区段及其数值。各色默认独立拥有 20000 px，不共享余额。黑墨归零时先发 `changed` 刷新 UI，再发 `depleted` 触发死亡；复活补充黑墨后同步回满。
 接不到节点（单独预览 `hud.tscn`）时才退回 `bar_ratio` 占位。
 墨水值本身的接口见 `actor/player/doc/生命值.md`。
 
