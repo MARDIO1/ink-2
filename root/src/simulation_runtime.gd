@@ -71,7 +71,6 @@ func _physics_process(delta: float) -> void:
 	var steps: int = 0
 	while _elapsed >= _main.fixed_dt and steps < _main.max_substeps:
 		var result: Dictionary = _step(_main.fixed_dt)
-		_player.apply_collision_damage(result.player_damage)
 		_observe_damage(result.hits)
 		_player.apply_collision_damage(result.player_damage, result.player_impacts)
 		if not result.removals.is_empty() or not result.carves.is_empty():
