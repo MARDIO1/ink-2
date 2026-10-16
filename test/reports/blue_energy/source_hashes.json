@@ -1,8 +1,8 @@
 {
   "ink/src/blue/energy_flow.gd": "513c2af66cb854cf9699ed8d79700d2f5bff1de57540cc26af8af00737005fa1",
   "ink/src/blue/motor.gd": "f17d1e588f195eb59d1313553f8eb17f5877c63e39a69c071d72aedb71a1277e",
-  "ink/src/blue/wire_layer.gd": "1eecb7c72f6baddeba55541e66ea7257578e8dc7b63d11db06b8c88aaf90a7c0",
-  "ink/src/blue_ink.gd": "e81198e7ad85b251592cede296d8e8f44bcd96188ba48b63d1a5771cd809da1d",
+  "ink/src/blue/wire_layer.gd": "cdc6fd37d7ac2ee8af75638f934de6210760cc2307add209b7aa0055caa12a15",
+  "ink/src/blue_ink.gd": "e4b42101d11dc6472061502b4bd4bc0e11fcf606db551592e9c5aa221303677e",
   "ink/native/energy_extension.cpp": "d9e9eaa29ddc9e085e31024fdb05b0a13688410f8a5a9ec80a5cf31bc6303c16",
   "ink/native/energy_kernel.hpp": "74899e641c02726c073d0e1974fce1720421cafd19360c819f0e9c6fe0ebabef",
   "ink/native/ink_energy.dll": "bbcbe0c919be52f4f476debb508d5f129429058be6dd253b2ee1845f42db2773",

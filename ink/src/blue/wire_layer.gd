@@ -22,6 +22,9 @@ var _cells_dirty := false
 		_cells_dirty = false
 @export var active := false
 @export var carrier_material: int = 1
+## 只调显示，不影响能源量/传播。Inspector 可按每条导线覆盖。
+@export_range(0.0, 8.0, 0.1) var highlight_brightness := 2.5
+@export_range(1.0, 6.0, 0.5) var highlight_core_width := 2.0
 var mask: Dictionary = {}
 var widths: Dictionary = {}
 var boundary: Array[Vector2i] = []
@@ -109,7 +112,7 @@ func show_energy_points(heads: PackedVector2Array, tails: PackedVector2Array, en
 	for i in heads.size():
 		energy_lines[i * 2] = heads[i] + Vector2(0, 0.5)
 		energy_lines[i * 2 + 1] = heads[i] + Vector2(1, 0.5)
-		var color := Color(0.9, 1.0, 1.0, clampf(sqrt(maxf(0.0, energies[i]) / reference), 0.05, 1.0))
+		var color := Color(0.9, 1.0, 1.0, clampf(sqrt(maxf(0.0, energies[i]) / reference) * highlight_brightness, 0.3, 1.0))
 		energy_colors[i] = color
 	tail_lines.resize(tails.size() * 2)
 	for i in tails.size():
@@ -156,11 +159,11 @@ func _draw() -> void:
 func _draw_energy() -> void:
 	# 批量线段模拟光晕，避免每个能源格建立粒子节点或单独光源。
 	if not tail_lines.is_empty():
-		_energy_display.draw_multiline(tail_lines, Color(0.3, 0.7, 1.0, 0.25), 3.0)
+		_energy_display.draw_multiline(tail_lines, Color(0.3, 0.7, 1.0, minf(0.65, 0.25 * highlight_brightness)), 3.0)
 	if not energy_lines.is_empty():
-		_energy_display.draw_multiline(energy_lines, Color(0.1, 0.45, 1.0, 0.12), 8.0)
-		_energy_display.draw_multiline(energy_lines, Color(0.35, 0.8, 1.0, 0.45), 4.0)
-		_energy_display.draw_multiline_colors(energy_lines, energy_colors, 1.0)
+		# 一层明亮光晕加亮芯，避免叠加两遍半透明外晕。
+		_energy_display.draw_multiline(energy_lines, Color(0.25, 0.7, 1.0, minf(0.85, 0.3 * highlight_brightness)), 5.0)
+		_energy_display.draw_multiline_colors(energy_lines, energy_colors, highlight_core_width)
 	for flash: Array in flash_points:
 		var alpha: float = maxf(0.0, 1.0 - (Time.get_ticks_msec() - flash[1]) / 200.0)
 		_energy_display.draw_circle(flash[0], 10.0, Color(0.4, 0.8, 1.0, alpha * 0.3))
@@ -168,8 +171,10 @@ func _draw_energy() -> void:
 
 func sync_pose() -> void:
 	if active and body != null:
-		position = body.position
-		rotation = body.rotation
+		if position != body.position:
+			position = body.position
+		if rotation != body.rotation:
+			rotation = body.rotation
 
 func _process(_delta: float) -> void:
 	sync_pose()

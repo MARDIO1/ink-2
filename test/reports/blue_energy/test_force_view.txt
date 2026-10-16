@@ -1,0 +1,16 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS Tab enables force view
+CREATIVE on
+PASS F2 suspends force view
+PASS Tab in editor preserves debug preference and stays hidden
+CREATIVE off
+PASS leaving F2 restores chosen force view
+PASS persistent GameUI rebinds after level reload
+PASS opposed arrows remain two independent force vectors
+PASS blue vectors include delivered power
+PASS spring shows equal opposite model forces
+PASS dim energy retains visible highlight and wider core
+GREY_SLED mixed_body_friction=0.45 floor_friction=0.5 speed_after_1s=0.0
+PASS reproduces current gray-bottom body friction averaging
+FORCE_VIEW failures=0

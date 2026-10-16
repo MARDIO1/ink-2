@@ -13,6 +13,7 @@ const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 @export var power_per_width := 100000000.0
 @export var source_power_per_pixel := 100000000.0
 @export var idle_power := 10000000.0
+## 红墨作为蓝色电源时的 J/像素；爆炸参数仍由 red_ink.gd 管理。
 @export var energy_per_red_pixel := 100000000.0
 @export_range(0.02, 1.0, 0.01) var fuel_interval := 0.1
 var drawing = null

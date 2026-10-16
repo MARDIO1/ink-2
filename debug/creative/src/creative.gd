@@ -6,6 +6,7 @@
 extends Node
 
 signal map_saved(path: String)
+signal mode_changed(editing: bool)
 
 const HEALTH_UI_GROUP := &"health_ui"
 const MONSTER_CONTAINER_NAME := &"Monsters"
@@ -425,6 +426,7 @@ func set_active(value: bool) -> void:
 		_enter()
 	else:
 		_exit()
+	mode_changed.emit(active)
 
 
 func _enter() -> void:

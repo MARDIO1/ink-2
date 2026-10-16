@@ -37,8 +37,9 @@ func run() -> void:
 	paint(Rect2i(20, 500, 960, 20), Color.BLACK)
 	paint(Rect2i(398, 350, 44, 7), Color.BLACK)
 	paint(Rect2i(419, 350, 3, 150), Color.BLACK)
-	paint(Rect2i(402, 352, 4, 5), Palette.RED.color)
-	paint(Rect2i(435, 352, 4, 5), Palette.RED.color)
+	# 与台座留空隙，生成两个独立红墨刚体；窄料槽限制侧翻，靠重力补料。
+	for x in [404, 414, 425, 435]:
+		paint(Rect2i(x, 310, 2, 40), Color.BLACK)
 	surface.black_image.set_pixel(420, 480, Palette.nail_color())
 	for cx in [240, 600]:
 		for y in range(296, 425):
@@ -58,11 +59,11 @@ func run() -> void:
 	var rule = level.get_node("SimulationRuntime/BlueInk")
 	level.set_editable_instance(level.get_node("SimulationRuntime"), true)
 	rule.owner = level
-	# 演示关卡储能较高，以便反复观察；不修改其他地图的红墨默认值。
-	rule.energy_per_red_pixel = 1.0e12
+	# 恢复正常燃料密度，满接触时每秒消耗约一行，肉眼可见地缩短/下落。
+	rule.energy_per_red_pixel = 1.0e8
 	# 两条独立链路：台座燃料 → 集电环两条通道 → 黄色车架 → 各自轮轴滑环。
 	surface.brush_size = 1
-	for pair in [[Vector2(406.5, 355.5), Vector2(416.5, 355.5)], [Vector2(424.5, 355.5), Vector2(434.5, 355.5)], [Vector2(245.5, 362.5), Vector2(415.5, 362.5)], [Vector2(425.5, 362.5), Vector2(595.5, 362.5)]]:
+	for pair in [[Vector2(406.5, 350.5), Vector2(416.5, 350.5)], [Vector2(416.5, 350.5), Vector2(416.5, 355.5)], [Vector2(424.5, 355.5), Vector2(424.5, 350.5)], [Vector2(424.5, 350.5), Vector2(434.5, 350.5)], [Vector2(245.5, 362.5), Vector2(415.5, 362.5)], [Vector2(425.5, 362.5), Vector2(595.5, 362.5)]]:
 		surface.blue_layer.begin(pair[0])
 		surface.blue_layer.extend(pair[1])
 		surface.blue_layer.finish()
@@ -96,6 +97,13 @@ func run() -> void:
 		push_error("Vehicle requires two wheel hinges and two stand hinges")
 		quit(1)
 		return
+	# 单独一次生成：即使燃料贴着料槽，也不能与黑色台座合并成一个刚体。
+	paint(Rect2i(406, 320, 8, 28), Palette.RED.color)
+	paint(Rect2i(427, 320, 8, 28), Palette.RED.color)
+	surface.rebuild_ink_tiles()
+	surface._rebuild_loaded_metadata()
+	canvas.generate(false)
+	await process_frame
 	var camera = level.get_node("Camera2D")
 	camera.enabled = false
 	var view := Camera2D.new()
@@ -108,7 +116,7 @@ func run() -> void:
 	view.make_current()
 	var title := Label.new()
 	title.name = "VehicleDescription"
-	title.text = "双轮反转车：左轮顺时针 / 右轮逆时针\n两路红燃料 → 台座集电环 → 车架导线 → 轮轴电滑环 → 箭头\n充电支架托起车身；擦掉支架可落地，断开台座后停止供电。"
+	title.text = "双轮反转车：左轮顺时针 / 右轮逆时针\n红色燃料条独立下落补料 → 台座集电环 → 车架 → 轮轴电滑环\n观察红条逐渐缩短、下落；燃料用尽后停止供电。"
 	title.position = canvas.position + Vector2(160, 200)
 	title.add_theme_color_override("font_color", Color.BLACK)
 	title.add_theme_font_size_override("font_size", 16)
@@ -131,19 +139,41 @@ func run() -> void:
 	await process_frame
 	await process_frame
 	rule = level.get_node("SimulationRuntime/BlueInk")
-	if rule.energy_per_red_pixel != 1.0e12:
+	if rule.energy_per_red_pixel != 1.0e8:
 		push_error("Vehicle fuel setting did not survive saving")
 		quit(1)
 		return
 	var motors: Array = rule.objects(Motor)
+	var fuel_bodies: Array = []
+	var initial_red := 0
+	for body in level.world.bodies:
+		for shape in body.shapes:
+			var red_count: int = shape.count_by_material().get(Palette.RED.id, 0)
+			initial_red += red_count
+			if red_count > 0 and red_count == shape.pixel_count() and not body.is_static:
+				fuel_bodies.append([body, body.position.y])
+	if fuel_bodies.size() != 2:
+		push_error("Fuel must reload as two independent dynamic red bodies")
+		quit(1)
+		return
 	var runtime = level.get_node("SimulationRuntime")
 	level.auto_step = true
 	var peaks := Vector2.ZERO
-	for frame in 6000:
+	var drop := 0.0
+	var explosion_pending := false
+	for frame in 1200:
 		runtime._physics_process(level.fixed_dt)
+		for entry in fuel_bodies:
+			drop = maxf(drop, entry[0].position.y - entry[1])
+		explosion_pending = explosion_pending or not level.get_node("SimulationRuntime/RedInk")._pending.is_empty()
 		peaks.x = maxf(peaks.x, motors[0].body.angular_velocity)
 		peaks.y = minf(peaks.y, motors[1].body.angular_velocity)
 	level.auto_step = false
+	var remaining_red := 0
+	for body in level.world.bodies:
+		for shape in body.shapes:
+			remaining_red += int(shape.count_by_material().get(Palette.RED.id, 0))
+	print("CAR_FUEL initial=", initial_red, " remaining=", remaining_red, " drop_px=", drop, " explosion=", explosion_pending)
 	print("BLUE_CAR saved=", DESTINATION, " motors=", motors.size(), " hinges=", rule.objects(Hinge).size(), " rotation_peaks=", peaks, " shorts=", rule.flow.stats.shorts)
 	if "--preview" in OS.get_cmdline_user_args():
 		level.auto_step = true
@@ -151,5 +181,5 @@ func run() -> void:
 			await process_frame
 		root.get_texture().get_image().save_png("res://test/reports/blue_energy/blue_car.png")
 		print("CAR_PREVIEW hinges=", rule.objects(Hinge).size(), " shorts=", rule.flow.stats.shorts)
-	quit(0 if peaks.x > 0.1 and peaks.y < -0.1 and rule.objects(Hinge).size() == 4 and rule.flow.stats.shorts == 0 else 1)
+	quit(0 if peaks.x > 0.1 and peaks.y < -0.1 and rule.objects(Hinge).size() == 4 and rule.flow.stats.shorts == 0 and remaining_red < initial_red - 16 and remaining_red > 0 and drop > 2.0 and not explosion_pending else 1)
 

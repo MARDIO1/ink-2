@@ -319,6 +319,17 @@ func connect_stroke(stroke, world) -> void:
 	stroke.joint.contacts_enabled = true
 
 func spring_load(stroke) -> float:
+	return absf(_spring_tension(stroke))
+
+## 作用在第一个锚点上的力；与关节相同的弹簧/阻尼模型估算，供磨损和 Tab 共用。
+func spring_force(stroke) -> Vector2:
+	if stroke.anchors.size() != 2:
+		return Vector2.ZERO
+	var a: Vector2 = Stroke.anchor_world(stroke.anchors[0])
+	var b: Vector2 = Stroke.anchor_world(stroke.anchors[1])
+	return (b - a).normalized() * _spring_tension(stroke)
+
+func _spring_tension(stroke) -> float:
 	if stroke.joint == null:
 		return 0.0
 	var a: Vector2 = Stroke.anchor_world(stroke.anchors[0])
@@ -327,7 +338,7 @@ func spring_load(stroke) -> float:
 	var speed: float = (stroke.anchors[1].body.velocity_at(b) - stroke.anchors[0].body.velocity_at(a)).dot(direction)
 	# SpringJoint 的马达冲量没有包含在当前桥接器的线性冲量读回里。
 	# 按相同弹簧/阻尼模型估算载荷，避免把持续受力误读成零。
-	return absf(stroke.joint.stiffness * (a.distance_to(b) - stroke.rest_length) + stroke.joint.damping * speed)
+	return stroke.joint.stiffness * (a.distance_to(b) - stroke.rest_length) + stroke.joint.damping * speed
 
 func observe_fracture(world, body, pieces: Array) -> void:
 	for child in _world.get_children():

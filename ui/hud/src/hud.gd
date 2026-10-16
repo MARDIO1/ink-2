@@ -20,16 +20,34 @@ const DEBUG_HUD_GROUP := "debug_hud"
 @onready var bottle_fill: TextureProgressBar = $Root/HealthUI/BottleFill
 @onready var ink_meter: Label = $Root/HealthUI/InkMeter
 var debug_hud = null
+var _creative = null
+var _debug_requested := false
 
 var _health = null
 
 
 func _ready() -> void:
+	_bind_level()
+
+func _process(_delta: float) -> void:
+	# F2 会复载关卡，但外层 GameUI 不重建；旧的玩家/HUD 引用必须一起换掉。
+	if not is_instance_valid(debug_hud) or not debug_hud.is_inside_tree():
+		_bind_level()
+
+func _bind_level() -> void:
+	if is_instance_valid(_creative) and _creative.mode_changed.is_connected(_on_editor_mode_changed):
+		_creative.mode_changed.disconnect(_on_editor_mode_changed)
+	if is_instance_valid(_health) and _health.changed.is_connected(_refresh_ink):
+		_health.changed.disconnect(_refresh_ink)
+	_creative = null
 	var explicit_hud := get_node_or_null(debug_hud_path)
 	debug_hud = explicit_hud if explicit_hud != null else get_tree().get_first_node_in_group(DEBUG_HUD_GROUP)
 	if debug_hud != null:
 		debug_hud.visible = false
 		debug_hud.forces.enabled = false   # 力采样默认开着：Tab 没按过就不能让它一直跑
+		_creative = debug_hud.get_parent().get_node_or_null("Creative")
+		if _creative != null:
+			_creative.mode_changed.connect(_on_editor_mode_changed)
 	_health = get_node_or_null(health_path)
 	if _health == null:
 		var player := get_tree().get_first_node_in_group(PLAYER_GROUP)
@@ -37,6 +55,8 @@ func _ready() -> void:
 	if _health != null:
 		_health.changed.connect(_refresh_ink)
 	_refresh_ink()
+	if debug_hud != null:
+		_on_editor_mode_changed(_creative.active if _creative != null else false)
 
 
 ## 瓶内液面 = 黑墨生命值。只有接不到生命值节点时才退回 bar_ratio 占位。
@@ -54,7 +74,10 @@ func _refresh_ink() -> void:
 ## 走 `_input` 不走 `_unhandled_input`：画布工具按钮（`Canvas/Buttons/*`）点过之后会占住焦点，
 ## 那时 Godot 的 GUI 会把 Tab 当 ui_focus_next 吃掉，`_unhandled_input` 收不到。
 func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("debug"):
+	if event.is_action_pressed("debug") and not event.is_echo():
+		# 编辑器保留自己的键盘焦点导航，不让 Tab 恢复力视图覆盖 F2 工具栏。
+		if is_instance_valid(_creative) and _creative.active:
+			return
 		get_viewport().set_input_as_handled()
 		_switch_debug_hud()
 
@@ -62,7 +85,11 @@ func _input(event: InputEvent) -> void:
 func _switch_debug_hud() -> void:
 	if debug_hud == null:
 		return
-	debug_hud.visible = not debug_hud.visible
+	_debug_requested = not _debug_requested
+	_on_editor_mode_changed(_creative.active if _creative != null else false)
+
+func _on_editor_mode_changed(editing: bool) -> void:
+	debug_hud.visible = _debug_requested and not editing
 	debug_hud.forces.enabled = debug_hud.visible
 	debug_hud.forces.queue_redraw()
 	visible = not debug_hud.visible
