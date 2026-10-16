@@ -1,5 +1,5 @@
 extends SceneTree
-const Effect := preload("res://actor/effects/character_death.gd")
+const Effect := preload("res://actor/general/effects/character_death.gd")
 var failures := 0
 
 

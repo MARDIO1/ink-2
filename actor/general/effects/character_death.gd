@@ -2,7 +2,7 @@ extends Node2D
 ## 角色死亡的纯视觉残影：不引用原角色，不烘焙、不碰撞、不参与存档。
 signal finished
 
-const DeathShader := preload("res://actor/effects/character_death.gdshader")
+const DeathShader := preload("res://actor/general/effects/character_death.gdshader")
 const HIT_PAUSE_SECONDS := 0.06
 enum Style { PLAYER, SOLDIER, SHIELD, BOMB, REVIVE }
 var style := Style.SOLDIER
@@ -18,7 +18,7 @@ var _width := 70.0
 
 static func spawn(host: Node2D, sprites: Array, effect_style: Style,
 		foot: Vector2, hit_direction := 1.0, only_dissolve := false):
-	var effect := load("res://actor/effects/character_death.gd").new() as Node2D
+	var effect := load("res://actor/general/effects/character_death.gd").new() as Node2D
 	effect.name = "CharacterDeathEffect"
 	effect.add_to_group(&"character_death_effect")
 	effect.style = effect_style

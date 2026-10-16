@@ -10,7 +10,7 @@ const LIVING_TAG := "living"
 const MONSTER_TAG := "map_monster"
 const Ragdoll := preload("res://actor/monster/src/monster_ragdoll.gd")
 const HealthBar := preload("res://actor/monster/src/monster_health_bar.gd")
-const DeathEffect := preload("res://actor/effects/character_death.gd")
+const DeathEffect := preload("res://actor/general/effects/character_death.gd")
 signal health_changed(current: float, maximum: float)
 signal died
 const HEALTH_MULTIPLIER := 5.0
