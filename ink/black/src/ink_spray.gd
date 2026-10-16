@@ -12,8 +12,8 @@ extends Node2D
 ## 由 SimulationRuntime 通过 observe_damage 能力接口调用，本脚本不认识伤害规则。
 
 #region 依赖
-const InkPalette := preload("res://ink/src/ink_palette.gd")
-const SPLAT_SHADER := preload("res://ink/asset/ink_splat.gdshader")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
+const SPLAT_SHADER := preload("res://ink/black/asset/ink_splat.gdshader")
 ## 着色器里同时能演的喷溅条数。⚠️ 必须和 ink_splat.gdshader 里的数组长度 8 一致。
 const MAX_SPLATS := 8
 #endregion
@@ -35,18 +35,18 @@ const MAX_SPLATS := 8
 ## 喷溅锥角（度），围绕受击表面朝外的方向。
 @export_range(0.0, 180.0, 1.0) var spread_degrees: float = 62.0
 ## 粒子寿命（秒）；越大消去越慢。
-@export_range(0.1, 4.0, 0.05) var lifetime: float = 1.1
+@export_range(0.1, 4.0, 0.05) var lifetime: float = 1.35
 ## 视觉重力（px/s²），不进物理世界。墨滴要飞得出去：太大就变成"刚喷出来就往下掉"。
 @export var gravity: float = 280.0
 ## 墨的不透明度。<1 就是「带点透明的黑」：单层能透出底色，叠得密的地方才更黑。
-@export_range(0.05, 1.0, 0.01) var opacity: float = 0.75
+@export_range(0.05, 1.0, 0.01) var opacity: float = 0.9
 ## 墨滴方块的边长上限（px）。硬边小方块，着色器里再取整到 1..它。
-@export var drop_size: float = 4.0
+@export var drop_size: float = 5.0
 ## 刚过阈值 / 满配时的墨点数量；中间按伤害线性插值。
-@export_range(1, 24, 1) var drop_min: int = 4
-@export_range(1, 24, 1) var drop_max: int = 22
+@export_range(1, 64, 1) var drop_min: int = 12
+@export_range(1, 64, 1) var drop_max: int = 48
 ## 整簇的透明渐变强度：0 = 整簇一样淡，1 = 只有落点浓、飞到远处几乎看不见。
-@export_range(0.0, 1.0, 0.01) var gradient: float = 0.65
+@export_range(0.0, 1.0, 0.01) var gradient: float = 0.35
 ## 方块自转速度（弧度/秒）。每颗的出生角度随机、转向和快慢也各不相同。
 @export var spin_speed: float = 2.5
 ## 同一处的重复伤害抑制：格边长（px）与冷却（秒）。

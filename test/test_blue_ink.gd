@@ -1,8 +1,8 @@
 extends SceneTree
 ## 蓝色端到端回归：画布、物性、供电、燃料与普通红色爆炸边界。
-const Palette := preload("res://ink/src/ink_palette.gd")
-const Wire := preload("res://ink/src/blue/wire_layer.gd")
-const Motor := preload("res://ink/src/blue/motor.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Wire := preload("res://ink/blue/src/wire_layer.gd")
+const Motor := preload("res://ink/blue/src/motor.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 var checks := 0

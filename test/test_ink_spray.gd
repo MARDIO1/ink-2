@@ -1,12 +1,12 @@
 extends SceneTree
 ## 黑墨喷溅验收：伤害事件 → 纯 shader 的喷溅表、阈值、去重、寿命；且不碰物理世界与墨水账。
 
-const InkSpray = preload("res://ink/src/ink_spray.gd")
+const InkSpray = preload("res://ink/black/src/ink_spray.gd")
 const ImpactDamage = preload("res://root/src/impact_damage.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
-const InkPalette = preload("res://ink/src/ink_palette.gd")
+const InkPalette = preload("res://ink/general/src/ink_palette.gd")
 
 var failures: int = 0
 var checks: int = 0
@@ -146,6 +146,9 @@ func _run() -> void:
 	_check("droplet count scales with damage",
 		spray._material.shader.code.contains("mix(drop_min, drop_max, strength)")
 		and is_equal_approx(float(spray._material.get_shader_parameter("drop_max")), float(spray.drop_max)))
+	_check("dense spray uses substantially more droplets",
+		spray.drop_min >= 12 and spray.drop_max >= 48
+		and spray._material.shader.code.contains("j < 64"))
 	_check("droplets are hard-edged squares",
 		spray._material.shader.code.contains("float box_alpha(")
 		and spray._material.shader.code.contains("step(max(d.x, d.y), 0.0)"))

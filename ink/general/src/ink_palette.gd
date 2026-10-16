@@ -1,5 +1,5 @@
 #墨水色表：**唯一真源**。画布、固化、墨水账、右侧选择面板都从这里读。
-#加一种墨水只要两步：① 在 ink/asset/ 放一个 PixelMaterial（id 唯一、没被占用）
+#加一种墨水只要两步：① 在 ink/<color>/asset/ 放一个 PixelMaterial（id 唯一、没被占用）
 #                    ② 在下面 INKS 里加一行。别的地方不用动。
 #⚠️ 各墨水的颜色要两两分得开：认墨水靠颜色最近匹配（见 MATCH_TOLERANCE）。
 
@@ -9,12 +9,12 @@ extends RefCounted
 ## 颜色通道差小于它就算同一种墨水。
 const MATCH_TOLERANCE: float = 0.05
 
-const BLACK := preload("res://ink/asset/black.tres")
-const GREY := preload("res://ink/asset/grey1.tres")
-const RED := preload("res://ink/asset/red.tres")
-const YELLOW := preload("res://ink/asset/yellow.tres")
-const BLUE := preload("res://ink/asset/blue.tres")
-const WHITE := preload("res://ink/asset/white.tres")
+const BLACK := preload("res://ink/black/asset/black.tres")
+const GREY := preload("res://ink/grey/asset/grey1.tres")
+const RED := preload("res://ink/red/asset/red.tres")
+const YELLOW := preload("res://ink/yellow/asset/yellow.tres")
+const BLUE := preload("res://ink/blue/asset/blue.tres")
+const WHITE := preload("res://ink/white/asset/white.tres")
 ## 钉子**不是墨水**：它有自己的贴图，只是借像素材质存一个 id。
 const NAIL := preload("res://actor/nail/asset/nail.tres")
 const INKS: Array = [

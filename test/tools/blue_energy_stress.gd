@@ -1,9 +1,9 @@
 extends Node2D
 ## F6 可玩的确定性压力地图。-- --bench --case=chaos 自动输出窗口帧耗时验收。
 ## 使用完整关卡的 SimulationRuntime / Rapier / 材质 / 箭头，不用空循环冒充游戏 FPS。
-const Palette := preload("res://ink/src/ink_palette.gd")
-const Motor := preload("res://ink/src/blue/motor.gd")
-const Wire := preload("res://ink/src/blue/wire_layer.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Motor := preload("res://ink/blue/src/motor.gd")
+const Wire := preload("res://ink/blue/src/wire_layer.gd")
 @export_enum("short", "long", "chaos") var scenario := "chaos"
 @export var warmup_seconds := 5.0
 @export var sample_seconds := 15.0

@@ -1,7 +1,7 @@
 extends SceneTree
 
-const Palette = preload("res://ink/src/ink_palette.gd")
-const Stroke = preload("res://ink/src/yellow/stroke.gd")
+const Palette = preload("res://ink/general/src/ink_palette.gd")
+const Stroke = preload("res://ink/yellow/src/stroke.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")

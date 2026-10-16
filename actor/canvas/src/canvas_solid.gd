@@ -4,7 +4,7 @@
 #region 依赖
 extends Node
 
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const ANCHOR_TAG := "static_anchor_points"
 ## 墨水物品所在的组；存关卡时用它区分"画出来的东西"和地形/生物。
 const INK_GROUP := "ink_item"

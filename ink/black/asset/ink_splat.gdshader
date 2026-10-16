@@ -22,12 +22,12 @@ uniform float min_speed = 90.0;
 uniform float max_speed = 260.0;
 uniform float spread = 1.08;
 // 墨滴方块的边长上限（px）。
-uniform float drop_size = 4.0;
+uniform float drop_size = 5.0;
 // 墨点数量：刚过阈值只溅几颗，满配才全撒出去。中间按伤害（strength）线性插值。
-uniform float drop_min = 4.0;
-uniform float drop_max = 22.0;
+uniform float drop_min = 12.0;
+uniform float drop_max = 48.0;
 // 整簇的透明渐变强度：0 = 整簇一样淡，1 = 只有落点浓、飞到远处几乎看不见。
-uniform float gradient = 0.65;
+uniform float gradient = 0.35;
 // 方块自转速度（弧度/秒）。每颗的正负和快慢都不一样。
 uniform float spin_speed = 2.5;
 
@@ -85,7 +85,7 @@ void fragment() {
 		// 墨滴：一颗颗小方块，位置是弹道的解析解。颗数随伤害 —— 轻伤只溅几颗。
 		float base_angle = atan(tail.y, tail.x);
 		int drops = int(clamp(mix(drop_min, drop_max, strength), drop_min, drop_max) + 0.5);
-		for (int j = 0; j < 24; j++) {
+		for (int j = 0; j < 64; j++) {
 			if (j >= drops) {
 				break;
 			}

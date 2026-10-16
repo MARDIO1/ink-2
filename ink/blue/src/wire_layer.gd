@@ -2,7 +2,7 @@
 extends Node2D
 ## 草稿与实体共用导电覆盖层。物性仍属于唯一 PBody；覆盖黑色不增加质量。
 ## 此节点管理导线像素、显示和载体跟随；能源接触由 energy_flow.gd 管理。
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const DIRS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 

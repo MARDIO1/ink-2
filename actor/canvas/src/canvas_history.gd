@@ -2,9 +2,9 @@ extends RefCounted
 
 const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
-const Stroke := preload("res://ink/src/yellow/stroke.gd")
-const Hinge := preload("res://ink/src/yellow/hinge.gd")
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Stroke := preload("res://ink/yellow/src/stroke.gd")
+const Hinge := preload("res://ink/yellow/src/hinge.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const TOKEN := &"canvas_undo_identity"
 
 static func identity(node: Node) -> int:

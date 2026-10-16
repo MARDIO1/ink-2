@@ -2,8 +2,8 @@ extends Node2D
 ## 白墨实景测试：自由落体、薄墙扫掠、红墨反应、黄线死亡和玩家扣血。
 const Item := preload("res://actor/ink_item/src/ink_item.gd")
 const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
-const Stroke := preload("res://ink/src/yellow/stroke.gd")
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Stroke := preload("res://ink/yellow/src/stroke.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 var samples: Dictionary = {}
 var failures := 0
 var frames := 0
@@ -214,7 +214,7 @@ func _test_canvas() -> void:
 	for body in main.world.bodies:
 		if body.tags.has("white_ink"):
 			white = body
-	_check("canvas white survives overlapping target", white != null and preload("res://ink/src/white_ink.gd")._area(white) == 66 and target.shapes[0].pixel_count() == 64)
+	_check("canvas white survives overlapping target", white != null and preload("res://ink/white/src/white_ink.gd")._area(white) == 66 and target.shapes[0].pixel_count() == 64)
 	_check("disconnected white uses one body", main.world.bodies.filter(func(body): return body.tags.has("white_ink")).size() == 1)
 	_check("activated white cannot undo", surface._undo_steps.is_empty())
 	for body in [target, white]:

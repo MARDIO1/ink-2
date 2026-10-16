@@ -1,7 +1,7 @@
 extends Node2D
 ## 两个验收机构全部由真实画布生成；没有隐藏约束或驱动马达。
-const Palette := preload("res://ink/src/ink_palette.gd")
-const Hinge := preload("res://ink/src/yellow/hinge.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Hinge := preload("res://ink/yellow/src/hinge.gd")
 @export_enum("Seesaw", "Parallel four-bar") var mechanism: int = 0
 var level
 var canvas

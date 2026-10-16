@@ -10,7 +10,7 @@ signal editor_control_requested
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
@@ -139,7 +139,7 @@ func clear_canvas() -> void:
 ## 墨水固化成实体（原 E 键）。
 func generate(record_undo := true) -> void:
 	# 激活白墨即不可撤销；它随后会修改别的实体，旧事务不能跨过这条边界。
-	if surface.ink_px_of(preload("res://ink/src/ink_palette.gd").WHITE.id) > 0:
+	if surface.ink_px_of(preload("res://ink/general/src/ink_palette.gd").WHITE.id) > 0:
 		record_undo = false
 		surface._undo_steps.clear()
 	var state: Dictionary = History.capture(self) if record_undo else {}

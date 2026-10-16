@@ -1,10 +1,10 @@
 extends Node2D
 
 #region 数据
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
-const TERMINAL := preload("res://ink/asset/yellow/terminal.svg")
+const TERMINAL := preload("res://ink/yellow/asset/terminal.svg")
 const NEIGHBORS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
 const CRACK_FRACTIONS: Array[float] = [0.44, 0.50, 0.56]
 enum State { EDITING, ACTIVE, DYING, REMOVED }

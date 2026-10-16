@@ -2,7 +2,7 @@ extends RefCounted
 ## 能源生产与接触适配：数值推进在 ink/native，GDScript 保留燃料和场景接口。
 ## 不建全局电网。缓存仅记录局部接触，形状/相对姿态改变时更新。
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const DIRS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 var speed := 600.0
 var interval := 0.1
@@ -45,7 +45,7 @@ func _ensure() -> void:
 	if _native != null:
 		return
 	if not ClassDB.class_exists("InkEnergyGrid"):
-		GDExtensionManager.load_extension("res://ink/native/ink_energy.gdextension")
+		GDExtensionManager.load_extension("res://ink/blue/native/ink_energy.gdextension")
 	assert(ClassDB.class_exists("InkEnergyGrid"), "InkEnergyGrid missing: build ink/native then import project")
 	_native = ClassDB.instantiate("InkEnergyGrid")
 

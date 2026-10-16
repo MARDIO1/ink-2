@@ -2,7 +2,7 @@
 extends Node
 
 const Query := preload("res://addons/pixel_destruction/physics/query.gd")
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 
 @onready var body = $"..".body
 @onready var arm_body = $"../..".body

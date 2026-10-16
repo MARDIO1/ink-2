@@ -1,6 +1,6 @@
 extends SceneTree
-const Flow := preload("res://ink/src/blue/energy_flow.gd")
-const Wire := preload("res://ink/src/blue/wire_layer.gd")
+const Flow := preload("res://ink/blue/src/energy_flow.gd")
+const Wire := preload("res://ink/blue/src/wire_layer.gd")
 var checks := 0
 var failures := 0
 

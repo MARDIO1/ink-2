@@ -2,7 +2,7 @@ extends Node
 ## 白墨先作为真实刚体落地；首次接触后变成无碰撞附着物，缓慢消耗自身并腐蚀目标。
 
 #region 配置与状态
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const ContactImpact := preload("res://root/src/contact_impact.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")

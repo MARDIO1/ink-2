@@ -9,7 +9,7 @@ signal selection_delete_requested(rect: Rect2i)
 
 signal edit_committed
 
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 #endregion
 
 #region 初始化
@@ -166,7 +166,7 @@ var _shape_delta := 0
 		tool = value
 		_painting = false
 		_shaping = false
-## 当前选中的墨水（`ink/src/ink_palette.gd` 的 INKS 下标）；右侧面板改它。
+## 当前选中的墨水（`ink/general/src/ink_palette.gd` 的 INKS 下标）；右侧面板改它。
 @export var selected_ink: int = 0:
 	set(value):
 		if selected_ink != value and is_node_ready():

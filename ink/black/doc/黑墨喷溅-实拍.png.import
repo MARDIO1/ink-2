@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dmxdg34m6gya2"
-path="res://.godot/imported/黑墨喷溅-实拍.png-3b5967e4e443bb85dc01e4698b448407.ctex"
+path="res://.godot/imported/黑墨喷溅-实拍.png-9ccb5d89c09ec4abc6a3f321b60dc09f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://ink/doc/黑墨喷溅-实拍.png"
-dest_files=["res://.godot/imported/黑墨喷溅-实拍.png-3b5967e4e443bb85dc01e4698b448407.ctex"]
+source_file="res://ink/black/doc/黑墨喷溅-实拍.png"
+dest_files=["res://.godot/imported/黑墨喷溅-实拍.png-9ccb5d89c09ec4abc6a3f321b60dc09f.ctex"]
 
 [params]
 

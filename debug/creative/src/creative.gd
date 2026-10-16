@@ -56,7 +56,7 @@ const InkFountainScene := preload("res://actor/fountain/ink_fountain.tscn")
 const MapPlacementOverlayScript := preload("res://debug/creative/src/map_placement_overlay.gd")
 const MapImportedImageScript := preload("res://debug/creative/src/map_imported_image.gd")
 const PlayCanvasScene := preload("res://actor/canvas/canvas.tscn")
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 var _editor_ink_buttons: Array[Button] = []
 var _editor_ink_label: Label

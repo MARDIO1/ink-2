@@ -50,7 +50,7 @@ extends Sprite2D
 ##    所以按 mass_quantum 量化，只在液面变化超过阈值时才重算 —— 不是每帧。
 
 const FluidPBF := preload("res://addons/pixel_destruction/fluid/fluid_pbf.gd")
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 
 @export_group("来源")
 ## 玩家物理节点（持有 PBody 的那个）。

@@ -2,7 +2,7 @@ extends "res://test/test_collision_damage.gd"
 
 const NailVisual := preload("res://actor/nail/src/nail.gd")
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 
 
 func _initialize() -> void:

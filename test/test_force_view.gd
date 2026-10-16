@@ -1,13 +1,13 @@
 extends SceneTree
 ## Tab/F2 交接、相反推力分别可见、弹力模型，以及灰底摩擦的真实物理复现。
 const Main := preload("res://map/asset/imported/main.tscn")
-const Motor := preload("res://ink/src/blue/motor.gd")
-const Stroke := preload("res://ink/src/yellow/stroke.gd")
-const Wire := preload("res://ink/src/blue/wire_layer.gd")
+const Motor := preload("res://ink/blue/src/motor.gd")
+const Stroke := preload("res://ink/yellow/src/stroke.gd")
+const Wire := preload("res://ink/blue/src/wire_layer.gd")
 const PWorld := preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 var failures := 0
 
 func _initialize() -> void:

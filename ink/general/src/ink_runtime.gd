@@ -2,7 +2,7 @@ extends Node
 ## 编辑器重扫可能清空扩展缓存；游戏启动时确保物理内核已注册。
 ## 顺带把墨水色表塞进每个像素材质世界 —— 场景里不用手写 materials。
 
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 
 
 func _enter_tree() -> void:

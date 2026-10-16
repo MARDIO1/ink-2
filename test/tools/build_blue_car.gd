@@ -1,9 +1,10 @@
 extends SceneTree
 ## 构建并保存真实可玩的双轮反转车；支架托起车身，便于观察两轮相反旋转。
-const Palette := preload("res://ink/src/ink_palette.gd")
-const Motor := preload("res://ink/src/blue/motor.gd")
-const Hinge := preload("res://ink/src/yellow/hinge.gd")
-const Wire := preload("res://ink/src/blue/wire_layer.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const BlueInk := preload("res://ink/blue/src/blue_ink.gd")
+const Motor := preload("res://ink/blue/src/motor.gd")
+const Hinge := preload("res://ink/yellow/src/hinge.gd")
+const Wire := preload("res://ink/blue/src/wire_layer.gd")
 const DESTINATION := "res://map/asset/blue_car.tscn"
 var level
 var surface
@@ -54,11 +55,8 @@ func run() -> void:
 	surface.rod_layer.finish(Vector2(600.5, 360.5))
 	for cx in [240, 420, 600]:
 		surface.rod_layer.place_anchor(Vector2(cx + 0.5, 360.5))
-	# 台座用两个支点固定车架，轮轴仍各自自由旋转。
-	surface.rod_layer.place_anchor(Vector2(420.5, 358.5))
+	# 车架只保留一个中央支点，作为可自由转动的杠杆；两端轮轴各自旋转。
 	var rule = level.get_node("SimulationRuntime/BlueInk")
-	level.set_editable_instance(level.get_node("SimulationRuntime"), true)
-	rule.owner = level
 	# 恢复正常燃料密度，满接触时每秒消耗约一行，肉眼可见地缩短/下落。
 	rule.energy_per_red_pixel = 1.0e8
 	# 两条独立链路：台座燃料 → 集电环两条通道 → 黄色车架 → 各自轮轴滑环。
@@ -93,8 +91,8 @@ func run() -> void:
 					cells.append(cell)
 			wire.cells = cells
 			wire.rebuild()
-	if rule.objects(Motor).size() != 2 or rule.objects(Hinge).size() != 4:
-		push_error("Vehicle requires two wheel hinges and two stand hinges")
+	if rule.objects(Motor).size() != 2 or rule.objects(Hinge).size() != 3:
+		push_error("Vehicle requires two wheel hinges and one center hinge")
 		quit(1)
 		return
 	# 单独一次生成：即使燃料贴着料槽，也不能与黑色台座合并成一个刚体。
@@ -139,6 +137,12 @@ func run() -> void:
 	await process_frame
 	await process_frame
 	rule = level.get_node("SimulationRuntime/BlueInk")
+	var blue_rules: Array = level.get_node("SimulationRuntime").get_children().filter(
+		func(child): return child.get_script() == BlueInk)
+	if blue_rules.size() != 1:
+		push_error("Vehicle must reload with exactly one BlueInk rule")
+		quit(1)
+		return
 	if rule.energy_per_red_pixel != 1.0e8:
 		push_error("Vehicle fuel setting did not survive saving")
 		quit(1)
@@ -181,5 +185,5 @@ func run() -> void:
 			await process_frame
 		root.get_texture().get_image().save_png("res://test/reports/blue_energy/blue_car.png")
 		print("CAR_PREVIEW hinges=", rule.objects(Hinge).size(), " shorts=", rule.flow.stats.shorts)
-	quit(0 if peaks.x > 0.1 and peaks.y < -0.1 and rule.objects(Hinge).size() == 4 and rule.flow.stats.shorts == 0 and remaining_red < initial_red - 16 and remaining_red > 0 and drop > 2.0 and not explosion_pending else 1)
+	quit(0 if peaks.x > 0.1 and peaks.y < -0.1 and rule.objects(Hinge).size() == 3 and rule.flow.stats.shorts == 0 and remaining_red < initial_red - 16 and remaining_red > 0 and drop > 2.0 and not explosion_pending else 1)
 

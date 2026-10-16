@@ -11,15 +11,18 @@ extends Node
 @export_range(0.0, 20000.0, 1.0, "or_greater") var hurt_sound_threshold := 100.0
 ## 连续受伤时避免同一段声音过密重播。
 @export_range(0.0, 2.0, 0.01) var hurt_sound_cooldown := 0.25
+## 达到受伤音效阈值后，整套玩家美术保持纯白的时间。
+@export_range(0.01, 0.5, 0.01) var hit_flash_duration := 0.08
 ## 玩家进入此范围后，才允许“脱离卡死”返回该点；不会跳到未经过的点。
 @export var checkpoint_visit_radius := 80.0
 const PLAYER_SPAWN_NAME := "PlayerSpawn"
 const PLAYER_SPAWN_GROUP := &"player_spawn"
 const RESPAWN_POINT_PREFIX := "RespawnPoint"
 const RESPAWN_POINT_GROUP := &"respawn_point"
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SafeSpawnSearch := preload("res://actor/player/src/safe_spawn_search.gd")
 const DeathEffect := preload("res://actor/effects/character_death.gd")
+const HitFlashShader := preload("res://actor/effects/character_hit_flash.gdshader")
 var recovering := false
 var recovery_error := ""
 var last_search_stats: Dictionary = {}
@@ -50,6 +53,9 @@ var _revive_effect: Node2D
 var _revive_nodes: Array[Dictionary] = []
 var _death_visual_duration := 1.2
 var _last_hurt_sound_ms := -1000000
+var _hit_flash_remaining := 0.0
+var _hit_flash_items: Dictionary = {}
+var _hit_flash_material: ShaderMaterial
 @onready var _hurt_sound: AudioStreamPlayer = $HurtSound
 @onready var _death_sound: AudioStreamPlayer = $DeathSound
 #endregion
@@ -67,10 +73,13 @@ func _ready() -> void:
 		_health.depleted.connect(_on_ink_depleted)
 	if _health != null and not _health.damaged.is_connected(_on_health_damaged):
 		_health.damaged.connect(_on_health_damaged)
+	_hit_flash_material = ShaderMaterial.new()
+	_hit_flash_material.shader = HitFlashShader
 	_build_death_ui()
 
 
 func _physics_process(_delta: float) -> void:
+	_update_hit_flash(_delta)
 	if not _pending_safety_check.is_empty() and not recovering and not _editor_active():
 		_verify_after_resume()
 		return
@@ -126,18 +135,50 @@ func _build_death_ui() -> void:
 
 #region 死亡与重生
 func _on_health_damaged(amount: float) -> void:
+	if _dead or amount < hurt_sound_threshold:
+		return
+	_start_hit_flash()
 	var now_ms := Time.get_ticks_msec()
-	if _dead or amount < hurt_sound_threshold \
-			or now_ms - _last_hurt_sound_ms < roundi(hurt_sound_cooldown * 1000.0):
+	if now_ms - _last_hurt_sound_ms < roundi(hurt_sound_cooldown * 1000.0):
 		return
 	_last_hurt_sound_ms = now_ms
 	_hurt_sound.play()
+
+
+func _start_hit_flash() -> void:
+	_hit_flash_remaining = hit_flash_duration
+	if not _hit_flash_items.is_empty():
+		return
+	for child in _player.find_children("*", "", true, false):
+		if not (child is Sprite2D or child is Line2D) or not child.is_visible_in_tree():
+			continue
+		if child is Sprite2D and child.texture == null:
+			continue
+		_hit_flash_items[child] = child.material
+		child.material = _hit_flash_material
+
+
+func _update_hit_flash(delta: float) -> void:
+	if _hit_flash_remaining <= 0.0:
+		return
+	_hit_flash_remaining -= delta
+	if _hit_flash_remaining <= 0.0:
+		_restore_hit_flash()
+
+
+func _restore_hit_flash() -> void:
+	for item in _hit_flash_items:
+		if is_instance_valid(item) and item.material == _hit_flash_material:
+			item.material = _hit_flash_items[item]
+	_hit_flash_items.clear()
+	_hit_flash_remaining = 0.0
 
 
 func _die(only_dissolve := false) -> void:
 	if _dead:
 		return
 	_dead = true
+	_restore_hit_flash()
 	_hurt_sound.stop()
 	_death_sound.play()
 	_death_timer = respawn_delay

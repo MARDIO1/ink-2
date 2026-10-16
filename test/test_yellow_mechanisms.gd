@@ -1,6 +1,6 @@
 extends SceneTree
-const Palette := preload("res://ink/src/ink_palette.gd")
-const Hinge := preload("res://ink/src/yellow/hinge.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Hinge := preload("res://ink/yellow/src/hinge.gd")
 var failures := 0
 var checks := 0
 

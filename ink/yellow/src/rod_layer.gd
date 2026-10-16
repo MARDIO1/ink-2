@@ -1,11 +1,11 @@
 @tool
 extends Node2D
 ## 黄色独立图层。复用 CanvasSurface 笔刷和 CanvasSolid 连通域/刚体生成。
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
-const Hinge := preload("res://ink/src/yellow/hinge.gd")
-const Stroke := preload("res://ink/src/yellow/stroke.gd")
+const Hinge := preload("res://ink/yellow/src/hinge.gd")
+const Stroke := preload("res://ink/yellow/src/stroke.gd")
 @export var pixels: Image
 @export var anchor_points: PackedVector2Array = []
 var texture: ImageTexture

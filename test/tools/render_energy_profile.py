@@ -120,10 +120,10 @@ $godot = 'T:/GODOT/tool/Godot_v4.7.2-stable_win64_console.exe'
 python test/tools/render_energy_profile.py
 ```
 
-实现职责与参数见 `ink/doc/蓝墨.md`；源代码校验值在 `source_hashes.json`。未改破坏插件内部。
+实现职责与参数见 `ink/blue/doc/蓝墨.md`；源代码校验值在 `source_hashes.json`。未改破坏插件内部。
 '''
 (out / "README.md").write_text(readme, encoding="utf-8")
 root = out.parents[2]
-sources = [*root.glob("ink/src/blue/*.gd"), root / "ink/src/blue_ink.gd", *root.glob("ink/native/*.*"), root / "test/tools/blue_energy_stress.gd"]
+sources = [*root.glob("ink/blue/src/*.gd"), root / "ink/blue/src/blue_ink.gd", *root.glob("ink/blue/native/*.*"), root / "test/tools/blue_energy_stress.gd"]
 manifest = {str(p.relative_to(root)).replace('\\', '/'): hashlib.sha256(p.read_bytes()).hexdigest() for p in sources if p.suffix in (".gd", ".cpp", ".hpp", ".dll", ".gdextension")}
 (out / "source_hashes.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

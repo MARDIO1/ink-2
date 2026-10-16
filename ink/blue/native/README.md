@@ -7,7 +7,7 @@ InkEnergyGrid，并在释放时显式销毁。游戏侧接触、燃料、保存�
 Windows x86_64，安装 MinGW 后在项目根目录执行：
 
 ```powershell
-python ink/native/build.py --compiler C:/mingw64/bin/g++.exe
+python ink/blue/native/build.py --compiler C:/mingw64/bin/g++.exe
 ```
 
 编译前退出加载了该 DLL 的游戏/编辑器。使用 `-static` 避免额外依赖 winpthread DLL。
@@ -19,4 +19,4 @@ python ink/native/build.py --compiler C:/mingw64/bin/g++.exe
 10 同步推进，11 参数，12 碎裂读回，13 重新取快照，14 保留年龄迁移。
 容量不足只扩容重取，不重复推进、发包、消费或删除。
 
-性能和玩法回归入口见 `ink/doc/蓝墨.md`。
+性能和玩法回归入口见 `ink/blue/doc/蓝墨.md`。

@@ -8,7 +8,7 @@
 [ext_resource type="Image" path="res://actor/player/asset/player_hand_climb.tres" id="22_climb"]
 [ext_resource type="Script" path="res://actor/player/src/pbody_visual.gd" id="7_visual"]
 [ext_resource type="Image" path="res://actor/player/asset/player_hand_phys_0.tres" id="9_phys"]
-[ext_resource type="Script" path="res://ink/src/pixel_art_layer.gd" id="20_art"]
+[ext_resource type="Script" path="res://ink/general/src/pixel_art_layer.gd" id="20_art"]
 [ext_resource type="Script" path="res://actor/player/src/arm_curve.gd" id="21_armcurve"]
 
 [node name="Arm" type="Node2D"]

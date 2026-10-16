@@ -1,10 +1,10 @@
 extends SceneTree
 
-const White := preload("res://ink/src/white_ink.gd")
-const Sweep := preload("res://ink/src/white_ink_sweep.gd")
+const White := preload("res://ink/white/src/white_ink.gd")
+const Sweep := preload("res://ink/white/src/white_ink_sweep.gd")
 const Damage := preload("res://root/src/impact_damage.gd")
-const Red := preload("res://ink/src/red_ink.gd")
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Red := preload("res://ink/red/src/red_ink.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const World := preload("res://addons/pixel_destruction/physics/pworld.gd")
 const Body := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")

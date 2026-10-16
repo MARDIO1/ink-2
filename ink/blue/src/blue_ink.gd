@@ -1,11 +1,11 @@
 extends Node
 ## 蓝墨编辑/保存与运行时接口适配。导线、箭头和能源传播各有独立实现。
 ## 传播在 blue/energy_flow.gd；箭头自己的收费/施力在 blue/motor.gd，不建立电网或路径树。
-const Palette := preload("res://ink/src/ink_palette.gd")
-const Wire := preload("res://ink/src/blue/wire_layer.gd")
-const Motor := preload("res://ink/src/blue/motor.gd")
-const Anchor := preload("res://ink/src/yellow/stroke.gd")
-const Hinge := preload("res://ink/src/yellow/hinge.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Wire := preload("res://ink/blue/src/wire_layer.gd")
+const Motor := preload("res://ink/blue/src/motor.gd")
+const Anchor := preload("res://ink/yellow/src/stroke.gd")
+const Hinge := preload("res://ink/yellow/src/hinge.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 
 #region 配置与状态
@@ -21,7 +21,7 @@ var _world = null
 var _profile_enabled := false
 var _profile: Dictionary = {}
 var _pending_wires: Dictionary = {}
-const EnergyFlow := preload("res://ink/src/blue/energy_flow.gd")
+const EnergyFlow := preload("res://ink/blue/src/energy_flow.gd")
 var flow := EnergyFlow.new()
 @export var propagation_speed := 600.0
 @export var emission_interval := 0.5

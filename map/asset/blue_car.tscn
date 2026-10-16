@@ -1,52 +1,32 @@
-[gd_scene format=4]
+[gd_scene format=4 uid="uid://cggnmr5udawsd"]
 
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_v5jtn"]
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_nc5w1"]
-[ext_resource type="Resource" path="res://ink/asset/black.tres" id="3_h1lds"]
-[ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="4_6lnts"]
+[ext_resource type="Script" uid="uid://bxeqry66jsq28" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_v5jtn"]
+[ext_resource type="Script" uid="uid://chdh46srdqdtn" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_nc5w1"]
+[ext_resource type="Resource" uid="uid://5e73rqefu12n" path="res://ink/black/asset/black.tres" id="3_h1lds"]
+[ext_resource type="Resource" uid="uid://dop00w2n0gy4f" path="res://actor/player/asset/player_body.tres" id="4_6lnts"]
 [ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="5_ygfnx"]
-[ext_resource type="Resource" path="res://ink/asset/grey1.tres" id="6_o2ub3"]
+[ext_resource type="Resource" uid="uid://c5na6wvehllwb" path="res://ink/grey/asset/grey1.tres" id="6_o2ub3"]
 [ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="7_yuqyx"]
-[ext_resource type="Resource" path="res://ink/asset/invisible.tres" id="8_rmbb5"]
-[ext_resource type="Resource" path="res://ink/asset/red.tres" id="9_451ls"]
-[ext_resource type="Resource" path="res://ink/asset/yellow.tres" id="10_tjt5b"]
-[ext_resource type="Resource" path="res://ink/asset/white.tres" id="11_vk5l4"]
-[ext_resource type="Resource" path="res://ink/asset/blue.tres" id="12_u1m27"]
+[ext_resource type="Resource" uid="uid://b2t1po83jfw4e" path="res://ink/invisible/asset/invisible.tres" id="8_rmbb5"]
+[ext_resource type="Resource" uid="uid://b7bwacj10315c" path="res://ink/red/asset/red.tres" id="9_451ls"]
+[ext_resource type="Resource" path="res://ink/yellow/asset/yellow.tres" id="10_tjt5b"]
+[ext_resource type="Resource" path="res://ink/white/asset/white.tres" id="11_vk5l4"]
+[ext_resource type="Resource" path="res://ink/blue/asset/blue.tres" id="12_u1m27"]
 [ext_resource type="Resource" path="res://actor/nail/asset/nail.tres" id="13_wgt6o"]
-[ext_resource type="Script" path="res://actor/player/src/player_camera.gd" id="14_2uh2u"]
-[ext_resource type="PackedScene" path="res://actor/canvas/canvas.tscn" id="15_5m038"]
-[ext_resource type="Script" path="res://actor/canvas/src/canvas.gd" id="16_joemv"]
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="17_yrgvp"]
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="18_s2qi0"]
-[ext_resource type="PackedScene" path="res://actor/player/player.tscn" id="19_ftx7y"]
-[ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="20_mya8s"]
-[ext_resource type="Resource" path="res://actor/player/asset/player_controller_config.tres" id="21_2p8c3"]
+[ext_resource type="Script" uid="uid://dcqnoa67srpgu" path="res://actor/player/src/player_camera.gd" id="14_2uh2u"]
+[ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/canvas.tscn" id="15_5m038"]
+[ext_resource type="Script" uid="uid://cjoigmrhvvtvx" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="17_yrgvp"]
+[ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="18_s2qi0"]
+[ext_resource type="PackedScene" uid="uid://1n64fxhxd3hf" path="res://actor/player/player.tscn" id="19_ftx7y"]
 [ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="22_tsj1e"]
-[ext_resource type="Script" path="res://debug/hud/src/debug_hud.gd" id="23_e8yws"]
 [ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="24_p1w1x"]
-[ext_resource type="Script" path="res://root/src/simulation_runtime.gd" id="25_0buag"]
-[ext_resource type="Script" path="res://root/src/physics_step.gd" id="26_v44sf"]
-[ext_resource type="Script" path="res://root/src/impact_damage.gd" id="27_q0pai"]
-[ext_resource type="Script" path="res://root/src/hit_feedback.gd" id="28_i6jxp"]
-[ext_resource type="AudioStream" path="res://sound/sfx/普通敲击.ogg" id="29_w668o"]
-[ext_resource type="Script" path="res://root/src/monster_contacts.gd" id="30_t8ycd"]
-[ext_resource type="Script" path="res://ink/src/red_ink.gd" id="31_bjjbx"]
-[ext_resource type="AudioStream" path="res://sound/sfx/爆炸.ogg" id="32_esvt3"]
-[ext_resource type="Script" path="res://ink/src/yellow_ink.gd" id="33_ktnpd"]
-[ext_resource type="AudioStream" path="res://sound/sfx/弹簧紧绷.ogg" id="34_4l0y8"]
-[ext_resource type="AudioStream" path="res://sound/sfx/弹簧释放.ogg" id="35_82f2d"]
-[ext_resource type="Script" path="res://ink/src/ink_spray.gd" id="36_d4ti2"]
-[ext_resource type="Script" path="res://ink/src/white_ink.gd" id="37_nbjky"]
-[ext_resource type="Script" path="res://ink/src/white_ink_sweep.gd" id="38_ea41b"]
-[ext_resource type="Script" path="res://ink/src/blue_ink.gd" id="39_wuosb"]
-[ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="40_g4yod"]
+[ext_resource type="Script" uid="uid://dvtycwuj0keul" path="res://debug/creative/src/creative.gd" id="40_g4yod"]
 [ext_resource type="PackedScene" path="res://actor/gym/gym.tscn" id="41_wmjox"]
-[ext_resource type="Script" path="res://actor/gym/src/gym.gd" id="42_r0ox2"]
-[ext_resource type="Script" path="res://ink/src/blue/motor.gd" id="43_r8j4u"]
-[ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="44_1fb46"]
-[ext_resource type="Script" path="res://ink/src/blue/wire_layer.gd" id="45_duhiw"]
-[ext_resource type="Texture2D" path="res://ink/asset/yellow/bearing.svg" id="46_ewoyu"]
-[ext_resource type="Script" path="res://ink/src/yellow/hinge.gd" id="47_17qr1"]
+[ext_resource type="Script" uid="uid://dedroo75prj6y" path="res://ink/blue/src/motor.gd" id="43_r8j4u"]
+[ext_resource type="Script" uid="uid://msw52rtj66lr" path="res://actor/ink_item/src/ink_item.gd" id="44_1fb46"]
+[ext_resource type="Script" uid="uid://qi5eyqg2s7bf" path="res://ink/blue/src/wire_layer.gd" id="45_duhiw"]
+[ext_resource type="Texture2D" uid="uid://2161gphnwo5l" path="res://ink/yellow/asset/bearing.svg" id="46_ewoyu"]
+[ext_resource type="Script" uid="uid://dlw8fjwd8p2th" path="res://ink/yellow/src/hinge.gd" id="47_17qr1"]
 
 [sub_resource type="Image" id="Image_gapkn"]
 data = {
@@ -186,19 +166,15 @@ zoom = Vector2(3.0778952, 3.0778952)
 process_callback = 0
 script = ExtResource("14_2uh2u")
 
-[node name="SmallCanvas" type="Node2D" parent="." unique_id=1726580571 groups=["play_canvas"] instance=ExtResource("15_5m038")]
+[node name="SmallCanvas" parent="." unique_id=1726580571 groups=["play_canvas"] instance=ExtResource("15_5m038")]
 process_physics_priority = 18
-z_index = -1
 position = Vector2(6400, 5000)
-script = ExtResource("16_joemv")
 canvas_size = Vector2i(1000, 600)
 
-[node name="MapCanvas" type="Node2D" parent="." unique_id=96054889 instance=ExtResource("15_5m038")]
+[node name="MapCanvas" parent="." unique_id=96054889 instance=ExtResource("15_5m038")]
 process_physics_priority = 18
 visible = false
-z_index = -1
 position = Vector2(-512, -256)
-script = ExtResource("16_joemv")
 canvas_size = Vector2i(2048, 1024)
 active = false
 
@@ -221,55 +197,15 @@ visible = false
 script = ExtResource("18_s2qi0")
 rect_size = Vector2i(32, 32)
 
-[node name="Player" type="Node2D" parent="." unique_id=1427605215 groups=["player"] instance=ExtResource("19_ftx7y")]
+[node name="Player" parent="." unique_id=1427605215 groups=["player"] instance=ExtResource("19_ftx7y")]
 position = Vector2(5780, 5420)
-script = ExtResource("20_mya8s")
-controller_config = ExtResource("21_2p8c3")
-can_sleep = false
 
 [node name="Monsters" type="Node2D" parent="." unique_id=560539034]
 
-[node name="debugHUD" type="CanvasLayer" parent="." unique_id=2022487383 groups=["debug_hud"] instance=ExtResource("22_tsj1e")]
-visible = false
-script = ExtResource("23_e8yws")
+[node name="debugHUD" parent="." unique_id=2022487383 instance=ExtResource("22_tsj1e")]
 
 [node name="SimulationRuntime" parent="." unique_id=1398976209 instance=ExtResource("24_p1w1x")]
 process_physics_priority = 1
-script = ExtResource("25_0buag")
-
-[node name="PhysicsStep" parent="SimulationRuntime" index="0"]
-script = ExtResource("26_v44sf")
-
-[node name="ImpactDamage" parent="SimulationRuntime" index="1"]
-script = ExtResource("27_q0pai")
-
-[node name="HitFeedback" parent="SimulationRuntime" index="2"]
-script = ExtResource("28_i6jxp")
-impact_stream = ExtResource("29_w668o")
-
-[node name="MonsterContacts" parent="SimulationRuntime" index="3"]
-script = ExtResource("30_t8ycd")
-
-[node name="RedInk" parent="SimulationRuntime" index="4"]
-script = ExtResource("31_bjjbx")
-explosion_stream = ExtResource("32_esvt3")
-
-[node name="YellowInk" parent="SimulationRuntime" index="5"]
-script = ExtResource("33_ktnpd")
-tension_stream = ExtResource("34_4l0y8")
-release_stream = ExtResource("35_82f2d")
-
-[node name="InkSpray" parent="SimulationRuntime" index="6"]
-script = ExtResource("36_d4ti2")
-
-[node name="WhiteInk" parent="SimulationRuntime" index="7"]
-script = ExtResource("37_nbjky")
-
-[node name="WhiteSweep" parent="SimulationRuntime" index="8"]
-script = ExtResource("38_ea41b")
-
-[node name="BlueInk" type="Node" parent="SimulationRuntime" unique_id=1884251158]
-script = ExtResource("39_wuosb")
 
 [node name="Creative" type="Node" parent="." unique_id=715756137]
 process_physics_priority = 15
@@ -277,9 +213,8 @@ script = ExtResource("40_g4yod")
 map_path = "res://map/asset/imported/main.tscn"
 baked_map_path = "res://map/asset/imported/main.png"
 
-[node name="Gym" type="Node2D" parent="." unique_id=824140969 instance=ExtResource("41_wmjox")]
+[node name="Gym" parent="." unique_id=824140969 instance=ExtResource("41_wmjox")]
 position = Vector2(-547, -100)
-script = ExtResource("42_r0ox2")
 
 [node name="@Node2D@91" type="Node2D" parent="." unique_id=524215482]
 z_index = 9
@@ -311,6 +246,7 @@ script = ExtResource("44_1fb46")
 hide_nails_in_play = false
 
 [node name="@Node2D@93" type="Node2D" parent="Ink14" unique_id=2009976780]
+visible = false
 position = Vector2(176, 296)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -323,6 +259,7 @@ hide_nails_in_play = false
 is_static = true
 
 [node name="@Node2D@103" type="Node2D" parent="Ink15" unique_id=2059716313]
+visible = false
 position = Vector2(20, 500)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -335,6 +272,7 @@ hide_nails_in_play = false
 is_static = true
 
 [node name="@Node2D@108" type="Node2D" parent="Ink16" unique_id=481851743]
+visible = false
 position = Vector2(20, 512)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -347,6 +285,7 @@ hide_nails_in_play = false
 is_static = true
 
 [node name="@Node2D@113" type="Node2D" parent="Ink17" unique_id=129791508]
+visible = false
 position = Vector2(256, 310)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -359,6 +298,7 @@ hide_nails_in_play = false
 is_static = true
 
 [node name="@Node2D@131" type="Node2D" parent="Ink19" unique_id=670164244]
+visible = false
 position = Vector2(256, 512)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -371,6 +311,7 @@ hide_nails_in_play = false
 is_static = true
 
 [node name="@Node2D@136" type="Node2D" parent="Ink20" unique_id=1320736404]
+visible = false
 position = Vector2(512, 500)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -383,6 +324,7 @@ hide_nails_in_play = false
 is_static = true
 
 [node name="@Node2D@141" type="Node2D" parent="Ink21" unique_id=1394398986]
+visible = false
 position = Vector2(512, 512)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -395,6 +337,7 @@ hide_nails_in_play = false
 is_static = true
 
 [node name="@Node2D@146" type="Node2D" parent="Ink22" unique_id=1956248443]
+visible = false
 position = Vector2(768, 500)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -407,6 +350,7 @@ hide_nails_in_play = false
 is_static = true
 
 [node name="@Node2D@151" type="Node2D" parent="Ink23" unique_id=506873056]
+visible = false
 position = Vector2(768, 512)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -418,6 +362,7 @@ script = ExtResource("44_1fb46")
 hide_nails_in_play = false
 
 [node name="@Node2D@156" type="Node2D" parent="Ink24" unique_id=256472337]
+visible = false
 position = Vector2(536, 296)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -453,6 +398,7 @@ script = ExtResource("44_1fb46")
 hide_nails_in_play = false
 
 [node name="@Node2D@169" type="Node2D" parent="Ink28" unique_id=1644549300]
+visible = false
 position = Vector2(237, 357)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -491,17 +437,6 @@ script = ExtResource("47_17qr1")
 yellow_position = Vector2(5600.5, 5360.5)
 black_position = Vector2(5600.5, 5360.5)
 
-[node name="@Sprite2D@180" type="Sprite2D" parent="." unique_id=1602771478]
-modulate = Color(1, 1, 1, 0.75)
-top_level = true
-z_index = 10
-texture_filter = 1
-position = Vector2(5420.5, 5358.5)
-texture = ExtResource("46_ewoyu")
-script = ExtResource("47_17qr1")
-yellow_position = Vector2(5420.5, 5358.5)
-black_position = Vector2(5420.5, 5358.5)
-
 [node name="@Node2D@181" type="Node2D" parent="." unique_id=890535099]
 z_index = 7
 texture_filter = 1
@@ -517,6 +452,7 @@ script = ExtResource("44_1fb46")
 hide_nails_in_play = false
 
 [node name="@Node2D@184" type="Node2D" parent="Ink35" unique_id=1530076558]
+visible = false
 position = Vector2(406, 320)
 script = ExtResource("18_s2qi0")
 source = 3
@@ -528,6 +464,7 @@ script = ExtResource("44_1fb46")
 hide_nails_in_play = false
 
 [node name="@Node2D@186" type="Node2D" parent="Ink36" unique_id=261366356]
+visible = false
 position = Vector2(427, 320)
 script = ExtResource("18_s2qi0")
 source = 3

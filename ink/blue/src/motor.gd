@@ -1,8 +1,8 @@
 extends Node2D
 ## 箭头只记录一个黑色像素锚点；不创建刚体或关节。
 ## 管理箭头、锚点、到达能源缓冲和施力预算；energy_flow.gd 仅向缓冲投递。
-const Palette := preload("res://ink/src/ink_palette.gd")
-const Anchor := preload("res://ink/src/yellow/stroke.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Anchor := preload("res://ink/yellow/src/stroke.gd")
 
 #region 数据与显示
 @export var tip := Vector2.ZERO

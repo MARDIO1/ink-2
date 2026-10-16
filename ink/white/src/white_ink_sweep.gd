@@ -1,7 +1,7 @@
 extends Node
 ## 圆形白墨专用：保留旧版 16px 块扫掠，沿整条运动路径做高速覆盖擦除。
 
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")

@@ -20,7 +20,7 @@ config/windows_native_icon="res://ui/icon/int_fff.ico"
 [autoload]
 
 SceneTransition="*res://ui/transition/scene_transition.gd"
-InkRuntime="*res://ink/src/ink_runtime.gd"
+InkRuntime="*res://ink/general/src/ink_runtime.gd"
 
 [display]
 

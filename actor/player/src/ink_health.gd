@@ -22,7 +22,7 @@ signal damaged(amount: float)
 ## 某一种墨水首次从正数降到 0 时发出；死亡规则只关心黑墨。
 signal depleted(material_id: int)
 
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 
 ## **每种墨水各自的**满瓶量；每关不一样就改这一个数（场景里设）。
 @export var max_ink: float = 20000.0

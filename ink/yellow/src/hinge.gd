@@ -1,8 +1,8 @@
 extends Sprite2D
 ## 两个真实像素锚点；复用现有 HINGE 与碎裂通知，不另设轴系耐久度。
-const Palette := preload("res://ink/src/ink_palette.gd")
-const Stroke := preload("res://ink/src/yellow/stroke.gd")
-const BEARING := preload("res://ink/asset/yellow/bearing.svg")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Stroke := preload("res://ink/yellow/src/stroke.gd")
+const BEARING := preload("res://ink/yellow/asset/bearing.svg")
 @export var yellow_position := Vector2.ZERO
 @export var black_position := Vector2.ZERO
 var yellow_anchor: Dictionary = {}
