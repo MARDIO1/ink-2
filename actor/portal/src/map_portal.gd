@@ -6,6 +6,9 @@ const GROUP := &"map_portal"
 const LevelList := preload("res://ui/level_select/src/level_select.gd")
 const TEXTURE_PATH := "res://actor/portal/asset/torn_paper_portal.png"
 const OVERLAP_SECONDS := 2.0
+const COMPLETION_PULSE_SECONDS := 0.45
+const PROGRESS_INK := Color.BLACK
+const PROGRESS_PAPER := Color.WHITE
 const SPIRAL_SHADER := preload("res://actor/portal/asset/portal_spiral.gdshader")
 static var _center_mask: Texture2D
 static var _center_mask_source: Texture2D
@@ -29,6 +32,8 @@ var _status := ""
 var _texture: Texture2D
 var _editor_label := ""
 var _label_refresh_elapsed := 0.5
+var _charge_clock := 0.0
+var _completion_elapsed := -1.0
 
 
 func _enter_tree() -> void:
@@ -115,10 +120,22 @@ func editor_destination_text() -> String:
 
 
 func _process(delta: float) -> void:
-	if is_instance_valid(_spiral):
-		_spiral_phase = fposmod(_spiral_phase + delta * spiral_rotation_speed, TAU)
-		_spiral_material.set_shader_parameter("phase", _spiral_phase)
 	var editing := Engine.is_editor_hint() or _editor_active()
+	var charge := 0.0 if editing else _charge_progress()
+	if is_instance_valid(_spiral):
+		_spiral_phase = fposmod(_spiral_phase + delta * spiral_rotation_speed * (1.0 + charge * 2.5), TAU)
+		_spiral_material.set_shader_parameter("phase", _spiral_phase)
+		_spiral_material.set_shader_parameter("charge", charge)
+	if charge > 0.0:
+		_charge_clock += maxf(delta, 0.0)
+		if _completion_elapsed >= 0.0:
+			_completion_elapsed += maxf(delta, 0.0)
+			if _completion_elapsed >= COMPLETION_PULSE_SECONDS:
+				_completion_elapsed = -1.0
+		queue_redraw()
+	else:
+		_charge_clock = 0.0
+		_completion_elapsed = -1.0
 	if not editing:
 		if not _editor_label.is_empty():
 			_editor_label = ""
@@ -166,6 +183,8 @@ func advance_overlap(delta: float, inside: bool, editing: bool) -> bool:
 		overlap_time = 0.0
 		_fired = false
 		_status = ""
+		_charge_clock = 0.0
+		_completion_elapsed = -1.0
 		if redraw_needed:
 			queue_redraw()
 		return false
@@ -176,7 +195,53 @@ func advance_overlap(delta: float, inside: bool, editing: bool) -> bool:
 	if overlap_time + 0.000001 < OVERLAP_SECONDS:
 		return false
 	_fired = true
+	_completion_elapsed = 0.0
 	return true
+
+
+func _charge_progress() -> float:
+	# 目标缺失或加载失败时停止蓄力反馈，保留错误提示，不表现成持续传送。
+	if _fired and not _pending and not _status.is_empty():
+		return 0.0
+	return clampf(overlap_time / OVERLAP_SECONDS, 0.0, 1.0)
+
+
+## 黑白双色描边在黑墨、白纸背景上都可辨认；不改变门、玩家或触发范围。
+func _draw_charge(progress: float) -> void:
+	var radius := minf(portal_size.x, portal_size.y) * 0.39
+	var start := -PI * 0.5
+	var finish := start + TAU * progress
+	# 先给整圈一条轻轨道，再以白底黑芯画出准确的两秒进度。
+	draw_arc(Vector2.ZERO, radius, 0, TAU, 80, Color(0, 0, 0, 0.45), 3.0, true)
+	draw_arc(Vector2.ZERO, radius, 0, TAU, 80, Color(1, 1, 1, 0.65), 1.0, true)
+	draw_arc(Vector2.ZERO, radius, start, finish, 80, PROGRESS_PAPER, 10.0, true)
+	draw_arc(Vector2.ZERO, radius, start, finish, 80, PROGRESS_INK, 5.0, true)
+	var tip := Vector2.from_angle(finish) * radius
+	draw_circle(tip, 6.0, PROGRESS_PAPER)
+	draw_circle(tip, 3.0, PROGRESS_INK)
+	# 外圈轻微呼吸、分段刻度和向心墨点让站在门内的反馈更清楚，不闪屏或震屏。
+	var breath := 0.5 + sin(_charge_clock * TAU * 1.25) * 0.5
+	var halo_radius := radius + 8.0 + breath * 3.0
+	draw_arc(Vector2.ZERO, halo_radius, 0, TAU, 80, Color(1, 1, 1, 0.35 + breath * 0.35), 3.0, true)
+	draw_arc(Vector2.ZERO, halo_radius, 0, TAU, 80, Color(0, 0, 0, 0.35), 1.0, true)
+	for index in 12:
+		var direction := Vector2.from_angle(start + TAU * index / 12.0)
+		var filled := progress * 12.0 >= index + 1
+		var end := radius + (9.0 if filled else 6.0)
+		draw_line(direction * (radius + 3.0), direction * end, PROGRESS_PAPER, 4.0, true)
+		draw_line(direction * (radius + 3.0), direction * end, PROGRESS_INK, 2.0, true)
+	for index in 8:
+		var travel := fposmod(_charge_clock * (0.7 + progress * 0.35) + index / 8.0, 1.0)
+		var angle := TAU * index / 8.0 + travel * 0.65 + _charge_clock * 0.25
+		var point := Vector2.from_angle(angle) * lerpf(radius * 0.88, radius * 0.16, travel)
+		var extent := (1.0 - travel * 0.6) * (2.0 + progress)
+		draw_circle(point, extent + 1.0, PROGRESS_PAPER)
+		draw_circle(point, extent, PROGRESS_INK)
+	if _completion_elapsed >= 0.0:
+		var pulse := clampf(_completion_elapsed / COMPLETION_PULSE_SECONDS, 0, 1)
+		var reach := radius + 26.0 * pulse
+		draw_arc(Vector2.ZERO, reach, 0, TAU, 80, Color(1, 1, 1, 1.0 - pulse), 8.0, true)
+		draw_arc(Vector2.ZERO, reach, 0, TAU, 80, Color(0, 0, 0, 1.0 - pulse), 3.0, true)
 
 
 func _physics_process(delta: float) -> void:
@@ -238,9 +303,10 @@ func _draw() -> void:
 	if _texture != null and not is_instance_valid(_paper_frame):
 		draw_texture_rect(_texture, Rect2(-portal_size * 0.5, portal_size), false)
 	if Engine.is_editor_hint() or _editor_active():
-		draw_arc(Vector2.ZERO, minf(portal_size.x, portal_size.y) * 0.29, 0, TAU, 48, Color(0.3, 0.5, 0.8, 0.65), 2.0)
-	elif overlap_time > 0.0:
-		draw_arc(Vector2.ZERO, minf(portal_size.x, portal_size.y) * 0.31, -PI * 0.5,
-			-PI * 0.5 + TAU * overlap_time / OVERLAP_SECONDS, 48, Color(0.95, 0.72, 0.1), 4.0)
+		var radius := minf(portal_size.x, portal_size.y) * 0.29
+		draw_arc(Vector2.ZERO, radius, 0, TAU, 48, PROGRESS_PAPER, 3.0, true)
+		draw_arc(Vector2.ZERO, radius, 0, TAU, 48, Color(0, 0, 0, 0.65), 1.0, true)
+	elif _charge_progress() > 0.0:
+		_draw_charge(_charge_progress())
 	if not _status.is_empty():
 		draw_string(ThemeDB.fallback_font, Vector2(-portal_size.x * 0.5, portal_size.y * 0.5 + 24), _status, HORIZONTAL_ALIGNMENT_CENTER, portal_size.x, 18, Color.BLACK)

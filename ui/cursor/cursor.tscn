@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/cursor/src/game_cursor.gd" id="1_cursor"]
+
+[node name="InkCursor" type="CanvasLayer"]
+process_mode = 3
+layer = 1100
+script = ExtResource("1_cursor")
+
+[node name="Pointer" type="TextureRect" parent="."]
+visible = false
+texture_filter = 1
+mouse_filter = 2
+expand_mode = 1

@@ -27,6 +27,7 @@ SceneTransition="*res://ui/transition/src/scene_transition.gd"
 InkRuntime="*res://ink/src/ink_runtime.gd"
 AudioSettings="*res://sound/src/audio_settings.gd"
 Blueprints="*res://ui/blueprint/src/blueprint_system.gd"
+InkCursor="*res://ui/cursor/cursor.tscn"
 
 [display]
 

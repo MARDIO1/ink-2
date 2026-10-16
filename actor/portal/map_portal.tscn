@@ -8,6 +8,7 @@
 resource_local_to_scene = true
 shader = ExtResource("3_spiral")
 shader_parameter/phase = 0.0
+shader_parameter/charge = 0.0
 
 [node name="Portal" type="Node2D" groups=["map_portal"]]
 process_physics_priority = 100
