@@ -62,6 +62,21 @@ func _return_to_menu() -> void:
 	await _transition.finish()
 
 
+## 最后一页的纸洞返回关卡目录；过渡遮住画面后再释放关卡。
+func finish_current_level() -> void:
+	if _loading_level or not await _transition.begin(_transition.Style.PAGE, "登顶完成，合上这一页…"):
+		return
+	for child in level_root.get_children():
+		level_root.remove_child(child)
+		child.queue_free()
+	var select := level_select_scene.instantiate() as Control
+	select.connect(&"level_chosen", request_level_change)
+	select.connect(&"back_pressed", _return_to_menu)
+	_set_screen(select)
+	_play_music(menu_music)
+	await _transition.finish()
+
+
 ## 菜单和传送门共用异步加载入口，锁住期间拒绝其他切关请求。
 func request_level_change(path: String) -> bool:
 	if _loading_level or _transition.busy:
