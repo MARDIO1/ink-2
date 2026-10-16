@@ -50,6 +50,7 @@ const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 const DialogueTriggerScript := preload("res://debug/creative/src/map_dialogue_trigger.gd")
 const MapTextScript := preload("res://ui/map_text/src/map_text_label.gd")
 const MapPortalScript := preload("res://actor/portal/src/map_portal.gd")
+const MapPortalScene := preload("res://actor/portal/map_portal.tscn")
 const InkFountainScript := preload("res://actor/fountain/src/ink_fountain.gd")
 const InkFountainScene := preload("res://actor/fountain/ink_fountain.tscn")
 const MapPlacementOverlayScript := preload("res://debug/creative/src/map_placement_overlay.gd")
@@ -1295,7 +1296,7 @@ func place_portal(world_position: Vector2, destination := "", record_undo := tru
 	var level := _level_root()
 	if level == null:
 		return null
-	var portal := MapPortalScript.new()
+	var portal := MapPortalScene.instantiate() as Node2D
 	portal.name = _unique_level_node_name("Portal")
 	portal.target_map = destination
 	level.add_child(portal)

@@ -9,7 +9,7 @@ func _run() -> void:
 	background.size = Vector2(400, 400)
 	background.color = Color(0.94, 0.92, 0.87)
 	root.add_child(background)
-	var portal: Node2D = load("res://actor/portal/src/map_portal.gd").new()
+	var portal: Node2D = load("res://actor/portal/map_portal.tscn").instantiate()
 	portal.position = Vector2(200, 200)
 	portal.scale = Vector2(2, 2)
 	root.add_child(portal)

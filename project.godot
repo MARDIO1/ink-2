@@ -23,10 +23,10 @@ default_bus_layout="res://sound/default_bus_layout.tres"
 
 [autoload]
 
-SceneTransition="*res://ui/transition/scene_transition.gd"
+SceneTransition="*res://ui/transition/src/scene_transition.gd"
 InkRuntime="*res://ink/src/ink_runtime.gd"
 AudioSettings="*res://sound/src/audio_settings.gd"
-Blueprints="*res://ui/blueprint/blueprint_system.gd"
+Blueprints="*res://ui/blueprint/src/blueprint_system.gd"
 
 [display]
 

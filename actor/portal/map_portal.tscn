@@ -1,0 +1,24 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://actor/portal/src/map_portal.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://actor/portal/asset/torn_paper_portal.png" id="2_paper"]
+[ext_resource type="Shader" path="res://actor/portal/asset/portal_spiral.gdshader" id="3_spiral"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_spiral"]
+resource_local_to_scene = true
+shader = ExtResource("3_spiral")
+shader_parameter/phase = 0.0
+
+[node name="Portal" type="Node2D" groups=["map_portal"]]
+process_physics_priority = 100
+z_index = 4092
+z_as_relative = false
+script = ExtResource("1_script")
+
+[node name="SpiralCenter" type="Sprite2D" parent="."]
+show_behind_parent = true
+material = SubResource("ShaderMaterial_spiral")
+
+[node name="PaperFrame" type="Sprite2D" parent="."]
+show_behind_parent = true
+texture = ExtResource("2_paper")

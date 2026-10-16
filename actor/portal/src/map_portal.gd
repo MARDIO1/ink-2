@@ -8,12 +8,18 @@ const TEXTURE_PATH := "res://actor/portal/asset/torn_paper_portal.png"
 const OVERLAP_SECONDS := 2.0
 const SPIRAL_SHADER := preload("res://actor/portal/asset/portal_spiral.gdshader")
 static var _center_mask: Texture2D
+static var _center_mask_source: Texture2D
 
 @export_file("*.tscn") var target_map := ""
-@export var portal_size := Vector2(150.0, 150.0)
+@export var portal_size := Vector2(150.0, 150.0):
+	set(value):
+		portal_size = value
+		_sync_visual_size()
+		queue_redraw()
 ## 每秒旋转弧度；暂停菜单打开时动画也暂停。
 @export var spiral_rotation_speed := 0.7
 var _spiral: Sprite2D
+var _paper_frame: Sprite2D
 var _spiral_material: ShaderMaterial
 var _spiral_phase := 0.0
 var overlap_time := 0.0
@@ -35,10 +41,13 @@ func _ready() -> void:
 	z_index = 4092
 	z_as_relative = false
 	process_physics_priority = 100
-	_texture = load(TEXTURE_PATH) as Texture2D
-	if _center_mask == null and _texture != null:
+	_paper_frame = get_node_or_null("PaperFrame") as Sprite2D
+	_texture = _paper_frame.texture if _paper_frame != null and _paper_frame.texture != null else load(TEXTURE_PATH) as Texture2D
+	if _texture != null and (_center_mask == null or _center_mask_source != _texture):
 		_center_mask = _make_center_mask(_texture.get_image())
+		_center_mask_source = _texture
 	_setup_spiral()
+	_sync_visual_size()
 	queue_redraw()
 	set_physics_process(not Engine.is_editor_hint())
 
@@ -46,15 +55,26 @@ func _ready() -> void:
 func _setup_spiral() -> void:
 	if _center_mask == null:
 		return
-	_spiral = Sprite2D.new()
-	_spiral.name = "SpiralCenter"
+	_spiral = get_node_or_null("SpiralCenter") as Sprite2D
+	if _spiral == null:
+		# 兼容旧地图中只有 map_portal.gd 的节点，不要求重写地图或快照。
+		_spiral = Sprite2D.new()
+		_spiral.name = "SpiralCenter"
+		add_child(_spiral)
 	_spiral.texture = _center_mask
 	_spiral.show_behind_parent = true
-	_spiral_material = ShaderMaterial.new()
-	_spiral_material.shader = SPIRAL_SHADER
+	# 材质保持实例独立，旋转一个门不能影响其他门的动画。
+	_spiral_material = _spiral.material.duplicate() as ShaderMaterial if _spiral.material is ShaderMaterial else ShaderMaterial.new()
+	if _spiral_material.shader == null:
+		_spiral_material.shader = SPIRAL_SHADER
 	_spiral.material = _spiral_material
-	add_child(_spiral)
-	_spiral.scale = portal_size / Vector2(_center_mask.get_size())
+
+
+func _sync_visual_size() -> void:
+	if is_instance_valid(_spiral) and _spiral.texture != null:
+		_spiral.scale = portal_size / Vector2(_spiral.texture.get_size())
+	if is_instance_valid(_paper_frame) and _paper_frame.texture != null:
+		_paper_frame.scale = portal_size / Vector2(_paper_frame.texture.get_size())
 
 
 ## 从透明中心四向扩散，只覆盖被裂纹围住的洞口，不覆盖外围背景。
@@ -98,7 +118,6 @@ func _process(delta: float) -> void:
 	if is_instance_valid(_spiral):
 		_spiral_phase = fposmod(_spiral_phase + delta * spiral_rotation_speed, TAU)
 		_spiral_material.set_shader_parameter("phase", _spiral_phase)
-		_spiral.scale = portal_size / Vector2(_center_mask.get_size())
 	var editing := Engine.is_editor_hint() or _editor_active()
 	if not editing:
 		if not _editor_label.is_empty():
@@ -215,7 +234,8 @@ func _draw() -> void:
 		var label_position := Vector2(-width * 0.5, -portal_size.y * 0.5 - 14.0)
 		draw_rect(Rect2(label_position - Vector2(0, 18), Vector2(width, 24)), Color(0.96, 0.95, 0.87, 0.85))
 		draw_string(font, label_position, _editor_label, HORIZONTAL_ALIGNMENT_CENTER, width, 16, Color.BLACK)
-	if _texture != null:
+	# 新场景由 PaperFrame 显示；旧地图仍沿用脚本绘制，避免重复画两层纸框。
+	if _texture != null and not is_instance_valid(_paper_frame):
 		draw_texture_rect(_texture, Rect2(-portal_size * 0.5, portal_size), false)
 	if Engine.is_editor_hint() or _editor_active():
 		draw_arc(Vector2.ZERO, minf(portal_size.x, portal_size.y) * 0.29, 0, TAU, 48, Color(0.3, 0.5, 0.8, 0.65), 2.0)

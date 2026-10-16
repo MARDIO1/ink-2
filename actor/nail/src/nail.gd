@@ -6,8 +6,8 @@
 extends Sprite2D
 
 const NAIL_TEXTURE := preload("res://actor/nail/asset/nail.png")
-## 新钉子贴图为 32x32，固定点对齐图片中心。
-const ANCHOR_CENTER := Vector2(16.0, 16.0)
+## 44×44 的原始像素贴图；画布、实体和工具栏共用，不缩放物理锚点。
+const ANCHOR_CENTER := Vector2(22.0, 22.0)
 ## 所有运行时钉子外观都进入这个组，地图编辑器只切显示，不改物理锚点。
 const VISUAL_GROUP := &"nail_visual"
 ## 地图编辑器可单独预览预置钉子；切回游玩后只隐藏这类钉子的外观。
