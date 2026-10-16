@@ -4,7 +4,7 @@
 #region 依赖
 extends Node
 
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const ANCHOR_TAG := "static_anchor_points"

@@ -1,7 +1,7 @@
 @tool
 extends Sprite2D
 ## 持握时的红墨轮廓预览；投出后以同一轮廓固化进 PixelWorld。
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 static var _textures: Dictionary = {}
 
 

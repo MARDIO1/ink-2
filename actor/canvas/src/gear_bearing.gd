@@ -1,4 +1,4 @@
-extends "res://ink/src/yellow/hinge.gd"
+extends "res://ink/yellow/src/hinge.gd"
 ## 地图齿轮轴：沿用真实 HINGE、成对碰撞排除及碎裂通知。
 const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 @export var gear_material := 1

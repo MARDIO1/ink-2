@@ -1,8 +1,8 @@
 extends SceneTree
 ## 蓝色端到端回归：画布、物性、供电、燃料与普通红色爆炸边界。
-const Palette := preload("res://ink/src/ink_palette.gd")
-const Wire := preload("res://ink/src/blue/wire_layer.gd")
-const Motor := preload("res://ink/src/blue/motor.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Wire := preload("res://ink/blue/src/wire_layer.gd")
+const Motor := preload("res://ink/blue/src/motor.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 var checks := 0
@@ -256,7 +256,7 @@ func run() -> void:
 	await reset_canvas()
 	await test_power_sharing()
 	await reset_canvas()
-	await test_short_boundary()
+	await test_merge_boundary()
 	await reset_canvas()
 	await test_arrow_surface_and_grip()
 	await reset_canvas()
@@ -399,7 +399,7 @@ func test_power_sharing() -> void:
 	var fed: float = rule.flow.stats.consumed
 	check("source prepays packets including travel losses", emitted > 0.0 and emitted >= fed)
 
-func test_short_boundary() -> void:
+func test_merge_boundary() -> void:
 	paint(Rect2i(20, 20, 160, 30), Color.BLACK)
 	paint(Rect2i(95, 40, 4, 4), Palette.RED.color)
 	surface.brush_size = 3
@@ -413,8 +413,8 @@ func test_short_boundary() -> void:
 	rule.flow.inject(wire, Vector2i(70, 30), 1, 100.0)
 	rule.flow.inject(wire, Vector2i(130, 30), 0, 100.0)
 	settle(0.2)
-	check("short cuts blue while preserving black and nearby red", not wire.mask.has(Vector2i(100, 30)) and body.shapes[0].get_pixel(100, 30) == Palette.BLACK.id and body.shapes[0].get_pixel(95, 40) == Palette.RED.id)
-	check("short produces neither red explosion nor physical impulse", scene.get_node("SimulationRuntime/RedInk")._pending.is_empty() and body.linear_velocity == velocity)
+	check("opposed flow preserves blue black and nearby red", wire.mask.has(Vector2i(100, 30)) and body.shapes[0].get_pixel(100, 30) == Palette.BLACK.id and body.shapes[0].get_pixel(95, 40) == Palette.RED.id)
+	check("opposed flow produces neither explosion nor physical impulse", scene.get_node("SimulationRuntime/RedInk")._pending.is_empty() and body.linear_velocity == velocity)
 
 func test_arrow_surface_and_grip() -> void:
 	paint(Rect2i(20, 20, 180, 60), Color.BLACK)

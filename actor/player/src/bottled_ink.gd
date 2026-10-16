@@ -50,7 +50,7 @@ extends Sprite2D
 ##    所以按 mass_quantum 量化，只在液面变化超过阈值时才重算 —— 不是每帧。
 
 const FluidPBF := preload("res://addons/pixel_destruction/fluid/fluid_pbf.gd")
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 
 @export_group("来源")
 ## 玩家物理节点（持有 PBody 的那个）。
@@ -276,7 +276,7 @@ func _tick_fluid(delta: float) -> void:
 	#    但液面变成一根**没有阻尼的弹簧** —— 一直重复"压缩 -> 释放 -> 压缩"。
 	#    原因：这个压力项给的是**速度**，而 FLIP（flip_ratio 0.9）会把那个向外速度
 	#    一直留着，冲过平衡点之后重力再压回来 —— 一个无阻尼振子。
-	#    实测（test/probe_rest_small.gd，12x48 判定台，每步位移 4.0 格，
+	#    历史实测（12x48 判定台，每步位移 4.0 格，
 	#    "覆盖"取 600~900 帧的 min/max，目标是初始的 0.87）：
 	#      stiff 6 + over 0.8        -> 覆盖 0.63~0.99 摆，速度 3.7   ← 弹簧
 	#      stiff 2 + over 0.8        -> 覆盖 0.52~0.54 摆，速度 1.1   ← 稳了但体积塌

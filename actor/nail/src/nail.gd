@@ -16,8 +16,8 @@ const VISUAL_GROUP := &"nail_visual"
 ## 地图编辑器可单独预览预置钉子；切回游玩后只隐藏这类钉子的外观。
 static var visuals_visible := true
 static var map_editor_active := false
-## 钉子对应的材料 id；真源在 ink/src/ink_palette.gd。
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+## 钉子对应的材料 id；真源在 ink/general/src/ink_palette.gd。
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 #endregion
 
 

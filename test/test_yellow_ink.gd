@@ -1,7 +1,7 @@
 extends SceneTree
 
-const Palette = preload("res://ink/src/ink_palette.gd")
-const Stroke = preload("res://ink/src/yellow/stroke.gd")
+const Palette = preload("res://ink/general/src/ink_palette.gd")
+const Stroke = preload("res://ink/yellow/src/stroke.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
@@ -163,6 +163,13 @@ func run() -> void:
 	step.commit(scene.world, {target.body: deletion})
 	check("destroyed black anchor immediately releases constraint", sleeping.state == Stroke.State.DYING
 		and sleeping.joint == null)
+	var splash = scene.get_node("SimulationRuntime/InkSplash")
+	var splashes_before: int = splash.sprayed_count
+	rule.resolve_fixed({"world": scene.world, "player_body": scene.get_node("Player").body})
+	check("dying yellow stroke emits one general yellow splash",
+		splash.sprayed_count == splashes_before + 1)
+	rule.resolve_fixed({"world": scene.world, "player_body": scene.get_node("Player").body})
+	check("dying yellow stroke does not emit twice", splash.sprayed_count == splashes_before + 1)
 	_test_erosion()
 	_test_parallel()
 	await _test_serialization()

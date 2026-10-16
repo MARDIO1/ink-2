@@ -1,6 +1,6 @@
 extends "res://test/test_collision_damage.gd"
 
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const CanvasSurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 
 

@@ -4,7 +4,7 @@ extends CanvasLayer
 
 ## 退出按钮先打开 ESC 菜单，由菜单决定继续、回主菜单或退出。
 const ESC_SCENE := preload("res://ui/esc/esc.tscn")
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 ## UI 与关卡不在同一棵子树时的兜底查找：玩家 / 调试 HUD 都按组找（场景里挂的组见
 ## `map/main.tscn` 的 `Player` 与 `debug/hud/debug_hud.tscn` 的根节点）。
 const PLAYER_GROUP := "player"

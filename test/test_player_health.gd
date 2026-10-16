@@ -1,7 +1,7 @@
 extends "res://test/test_collision_damage.gd"
 ## 玩家生命值只认黑墨；其他颜色独立记账，黑墨归零复用现有死亡/复活流程。
 
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 
 
 func _initialize() -> void:
@@ -33,9 +33,28 @@ func _run() -> void:
 	_check("HUD reads black health only", is_equal_approx(hud.bottle_fill.value, 100.0)
 		and hud.health_bar.value == 100.0 and hud.ink_meter.text == "黑墨 20000 px")
 	health.damage(death.hurt_sound_threshold - 1.0)
-	_check("damage below sound threshold stays silent", not hurt_sound.playing)
+	_check("damage below feedback threshold stays silent", not hurt_sound.playing
+		and death._hit_flash_items.is_empty())
+	var body_material: Material = player.get_node("Visual").material
+	var bottle: Sprite2D = player.get_node("BottledInk")
+	var bottle_material: Material = bottle.material
+	var bottle_was_visible := bottle.is_visible_in_tree()
+	var hand_art: Sprite2D = player.get_node("Arm/Hand/Visual/ArtUnfold")
+	var hand_material: Material = hand_art.material
+	var arm_curve: Line2D = player.get_node("Arm/Hand/Visual/ArmCurve")
+	var arm_material: Material = arm_curve.material
 	health.damage(death.hurt_sound_threshold)
-	_check("damage at sound threshold plays hurt sound", hurt_sound.playing)
+	_check("damage at feedback threshold plays sound and flashes the whole player",
+		hurt_sound.playing and not death._hit_flash_items.is_empty()
+		and player.get_node("Visual").material == death._hit_flash_material
+		and (not bottle_was_visible or bottle.material == death._hit_flash_material)
+		and hand_art.material == death._hit_flash_material
+		and arm_curve.material == death._hit_flash_material)
+	death._update_hit_flash(death.hit_flash_duration)
+	_check("hit flash restores original materials", death._hit_flash_items.is_empty()
+		and player.get_node("Visual").material == body_material
+		and bottle.material == bottle_material and hand_art.material == hand_material
+		and arm_curve.material == arm_material)
 	hurt_sound.stop()
 	health.add(black_id, health.max_of(black_id))
 	player.apply_collision_damage(5000.0)

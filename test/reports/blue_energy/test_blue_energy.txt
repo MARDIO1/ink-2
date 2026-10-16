@@ -10,16 +10,27 @@ PASS thick fork delivers to all forward branches
 PASS thick fork splits equally by geometric outlet
 PASS fork never duplicates energy
 PASS narrow then wide does not restore lost energy
-PASS head-on both parity phases burn wire 19
-PASS head-on both parity phases burn wire 20
+PASS equal head-on preserves wire in both parity phases 19
+PASS equal head-on preserves wire in both parity phases 20
+PASS larger opposing current reaches sink adjacent=false right=false
+PASS larger opposing current reaches sink adjacent=false right=true
+PASS larger opposing current reaches sink adjacent=true right=false
+PASS larger opposing current reaches sink adjacent=true right=true
+PASS equal current tie keeps fixed direction independent of injection order false
+PASS equal current tie keeps fixed direction independent of injection order true
+PASS winner traverses defeated current's reverse visited trail
+PASS defeated current cannot activate a motor before winner arrives
 PASS perpendicular arrivals merge without short
 PASS fractional speed keeps distance remainder
-PASS same-source closed loop shorts and stops
+PASS same-source closed loop dissipates without damaging wire
+PASS packet lifetime still bounds loop energy
 PASS multiple pixels per update never skip an intermediate cut
 PASS strictly touching independent carriers pass energy
+PASS foreign carrier opposition keeps stronger direction rotated=false
+PASS foreign carrier opposition keeps stronger direction rotated=true
 PASS passing wire also branches through slip ring
 PASS rotated slip ring feeds both local directions without duplicating energy
 PASS fracture preserves packet age and does not bill a second emission
 PASS snapshot grows by live data without repeating simulation
 PASS large fracture readback grows without advancing or dropping directions
-BLUE_ENERGY_RESULT checks=22 failures=0
+BLUE_ENERGY_RESULT checks=33 failures=0

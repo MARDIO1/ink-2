@@ -1,6 +1,6 @@
 extends SceneTree
-const Flow := preload("res://ink/src/blue/energy_flow.gd")
-const Wire := preload("res://ink/src/blue/wire_layer.gd")
+const Flow := preload("res://ink/blue/src/energy_flow.gd")
+const Wire := preload("res://ink/blue/src/wire_layer.gd")
 var checks := 0
 var failures := 0
 
@@ -104,7 +104,40 @@ func run() -> void:
 		flow.inject(wire, Vector2i(1, 0), 1, 100.0, 11)
 		flow.inject(wire, Vector2i(separation, 0), 0, 100.0, 22)
 		advance(flow, wire, 24)
-		check("head-on both parity phases burn wire %d" % separation, flow.stats.shorts > 0 and wire.mask.size() < 24)
+		check("equal head-on preserves wire in both parity phases %d" % separation, flow.stats.shorts == 0 and wire.mask.size() == 24 and is_equal_approx(flow.stats.injected, flow.stats.consumed + flow.stats.lost + flow.stored_energy()))
+	for adjacent in [false, true]:
+		for strong_right in [false, true]:
+			var wire = wire_rects([Rect2i(0, 0, 50, 1)])
+			flow = Flow.new()
+			sink = connect_sink(flow, wire, Rect2i(40 if strong_right else 2, 0, 1, 1))
+			flow.inject(wire, Vector2i(20, 0), 1, 100.0 if strong_right else 40.0, -42)
+			flow.inject(wire, Vector2i(21 if adjacent else 20, 0), 0, 40.0 if strong_right else 100.0, 22)
+			advance(flow, wire, 25)
+			check("larger opposing current reaches sink adjacent=%s right=%s" % [adjacent, strong_right], is_equal_approx(sink.energy, 100.0) and is_equal_approx(flow.stats.lost, 40.0) and flow.stored_energy() == 0.0 and wire.mask.size() == 50)
+	for reverse in [false, true]:
+		var wire = wire_rects([Rect2i(0, 0, 50, 1)])
+		flow = Flow.new()
+		for direction in ([0, 1] if reverse else [1, 0]):
+			flow.inject(wire, Vector2i(20, 0), direction, 100.0, direction + 1)
+		advance(flow, wire, 1)
+		var front: Dictionary = flow.state(wire).front
+		check("equal current tie keeps fixed direction independent of injection order %s" % reverse, front.has(Vector2i(21, 0)) and is_equal_approx(flow.stored_energy(), 100.0) and is_equal_approx(flow.stats.lost, 100.0))
+	var trail = wire_rects([Rect2i(0, 0, 50, 1)])
+	flow = Flow.new()
+	sink = connect_sink(flow, trail, Rect2i(45, 0, 1, 1))
+	flow.inject(trail, Vector2i(1, 0), 1, 100.0, 11)
+	flow.inject(trail, Vector2i(30, 0), 0, 40.0, 22)
+	advance(flow, trail, 48)
+	check("winner traverses defeated current's reverse visited trail", is_equal_approx(sink.energy, 100.0) and is_equal_approx(flow.stats.lost, 40.0))
+	var arrival = wire_rects([Rect2i(0, 0, 50, 1)])
+	flow = Flow.new()
+	sink = connect_sink(flow, arrival, Rect2i(21, 0, 1, 1))
+	flow.inject(arrival, Vector2i(20, 0), 1, 100.0, 11)
+	flow.inject(arrival, Vector2i(21, 0), 0, 40.0, 22)
+	advance(flow, arrival, 1)
+	var before_arrival: bool = sink.energy == 0.0 and is_equal_approx(flow.stored_energy(), 100.0)
+	advance(flow, arrival, 1)
+	check("defeated current cannot activate a motor before winner arrives", before_arrival and is_equal_approx(sink.energy, 100.0))
 	var cross = wire_rects([Rect2i(0, 10, 21, 1), Rect2i(10, 0, 1, 21)])
 	flow = Flow.new()
 	flow.inject(cross, Vector2i(0, 10), 1, 100.0)
@@ -121,8 +154,13 @@ func run() -> void:
 	var loop = wire_rects([Rect2i(0, 0, 31, 1), Rect2i(0, 20, 31, 1), Rect2i(0, 0, 1, 21), Rect2i(30, 0, 1, 21), Rect2i(-10, 10, 11, 1)])
 	flow = Flow.new()
 	flow.inject(loop, Vector2i(-10, 10), 1, 100.0, 42)
-	advance(flow, loop, 100)
-	check("same-source closed loop shorts and stops", flow.stats.shorts > 0 and flow.active_cells() == 0)
+	advance(flow, loop, 300)
+	check("same-source closed loop dissipates without damaging wire", flow.stats.shorts == 0 and loop.mask.size() == 110 and flow.active_cells() == 0 and is_equal_approx(flow.stats.lost, 100.0))
+	flow = Flow.new()
+	flow.lifetime = 0.01
+	flow.inject(loop, Vector2i(-10, 10), 1, 100.0, 42)
+	advance(flow, loop, 20)
+	check("packet lifetime still bounds loop energy", flow.active_cells() == 0 and is_equal_approx(flow.stats.lost, 100.0) and loop.mask.size() == 110)
 	var cut_line = wire_rects([Rect2i(0, 0, 5, 1), Rect2i(6, 0, 25, 1)])
 	flow = Flow.new()
 	sink = connect_sink(flow, cut_line, Rect2i(20, 0, 1, 1))
@@ -139,6 +177,20 @@ func run() -> void:
 	for i in 24:
 		flow.advance([first, second], 1.0 / flow.speed)
 	check("strictly touching independent carriers pass energy", is_equal_approx(sink.energy, 100.0))
+	for rotated in [false, true]:
+		var a = wire_rects([Rect2i(0, 0, 20, 1)])
+		var b = wire_rects([Rect2i(0, 0, 21, 1)] if rotated else [Rect2i(20, 0, 21, 1)])
+		if rotated:
+			b.body.position = Vector2(41, 1)
+			b.body.rotation = PI
+		flow = Flow.new()
+		flow.neighbours[a] = [b]
+		flow.neighbours[b] = [a]
+		flow.inject(a, Vector2i(19, 0), 1, 40.0, 11)
+		flow.inject(b, Vector2i(20, 0), 1 if rotated else 0, 100.0, 22)
+		flow.advance([a, b], 1.0 / flow.speed)
+		var front: Dictionary = flow.state(a).front
+		check("foreign carrier opposition keeps stronger direction rotated=%s" % rotated, front.has(Vector2i(19, 0)) and is_equal_approx(front[Vector2i(19, 0)][0].x, 100.0) and is_equal_approx(flow.stats.lost, 40.0) and a.mask.size() == 20 and b.mask.size() == 21)
 	var ring_input = wire_rects([Rect2i(0, 40, 11, 1)])
 	var ring_output = wire_rects([Rect2i(-20, 60, 41, 1)])
 	ring_output.body.rotation = PI

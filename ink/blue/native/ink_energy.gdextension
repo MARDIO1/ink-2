@@ -1,0 +1,8 @@
+[configuration]
+entry_symbol = "gdextension_init"
+compatibility_minimum = "4.7"
+reloadable = false
+
+[libraries]
+windows.debug.x86_64 = "res://ink/blue/native/ink_energy.dll"
+windows.release.x86_64 = "res://ink/blue/native/ink_energy.dll"

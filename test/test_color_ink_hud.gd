@@ -1,6 +1,6 @@
 extends SceneTree
 
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Health := preload("res://actor/player/src/ink_health.gd")
 var failures := 0
 

@@ -1,13 +1,13 @@
 extends RefCounted
 ## 只读选区采集、独立部件重建，以及一次性提交的绘画事务。
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Mask := preload("res://actor/canvas/src/selection_mask.gd")
 const Store := preload("res://actor/blueprint/src/blueprint_store.gd")
 const Bearing := preload("res://actor/canvas/src/gear_bearing.gd")
-const Hinge := preload("res://ink/src/yellow/hinge.gd")
-const Stroke := preload("res://ink/src/yellow/stroke.gd")
-const Motor := preload("res://ink/src/blue/motor.gd")
-const Wire := preload("res://ink/src/blue/wire_layer.gd")
+const Hinge := preload("res://ink/yellow/src/hinge.gd")
+const Stroke := preload("res://ink/yellow/src/stroke.gd")
+const Motor := preload("res://ink/blue/src/motor.gd")
+const Wire := preload("res://ink/blue/src/wire_layer.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")

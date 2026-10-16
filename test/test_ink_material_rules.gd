@@ -3,7 +3,7 @@ extends SceneTree
 const MAIN_SCENE := preload("res://map/asset/imported/main.tscn")
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PixelShape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 
 var _passed := 0
 var _failed := 0

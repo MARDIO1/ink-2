@@ -1,7 +1,7 @@
 extends Control
 ## 黑墨保留在瓶身；灰、红、黄、白墨使用纯色色段，连续堆叠在横条右侧。
 
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const MATERIALS := [InkPalette.GREY, InkPalette.RED, InkPalette.YELLOW, InkPalette.WHITE]
 const EMPTY_COLOR := Color(0.76, 0.75, 0.70, 0.62)
 

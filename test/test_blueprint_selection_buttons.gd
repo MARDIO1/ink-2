@@ -1,5 +1,5 @@
 extends SceneTree
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 var failures := 0
 var checks := 0
 

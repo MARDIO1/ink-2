@@ -1,7 +1,7 @@
 extends SceneTree
 const Nail := preload("res://actor/nail/src/nail.gd")
 const NailLayer := preload("res://actor/nail/src/nail_layer.gd")
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Codec := preload("res://actor/blueprint/src/blueprint_codec.gd")
 const LevelList := preload("res://ui/level_select/src/level_select.gd")
 var failures := 0

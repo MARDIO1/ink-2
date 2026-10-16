@@ -65,8 +65,8 @@ PASS unused upstream energy continues to downstream motor
 PASS motor buffer remains bounded
 PASS source prepays packets including travel losses
 SOLID bodies=1 pixels=4801 rejected=0
-PASS short cuts blue while preserving black and nearby red
-PASS short produces neither red explosion nor physical impulse
+PASS opposed flow preserves blue black and nearby red
+PASS opposed flow produces neither explosion nor physical impulse
 PASS arrow start snaps onto nearby black
 PASS whole arrow clips to black including head
 SOLID bodies=1 pixels=10804 rejected=0

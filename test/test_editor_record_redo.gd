@@ -1,7 +1,7 @@
 extends SceneTree
 
-const Palette := preload("res://ink/src/ink_palette.gd")
-const YellowStroke := preload("res://ink/src/yellow/stroke.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+const YellowStroke := preload("res://ink/yellow/src/stroke.gd")
 var failures := 0
 
 

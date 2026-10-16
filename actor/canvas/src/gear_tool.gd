@@ -1,6 +1,6 @@
 extends Node2D
 ## 编辑器齿轮预览与独立像素部件；不把齿轮焊进背后的画布支座。
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 const Bearing := preload("res://actor/canvas/src/gear_bearing.gd")

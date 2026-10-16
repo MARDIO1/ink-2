@@ -1,6 +1,6 @@
 extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
 ## 红墨炸弹使用同一 PixelWorld 的 CCD 刚体，退出时显式清理碰撞与排斥关节。
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 var level: Node2D
 var art: Sprite2D
 var _disposed := false

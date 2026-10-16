@@ -10,9 +10,9 @@ signal editor_control_requested
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
-const YellowHinge := preload("res://ink/src/yellow/hinge.gd")
+const YellowHinge := preload("res://ink/yellow/src/hinge.gd")
 const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
@@ -88,6 +88,8 @@ func _ready() -> void:
 	_workbench_home_transform = workbench.transform
 	var rod_pixels: Image = surface.rod_layer.pixels.duplicate() if surface.rod_layer.pixels != null else null
 	var rod_anchors: PackedVector2Array = surface.rod_layer.anchor_points.duplicate()
+	var rod_rails: Array = surface.rod_layer.rails.duplicate(true)
+	var rod_pins: Array = surface.rod_layer.slider_pins.duplicate(true)
 	var blue_cells: PackedVector2Array = surface.blue_layer.cells.duplicate()
 	surface.canvas_size = canvas_size
 	surface.blue_layer.cells = blue_cells
@@ -96,6 +98,8 @@ func _ready() -> void:
 	if rod_pixels != null and rod_pixels.get_used_rect().has_area():
 		surface.rod_layer.pixels = rod_pixels
 		surface.rod_layer.anchor_points = rod_anchors
+		surface.rod_layer.rails = rod_rails
+		surface.rod_layer.slider_pins = rod_pins
 		surface.rod_layer.resize(canvas_size)
 	_place_controls()
 	_prepare_workbench_structure()
@@ -189,7 +193,7 @@ func clear_canvas() -> void:
 ## 墨水固化成实体（原 E 键）。
 func generate(record_undo := true) -> void:
 	# 激活白墨即不可撤销；它随后会修改别的实体，旧事务不能跨过这条边界。
-	if surface.ink_px_of(preload("res://ink/src/ink_palette.gd").WHITE.id) > 0:
+	if surface.ink_px_of(preload("res://ink/general/src/ink_palette.gd").WHITE.id) > 0:
 		record_undo = false
 		surface._undo_steps.clear()
 	var state: Dictionary = History.capture(self) if record_undo else {}
@@ -471,6 +475,11 @@ func _build_side_panel() -> void:
 	panel.add_theme_constant_override("separation", 4)
 	add_child(panel)
 	_side_panel = panel
+	var screen_layer := preload("res://actor/canvas/src/side_panel_layout.gd").new()
+	screen_layer.name = "SidePanelLayer"
+	screen_layer.canvas = self
+	screen_layer.panel = panel
+	add_child(screen_layer)
 	var title_slot := Control.new()
 	title_slot.name = "TitleSlot"
 	title_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -573,8 +582,9 @@ func select_ink(index: int) -> void:
 func _place_side_panel() -> void:
 	if _side_panel == null:
 		return
-	var outward_offset := 0.0 if _map_editor_mode else PLAY_TOOLBAR_X_OFFSET
-	_side_panel.position = Vector2(float(canvas_size.x) + side_panel_gap + outward_offset, -22.0 + PLAY_TOOLBAR_Y_OFFSET)
+	var layout := get_node_or_null("SidePanelLayer")
+	if layout != null:
+		layout.update_layout()
 #endregion
 
 

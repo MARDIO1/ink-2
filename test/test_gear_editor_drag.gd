@@ -1,6 +1,6 @@
 extends SceneTree
 
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Bearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const Surface := preload("res://actor/canvas/src/canvas_surface.gd")
 var failures := 0

@@ -10,7 +10,7 @@ signal ink_shortage(required: int, available: int)
 
 signal edit_committed
 
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const GearTool := preload("res://actor/canvas/src/gear_tool.gd")
 var gear_tool: Node2D
@@ -32,6 +32,7 @@ var _dirty_hi := Vector2i(-(1 << 30), -(1 << 30))
 @onready var blue_layer: Node2D = $BlueWireLayer
 @onready var rod_layer: Node2D = $YellowRodLayer
 var _rod_drawing := false
+var _rail_drawing := false
 func _ready() -> void:
 	gear_tool = GearTool.new()
 	gear_tool.name = "GearTool"
@@ -129,6 +130,9 @@ func _process(_delta: float) -> void:
 		rod_layer.extend(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
 		if tool != Tool.ERASER:
 			return
+	if _rail_drawing:
+		rod_layer.extend_rail(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
+		return
 	var yellow = yellow_rule()
 	if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
 		yellow.extend(self, _mouse_point())
@@ -182,6 +186,9 @@ const MIN_PAINT_INK := 1000
 			gear_tool.cancel()
 		if _rod_drawing:
 			_finish_rod_stroke(rod_layer.last_point)
+		if _rail_drawing:
+			rod_layer.cancel_rail()
+			_rail_drawing = false
 		if is_node_ready() and not Engine.is_editor_hint():
 			var yellow = yellow_rule()
 			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
@@ -199,12 +206,15 @@ const MIN_PAINT_INK := 1000
 		tool = value
 		_painting = false
 		_shaping = false
-## 当前选中的墨水（`ink/src/ink_palette.gd` 的 INKS 下标）；右侧面板改它。
+## 当前选中的墨水（`ink/general/src/ink_palette.gd` 的 INKS 下标）；右侧面板改它。
 @export var selected_ink: int = 0:
 	set(value):
 		if selected_ink != value and is_node_ready():
 			if _rod_drawing:
 				_finish_rod_stroke(rod_layer.last_point)
+			if _rail_drawing:
+				rod_layer.cancel_rail()
+				_rail_drawing = false
 			var yellow = yellow_rule()
 			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
 				yellow.cancel()
@@ -270,6 +280,10 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 			_finish_rod_stroke(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
 			if tool != Tool.ERASER:
 				return
+		if not button.pressed and _rail_drawing:
+			rod_layer.finish_rail(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
+			_rail_drawing = false
+			return
 		if not button.pressed and yellow.drawing != null and yellow.drawing.source_surface == self:
 			yellow.finish(self, _mouse_point())
 			return
@@ -290,7 +304,12 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 				if _inside(_mouse_point()):
 					rod_layer.place_anchor(_mouse_point())
 				return
-			if tool in [Tool.RECT, Tool.BUCKET, Tool.NAIL]:
+			if tool == Tool.RECT:
+				if _inside(_mouse_point()):
+					_rail_drawing = true
+					rod_layer.begin_rail(_mouse_point())
+				return
+			if tool in [Tool.BUCKET, Tool.NAIL]:
 				return
 		if not button.pressed and ink_material_id() == InkPalette.YELLOW.id and tool == Tool.CIRCLE:
 			return
@@ -1351,6 +1370,10 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 			current.rod_pixels[cell] = rod_layer.pixels.get_pixelv(cell).a > 0.5
 		if step.has("rod_springs"):
 			current.rod_springs = yellow_rule().draft_data(self)
+		if step.has("rod_rails"):
+			current.rod_rails = rod_layer.rails.duplicate(true)
+		if step.has("rod_pins"):
+			current.rod_pins = rod_layer.slider_pins.duplicate(true)
 		if step.has("black_pixels"):
 			current.black_pixels = {}
 			for cell in step.black_pixels:
@@ -1602,6 +1625,7 @@ func _save_snapshot(path: String) -> Error:
 	file.store_buffer("INK2".to_ascii_buffer())
 	var rule = yellow_rule()
 	file.store_var({"black": black_image.save_png_to_buffer(), "rod": rod_layer.pixels.save_png_to_buffer(), "anchors": rod_layer.anchor_points,
+		"rails": rod_layer.rails, "slider_pins": rod_layer.slider_pins,
 		"springs": rule.draft_data(self) if rule != null else [], "blue": blue_layer.cells,
 		"motors": blue_rule().draft_data(self) if blue_rule() != null else []})
 	file.flush()
@@ -1663,6 +1687,8 @@ func load_ink(path: String) -> Error:
 		rods.load_png_from_buffer(rod_data.rod)
 		rod_layer.pixels = rods
 		rod_layer.anchor_points = rod_data.anchors
+		rod_layer.rails = rod_data.get("rails", []).duplicate(true)
+		rod_layer.slider_pins = rod_data.get("slider_pins", []).duplicate(true)
 		rod_layer.refresh()
 		var health = _health_node()
 		if not ink_free and health != null:

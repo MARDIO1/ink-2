@@ -1,7 +1,7 @@
 extends SceneTree
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 var failures := 0
 var warning_count := 0
 

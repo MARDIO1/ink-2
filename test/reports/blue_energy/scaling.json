@@ -4,7 +4,7 @@
 		{
 			"active_peak": 7,
 			"cpu_median_us": 19,
-			"cpu_p95_us": 24,
+			"cpu_p95_us": 22,
 			"delivered": 16100.0,
 			"frames": 600,
 			"length": 240,
@@ -14,8 +14,8 @@
 		},
 		{
 			"active_peak": 14,
-			"cpu_median_us": 30,
-			"cpu_p95_us": 36,
+			"cpu_median_us": 31,
+			"cpu_p95_us": 35,
 			"delivered": 16100.0,
 			"frames": 600,
 			"length": 512,
@@ -36,8 +36,8 @@
 		},
 		{
 			"active_peak": 49,
-			"cpu_median_us": 82,
-			"cpu_p95_us": 90,
+			"cpu_median_us": 85,
+			"cpu_p95_us": 93,
 			"delivered": 16100.0,
 			"frames": 600,
 			"length": 2048,
@@ -47,8 +47,8 @@
 		},
 		{
 			"active_peak": 98,
-			"cpu_median_us": 159,
-			"cpu_p95_us": 177,
+			"cpu_median_us": 169,
+			"cpu_p95_us": 185,
 			"delivered": 16100.0,
 			"frames": 600,
 			"length": 4096,

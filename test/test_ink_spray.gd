@@ -1,12 +1,12 @@
 extends SceneTree
 ## 黑墨喷溅验收：伤害事件 → 纯 shader 的喷溅表、阈值、去重、寿命；且不碰物理世界与墨水账。
 
-const InkSpray = preload("res://ink/src/ink_spray.gd")
+const InkSpray = preload("res://ink/general/src/ink_splash.gd")
 const ImpactDamage = preload("res://root/src/impact_damage.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
-const InkPalette = preload("res://ink/src/ink_palette.gd")
+const InkPalette = preload("res://ink/general/src/ink_palette.gd")
 
 var failures: int = 0
 var checks: int = 0
@@ -118,6 +118,35 @@ func _run() -> void:
 		spray._head.size() == InkSpray.MAX_SPLATS and spray._tail.size() == InkSpray.MAX_SPLATS
 		and spray._material.shader.code.contains("splat_head[8]"))
 
+	# --- 通用删除入口：色表里的每种墨水都按自己的颜色飞溅 ---
+	var removal_splash = InkSpray.new()
+	removal_splash.dedup_seconds = 0.0
+	root.add_child(removal_splash)
+	await process_frame
+	removal_splash.set_process(false)
+	var mixed = _body(world, Vector2(900, 100), Vector2i(InkPalette.INKS.size(), 1))
+	var mixed_shape = mixed.shapes[0]
+	var mixed_mask: Dictionary = {}
+	for index in InkPalette.INKS.size():
+		var material = InkPalette.ink_at(index)
+		mixed_shape.set_pixel(index, 0, InkPalette.material_id_of(material))
+		mixed_mask[Vector2i(index, 0)] = true
+	removal_splash.observe_removals({}, mixed, {mixed_shape: mixed_mask})
+	var all_colors := true
+	for index in InkPalette.INKS.size():
+		var wanted: Color = InkPalette.color_at(index)
+		var found := false
+		for splat in removal_splash._splats:
+			found = found or _same_hue(splat.color, wanted)
+		all_colors = all_colors and found
+	_check("all ink colors splash through the general removal hook",
+		all_colors and removal_splash._splats.size() == InkPalette.INKS.size())
+	world.remove_body(mixed)
+	mixed_shape.owner_body = null
+	mixed.shapes.clear()
+	removal_splash.queue_free()
+	await process_frame
+
 	spray.observe_damage({}, [_hit(0.5, Vector2(10, 10))])
 	_check("strength is zero at the threshold", spray._strength_for(spray.min_damage) == 0.0)
 	_check("strength is 1 at the reference damage",
@@ -146,6 +175,9 @@ func _run() -> void:
 	_check("droplet count scales with damage",
 		spray._material.shader.code.contains("mix(drop_min, drop_max, strength)")
 		and is_equal_approx(float(spray._material.get_shader_parameter("drop_max")), float(spray.drop_max)))
+	_check("dense spray uses substantially more droplets",
+		spray.drop_min >= 12 and spray.drop_max >= 48
+		and spray._material.shader.code.contains("j < 64"))
 	_check("droplets are hard-edged squares",
 		spray._material.shader.code.contains("float box_alpha(")
 		and spray._material.shader.code.contains("step(max(d.x, d.y), 0.0)"))

@@ -1,5 +1,5 @@
 extends RefCounted
-const Palette := preload("res://ink/src/ink_palette.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 ## 蓝图仅包含 JSON 数据；不加载场景、脚本或带对象的 Variant。
 const VERSION := 1
 const MAX_SIDE := 1024

@@ -4,7 +4,7 @@ extends Node2D
 ## 无碰撞墨泉：固定尺寸贴图；运行时读取 PixelWorld 玩家范围并持续补满各色墨水。
 
 const GROUP := &"ink_fountain"
-const InkPalette := preload("res://ink/src/ink_palette.gd")
+const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 
 @export var refill_radius := Vector2(150.0, 170.0)
 @export var refill_per_second := 9000.0

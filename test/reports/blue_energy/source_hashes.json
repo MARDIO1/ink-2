@@ -1,12 +1,12 @@
 {
-  "ink/src/blue/energy_flow.gd": "513c2af66cb854cf9699ed8d79700d2f5bff1de57540cc26af8af00737005fa1",
-  "ink/src/blue/motor.gd": "f17d1e588f195eb59d1313553f8eb17f5877c63e39a69c071d72aedb71a1277e",
-  "ink/src/blue/wire_layer.gd": "cdc6fd37d7ac2ee8af75638f934de6210760cc2307add209b7aa0055caa12a15",
-  "ink/src/blue_ink.gd": "e4b42101d11dc6472061502b4bd4bc0e11fcf606db551592e9c5aa221303677e",
-  "ink/native/energy_extension.cpp": "d9e9eaa29ddc9e085e31024fdb05b0a13688410f8a5a9ec80a5cf31bc6303c16",
-  "ink/native/energy_kernel.hpp": "74899e641c02726c073d0e1974fce1720421cafd19360c819f0e9c6fe0ebabef",
-  "ink/native/ink_energy.dll": "bbcbe0c919be52f4f476debb508d5f129429058be6dd253b2ee1845f42db2773",
-  "ink/native/ink_energy.gdextension": "3fece3bc05c0934a54591bf1ea6911bdd4ea29e8f0fd9288c862828fe423babc",
-  "ink/native/~ink_energy.dll": "b45cc41f60cdbfe2ec47525282e3fd868a68c9503347a3bd09c209ddaab67050",
-  "test/tools/blue_energy_stress.gd": "e7966d691a092f14ea49f57197aa0960f4efe8ad2b0c79e126c2a98201fc8235"
+  "ink/blue/src/blue_ink.gd": "9748fa3c063ed79306ad2e455461085a93a66080a6471062c46aea4173f81292",
+  "ink/blue/src/energy_flow.gd": "da44c6462c42002053ce2ed8cc3c76774590f314328f00d84ad2df720631ccaa",
+  "ink/blue/src/motor.gd": "a38a6516e2d650e5a54fe77587dbe21735d19a463fa1aaa817dc03e8a4ce3948",
+  "ink/blue/src/wire_layer.gd": "9892b7393f1d3ece4775670d96e59862126156a4ba02d956c507d9121d2c2f1b",
+  "ink/blue/native/energy_extension.cpp": "d9e9eaa29ddc9e085e31024fdb05b0a13688410f8a5a9ec80a5cf31bc6303c16",
+  "ink/blue/native/energy_kernel.hpp": "b8d5dce56e104841fb84c89bad324a7efc2102b5a40494bcfc969d02a35a2d2c",
+  "ink/blue/native/ink_energy.dll": "814f2c809eb33e602e869f91f5346247fa2b4c29901dadce4f55a42567df4451",
+  "ink/blue/native/ink_energy.gdextension": "5b8bdea6a2977237dd6b8ccdb696c7eeee0191289c6719f4be3c20adc0940b23",
+  "ink/blue/native/~ink_energy.dll": "59f74e8a15381de2f0f58c75bbe090a666a7d20907c346f0376d51dd5b5ecf0e",
+  "test/tools/blue_energy_stress.gd": "b6f2cb5606f07d16c328909ceb521d144b065763bc9c5866b04b04b2d922e5a3"
 }

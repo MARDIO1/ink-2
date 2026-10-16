@@ -2,10 +2,12 @@ extends RefCounted
 
 const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
-const Stroke := preload("res://ink/src/yellow/stroke.gd")
-const Hinge := preload("res://ink/src/yellow/hinge.gd")
+const Stroke := preload("res://ink/yellow/src/stroke.gd")
+const Hinge := preload("res://ink/yellow/src/hinge.gd")
+const Rail := preload("res://ink/yellow/src/rail.gd")
+const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
-const Palette := preload("res://ink/src/ink_palette.gd")
 const TOKEN := &"canvas_undo_identity"
 
 static func identity(node: Node) -> int:
@@ -21,8 +23,10 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 	var data: PackedByteArray = surface.black_image.get_data()
 	var state := {"blue_before": surface.blue_rule().object_ids() if surface.blue_rule() != null else {}, "blue_remove": {}, "blue": blue_state, "blue_cells": surface.blue_layer.cells.duplicate(), "blue_active": include_bodies, "size": surface.canvas_size, "position": canvas.position,
 		"rod_image": surface.rod_layer.pixels.duplicate(), "rod_anchors": surface.rod_layer.anchor_points.duplicate(),
+		"rod_rails": surface.rod_layer.rails.duplicate(true), "rod_pins": surface.rod_layer.slider_pins.duplicate(true),
 		"image": data.compress(FileAccess.COMPRESSION_FASTLZ), "ledger": surface.ink_px_by_material.duplicate(),
-		"bodies": [], "before_ids": {}, "remove_ids": {}, "yellow": [], "hinges": [], "health": {}, "health_delta": {}}
+		"bodies": [], "before_ids": {}, "remove_ids": {}, "yellow": [], "hinges": [],
+		"rails_runtime": [], "pins_runtime": [], "health": {}, "health_delta": {}}
 	for child in canvas.world.get_children():
 		if child is Hinge and not child.is_queued_for_deletion():
 			if child is GearBearing and not child.yellow_anchor.is_empty():
@@ -33,6 +37,11 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 						"world": child.fixed_to_world, "wheel_path": child.wheel_path, "teeth": child.teeth}])
 			elif not child.yellow_anchor.is_empty() and not child.black_anchor.is_empty():
 				state.hinges.append([Stroke.anchor_world(child.yellow_anchor), Stroke.anchor_world(child.black_anchor)])
+		elif child is Rail and not child.is_queued_for_deletion() and child.body != null:
+			var endpoints: PackedVector2Array = child.endpoints_world()
+			state.rails_runtime.append([endpoints[0], endpoints[1], child.rail_width])
+		elif child is SliderPin and not child.is_queued_for_deletion() and not child.black_anchor.is_empty():
+			state.pins_runtime.append([Stroke.anchor_world(child.black_anchor), child.pin_world()])
 	var bounds := selection if selection.has_area() else Rect2(surface.global_position, Vector2(surface.canvas_size))
 	canvas.world.realign_body_nodes()
 	for index in canvas.world.world.bodies.size():
@@ -109,8 +118,11 @@ static func commit(canvas, state: Dictionary) -> void:
 static func restore(canvas, state: Dictionary) -> void:
 	var surface = canvas.surface
 	for child in canvas.world.get_children():
-		if child is Hinge:
-			child.remove_joint()
+		if child is Hinge or child is Rail or child is SliderPin:
+			if child.has_method("remove_joint"):
+				child.remove_joint()
+			elif child.has_method("remove"):
+				child.remove()
 			canvas.world.remove_child(child)
 			child.queue_free()
 	canvas.world.realign_body_nodes()
@@ -145,6 +157,19 @@ static func restore(canvas, state: Dictionary) -> void:
 		hinge.black_position = saved[1]
 		canvas.world.add_child(hinge)
 		hinge.owner = canvas.world
+	for saved in state.get("rails_runtime", []):
+		var rail := Rail.new()
+		rail.saved_a = saved[0]
+		rail.saved_b = saved[1]
+		rail.rail_width = saved[2]
+		canvas.world.add_child(rail)
+		rail.owner = canvas.world
+	for saved in state.get("pins_runtime", []):
+		var pin := SliderPin.new()
+		pin.saved_source = saved[0]
+		pin.saved_position = saved[1]
+		canvas.world.add_child(pin)
+		pin.owner = canvas.world
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		var ids := {}
@@ -192,6 +217,8 @@ static func restore(canvas, state: Dictionary) -> void:
 	if state.has("rod_image"):
 		surface.rod_layer.pixels = state.rod_image.duplicate()
 		surface.rod_layer.anchor_points = state.rod_anchors.duplicate()
+		surface.rod_layer.rails = state.get("rod_rails", []).duplicate(true)
+		surface.rod_layer.slider_pins = state.get("rod_pins", []).duplicate(true)
 		surface.rod_layer.refresh()
 	surface.blue_layer.cells = state.get("blue_cells", PackedVector2Array())
 	surface.blue_layer.rebuild()
