@@ -1,0 +1,4572 @@
+{
+	"checks": 1,
+	"failures": 0,
+	"results": [
+		{
+			"median_us": 4876,
+			"scenario": "horizontal_256_draw64_total"
+		},
+		{
+			"max_us": 105,
+			"median_us": 39,
+			"p95_us": 105,
+			"scenario": "horizontal_256_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 837,
+			"median_us": 81,
+			"p95_us": 837,
+			"scenario": "horizontal_256_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 2101,
+			"scenario": "horizontal_256_finish"
+		},
+		{
+			"median_us": 11064,
+			"scenario": "horizontal_1024_draw64_total"
+		},
+		{
+			"max_us": 91,
+			"median_us": 48,
+			"p95_us": 91,
+			"scenario": "horizontal_1024_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 167,
+			"median_us": 89,
+			"p95_us": 167,
+			"scenario": "horizontal_1024_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 6837,
+			"scenario": "horizontal_1024_finish"
+		},
+		{
+			"median_us": 20720,
+			"scenario": "horizontal_2048_draw64_total"
+		},
+		{
+			"max_us": 101,
+			"median_us": 48,
+			"p95_us": 101,
+			"scenario": "horizontal_2048_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 162,
+			"median_us": 73,
+			"p95_us": 162,
+			"scenario": "horizontal_2048_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 13618,
+			"scenario": "horizontal_2048_finish"
+		},
+		{
+			"median_us": 5030,
+			"scenario": "diagonal_256_draw64_total"
+		},
+		{
+			"max_us": 85,
+			"median_us": 37,
+			"p95_us": 85,
+			"scenario": "diagonal_256_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 158,
+			"median_us": 77,
+			"p95_us": 158,
+			"scenario": "diagonal_256_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 3078,
+			"scenario": "diagonal_256_finish"
+		},
+		{
+			"median_us": 15671,
+			"scenario": "diagonal_1024_draw64_total"
+		},
+		{
+			"max_us": 93,
+			"median_us": 44,
+			"p95_us": 93,
+			"scenario": "diagonal_1024_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 183,
+			"median_us": 87,
+			"p95_us": 183,
+			"scenario": "diagonal_1024_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 11059,
+			"scenario": "diagonal_1024_finish"
+		},
+		{
+			"median_us": 30842,
+			"scenario": "diagonal_2048_draw64_total"
+		},
+		{
+			"max_us": 89,
+			"median_us": 45,
+			"p95_us": 89,
+			"scenario": "diagonal_2048_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 154,
+			"median_us": 75,
+			"p95_us": 154,
+			"scenario": "diagonal_2048_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 21894,
+			"scenario": "diagonal_2048_finish"
+		},
+		{
+			"median_us": 182714,
+			"scenario": "solidify_2048"
+		},
+		{
+			"median_us": 29937,
+			"scenario": "first_circuit_2048"
+		},
+		{
+			"max_us": 261,
+			"median_us": 112,
+			"p95_us": 261,
+			"scenario": "steady_2048",
+			"spans": [
+				{
+					"dur": 9,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3544306
+				},
+				{
+					"dur": 10,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3544316
+				},
+				{
+					"dur": 4,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3544330
+				},
+				{
+					"dur": 55,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3544284
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3569604
+				},
+				{
+					"dur": 54,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3569630
+				},
+				{
+					"dur": 15,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3569709
+				},
+				{
+					"dur": 187,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3569556
+				},
+				{
+					"dur": 20,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3572893
+				},
+				{
+					"dur": 14,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3572917
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3572942
+				},
+				{
+					"dur": 103,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3572855
+				},
+				{
+					"dur": 16,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3573880
+				},
+				{
+					"dur": 15,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3573899
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3573922
+				},
+				{
+					"dur": 86,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3573850
+				},
+				{
+					"dur": 18,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3578091
+				},
+				{
+					"dur": 15,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3578112
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3578135
+				},
+				{
+					"dur": 92,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3578059
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3584388
+				},
+				{
+					"dur": 24,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3584419
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3584456
+				},
+				{
+					"dur": 11,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3584473
+				},
+				{
+					"dur": 148,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3584339
+				},
+				{
+					"dur": 12,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3591142
+				},
+				{
+					"dur": 12,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3591156
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3591175
+				},
+				{
+					"dur": 67,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3591120
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3596326
+				},
+				{
+					"dur": 27,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3596356
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3596395
+				},
+				{
+					"dur": 134,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3596278
+				},
+				{
+					"dur": 27,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3604281
+				},
+				{
+					"dur": 19,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3604312
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3604345
+				},
+				{
+					"dur": 135,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3604230
+				},
+				{
+					"dur": 15,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3608424
+				},
+				{
+					"dur": 14,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3608442
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3608465
+				},
+				{
+					"dur": 88,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3608390
+				},
+				{
+					"dur": 28,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3614582
+				},
+				{
+					"dur": 27,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3614615
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3614658
+				},
+				{
+					"dur": 154,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3614528
+				},
+				{
+					"dur": 17,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3621458
+				},
+				{
+					"dur": 15,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3621477
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3621500
+				},
+				{
+					"dur": 4,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3621514
+				},
+				{
+					"dur": 90,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3621430
+				},
+				{
+					"dur": 16,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3626612
+				},
+				{
+					"dur": 14,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3626630
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3626653
+				},
+				{
+					"dur": 85,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3626581
+				},
+				{
+					"dur": 16,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3632697
+				},
+				{
+					"dur": 13,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3632715
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3632736
+				},
+				{
+					"dur": 77,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3632671
+				},
+				{
+					"dur": 14,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3639571
+				},
+				{
+					"dur": 13,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3639588
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3639608
+				},
+				{
+					"dur": 76,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3639545
+				},
+				{
+					"dur": 40,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3644940
+				},
+				{
+					"dur": 34,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3644988
+				},
+				{
+					"dur": 15,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3645043
+				},
+				{
+					"dur": 230,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3644847
+				},
+				{
+					"dur": 18,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3650892
+				},
+				{
+					"dur": 16,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3650914
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3650940
+				},
+				{
+					"dur": 103,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3650852
+				},
+				{
+					"dur": 15,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3657660
+				},
+				{
+					"dur": 13,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3657677
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3657699
+				},
+				{
+					"dur": 5,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3657711
+				},
+				{
+					"dur": 85,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3657633
+				},
+				{
+					"dur": 36,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3662995
+				},
+				{
+					"dur": 29,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3663037
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3663083
+				},
+				{
+					"dur": 196,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3662917
+				},
+				{
+					"dur": 19,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3669024
+				},
+				{
+					"dur": 16,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3669046
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3669073
+				},
+				{
+					"dur": 102,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3668986
+				}
+			]
+		},
+		{
+			"max_us": 13339,
+			"median_us": 11427,
+			"p95_us": 13339,
+			"scenario": "moving_wire_2048",
+			"spans": [
+				{
+					"dur": 19,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3705698
+				},
+				{
+					"dur": 20,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3705719
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3705752
+				},
+				{
+					"dur": 11637,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3705742
+				},
+				{
+					"dur": 86,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3717423
+				},
+				{
+					"dur": 67,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3717512
+				},
+				{
+					"dur": 11860,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3705741
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3717609
+				},
+				{
+					"dur": 11959,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3705669
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3720745
+				},
+				{
+					"dur": 25,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3720772
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3720812
+				},
+				{
+					"dur": 11293,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3720801
+				},
+				{
+					"dur": 91,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3732141
+				},
+				{
+					"dur": 72,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3732235
+				},
+				{
+					"dur": 11530,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3720800
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3732340
+				},
+				{
+					"dur": 11650,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3720708
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3735123
+				},
+				{
+					"dur": 24,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3735150
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3735189
+				},
+				{
+					"dur": 11776,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3735178
+				},
+				{
+					"dur": 92,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3747001
+				},
+				{
+					"dur": 70,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3747097
+				},
+				{
+					"dur": 12014,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3735177
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3747201
+				},
+				{
+					"dur": 5,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3747219
+				},
+				{
+					"dur": 12139,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3735088
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3749249
+				},
+				{
+					"dur": 24,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3749275
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3749314
+				},
+				{
+					"dur": 11042,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3749303
+				},
+				{
+					"dur": 92,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3760395
+				},
+				{
+					"dur": 79,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3760490
+				},
+				{
+					"dur": 11291,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3749302
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3760603
+				},
+				{
+					"dur": 11408,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3749214
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3762947
+				},
+				{
+					"dur": 25,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3762973
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3763015
+				},
+				{
+					"dur": 11769,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3763003
+				},
+				{
+					"dur": 96,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3774823
+				},
+				{
+					"dur": 73,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3774922
+				},
+				{
+					"dur": 12019,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3763001
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3775029
+				},
+				{
+					"dur": 12139,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3762909
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3777543
+				},
+				{
+					"dur": 26,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3777573
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3777616
+				},
+				{
+					"dur": 11857,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3777604
+				},
+				{
+					"dur": 84,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3789507
+				},
+				{
+					"dur": 68,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3789594
+				},
+				{
+					"dur": 12083,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3777602
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3789694
+				},
+				{
+					"dur": 12209,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3777501
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3791664
+				},
+				{
+					"dur": 23,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3791689
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3791727
+				},
+				{
+					"dur": 10801,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3791716
+				},
+				{
+					"dur": 80,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3802554
+				},
+				{
+					"dur": 69,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3802638
+				},
+				{
+					"dur": 11013,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3791715
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3802736
+				},
+				{
+					"dur": 11125,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3791629
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3804913
+				},
+				{
+					"dur": 23,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3804938
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3804975
+				},
+				{
+					"dur": 12949,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3804965
+				},
+				{
+					"dur": 99,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3817969
+				},
+				{
+					"dur": 74,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3818071
+				},
+				{
+					"dur": 13206,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3804964
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3818180
+				},
+				{
+					"dur": 13321,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3804879
+				},
+				{
+					"dur": 29,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3820583
+				},
+				{
+					"dur": 27,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3820616
+				},
+				{
+					"dur": 6,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3820660
+				},
+				{
+					"dur": 11515,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3820648
+				},
+				{
+					"dur": 85,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3832207
+				},
+				{
+					"dur": 69,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3832295
+				},
+				{
+					"dur": 11740,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3820646
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3832395
+				},
+				{
+					"dur": 4,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3832411
+				},
+				{
+					"dur": 11886,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3820532
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3833591
+				},
+				{
+					"dur": 26,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3833621
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3833663
+				},
+				{
+					"dur": 10723,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3833651
+				},
+				{
+					"dur": 85,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3844415
+				},
+				{
+					"dur": 70,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3844503
+				},
+				{
+					"dur": 10947,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3833650
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3844605
+				},
+				{
+					"dur": 11076,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3833546
+				},
+				{
+					"dur": 20,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3846616
+				},
+				{
+					"dur": 23,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3846638
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3846674
+				},
+				{
+					"dur": 10525,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3846665
+				},
+				{
+					"dur": 78,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3857225
+				},
+				{
+					"dur": 70,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3857305
+				},
+				{
+					"dur": 10731,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3846664
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3857403
+				},
+				{
+					"dur": 10834,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3846584
+				},
+				{
+					"dur": 20,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3859287
+				},
+				{
+					"dur": 22,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3859310
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3859345
+				},
+				{
+					"dur": 10699,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3859336
+				},
+				{
+					"dur": 76,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3870071
+				},
+				{
+					"dur": 68,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3870149
+				},
+				{
+					"dur": 10903,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3859335
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3870245
+				},
+				{
+					"dur": 11004,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3859256
+				},
+				{
+					"dur": 19,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3872077
+				},
+				{
+					"dur": 25,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3872099
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3872136
+				},
+				{
+					"dur": 10364,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3872127
+				},
+				{
+					"dur": 76,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3882525
+				},
+				{
+					"dur": 69,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3882604
+				},
+				{
+					"dur": 10567,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3872126
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3882700
+				},
+				{
+					"dur": 10667,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3872048
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3883623
+				},
+				{
+					"dur": 24,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3883646
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3883681
+				},
+				{
+					"dur": 9424,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3883672
+				},
+				{
+					"dur": 70,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3893127
+				},
+				{
+					"dur": 63,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3893199
+				},
+				{
+					"dur": 9608,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3883672
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3893287
+				},
+				{
+					"dur": 9707,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3883592
+				},
+				{
+					"dur": 20,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3895093
+				},
+				{
+					"dur": 23,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3895115
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3895150
+				},
+				{
+					"dur": 10096,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3895142
+				},
+				{
+					"dur": 80,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3905272
+				},
+				{
+					"dur": 67,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3905355
+				},
+				{
+					"dur": 10302,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3895141
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3905450
+				},
+				{
+					"dur": 3,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3905465
+				},
+				{
+					"dur": 10410,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3895061
+				},
+				{
+					"dur": 20,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3907310
+				},
+				{
+					"dur": 22,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3907332
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3907366
+				},
+				{
+					"dur": 11736,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3907357
+				},
+				{
+					"dur": 90,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3919137
+				},
+				{
+					"dur": 74,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3919231
+				},
+				{
+					"dur": 11973,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3907356
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3919338
+				},
+				{
+					"dur": 12075,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3907281
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3921453
+				},
+				{
+					"dur": 24,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3921479
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3921518
+				},
+				{
+					"dur": 10430,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3921507
+				},
+				{
+					"dur": 82,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3931973
+				},
+				{
+					"dur": 68,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3932059
+				},
+				{
+					"dur": 10643,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3921506
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3932156
+				},
+				{
+					"dur": 10753,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3921419
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3933117
+				},
+				{
+					"dur": 23,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3933143
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3933178
+				},
+				{
+					"dur": 10327,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3933169
+				},
+				{
+					"dur": 84,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3943536
+				},
+				{
+					"dur": 71,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3943623
+				},
+				{
+					"dur": 10548,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3933168
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3943724
+				},
+				{
+					"dur": 10657,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3933085
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3945709
+				},
+				{
+					"dur": 23,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3945733
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3945770
+				},
+				{
+					"dur": 10587,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3945759
+				},
+				{
+					"dur": 87,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3956394
+				},
+				{
+					"dur": 70,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3956484
+				},
+				{
+					"dur": 10824,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3945758
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3956591
+				},
+				{
+					"dur": 10932,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3945677
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3958743
+				},
+				{
+					"dur": 25,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3958768
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3958807
+				},
+				{
+					"dur": 11223,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3958797
+				},
+				{
+					"dur": 93,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3970062
+				},
+				{
+					"dur": 71,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3970158
+				},
+				{
+					"dur": 11455,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3958796
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3970260
+				},
+				{
+					"dur": 11574,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3958705
+				}
+			]
+		},
+		{
+			"max_us": 27678,
+			"median_us": 24552,
+			"p95_us": 27678,
+			"scenario": "two_long_moving_2048",
+			"spans": [
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4053587
+				},
+				{
+					"dur": 28,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4053615
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4053656
+				},
+				{
+					"dur": 166,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4063169
+				},
+				{
+					"dur": 23703,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4053646
+				},
+				{
+					"dur": 136,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4077403
+				},
+				{
+					"dur": 79,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4077543
+				},
+				{
+					"dur": 24002,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4053645
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4077656
+				},
+				{
+					"dur": 24133,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4053543
+				},
+				{
+					"dur": 31,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4083710
+				},
+				{
+					"dur": 32,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4083745
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4083795
+				},
+				{
+					"dur": 168,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4093825
+				},
+				{
+					"dur": 25888,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4083782
+				},
+				{
+					"dur": 146,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4109731
+				},
+				{
+					"dur": 84,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4109881
+				},
+				{
+					"dur": 26211,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4083780
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4110002
+				},
+				{
+					"dur": 26357,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4083665
+				},
+				{
+					"dur": 30,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4113595
+				},
+				{
+					"dur": 30,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4113629
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4113675
+				},
+				{
+					"dur": 165,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4123584
+				},
+				{
+					"dur": 23547,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4113664
+				},
+				{
+					"dur": 135,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4137263
+				},
+				{
+					"dur": 89,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4137402
+				},
+				{
+					"dur": 23852,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4113662
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4137526
+				},
+				{
+					"dur": 23992,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4113552
+				},
+				{
+					"dur": 27,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4140311
+				},
+				{
+					"dur": 30,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4140341
+				},
+				{
+					"dur": 6,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4140385
+				},
+				{
+					"dur": 165,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4150381
+				},
+				{
+					"dur": 23869,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4140375
+				},
+				{
+					"dur": 129,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4164294
+				},
+				{
+					"dur": 88,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4164426
+				},
+				{
+					"dur": 24164,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4140374
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4164547
+				},
+				{
+					"dur": 24296,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4140271
+				},
+				{
+					"dur": 29,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4166516
+				},
+				{
+					"dur": 30,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4166548
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4166595
+				},
+				{
+					"dur": 167,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4176828
+				},
+				{
+					"dur": 24146,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4166583
+				},
+				{
+					"dur": 130,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4190781
+				},
+				{
+					"dur": 82,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4190915
+				},
+				{
+					"dur": 24440,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4166582
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4191032
+				},
+				{
+					"dur": 24576,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4166475
+				},
+				{
+					"dur": 28,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4194381
+				},
+				{
+					"dur": 35,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4194412
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4194462
+				},
+				{
+					"dur": 162,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4204394
+				},
+				{
+					"dur": 25826,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4194451
+				},
+				{
+					"dur": 138,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4220337
+				},
+				{
+					"dur": 121,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4220478
+				},
+				{
+					"dur": 26204,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4194449
+				},
+				{
+					"dur": 15,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4220670
+				},
+				{
+					"dur": 7,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 4220696
+				},
+				{
+					"dur": 26365,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4194342
+				},
+				{
+					"dur": 28,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4223920
+				},
+				{
+					"dur": 32,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4223951
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4224003
+				},
+				{
+					"dur": 159,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4234092
+				},
+				{
+					"dur": 24124,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4223988
+				},
+				{
+					"dur": 117,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4248159
+				},
+				{
+					"dur": 83,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4248279
+				},
+				{
+					"dur": 24400,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4223986
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4248395
+				},
+				{
+					"dur": 24534,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4223877
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4250332
+				},
+				{
+					"dur": 31,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4250361
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4250407
+				},
+				{
+					"dur": 167,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4260241
+				},
+				{
+					"dur": 23622,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4250396
+				},
+				{
+					"dur": 118,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4274064
+				},
+				{
+					"dur": 81,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4274186
+				},
+				{
+					"dur": 23895,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4250395
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4274299
+				},
+				{
+					"dur": 24019,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4250297
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4276936
+				},
+				{
+					"dur": 30,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4276965
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4277009
+				},
+				{
+					"dur": 154,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4286737
+				},
+				{
+					"dur": 23087,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4276999
+				},
+				{
+					"dur": 120,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4300129
+				},
+				{
+					"dur": 81,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4300252
+				},
+				{
+					"dur": 23359,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4276998
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4300367
+				},
+				{
+					"dur": 23487,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4276898
+				},
+				{
+					"dur": 38,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4302923
+				},
+				{
+					"dur": 44,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4302968
+				},
+				{
+					"dur": 6,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4303041
+				},
+				{
+					"dur": 160,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4313310
+				},
+				{
+					"dur": 24408,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4303022
+				},
+				{
+					"dur": 116,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4327476
+				},
+				{
+					"dur": 81,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4327595
+				},
+				{
+					"dur": 24686,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4303017
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4327712
+				},
+				{
+					"dur": 24891,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4302838
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4330809
+				},
+				{
+					"dur": 30,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4330839
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4330882
+				},
+				{
+					"dur": 159,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4340717
+				},
+				{
+					"dur": 23696,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4330873
+				},
+				{
+					"dur": 119,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4354614
+				},
+				{
+					"dur": 85,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4354736
+				},
+				{
+					"dur": 23975,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4330871
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4354855
+				},
+				{
+					"dur": 24104,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4330771
+				},
+				{
+					"dur": 25,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4357577
+				},
+				{
+					"dur": 31,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4357605
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4357649
+				},
+				{
+					"dur": 161,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4367552
+				},
+				{
+					"dur": 23857,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4357639
+				},
+				{
+					"dur": 119,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4381542
+				},
+				{
+					"dur": 82,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4381664
+				},
+				{
+					"dur": 24134,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4357638
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4381780
+				},
+				{
+					"dur": 5,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 4381796
+				},
+				{
+					"dur": 24261,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4357543
+				},
+				{
+					"dur": 25,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4383677
+				},
+				{
+					"dur": 30,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4383706
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4383749
+				},
+				{
+					"dur": 155,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4393388
+				},
+				{
+					"dur": 23131,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4383740
+				},
+				{
+					"dur": 118,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4406916
+				},
+				{
+					"dur": 79,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4407037
+				},
+				{
+					"dur": 23400,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4383739
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4407147
+				},
+				{
+					"dur": 23520,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4383643
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4410051
+				},
+				{
+					"dur": 31,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4410080
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4410124
+				},
+				{
+					"dur": 166,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4421160
+				},
+				{
+					"dur": 27205,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4410115
+				},
+				{
+					"dur": 142,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4437379
+				},
+				{
+					"dur": 86,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4437525
+				},
+				{
+					"dur": 27525,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4410113
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4437650
+				},
+				{
+					"dur": 27658,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4410014
+				},
+				{
+					"dur": 28,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4440784
+				},
+				{
+					"dur": 31,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4440816
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4440864
+				},
+				{
+					"dur": 164,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4451824
+				},
+				{
+					"dur": 25971,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4440852
+				},
+				{
+					"dur": 127,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4466873
+				},
+				{
+					"dur": 81,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4467003
+				},
+				{
+					"dur": 26257,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4440851
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4467118
+				},
+				{
+					"dur": 26396,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4440742
+				},
+				{
+					"dur": 29,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4469355
+				},
+				{
+					"dur": 32,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4469388
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4469435
+				},
+				{
+					"dur": 161,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4479704
+				},
+				{
+					"dur": 25022,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4469424
+				},
+				{
+					"dur": 151,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4494510
+				},
+				{
+					"dur": 84,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4494665
+				},
+				{
+					"dur": 25353,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4469423
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4494787
+				},
+				{
+					"dur": 25495,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4469311
+				},
+				{
+					"dur": 31,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4507159
+				},
+				{
+					"dur": 31,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4507194
+				},
+				{
+					"dur": 6,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4507242
+				},
+				{
+					"dur": 163,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4518849
+				},
+				{
+					"dur": 27050,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4507230
+				},
+				{
+					"dur": 150,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4534338
+				},
+				{
+					"dur": 88,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4534492
+				},
+				{
+					"dur": 27376,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4507228
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4534615
+				},
+				{
+					"dur": 27526,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4507108
+				},
+				{
+					"dur": 29,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4537540
+				},
+				{
+					"dur": 31,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4537572
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4537620
+				},
+				{
+					"dur": 159,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4547876
+				},
+				{
+					"dur": 25101,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4537608
+				},
+				{
+					"dur": 121,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4562763
+				},
+				{
+					"dur": 84,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4562888
+				},
+				{
+					"dur": 25390,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4537606
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4563006
+				},
+				{
+					"dur": 5,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 4563023
+				},
+				{
+					"dur": 25532,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4537499
+				},
+				{
+					"dur": 27,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4564977
+				},
+				{
+					"dur": 30,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4565006
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4565051
+				},
+				{
+					"dur": 156,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4575040
+				},
+				{
+					"dur": 24005,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4565041
+				},
+				{
+					"dur": 116,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4589091
+				},
+				{
+					"dur": 92,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4589211
+				},
+				{
+					"dur": 24291,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4565039
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4589339
+				},
+				{
+					"dur": 24415,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4564940
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4592339
+				},
+				{
+					"dur": 39,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4592368
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4592423
+				},
+				{
+					"dur": 157,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4602084
+				},
+				{
+					"dur": 23681,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4592411
+				},
+				{
+					"dur": 125,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4616155
+				},
+				{
+					"dur": 88,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4616284
+				},
+				{
+					"dur": 23987,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4592410
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4616406
+				},
+				{
+					"dur": 24122,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4592303
+				}
+			]
+		}
+	],
+	"variant": "before_runtime"
+}

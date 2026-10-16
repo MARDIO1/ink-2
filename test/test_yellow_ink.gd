@@ -1,7 +1,7 @@
 extends SceneTree
 
 const Palette = preload("res://ink/src/ink_palette.gd")
-const Stroke = preload("res://actor/yellow/src/yellow_stroke.gd")
+const Stroke = preload("res://ink/src/yellow/stroke.gd")
 const Shape = preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const PBody = preload("res://addons/pixel_destruction/physics/pbody.gd")
 const PWorld = preload("res://addons/pixel_destruction/physics/pworld.gd")
@@ -110,6 +110,19 @@ func run() -> void:
 	b.linear_velocity = Vector2.ZERO
 	b.rotation = 0.0
 	b.angular_velocity = 0.0
+	b.refresh_com()
+	b.update_aabb()
+	b.position += Vector2(15, 10)
+	b.rotation = 0.35
+	first.update_visual()
+	check("moving spring terminals stay on physical anchors without inheriting deformation",
+		first.endpoint_a.global_position.distance_to(scene.to_global(Stroke.anchor_world(first.anchors[0]))) < 0.01
+		and first.endpoint_b.global_position.distance_to(scene.to_global(Stroke.anchor_world(first.anchors[1]))) < 0.01
+		and absf(first.endpoint_a.global_rotation) < 0.001 and absf(first.endpoint_b.global_rotation) < 0.001
+		and first.endpoint_a.global_scale.distance_to(Vector2.ONE) < 0.001
+		and first.endpoint_b.global_scale.distance_to(Vector2.ONE) < 0.001)
+	b.position = origin
+	b.rotation = 0.0
 	b.refresh_com()
 	b.update_aabb()
 	first.update_visual()

@@ -1,0 +1,61 @@
+{
+	"failures": 0,
+	"rows": [
+		{
+			"active_peak": 7,
+			"cpu_median_us": 19,
+			"cpu_p95_us": 24,
+			"delivered": 16100.0,
+			"frames": 600,
+			"length": 240,
+			"steps_per_frame": 10,
+			"updates": 33460,
+			"width": 7
+		},
+		{
+			"active_peak": 14,
+			"cpu_median_us": 30,
+			"cpu_p95_us": 36,
+			"delivered": 16100.0,
+			"frames": 600,
+			"length": 512,
+			"steps_per_frame": 10,
+			"updates": 71540,
+			"width": 7
+		},
+		{
+			"active_peak": 28,
+			"cpu_median_us": 41,
+			"cpu_p95_us": 56,
+			"delivered": 16100.0,
+			"frames": 600,
+			"length": 1024,
+			"steps_per_frame": 10,
+			"updates": 143220,
+			"width": 7
+		},
+		{
+			"active_peak": 49,
+			"cpu_median_us": 82,
+			"cpu_p95_us": 90,
+			"delivered": 16100.0,
+			"frames": 600,
+			"length": 2048,
+			"steps_per_frame": 10,
+			"updates": 286580,
+			"width": 7
+		},
+		{
+			"active_peak": 98,
+			"cpu_median_us": 159,
+			"cpu_p95_us": 177,
+			"delivered": 16100.0,
+			"frames": 600,
+			"length": 4096,
+			"steps_per_frame": 10,
+			"updates": 573300,
+			"width": 7
+		}
+	],
+	"scope": "headless numerical CPU including GDScript adapter; not render FPS"
+}

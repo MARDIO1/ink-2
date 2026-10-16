@@ -1,0 +1,7 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+SOLID bodies=10 pixels=45963 rejected=0
+SOLID bodies=2 pixels=448 rejected=0
+MAP scene saved: T:/GODOT/ink-2/map/asset/blue_car.tscn
+CAR_FUEL initial=448 remaining=322 drop_px=9.11328125 explosion=false
+BLUE_CAR saved=res://map/asset/blue_car.tscn motors=2 hinges=4 rotation_peaks=(1.858326, -1.8285) shorts=0

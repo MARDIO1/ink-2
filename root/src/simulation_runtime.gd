@@ -113,6 +113,8 @@ func _step(delta: float) -> Dictionary:
 		_merge_result(result, rule.resolve_fixed(_context()))
 		if profile_enabled:
 			_profile.rule_resolve_us = _profile.get("rule_resolve_us", 0) + Time.get_ticks_usec() - rule_start
+	if is_instance_valid(_forces) and _forces.enabled:
+		_forces.sample_rule_forces(delta)
 	if profile_enabled:
 		_profile.step_us = _profile.get("step_us", 0) + Time.get_ticks_usec() - start
 	return result

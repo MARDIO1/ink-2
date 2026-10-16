@@ -1,0 +1,80 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS blue palette and bottle registered
+PASS selection erases blue without black tiles
+PASS selection erase undo restores blue-only wire
+PASS blue-only selection erase refunds bottle
+PASS wire overlay preserves black
+PASS wire charges blue only
+PASS wire undo restores overlay and bottle
+PASS valid motor submits
+PASS arrow start is force anchor
+PASS eraser removes blue black and motor together
+PASS erase undo restores all layers
+SOLID bodies=1 pixels=2120 rejected=0
+PASS motor activates and wire clears from canvas
+PASS one PBody carries black red and wire
+PASS motor waits for propagated energy
+PASS red contact powers motor from rest
+PASS impulse energy stays inside allocated budget
+PASS reverse work still costs energy
+PASS under idle budget burns without thrust
+PASS batched fuel deletes actual red pixels
+PASS normal fuel consumption never schedules explosion
+PASS burned contact gap stops supply
+PASS global grid and path search removed
+PASS external red destruction still schedules explosion
+CANVAS saved: T:/GODOT/ink-2/.godot/test_blue.snapshot
+PASS blue snapshot saves
+CANVAS loaded: T:/GODOT/ink-2/.godot/test_blue.snapshot
+PASS blue snapshot reloads both kinds
+SOLID bodies=1 pixels=4920 rejected=0
+PASS generate undo restores blue draft
+SOLID bodies=1 pixels=4920 rejected=0
+PASS regenerated motor resolves saved black anchor
+PASS active blue scene packs
+PASS packed roundtrip restores blue carrier and motor power
+SOLID bodies=1 pixels=404 rejected=0
+PASS second generation adds independent blue object
+PASS undo does not remove older active circuit
+RESTORE bodies=1 pixels=4920 fragments=0 kept=false
+PASS reclaim returns blue overlay and motor without refunding bottle
+PASS reclaim undo restores active wire and body
+PASS reclaimed undo circuit still supplies power
+PASS fracture migrates surviving motor anchor
+PASS cut black also cuts blue supply
+PASS touching cut wires reconnect without welding
+PASS destroyed black anchor dissolves motor
+SOLID bodies=1 pixels=302 rejected=0
+PASS wire bridge solidifies into one union body
+PASS overlay adds no duplicate mass
+PASS non-fracturing erosion invalidates overlay
+SOLID bodies=2 pixels=5220 rejected=0
+PASS rod and black retain separate bodies and hinges
+PASS blue attaches to rod and black without extra PBody
+PASS one-sided bearing contact supplies no energy
+PASS two-sided full-bearing region supplies wheel motor
+PASS slip ring retains supply at 90 degrees
+PASS slip ring retains supply at 180 degrees
+PASS slip ring retains supply at 270 degrees
+PASS slip ring retains supply at 0 degrees
+PASS destroyed bearing removes slip ring
+SOLID bodies=1 pixels=4920 rejected=0
+PASS upstream motor receives first before downstream arrival
+PASS unused upstream energy continues to downstream motor
+PASS motor buffer remains bounded
+PASS source prepays packets including travel losses
+SOLID bodies=1 pixels=4801 rejected=0
+PASS short cuts blue while preserving black and nearby red
+PASS short produces neither red explosion nor physical impulse
+SOLID bodies=1 pixels=2034 rejected=0
+RESTORE bodies=1 pixels=1600 fragments=0 kept=false
+PASS partial reclaim preserves bare blue outside canvas
+PASS partial reclaim never flattens blue into black image
+PASS partial reclaim undo restores full wire
+PASS new flow keeps no grid/path cache
+PASS sparse diagonal display allocates occupied tiles only
+PASS negative coordinate tile keeps exact blue pixel
+PASS erase removes empty tile and synchronizes saved cells
+PASS local edit preserves distant texture
+BLUE_INK_RESULT checks=64 failures=0

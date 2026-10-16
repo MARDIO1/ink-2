@@ -22,9 +22,10 @@ const DEBUG_HUD_GROUP := "debug_hud"
 @onready var color_ink_bar: Control = $Root/HealthUI/ColorInkBar
 @onready var ink_meter: Label = $Root/HealthUI/InkMeter
 var debug_hud = null
+var _creative = null
 
 var _health = null
-var _debug_enabled := false
+var _debug_requested := false
 var _bound_level: Node
 var _level_router: Node
 
@@ -36,6 +37,12 @@ func _ready() -> void:
 	_bind_level(_current_level())
 
 
+## 独立运行关卡没有 LevelRouter 时，沿用 main 的失效引用重绑。
+func _process(_delta: float) -> void:
+	if not is_instance_valid(debug_hud) or not debug_hud.is_inside_tree():
+		_bind_level(_current_level())
+
+
 func _current_level() -> Node:
 	if is_instance_valid(_level_router) and _level_router.level_root.get_child_count() > 0:
 		return _level_router.level_root.get_child(0)
@@ -45,6 +52,9 @@ func _current_level() -> Node:
 
 ## F2 会替换关卡，但成品 UI 继续复用；重新绑定调试面板与生命值信号。
 func _bind_level(level: Node) -> void:
+	if is_instance_valid(_creative) and _creative.mode_changed.is_connected(_on_editor_mode_changed):
+		_creative.mode_changed.disconnect(_on_editor_mode_changed)
+	_creative = null
 	if is_instance_valid(_health) and _health.changed.is_connected(_refresh_ink):
 		_health.changed.disconnect(_refresh_ink)
 	_bound_level = level
@@ -54,12 +64,17 @@ func _bind_level(level: Node) -> void:
 	_health = level.get_node_or_null("Player/InkHealth") if level != null else get_node_or_null(health_path)
 	if is_instance_valid(_health):
 		_health.changed.connect(_refresh_ink)
+	if is_instance_valid(debug_hud):
+		_creative = debug_hud.get_parent().get_node_or_null("Creative")
+		if _creative != null:
+			_creative.mode_changed.connect(_on_editor_mode_changed)
 	_apply_debug_visibility()
 	_refresh_ink()
 
 
 func _apply_debug_visibility() -> void:
-	var enabled: bool = _debug_enabled and is_instance_valid(debug_hud)
+	var editing: bool = is_instance_valid(_creative) and _creative.active
+	var enabled: bool = _debug_requested and not editing and is_instance_valid(debug_hud)
 	if is_instance_valid(debug_hud):
 		debug_hud.visible = enabled
 		debug_hud.forces.enabled = enabled
@@ -89,7 +104,7 @@ func _input(event: InputEvent) -> void:
 	var blueprints := get_node_or_null("/root/Blueprints")
 	if blueprints != null and blueprints.is_world_input_blocked():
 		return
-	if event.is_action_pressed("debug"):
+	if event.is_action_pressed("debug") and not event.is_echo():
 		if _switch_debug_hud():
 			get_viewport().set_input_as_handled()
 
@@ -100,9 +115,16 @@ func _switch_debug_hud() -> bool:
 		_bind_level(level)
 	if not is_instance_valid(debug_hud):
 		return false
-	_debug_enabled = not _debug_enabled
+	if is_instance_valid(_creative) and _creative.active:
+		return false
+	_debug_requested = not _debug_requested
 	_apply_debug_visibility()
 	return true
+
+
+## F2 编辑状态只隐藏力视图，回到游玩时恢复用户的 Tab 选择。
+func _on_editor_mode_changed(_editing: bool) -> void:
+	_apply_debug_visibility()
 
 
 func _on_exit_button_pressed() -> void:

@@ -3,8 +3,8 @@ const Codec := preload("res://actor/blueprint/src/blueprint_codec.gd")
 const Store := preload("res://actor/blueprint/src/blueprint_store.gd")
 const Palette := preload("res://ink/src/ink_palette.gd")
 const Bearing := preload("res://actor/canvas/src/gear_bearing.gd")
-const Stroke := preload("res://actor/yellow/src/yellow_stroke.gd")
-const Motor := preload("res://actor/blue/src/blue_motor.gd")
+const Stroke := preload("res://ink/src/yellow/stroke.gd")
+const Motor := preload("res://ink/src/blue/motor.gd")
 var failures := 0
 var checks := 0
 

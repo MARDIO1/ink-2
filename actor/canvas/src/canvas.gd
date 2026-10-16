@@ -10,7 +10,7 @@ signal editor_control_requested
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
-const YellowHinge := preload("res://actor/yellow/src/yellow_hinge.gd")
+const YellowHinge := preload("res://ink/src/yellow/hinge.gd")
 const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const InkPalette := preload("res://ink/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")

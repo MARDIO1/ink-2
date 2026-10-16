@@ -1,0 +1,90 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+SOLID bodies=1 pixels=1000 rejected=0
+PASS seesaw fixture builds
+PASS seesaw creates only intended hinges
+PASS seesaw creates intended yellow connected components
+PASS transparent yellow native renderer matches reference
+PASS yellow rendered pixels use exported opacity
+PASS seesaw moves around its hinges after one physical impulse
+PASS seesaw keeps axle drift below 2px
+PASS seesaw bearing follows the true axle within 1px
+PASS seesaw bearing does not inherit body rotation or scale
+PASS seesaw disables only joined body pair contacts
+METRIC seesaw peak_angle=1.77925646305084 span=1.77093708422035 axle_error_px=0.0001364787604 coupler_angle=0.0
+PASS yellow brush never creates an axle automatically
+PASS invalid axle click is ignored
+PASS circle axle click records a shared black-yellow centre
+PASS duplicate axle click keeps only one
+PASS yellow eraser removes bearing without erasing rod pixels
+PASS axle erase undo restores only the bearing
+PASS normal rod paint charges its real unique area
+PASS overlapping rod paint charges unique pixels
+PASS yellow layer does not overwrite black blueprint
+PASS yellow brush undo restores previous pixels
+PASS normal rod undo refunds only the added pixels
+SOLID bodies=0 pixels=0 rejected=0
+PASS unanchored rod becomes an ordinary body
+PASS solidify undo restores yellow layer
+PASS yellow eraser removes only yellow pixels
+CANVAS saved: C:/Users/29115/AppData/Roaming/Godot/app_userdata/INT FFF/yellow_layer_test.snapshot
+PASS layered snapshot saves
+CANVAS loaded: C:/Users/29115/AppData/Roaming/Godot/app_userdata/INT FFF/yellow_layer_test.snapshot
+PASS layered snapshot restores rods
+PASS normal layered reload does not duplicate ink
+PASS active mechanisms pack into scene
+PASS scene reload restores all true axles
+PASS destroying yellow axle pixel removes joint and bearing immediately
+PASS breaking one axle preserves others
+SOLID bodies=0 pixels=0 rejected=0
+PASS separate yellow islands generate two colliding bodies
+PASS yellow rods physically collide instead of passing through
+SOLID bodies=3 pixels=11200 rejected=0
+PASS four_bar fixture builds
+PASS four_bar creates only intended hinges
+PASS four_bar creates intended yellow connected components
+PASS transparent yellow native renderer matches reference
+PASS yellow rendered pixels use exported opacity
+PASS four_bar moves around its hinges after one physical impulse
+PASS four_bar keeps axle drift below 2px
+PASS four_bar bearing follows the true axle within 1px
+PASS four_bar bearing does not inherit body rotation or scale
+PASS four_bar bearing does not inherit body rotation or scale
+PASS four_bar bearing does not inherit body rotation or scale
+PASS four_bar bearing does not inherit body rotation or scale
+PASS four_bar disables only joined body pair contacts
+PASS four_bar disables only joined body pair contacts
+PASS four_bar disables only joined body pair contacts
+PASS four_bar disables only joined body pair contacts
+PASS four-bar coupler stays parallel
+PASS four-bar rotates through at least 60 degrees with normal collision
+METRIC four_bar peak_angle=1.34884548187256 span=1.33966213744134 axle_error_px=0.0894059240818 coupler_angle=0.00204875110649
+PASS yellow brush never creates an axle automatically
+PASS invalid axle click is ignored
+PASS circle axle click records a shared black-yellow centre
+PASS duplicate axle click keeps only one
+PASS yellow eraser removes bearing without erasing rod pixels
+PASS axle erase undo restores only the bearing
+PASS normal rod paint charges its real unique area
+PASS overlapping rod paint charges unique pixels
+PASS yellow layer does not overwrite black blueprint
+PASS yellow brush undo restores previous pixels
+PASS normal rod undo refunds only the added pixels
+SOLID bodies=0 pixels=0 rejected=0
+PASS unanchored rod becomes an ordinary body
+PASS solidify undo restores yellow layer
+PASS yellow eraser removes only yellow pixels
+CANVAS saved: C:/Users/29115/AppData/Roaming/Godot/app_userdata/INT FFF/yellow_layer_test.snapshot
+PASS layered snapshot saves
+CANVAS loaded: C:/Users/29115/AppData/Roaming/Godot/app_userdata/INT FFF/yellow_layer_test.snapshot
+PASS layered snapshot restores rods
+PASS normal layered reload does not duplicate ink
+PASS active mechanisms pack into scene
+PASS scene reload restores all true axles
+PASS destroying yellow axle pixel removes joint and bearing immediately
+PASS breaking one axle preserves others
+PASS destroying black axle pixel also removes its joint and bearing
+SOLID bodies=0 pixels=0 rejected=0
+PASS separate yellow islands generate two colliding bodies
+PASS yellow rods physically collide instead of passing through
+[YellowMechanisms] 75 checks, 0 failures

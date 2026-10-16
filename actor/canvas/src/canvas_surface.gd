@@ -274,6 +274,8 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 			yellow.finish(self, _mouse_point())
 			return
 		if button.pressed and tool == Tool.ERASER and _inside(_mouse_point()):
+			if ink_material_id() == InkPalette.YELLOW.id and rod_layer.erase_anchor(_mouse_point()):
+				return
 			_rod_drawing = true
 			rod_layer.begin(_mouse_point(), true)
 		if button.pressed and ink_material_id() == InkPalette.YELLOW.id:
@@ -284,8 +286,14 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 			if tool == Tool.LINE:
 				yellow.begin(self, _mouse_point())
 				return
-			if tool in [Tool.RECT, Tool.CIRCLE, Tool.BUCKET, Tool.NAIL]:
+			if tool == Tool.CIRCLE:
+				if _inside(_mouse_point()):
+					rod_layer.place_anchor(_mouse_point())
 				return
+			if tool in [Tool.RECT, Tool.BUCKET, Tool.NAIL]:
+				return
+		if not button.pressed and ink_material_id() == InkPalette.YELLOW.id and tool == Tool.CIRCLE:
+			return
 	if button.button_index == MOUSE_BUTTON_MIDDLE:
 		if ink_material_id() == InkPalette.YELLOW.id:
 			return
@@ -798,7 +806,7 @@ func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 	for i in range(steps + 1):
 		delta += _stamp(from.lerp(to, float(i) / float(steps)), color, room - delta)
 	_flush_texture()
-	blue_layer.refresh()
+	blue_layer.flush_display()
 	_flush_ink()
 	if color.a > 0.5 and not _is_nail(color) \
 	and _ink_room(ink_material_id()) < MIN_PAINT_INK:

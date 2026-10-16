@@ -1,6 +1,6 @@
 extends SceneTree
 const Palette := preload("res://ink/src/ink_palette.gd")
-const Hinge := preload("res://actor/yellow/src/yellow_hinge.gd")
+const Hinge := preload("res://ink/src/yellow/hinge.gd")
 var failures := 0
 var checks := 0
 
@@ -43,6 +43,7 @@ func run() -> void:
 		check("yellow rendered pixels use exported opacity", alpha_found)
 		var peak_angle := 0.0
 		var max_error := 0.0
+		var max_bearing_error := 0.0
 		var coupler_rotation := 0.0
 		var min_angle := INF
 		var max_angle := -INF
@@ -62,10 +63,16 @@ func run() -> void:
 			for hinge in demo.hinges():
 				if hinge.joint != null:
 					max_error = maxf(max_error, hinge.joint.anchor_error().length())
+					hinge._process(0.0)
+					var midpoint: Vector2 = (hinge.yellow_position + hinge.black_position) * 0.5
+					max_bearing_error = maxf(max_bearing_error, hinge.global_position.distance_to(demo.level.to_global(midpoint)))
 			if demo.coupler != null:
 				coupler_rotation = maxf(coupler_rotation, absf(demo.coupler.rotation))
-		check(kind + " moves under physical load", peak_angle > 0.15)
+		check(kind + " moves around its hinges after one physical impulse", peak_angle > 0.15)
 		check(kind + " keeps axle drift below 2px", max_error < 2.0)
+		check(kind + " bearing follows the true axle within 1px", max_bearing_error < 1.0)
+		for hinge in demo.hinges():
+			check(kind + " bearing does not inherit body rotation or scale", absf(hinge.global_rotation) < 0.001 and hinge.global_scale.distance_to(Vector2.ONE) < 0.001)
 		for hinge in demo.hinges():
 			check(kind + " disables only joined body pair contacts", hinge.joint != null and not hinge.joint.contacts_enabled and hinge.yellow_anchor.body.collision_mask == 0xFFFFFFFF)
 		if kind == "four_bar":
@@ -90,9 +97,22 @@ func check_editing(demo) -> void:
 	var health = surface._health_node()
 	var before: float = health.ink_of(Palette.YELLOW.id)
 	var count_before: int = demo.level.world.bodies.size()
+	surface.write_pixel(Vector2i(50, 50), Color.BLACK)
 	layer.begin(Vector2(50.5, 50.5))
 	layer.finish(Vector2(100.5, 50.5))
 	var count: int = layer.make_shape().pixel_count()
+	check("yellow brush never creates an axle automatically", layer.anchor_points.is_empty())
+	check("invalid axle click is ignored", not layer.place_anchor(Vector2(100.5, 50.5)) and layer.anchor_points.is_empty())
+	check("circle axle click records a shared black-yellow centre", layer.place_anchor(Vector2(50.5, 50.5)) and layer.anchor_points.size() == 1)
+	check("duplicate axle click keeps only one", not layer.place_anchor(Vector2(50.5, 50.5)) and layer.anchor_points.size() == 1)
+	var pixels_before_axle_erase: int = layer.make_shape().pixel_count()
+	check("yellow eraser removes bearing without erasing rod pixels", layer.erase_anchor(Vector2(50.5, 50.5))
+		and layer.anchor_points.is_empty() and layer.make_shape().pixel_count() == pixels_before_axle_erase)
+	check("axle erase undo restores only the bearing", surface.undo_last_edit()
+		and layer.anchor_points.size() == 1 and layer.make_shape().pixel_count() == pixels_before_axle_erase)
+	layer.erase_anchor(Vector2(50.5, 50.5))
+	surface.write_pixel(Vector2i(50, 50), Color.TRANSPARENT)
+	surface.refresh()
 	check("normal rod paint charges its real unique area", health.ink_of(Palette.YELLOW.id) == before - count)
 	layer.begin(Vector2(80.5, 50.5))
 	layer.finish(Vector2(150.5, 50.5))

@@ -2,7 +2,7 @@ extends Node2D
 ## 白墨实景测试：自由落体、薄墙扫掠、红墨反应、黄线死亡和玩家扣血。
 const Item := preload("res://actor/ink_item/src/ink_item.gd")
 const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
-const Stroke := preload("res://actor/yellow/src/yellow_stroke.gd")
+const Stroke := preload("res://ink/src/yellow/stroke.gd")
 const Palette := preload("res://ink/src/ink_palette.gd")
 var samples: Dictionary = {}
 var failures := 0
