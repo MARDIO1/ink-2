@@ -5,9 +5,14 @@ const CANVAS_TEXTURE := preload("res://ui/cursor/asset/canvas_cursor.png")
 const WORLD_TEXTURE := preload("res://ui/cursor/asset/world_cursor.png")
 const CANVAS_HOTSPOT := Vector2(30, 30)
 const WORLD_HOTSPOT := Vector2(8, 4)
+const Tool := preload("res://actor/canvas/src/canvas_surface.gd").Tool
+## 素材的可见圆环占 52×52，其余为透明留边。
+const RING_DIAMETER := 52.0
 
 ## 原素材的每个像素块为 4×4；还原为逻辑像素，再随游戏窗口统一缩放。
 @export_range(0.1, 2.0, 0.05) var display_scale := 0.25
+## 逻辑屏幕像素；极细笔触、镜头缩远时也不让圆环缩成不可见的点。
+@export_range(8.0, 32.0, 1.0) var minimum_ring_diameter := 12.0
 @onready var pointer: TextureRect = $Pointer
 var _mouse_in_window := true
 var _owns_mouse := false
@@ -64,6 +69,28 @@ func _process(_delta: float) -> void:
 	_refresh_cursor(screen_position, enabled, get_viewport().gui_get_hovered_control() != null)
 
 
+func _ring_scale(canvas: Node) -> Vector2:
+	var surface: Node2D = canvas.get_node("CanvasSurface")
+	var transform := surface.get_global_transform_with_canvas()
+	var diameter := float(maxi(1, surface.brush_size))
+	return Vector2(maxf(minimum_ring_diameter, diameter * transform.x.length()),
+		maxf(minimum_ring_diameter, diameter * transform.y.length())) / RING_DIAMETER
+
+
+func _uses_ring(canvas: Node) -> bool:
+	var surface: Node = canvas.get_node("CanvasSurface")
+	if surface.tool in [Tool.NAIL, Tool.GEAR, Tool.GEAR_8]:
+		return false
+	var creative := canvas.get_parent().get_node_or_null("Creative")
+	if creative != null and creative.get("active") == true:
+		if creative._monster_mode != creative.MONSTER_MODE_NONE \
+		or creative._dragging_monster or creative._layout_drag_target != null:
+			return false
+	# 蓝图幽灵也是部件放置，不能误表现成画笔。
+	var blueprints := get_node_or_null("/root/Blueprints")
+	return blueprints == null or not blueprints.placing
+
+
 func _refresh_cursor(screen_position: Vector2, enabled: bool, over_gui: bool) -> void:
 	if not enabled or not get_viewport().get_visible_rect().has_point(screen_position):
 		_release_mouse()
@@ -72,12 +99,16 @@ func _refresh_cursor(screen_position: Vector2, enabled: bool, over_gui: bool) ->
 	if Input.mouse_mode in [Input.MOUSE_MODE_CAPTURED, Input.MOUSE_MODE_CONFINED_HIDDEN]:
 		_release_mouse()
 		return
-	var in_canvas := not over_gui and _canvas_at(screen_position) != null
+	var canvas: Node = null if over_gui else _canvas_at(screen_position)
+	var in_canvas := canvas != null and _uses_ring(canvas)
 	var texture: Texture2D = CANVAS_TEXTURE if in_canvas else WORLD_TEXTURE
 	var hotspot := CANVAS_HOTSPOT if in_canvas else WORLD_HOTSPOT
+	var texture_scale := _ring_scale(canvas) if in_canvas else Vector2.ONE * display_scale
+	var rotation: float = canvas.get_node("CanvasSurface").get_global_transform_with_canvas().get_rotation() if in_canvas else 0.0
 	pointer.texture = texture
-	pointer.size = texture.get_size() * display_scale
-	pointer.position = screen_position - hotspot * display_scale
+	pointer.size = texture.get_size() * texture_scale
+	pointer.rotation = rotation
+	pointer.position = screen_position - (hotspot * texture_scale).rotated(rotation)
 	pointer.show()
 	if not _owns_mouse:
 		_previous_mouse_mode = Input.mouse_mode

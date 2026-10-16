@@ -28,6 +28,7 @@ InkRuntime="*res://ink/src/ink_runtime.gd"
 AudioSettings="*res://sound/src/audio_settings.gd"
 Blueprints="*res://ui/blueprint/src/blueprint_system.gd"
 InkCursor="*res://ui/cursor/cursor.tscn"
+UIFeedback="*res://ui/theme/src/ui_feedback.gd"
 
 [display]
 

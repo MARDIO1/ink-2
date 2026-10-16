@@ -15,6 +15,8 @@ const NON_LEVEL_SCENE := "res://map/asset/imported/main.tscn"
 const BUTTON_SIZE := Vector2(340, 46)
 
 signal level_chosen(path: String)
+signal back_pressed
+var _choosing := false
 
 @onready var list: VBoxContainer = $Center/Panel/Scroll/List
 @onready var scroll: ScrollContainer = $Center/Panel/Scroll
@@ -63,6 +65,10 @@ func _update_list_layout() -> void:
 
 
 func _on_level_button_pressed(path: String, selected_button: Button) -> void:
+	if _choosing:
+		return
+	_choosing = true
+	$BackButton.disabled = true
 	# 大地图载入期间立即给出反馈，并禁止重复提交载入请求。
 	for child in list.get_children():
 		if child is Button:
@@ -72,6 +78,8 @@ func _on_level_button_pressed(path: String, selected_button: Button) -> void:
 
 
 func show_load_failed(path: String) -> void:
+	_choosing = false
+	$BackButton.disabled = false
 	for child in list.get_children():
 		if child is Button:
 			var button := child as Button
@@ -80,6 +88,17 @@ func show_load_failed(path: String) -> void:
 			if button.tooltip_text == path:
 				button.text += "（加载失败，请重试）"
 				button.grab_focus()
+
+
+func _on_back_pressed() -> void:
+	if not _choosing:
+		back_pressed.emit()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("escape") and not _choosing:
+		get_viewport().set_input_as_handled()
+		_on_back_pressed()
 
 
 ## `res://map` 下所有真关卡的路径，已排序。

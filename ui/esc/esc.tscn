@@ -1,9 +1,13 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Texture2D" path="res://ui/menu/asset/icon_play.svg" id="1_play"]
 [ext_resource type="Texture2D" path="res://ui/menu/asset/icon_exit.svg" id="2_exit"]
 [ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="3_theme"]
 [ext_resource type="Script" path="res://ui/esc/src/esc.gd" id="4_script"]
+[ext_resource type="Texture2D" path="res://ui/esc/asset/icon_recover.svg" id="5_recover"]
+[ext_resource type="Texture2D" path="res://ui/esc/asset/icon_sound.svg" id="6_sound"]
+[ext_resource type="Texture2D" path="res://ui/esc/asset/icon_home.svg" id="7_home"]
+[ext_resource type="Texture2D" path="res://ui/esc/asset/icon_help.svg" id="8_help"]
 
 [sub_resource type="StyleBoxFlat" id="VolumeTrack"]
 bg_color = Color(0.68, 0.65, 0.56, 1)
@@ -75,6 +79,8 @@ theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
 text = "脱离卡死"
 tooltip_text = "返回当前关卡中已经经过的最近出生点或复活点"
+icon = ExtResource("5_recover")
+expand_icon = true
 
 [node name="SoundButton" type="Button" parent="Center/Panel/Buttons"]
 custom_minimum_size = Vector2(0, 58)
@@ -82,6 +88,8 @@ layout_mode = 2
 theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
 text = "声音设置"
+icon = ExtResource("6_sound")
+expand_icon = true
 
 [node name="MenuButton" type="Button" parent="Center/Panel/Buttons"]
 custom_minimum_size = Vector2(0, 58)
@@ -89,6 +97,17 @@ layout_mode = 2
 theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
 text = "回主菜单"
+icon = ExtResource("7_home")
+expand_icon = true
+
+[node name="HelpButton" type="Button" parent="Center/Panel/Buttons"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+theme_type_variation = &"MenuActionButton"
+mouse_default_cursor_shape = 2
+text = "操作说明"
+icon = ExtResource("8_help")
+expand_icon = true
 
 [node name="QuitButton" type="Button" parent="Center/Panel/Buttons"]
 custom_minimum_size = Vector2(0, 58)
@@ -173,6 +192,7 @@ text = "返回"
 [connection signal="value_changed" from="Center/Panel/SoundPage/MusicSlider" to="." method="_on_music_volume_changed"]
 [connection signal="value_changed" from="Center/Panel/SoundPage/SfxSlider" to="." method="_on_sfx_volume_changed"]
 [connection signal="pressed" from="Center/Panel/Buttons/SoundButton" to="." method="_on_sound_button_pressed"]
+[connection signal="pressed" from="Center/Panel/Buttons/HelpButton" to="." method="_on_help_button_pressed"]
 [connection signal="pressed" from="Center/Panel/Buttons/ContinueButton" to="." method="_on_continue_button_pressed"]
 [connection signal="pressed" from="Center/Panel/Buttons/EscapeStuckButton" to="." method="_on_escape_stuck_button_pressed"]
 [connection signal="pressed" from="Center/Panel/Buttons/MenuButton" to="." method="_on_menu_button_pressed"]

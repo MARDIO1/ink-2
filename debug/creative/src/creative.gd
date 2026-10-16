@@ -171,6 +171,9 @@ var _map_save_window: PopupPanel = null
 var _save_name_input: LineEdit = null
 var _save_directory_input: LineEdit = null
 var _save_preview: TextureRect = null
+var _save_status: Label
+var _editor_player_visibility: Button
+var _editor_nail_visibility: Button
 var _skip_restore_on_enter := false
 var _auto_save_revision := 0
 var _syncing_canvas_tool := false
@@ -591,6 +594,7 @@ func _enter() -> void:
 	# 地图编辑器有独立的屏幕固定工具栏和四向扩展按钮。
 	if _map_canvas != null:
 		_map_canvas.set_map_editor_mode(true)
+	_refresh_editor_visibility()
 	if _monster_palette != null:
 		_monster_palette.visible = true
 	_refresh_layout_overlay()
@@ -1669,6 +1673,43 @@ func _build_monster_palette() -> void:
 	)
 	var color_separator := HSeparator.new()
 	column.add_child(color_separator)
+	var edit_actions := HBoxContainer.new()
+	edit_actions.name = "EditActions"
+	column.add_child(edit_actions)
+	var history := preload("res://actor/canvas/src/history_actions.gd").new()
+	history.name = "HistoryActions"
+	history.canvas = _map_canvas
+	history.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	edit_actions.add_child(history)
+	var save_map_button := Button.new()
+	save_map_button.name = "SaveMapButton"
+	save_map_button.text = "保存地图"
+	save_map_button.tooltip_text = "打开地图保存窗口（F5），确认后才写入地图"
+	save_map_button.focus_mode = Control.FOCUS_NONE
+	save_map_button.pressed.connect(_open_map_save_window)
+	edit_actions.add_child(save_map_button)
+	var view_actions := HBoxContainer.new()
+	view_actions.name = "ViewActions"
+	column.add_child(view_actions)
+	_editor_player_visibility = Button.new()
+	_editor_player_visibility.name = "PlayerVisibility"
+	_editor_player_visibility.text = "显示小人"
+	_editor_player_visibility.tooltip_text = "只切换编辑器中的角色显示，不改变出生点或物理"
+	_editor_player_visibility.toggle_mode = true
+	_editor_player_visibility.focus_mode = Control.FOCUS_NONE
+	_editor_player_visibility.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_editor_player_visibility.toggled.connect(_map_canvas._on_player_visibility_toggled)
+	view_actions.add_child(_editor_player_visibility)
+	_editor_nail_visibility = Button.new()
+	_editor_nail_visibility.name = "NailVisibility"
+	_editor_nail_visibility.text = "显示钉子"
+	_editor_nail_visibility.tooltip_text = "只切换钉子外观，保留固定点；不修改工具栏图标"
+	_editor_nail_visibility.toggle_mode = true
+	_editor_nail_visibility.focus_mode = Control.FOCUS_NONE
+	_editor_nail_visibility.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_editor_nail_visibility.toggled.connect(_map_canvas._on_nail_visibility_toggled)
+	view_actions.add_child(_editor_nail_visibility)
+	_refresh_editor_visibility()
 
 	var mechanism_title := Label.new()
 	mechanism_title.name = "MechanismTitle"
@@ -1892,6 +1933,15 @@ func _build_monster_palette() -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(hint)
 	panel.visible = false
+
+
+func _refresh_editor_visibility() -> void:
+	if _map_canvas == null:
+		return
+	if is_instance_valid(_editor_player_visibility):
+		_editor_player_visibility.set_pressed_no_signal(_player != null and _player.visible)
+	if is_instance_valid(_editor_nail_visibility):
+		_editor_nail_visibility.set_pressed_no_signal(_map_canvas._nails_visible)
 
 
 func _toggle_monster_palette_panel() -> void:
@@ -3083,8 +3133,12 @@ func _request_map_save_directory() -> void:
 	if _save_directory_dialog == null:
 		push_error("Creative: 无法打开地图保存目录选择器")
 		return
+	# 目录框属于保存表单，不能作为同级弹窗抢走焦点并自动关闭 PopupPanel。
+	if is_instance_valid(_map_save_window) and _map_save_window.visible \
+	and _save_directory_dialog.get_parent() != _map_save_window:
+		_save_directory_dialog.reparent(_map_save_window)
 	_save_directory_dialog.current_dir = map_path.get_base_dir()
-	_save_directory_dialog.popup_centered_ratio(0.72)
+	_save_directory_dialog.popup_centered(Vector2i(get_viewport().get_visible_rect().size * 0.72))
 
 
 func _build_map_save_window() -> void:
@@ -3121,6 +3175,7 @@ func _build_map_save_window() -> void:
 	_save_name_input.name = "MapNameInput"
 	_save_name_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_save_name_input.placeholder_text = "输入地图名称"
+	_save_name_input.text_submitted.connect(func(_text: String): _confirm_named_map_save())
 	name_row.add_child(_save_name_input)
 	var dir_row := HBoxContainer.new()
 	column.add_child(dir_row)
@@ -3134,6 +3189,7 @@ func _build_map_save_window() -> void:
 	_save_directory_input.editable = false
 	dir_row.add_child(_save_directory_input)
 	var browse := Button.new()
+	browse.name = "BrowseButton"
 	browse.text = "选择路径"
 	browse.pressed.connect(_request_map_save_directory)
 	dir_row.add_child(browse)
@@ -3145,9 +3201,18 @@ func _build_map_save_window() -> void:
 	cancel.pressed.connect(popup.hide)
 	actions.add_child(cancel)
 	var save := Button.new()
+	actions.name = "Actions"
+	cancel.name = "CancelButton"
+	save.name = "SaveButton"
 	save.text = "保存"
 	save.pressed.connect(_confirm_named_map_save)
 	actions.add_child(save)
+	_save_status = Label.new()
+	_save_status.name = "SaveStatus"
+	_save_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_save_status.custom_minimum_size.x = 480
+	_save_status.hide()
+	column.add_child(_save_status)
 
 
 func _open_map_save_window() -> void:
@@ -3157,12 +3222,14 @@ func _open_map_save_window() -> void:
 		return
 	_save_name_input.text = map_path.get_file().get_basename()
 	_save_directory_input.text = map_path.get_base_dir()
+	_save_status.hide()
 	_refresh_map_save_preview()
 	_map_save_window.popup_centered()
+	_save_name_input.grab_focus()
 
 
 func _refresh_map_save_preview() -> void:
-	if _save_preview == null:
+	if _save_preview == null or DisplayServer.get_name() == "headless":
 		return
 	var image := get_viewport().get_texture().get_image()
 	if image == null:
@@ -3184,11 +3251,26 @@ func _confirm_named_map_save() -> void:
 		name = name.trim_suffix(".tscn")
 	var directory := _save_directory_input.text.strip_edges()
 	if name.is_empty() or directory.is_empty():
+		_save_status.text = "请输入地图名称并选择保存目录。"
+		_save_status.show()
+		_save_name_input.grab_focus()
 		return
+	if not DirAccess.dir_exists_absolute(ProjectSettings.globalize_path(directory)):
+		_save_status.text = "保存目录不存在，请重新选择路径。"
+		_save_status.show()
+		return
+	var previous_map := map_path
+	var previous_bake := baked_map_path
 	map_path = directory.path_join(name + ".tscn")
 	baked_map_path = directory.path_join(name + ".png")
-	if export_map_to(map_path) == OK and _map_save_window != null:
+	var error := export_map_to(map_path)
+	if error == OK and _map_save_window != null:
 		_map_save_window.hide()
+	elif error != OK:
+		map_path = previous_map
+		baked_map_path = previous_bake
+		_save_status.text = "保存失败：%s；当前地图路径未改变。" % error_string(error)
+		_save_status.show()
 
 
 func _save_current_map_overwrite() -> Error:

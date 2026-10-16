@@ -1,15 +1,25 @@
 extends SceneTree
 
+const Tool := preload("res://actor/canvas/src/canvas_surface.gd").Tool
 var checks := 0
 var failures := 0
 
 class SurfaceProbe extends Node2D:
 	var canvas_size := Vector2i(100, 80)
+	var brush_size := 7
+	var tool := Tool.BRUSH
 	func _inside(point: Vector2) -> bool:
 		return Rect2(Vector2.ZERO, Vector2(canvas_size)).has_point(point)
 
 class CanvasProbe extends Node2D:
 	var active := true
+
+class EditorProbe extends Node:
+	const MONSTER_MODE_NONE := -1
+	var active := false
+	var _monster_mode := MONSTER_MODE_NONE
+	var _dragging_monster := false
+	var _layout_drag_target: Node
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -61,7 +71,37 @@ func _run() -> void:
 	check("inside canvas selects ring", cursor.pointer.visible and cursor.pointer.texture == cursor.CANVAS_TEXTURE and cursor._owns_mouse)
 	if DisplayServer.get_name() != "headless":
 		check("system cursor is hidden while custom cursor is visible", Input.mouse_mode == Input.MOUSE_MODE_HIDDEN)
-	check("ring center is click hotspot", cursor.pointer.position + cursor.pointer.size / 2 == inside and cursor.pointer.size == Vector2(15, 15))
+	check("ring center is click hotspot", (cursor.pointer.position + cursor.pointer.size / 2).is_equal_approx(inside))
+	check("small brush retains minimum visible ring", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 12.0))
+	surface.brush_size = 1
+	cursor._refresh_cursor(inside, true, false)
+	check("single pixel brush stays visible", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 12.0))
+	surface.brush_size = 33
+	cursor._refresh_cursor(inside, true, false)
+	check("ring outer edge follows brush diameter not transparent padding", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 33.0))
+	for tool in [Tool.NAIL, Tool.GEAR, Tool.GEAR_8]:
+		surface.tool = tool
+		cursor._refresh_cursor(inside, true, false)
+		check("placement tool %d uses arrow without moving click hotspot" % tool, cursor.pointer.texture == cursor.WORLD_TEXTURE and (cursor.pointer.position + Vector2(2, 1)).is_equal_approx(inside))
+	surface.tool = Tool.BRUSH
+	var editor := EditorProbe.new()
+	editor.name = "Creative"
+	level.add_child(editor)
+	editor.active = true
+	editor._monster_mode = -14 # 传送门/其他地图部件，所有非 NONE 布局模式均使用箭头。
+	cursor._refresh_cursor(inside, true, false)
+	check("editor placement uses arrow over drawing surface", cursor.pointer.texture == cursor.WORLD_TEXTURE)
+	editor._monster_mode = -1
+	editor._dragging_monster = true
+	cursor._refresh_cursor(inside, true, false)
+	check("immediate component drag retains arrow", cursor.pointer.texture == cursor.WORLD_TEXTURE)
+	editor._dragging_monster = false
+	root.get_node("Blueprints").placing = true
+	cursor._refresh_cursor(inside, true, false)
+	check("blueprint placement uses arrow", cursor.pointer.texture == cursor.WORLD_TEXTURE)
+	root.get_node("Blueprints").placing = false
+	cursor._refresh_cursor(inside, true, false)
+	check("returning to drawing restores brush ring", cursor.pointer.texture == cursor.CANVAS_TEXTURE)
 	check("canvas boundaries match drawing half-open bounds", cursor._canvas_at(Vector2(100, 100)) == canvas and cursor._canvas_at(Vector2(200, 140)) == null and cursor._canvas_at(Vector2(150, 180)) == null)
 	var outside := Vector2(400, 250)
 	cursor._refresh_cursor(outside, true, false)
@@ -80,11 +120,20 @@ func _run() -> void:
 	root.canvas_transform = Transform2D(0.0, Vector2(2, 2), 0.0, Vector2(40, -30))
 	var transformed := surface.get_global_transform_with_canvas() * Vector2(50, 40)
 	check("camera zoom and pan use visible drawing coordinates", cursor._canvas_at(transformed) == canvas and cursor._canvas_at(inside) == null)
+	cursor._refresh_cursor(transformed, true, false)
+	check("zoom doubles brush ring diameter", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 66.0))
+	root.canvas_transform = Transform2D(0.0, Vector2(0.1, 0.1), 0.0, Vector2(40, 30))
+	transformed = surface.get_global_transform_with_canvas() * Vector2(50, 40)
+	cursor._refresh_cursor(transformed, true, false)
+	check("zooming far out retains minimum visible ring", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 12.0))
 	root.canvas_transform = Transform2D.IDENTITY
 	canvas.rotation = 0.4
 	canvas.scale = Vector2(1.5, 0.8)
 	transformed = surface.get_global_transform_with_canvas() * Vector2(50, 40)
 	check("rotated scaled canvas uses local bounds", cursor._canvas_at(transformed) == canvas)
+	cursor._refresh_cursor(transformed, true, false)
+	check("nonuniform canvas scale matches ring axes", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 49.5) and is_equal_approx(cursor.pointer.size.y * 52.0 / 60.0, 26.4))
+	check("rotated ring remains centered on click", (cursor.pointer.position + (cursor.pointer.size * 0.5).rotated(cursor.pointer.rotation)).is_equal_approx(transformed))
 	canvas.rotation = 0
 	canvas.scale = Vector2.ONE
 	var second := CanvasProbe.new()
@@ -95,6 +144,9 @@ func _run() -> void:
 	second_surface.name = "CanvasSurface"
 	second.add_child(second_surface)
 	check("multiple canvases are detected independently", cursor._canvas_at(Vector2(350, 140)) == second and cursor._canvas_at(inside) == canvas)
+	second_surface.brush_size = 21
+	cursor._refresh_cursor(Vector2(350, 140), true, false)
+	check("switching canvases uses hovered canvas brush size", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 21.0))
 	second.queue_free()
 	check("deleted canvas is ignored immediately", cursor._canvas_at(Vector2(350, 140)) == null)
 	cursor._on_mouse_exited()

@@ -119,8 +119,8 @@ func _run() -> void:
 	_check(menu_normal == quit_button.get_theme_stylebox("normal"),
 		"开始和退出必须复用同一份普通状态样式")
 	_check(menu_hover != null and menu_hover.bg_color == menu_normal.bg_color
-		and menu_hover.expand_margin_left == 3.0,
-		"悬停只能增加外框，不能改变按钮底色")
+		and start_button.has_node("ButtonFeedback"),
+		"悬停反馈必须独立绘制，不能改变按钮底色或点击范围")
 	menu.queue_free()
 	await process_frame
 
@@ -133,17 +133,24 @@ func _run() -> void:
 	var esc: Node = (load("res://ui/esc/esc.tscn") as PackedScene).instantiate()
 	root.add_child(esc)
 	await process_frame
-	for path in PackedStringArray([
+	var esc_paths := PackedStringArray([
 		"Center/Panel/Buttons/ContinueButton",
+		"Center/Panel/Buttons/EscapeStuckButton",
+		"Center/Panel/Buttons/SoundButton",
 		"Center/Panel/Buttons/MenuButton",
+		"Center/Panel/Buttons/HelpButton",
 		"Center/Panel/Buttons/QuitButton",
-	]):
+	])
+	for path in esc_paths:
 		var esc_button := esc.get_node(path) as Button
 		_check(esc_button.theme_type_variation == &"MenuActionButton",
 			"ESC 按钮必须使用统一深灰菜单样式：%s" % path)
 		var esc_normal := esc_button.get_theme_stylebox("normal") as StyleBoxFlat
 		_check(esc_normal != null and esc_normal.bg_color == menu_normal.bg_color,
 			"ESC 按钮底色必须与主菜单退出键一致：%s" % path)
+		_check(esc_button.custom_minimum_size.y == 58.0,
+			"ESC 主页面按钮必须等高：%s" % path)
+		_check(esc_button.icon != null, "ESC 主页面按钮图标必须完整：%s" % path)
 	var esc_quit := esc.get_node("Center/Panel/Buttons/QuitButton") as Button
 	_check(esc_quit.icon != null
 		and esc_quit.icon.resource_path.ends_with("/ui/menu/asset/icon_exit.svg"),

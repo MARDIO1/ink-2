@@ -42,5 +42,5 @@ func clear() -> void:
 func _draw() -> void:
 	for pixel: Vector2i in nails:
 		#贴图的固定点对准该画布像素的中心，钉子就长在它钉的那个像素上。
-		draw_texture(NAIL_TEXTURE, Vector2(pixel) + Vector2(0.5, 0.5) - ANCHOR_CENTER)
+		draw_texture_rect(NAIL_TEXTURE, Nail.visual_rect(pixel), false)
 #endregion

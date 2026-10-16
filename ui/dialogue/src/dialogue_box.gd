@@ -25,9 +25,12 @@ var _visible_character_count: int = 0
 var _type_accumulator: float = 0.0
 var _typing: bool = false
 var viewed_lines: PackedStringArray = PackedStringArray()
+var _log_was_paused := false
+var _log_focus: WeakRef
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	add_to_group(&"dialogue_box")
 	panel.gui_input.connect(_on_panel_gui_input)
 	_load_lines_from_file()
@@ -37,7 +40,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if not _typing:
+	if not _typing or get_tree().paused:
 		return
 	_type_accumulator += delta * characters_per_second
 	var characters_to_add := int(_type_accumulator)
@@ -123,12 +126,41 @@ func toggle_log() -> void:
 
 
 func show_log() -> void:
+	if log_root.visible:
+		return
+	var menu := get_tree().get_first_node_in_group(&"esc_menu")
+	var blueprints := get_node_or_null("/root/Blueprints")
+	if (menu != null and menu.visible) or (blueprints != null and blueprints.modal):
+		return
+	_log_was_paused = get_tree().paused
+	var focus := get_viewport().gui_get_focus_owner()
+	_log_focus = weakref(focus) if focus != null else null
+	get_tree().paused = true
 	_refresh_history_text()
 	log_root.show()
+	$LogRoot/Center/Panel/Margin/Column/CloseButton.grab_focus()
 
 
 func hide_log() -> void:
+	if not log_root.visible:
+		return
 	log_root.hide()
+	get_tree().paused = _log_was_paused
+	if _log_focus != null:
+		var focus := _log_focus.get_ref() as Control
+		if focus != null and focus.is_visible_in_tree():
+			focus.grab_focus()
+
+
+func _input(event: InputEvent) -> void:
+	if log_root.visible and event.is_action_pressed("escape"):
+		hide_log()
+		get_viewport().set_input_as_handled()
+
+
+func _exit_tree() -> void:
+	if is_instance_valid(log_root) and log_root.visible:
+		get_tree().paused = _log_was_paused
 
 
 func _refresh_history_text() -> void:
@@ -152,6 +184,8 @@ func _load_lines_from_file() -> void:
 
 
 func _on_panel_gui_input(event: InputEvent) -> void:
+	if get_tree().paused:
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		panel.accept_event()
 		advance()

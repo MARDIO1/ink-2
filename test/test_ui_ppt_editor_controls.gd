@@ -1,6 +1,7 @@
 extends "res://test/test_collision_damage.gd"
 
 const CanvasSurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
+const InkPalette := preload("res://ink/src/ink_palette.gd")
 
 
 func _initialize() -> void:
@@ -34,7 +35,7 @@ func _run_ui_test() -> void:
 	valid = valid and side_panel.position == Vector2(play_size.x + 16.0, 2.0)
 	valid = valid and side_slider.size.y >= 166.0
 	valid = valid and first_ink_button.size.is_equal_approx(Vector2(34.0, 34.0))
-	valid = valid and side_panel.get_node("Controls/Colors").get_child_count() == 4
+	valid = valid and side_panel.get_node("Controls/Colors").get_child_count() == InkPalette.ink_count()
 	(play_grid.get_node("Brush") as Button).pressed.emit()
 	valid = valid and play_canvas.surface.tool == CanvasSurfaceScript.Tool.BRUSH
 	(play_grid.get_node("Eraser") as Button).pressed.emit()
@@ -73,7 +74,7 @@ func _run_ui_test() -> void:
 	valid = valid and editor_grid.get_node("ExpandCanvas").visible
 	valid = valid and editor_hand.visible
 	valid = valid and editor_hand.size.is_equal_approx(Vector2(72.0, 72.0))
-	var hand_icon := editor_hand.icon as AtlasTexture
+	var hand_icon := editor_hand.get_node("ToolIcon").texture as AtlasTexture
 	valid = valid and hand_icon != null \
 		and hand_icon.atlas.resource_path.ends_with("editor_control.png")
 	valid = valid and (editor_grid.get_node("Brush") as Button).size \
@@ -99,7 +100,7 @@ func _run_ui_test() -> void:
 	var panel := palette.get_node("Root/Panel") as PanelContainer
 	valid = valid and palette.get_node_or_null("Root/CategoryRail") == null and not panel.visible
 	var tools_toggle := palette.get_node("Root/PaletteToggle") as Button
-	valid = valid and tools_toggle.text == "工具"
+	valid = valid and tools_toggle.text.begins_with("工具")
 	tools_toggle.pressed.emit()
 	await process_frame
 	valid = valid and panel.visible and tools_toggle.text == "关闭"

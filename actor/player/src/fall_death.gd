@@ -296,7 +296,7 @@ func escape_stuck(skipped: Array = [], search = null) -> bool:
 	var current_position: Vector2 = _body.com_world()
 	points.sort_custom(func(a, b): return level.to_local(a.global_position).distance_squared_to(current_position) < level.to_local(b.global_position).distance_squared_to(current_position))
 	var targets: Array = []
-	for point in points.slice(0, 8):
+	for point in points:
 		targets.append({"position": level.to_local(point.global_position), "rotation": point.global_rotation - level.global_rotation})
 	if targets.is_empty():
 		targets.append({"position": level.to_local(_initial_position), "rotation": _initial_rotation - level.global_rotation})
@@ -304,24 +304,28 @@ func escape_stuck(skipped: Array = [], search = null) -> bool:
 	if search == null:
 		search = SafeSpawnSearch.new()
 		search.setup(self, level.world, _body, hand)
-	var landing: Dictionary = await search.find(targets, skipped)
+	var landing: Dictionary = await search.find_expanded(targets, skipped)
 	var previous_position := level.to_global(_body.position)
 	var previous_rotation: float = _body.rotation + level.global_rotation
+	var verified := false
+	var attempts := 0
 	# 提交后等待一帧，重新读取当前物品和碎屑位置，而非只使用首次快照。
-	while not landing.is_empty():
+	while not landing.is_empty() and attempts < 8:
+		attempts += 1
 		_player.teleport_to(level.to_global(landing.position), landing.rotation + level.global_rotation)
 		await get_tree().process_frame
 		if await search.verify(_body.position, _body.rotation):
+			verified = true
 			break
 		skipped.append(landing.position)
-		landing = await search.find(targets, skipped)
-		if landing.is_empty():
-			_player.teleport_to(previous_position, previous_rotation)
+		landing = await search.find_expanded(targets, skipped)
 	last_search_stats = {"candidates": search.candidates_checked, "pairs": search.pairs_checked, "yielded_frames": search.frames_yielded}
-	if landing.is_empty():
-		recovery_error = "未找到可用的安全落点，游戏已保持暂停。"
+	if not verified:
+		if attempts > 0:
+			_player.teleport_to(previous_position, previous_rotation)
 		recovering = false
-		# 找不到安全位置时不自动恢复游戏，不强行把玩家塞进物品。
+		get_tree().paused = was_paused
+		# 地形完全不支持站立时保持原位，不弹错误、不破坏物品，也不强行塞入障碍。
 		return false
 	_clear_revive_visual()
 	_restore_death_state()
@@ -352,23 +356,11 @@ func _verify_after_resume() -> void:
 	if safe:
 		get_tree().paused = false
 		return
-	var menu := get_tree().get_first_node_in_group(&"esc_menu")
-	if menu != null:
-		menu.open_menu()
-	var succeeded := false
 	var skipped: Array = pending.skipped
 	skipped.append(pending.position)
-	if search.candidates_checked < SafeSpawnSearch.MAX_CANDIDATES and search.pairs_checked < SafeSpawnSearch.MAX_PAIRS:
-		if menu != null:
-			succeeded = await menu._on_escape_stuck_button_pressed(skipped, search)
-		else:
-			succeeded = await escape_stuck(skipped, search)
-			if succeeded:
-				get_tree().paused = false
-	if not succeeded:
-		recovery_error = "未找到可用的安全落点，游戏已保持暂停。"
-		if menu != null:
-			menu.show_recovery_status(recovery_error)
+	# 内部重试不再打开 ESC 菜单，避免将临时暂停记录为菜单之前的暂停状态。
+	await escape_stuck(skipped)
+	get_tree().paused = false
 
 
 func _level_root() -> Node:

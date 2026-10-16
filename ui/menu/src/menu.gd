@@ -5,6 +5,7 @@ extends Control
 signal start_pressed
 
 @onready var start_button: Button = $ButtonCenter/Buttons/StartButton
+var _sound_menu: CanvasLayer
 
 
 func _ready() -> void:
@@ -22,6 +23,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _on_start_button_pressed() -> void:
 	start_pressed.emit()
+
+
+func _on_sound_button_pressed() -> void:
+	if not is_instance_valid(_sound_menu):
+		_sound_menu = preload("res://ui/esc/esc.tscn").instantiate()
+		add_child(_sound_menu)
+	_sound_menu.open_sound_settings()
 
 
 func _on_quit_button_pressed() -> void:

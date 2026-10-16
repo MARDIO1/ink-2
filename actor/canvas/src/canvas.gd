@@ -528,6 +528,11 @@ func _build_side_panel() -> void:
 	_selected_ink_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_selected_ink_label.add_theme_font_size_override("font_size", 10)
 	panel.add_child(_selected_ink_label)
+	var history := preload("res://actor/canvas/src/history_actions.gd").new()
+	history.name = "HistoryActions"
+	history.canvas = self
+	history.compact = true
+	panel.add_child(history)
 	var source_pen := brush_panel.get_node("PenSlider") as HSlider
 	source_pen.min_value = 1.0
 	source_pen.max_value = float(brush_size_max)

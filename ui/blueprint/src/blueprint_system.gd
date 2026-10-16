@@ -43,6 +43,8 @@ var _cards: GridContainer
 var _search: LineEdit
 var _favorites: CheckButton
 var _page_label: Label
+var _previous_page: Button
+var _next_page: Button
 var _detail: VBoxContainer
 var _preview: Control
 var _save_preview: Control
@@ -88,7 +90,7 @@ func _button(text_value: String, callback: Callable, parent: Node) -> Button:
 	var button := Button.new()
 	button.text = text_value
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.focus_mode = Control.FOCUS_NONE
+	button.focus_mode = Control.FOCUS_NONE if parent == actions else Control.FOCUS_ALL
 	button.pressed.connect(callback)
 	parent.add_child(button)
 	return button
@@ -171,11 +173,11 @@ func _build_ui() -> void:
 	scroll.add_child(_cards)
 	var pager := HBoxContainer.new()
 	_library.add_child(pager)
-	_button("上一页", func(): _page = maxi(0, _page - 1); _refresh_cards(), pager)
+	_previous_page = _button("上一页", func(): _page = maxi(0, _page - 1); _refresh_cards(), pager)
 	_page_label = _label("", pager)
 	_page_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_page_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_button("下一页", func(): _page += 1; _refresh_cards(), pager)
+	_next_page = _button("下一页", func(): _page += 1; _refresh_cards(), pager)
 	var right := VBoxContainer.new()
 	right.custom_minimum_size.x = 292
 	_body.add_child(right)
@@ -354,16 +356,15 @@ func open_library() -> void:
 	var menu := get_tree().get_first_node_in_group(&"esc_menu")
 	if menu != null and menu.visible:
 		return
+	var dialogue := get_tree().get_first_node_in_group(&"dialogue_box")
+	if dialogue != null and dialogue.log_root.visible:
+		dialogue.hide_log()
 	cancel_placement()
 	_open("library")
 	_items = store.list_all()
 	_search.clear()
 	_page = 0
 	_refresh_cards()
-	if not _items.is_empty():
-		_show_detail(_items[0])
-	else:
-		_show_detail({})
 	_search.grab_focus()
 
 func _open(mode: String) -> void:
@@ -421,14 +422,19 @@ func _refresh_cards() -> void:
 	var pages := maxi(1, ceili(float(filtered.size()) / PAGE_SIZE))
 	_page = clampi(_page, 0, pages - 1)
 	_page_label.text = "%d / %d · %d 张" % [_page + 1, pages, filtered.size()]
+	_previous_page.disabled = _page == 0
+	_next_page.disabled = _page >= pages - 1
 	if filtered.is_empty():
-		_label("还没有蓝图\n框选作品后点击「保存为蓝图」", _cards)
+		_label("还没有蓝图\n框选作品后点击「保存为蓝图」" if _items.is_empty() else "没有匹配的蓝图\n试试其他关键词或关闭收藏筛选", _cards)
 	for data in filtered.slice(_page * PAGE_SIZE, (_page + 1) * PAGE_SIZE):
 		var card := Button.new()
 		card.custom_minimum_size = Vector2(170, 132)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		card.tooltip_text = data.name
-		card.focus_mode = Control.FOCUS_NONE
+		card.focus_mode = Control.FOCUS_ALL
+		card.toggle_mode = true
+		card.set_meta("blueprint_id", data.id)
+		card.set_pressed_no_signal(data.id == _selected.get("id", ""))
 		_cards.add_child(card)
 		var box := VBoxContainer.new()
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -449,6 +455,14 @@ func _refresh_cards() -> void:
 		var caption := _label("%d×%d px%s" % [data.size[0], data.size[1], " · 编辑器" if data.editor_only else ""], box)
 		caption.add_theme_font_size_override("font_size", 12)
 		card.pressed.connect(_show_detail.bind(data))
+	if _mode == "library":
+		var retained := false
+		for data in filtered:
+			if data.id == _selected.get("id", ""):
+				retained = true
+				break
+		if not retained:
+			_show_detail(filtered[0] if not filtered.is_empty() else {})
 
 func _cost_text(amounts: Dictionary, canvas = null) -> String:
 	var text := ""
@@ -465,9 +479,15 @@ func _cost_text(amounts: Dictionary, canvas = null) -> String:
 
 func _show_detail(data: Dictionary) -> void:
 	_selected = data
+	for card in _cards.get_children():
+		if card is Button:
+			card.set_pressed_no_signal(card.get_meta("blueprint_id", "") == data.get("id", ""))
 	_confirm_delete = false
 	_delete.text = "删除蓝图"
 	var empty := data.is_empty()
+	_name.editable = not empty
+	_description.editable = not empty
+	_tags.editable = not empty
 	for control in [_use, _save, _favorite, _delete]:
 		control.disabled = empty
 	_use.visible = _mode == "library"

@@ -326,8 +326,9 @@ static func preview(data: Dictionary) -> Image:
 	# 蓝图库与放置幽灵也使用同一张钉子图，不将材质 7 显示成棕色单点。
 	if not nails.is_empty():
 		var icon: Image = Nail.NAIL_TEXTURE.get_image()
+		icon.resize(roundi(icon.get_width() * Nail.VISUAL_SCALE), roundi(icon.get_height() * Nail.VISUAL_SCALE), Image.INTERPOLATE_NEAREST)
 		for at: Vector2i in nails:
-			var origin := at - Vector2i(Nail.ANCHOR_CENTER)
+			var origin := at - Vector2i(Nail.ANCHOR_CENTER * Nail.VISUAL_SCALE)
 			var clipped := Rect2i(origin, icon.get_size()).intersection(Rect2i(Vector2i.ZERO, size))
 			if clipped.has_area():
 				image.blend_rect(icon, Rect2i(clipped.position - origin, clipped.size), clipped.position)

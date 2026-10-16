@@ -50,7 +50,15 @@ func _show_level_select() -> void:
 		return
 	var select := level_select_scene.instantiate() as Control
 	select.connect(&"level_chosen", request_level_change)
+	select.connect(&"back_pressed", _return_to_menu)
 	_set_screen(select)
+	await _transition.finish()
+
+
+func _return_to_menu() -> void:
+	if not await _transition.begin(_transition.Style.PAGE, "返回封面…"):
+		return
+	_show_menu()
 	await _transition.finish()
 
 
