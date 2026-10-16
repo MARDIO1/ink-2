@@ -16,7 +16,6 @@ var consumers: Dictionary = {}
 var neighbours: Dictionary = {}
 var bridges: Dictionary = {}
 var fuel: Dictionary = {}
-var removals: Dictionary = {}
 var source_bounds: Dictionary = {}
 var contact_cache: Dictionary = {}
 var motor_cache: Dictionary = {}
@@ -30,7 +29,6 @@ var _ids: Dictionary = {}
 var _layouts: Dictionary = {}
 var _serial := 0
 var _pending: Array = []
-var _repairs: Dictionary = {}
 var _stored := 0.0
 var _active := 0
 var _template := PackedByteArray()
@@ -82,9 +80,6 @@ func inject(wire, at: Vector2i, direction: int, energy: float, producer: int = 0
 	if energy > 0.0 and wire.mask.has(at):
 		_pending.append([wire, at, direction, energy, producer])
 
-func repair_pixels(wire, points: PackedVector2Array) -> void:
-	_repairs[wire] = points
-
 func _vectors(buffer: StreamPeerBuffer, count: int) -> PackedVector2Array:
 	# 使用 Godot 原生 Variant 解码，避免为每个显示点逐个调用 get_float。
 	var encoded := PackedByteArray()
@@ -122,12 +117,6 @@ func advance(wires: Array, delta: float) -> void:
 		commands.put_double(wire.body.position.x)
 		commands.put_double(wire.body.position.y)
 		commands.put_double(wire.body.rotation)
-		if _repairs.has(wire):
-			commands.put_32(8)
-			commands.put_32(id)
-			commands.put_32(_repairs[wire].size())
-			commands.put_data(_repairs[wire].to_byte_array())
-	_repairs.clear()
 	commands.put_32(11)
 	commands.put_double(pixel_power * interval)
 	commands.put_64(maxi(1, ceili(lifetime * speed)))
@@ -183,8 +172,7 @@ func advance(wires: Array, delta: float) -> void:
 				commands.put_64(injection[index])
 			commands.put_32(injection[7])
 			commands.put_64(injection[8])
-			commands.put_64(injection[9])
-			commands.put_32(injection[10])
+			commands.put_32(injection[9])
 		else:
 			commands.put_64(injection[4])
 	_pending.clear()
@@ -201,7 +189,8 @@ func advance(wires: Array, delta: float) -> void:
 	var result := _call(commands.data_array)
 	stats["kernel_us"] = stats.get("kernel_us", 0) + Time.get_ticks_usec() - phase_start
 	phase_start = Time.get_ticks_usec()
-	assert(result.get_32() == 0, "Energy native command rejected")
+	var status := result.get_32()
+	assert(status == 0, "Energy native command rejected")
 	clock = result.get_64()
 	stats.injected = result.get_double()
 	stats.consumed = result.get_double()
@@ -224,28 +213,13 @@ func advance(wires: Array, delta: float) -> void:
 		var heads := _vectors(result, count)
 		var energies: PackedFloat32Array = result.get_data(count * 4)[1].to_float32_array()
 		var tails := _vectors(result, result.get_32())
-		var deleted := _vectors(result, result.get_32())
-		var flashes := _vectors(result, result.get_32())
+		# 读游标不能藏在 assert 里，否则 release 导出移除断言后会错位。
+		var deleted_count := result.get_32()
+		var flash_count := result.get_32()
+		assert(deleted_count == 0 and flash_count == 0, "Energy flow must not cut or flash wires")
 		var display_start := Time.get_ticks_usec()
 		wire.show_energy_points(heads, tails, energies, maxf(pixel_power * interval, 1.0))
 		stats["display_us"] = stats.get("display_us", 0) + Time.get_ticks_usec() - display_start
-		if not deleted.is_empty():
-			var points: Array = []
-			for point in deleted:
-				var at := Vector2i(point)
-				wire.erase(at, false)
-				points.append(at)
-				for motor in consumers.get(wire, {}).get(at, []):
-					if motor is Node:
-						motor.queue_free()
-				for shape in wire.body.shapes:
-					if shape.get_pixel(at.x, at.y) == Palette.BLUE.id:
-						removals.get_or_add(wire.body, {}).get_or_add(shape, {})[at] = true
-			wire.flush_display(false)
-			wire.version += 1
-			wire.pixels_removed.emit(points)
-		for point in flashes:
-			wire.flash_points.append([point + Vector2.ONE * 0.5, Time.get_ticks_msec()])
 	stats["decode_us"] = stats.get("decode_us", 0) + Time.get_ticks_usec() - phase_start
 
 func state(wire) -> Dictionary:
@@ -260,7 +234,7 @@ func state(wire) -> Dictionary:
 	for i in result.get_32():
 		var at := Vector2i(result.get_32(), result.get_32())
 		var energy := Vector4(result.get_double(), result.get_double(), result.get_double(), result.get_double())
-		front[at] = [energy, result.get_64(), result.get_64(), result.get_64(), result.get_32(), result.get_64(), result.get_64(), result.get_32()]
+		front[at] = [energy, result.get_64(), result.get_64(), result.get_64(), result.get_32(), result.get_64(), result.get_32()]
 	return {"front": front}
 
 func stored_energy() -> float:
@@ -278,7 +252,7 @@ func rebind_wire(old, replacements: Array) -> void:
 			if wire.mask.has(cell):
 				for d in 4:
 					if data.front[at][0][d] > 0.0:
-						_pending.append([wire, cell, d, data.front[at][0][d], data.front[at][1], data.front[at][2], data.front[at][3], data.front[at][4], data.front[at][5], data.front[at][6], data.front[at][7]])
+						_pending.append([wire, cell, d, data.front[at][0][d], data.front[at][1], data.front[at][2], data.front[at][3], data.front[at][4], data.front[at][5], data.front[at][6]])
 				break
 
 func update(rule, context: Dictionary) -> Dictionary:
@@ -326,9 +300,8 @@ func update(rule, context: Dictionary) -> Dictionary:
 		motor.consume(delta, rule.force_per_length, rule.power_per_width, rule.idle_power, bio_force if biological else INF)
 		if biological:
 			bio_force = maxf(0.0, bio_force - motor.applied_force)
-	var result := removals
-	removals = {}
-	# 发包时扣能源，整像素耗料仍批量提交；与短路删除共用不引爆红色的入口。
+	var result := {}
+	# 发包时扣能源，整像素耗料批量提交到不引爆红色的燃料入口。
 	fuel_elapsed += delta
 	if fuel_elapsed < rule.fuel_interval:
 		return {"fuel_removals": result}

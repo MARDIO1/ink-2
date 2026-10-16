@@ -15,6 +15,8 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	z_index = 10
 	top_level = true
+	# 场景恢复使用延迟锚点绑定；绑定前不能让贴图在默认原点短暂可见。
+	visible = false
 	world = get_parent().world
 	call_deferred("restore")
 
@@ -37,10 +39,12 @@ func restore() -> void:
 	yellow_anchor = find_yellow(world, yellow_position)
 	black_anchor = Stroke.find_anchor(world, black_position)
 	if yellow_anchor.is_empty() or black_anchor.is_empty():
+		visible = false
 		queue_free()
 	else:
 		connect_joint()
 		_sync_visual()
+		visible = true
 
 func connect_joint() -> void:
 	if joint != null and joint.is_active():
@@ -61,6 +65,7 @@ func rebind(physics, body, pieces: Array) -> void:
 				replacement = {"body": piece, "cell": cell, "local": piece.to_local(point)}
 		if replacement.is_empty():
 			remove_joint()
+			visible = false
 			queue_free()
 			return
 		anchor.merge(replacement, true)
@@ -75,6 +80,7 @@ func _process(_delta: float) -> void:
 	or not has_pixel(yellow_anchor.body, yellow_anchor.cell, Palette.YELLOW.id) \
 	or not has_pixel(black_anchor.body, black_anchor.cell, Palette.BLACK.id):
 		remove_joint()
+		visible = false
 		queue_free()
 		return
 	connect_joint()

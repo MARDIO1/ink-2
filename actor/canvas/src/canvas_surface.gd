@@ -28,6 +28,7 @@ var _dirty_hi := Vector2i(-(1 << 30), -(1 << 30))
 @onready var blue_layer: Node2D = $BlueWireLayer
 @onready var rod_layer: Node2D = $YellowRodLayer
 var _rod_drawing := false
+var _rail_drawing := false
 func _ready() -> void:
 	black_tiles.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
@@ -109,6 +110,9 @@ func _process(_delta: float) -> void:
 	if _rod_drawing:
 		rod_layer.extend(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
 		return
+	if _rail_drawing:
+		rod_layer.extend_rail(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
+		return
 	var yellow = yellow_rule()
 	if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
 		yellow.extend(self, _mouse_point())
@@ -150,6 +154,9 @@ var _shape_delta := 0
 		if _rod_drawing:
 			rod_layer.finish(rod_layer.last_point)
 			_rod_drawing = false
+		if _rail_drawing:
+			rod_layer.cancel_rail()
+			_rail_drawing = false
 		if is_node_ready() and not Engine.is_editor_hint():
 			var yellow = yellow_rule()
 			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
@@ -173,6 +180,9 @@ var _shape_delta := 0
 			if _rod_drawing:
 				rod_layer.finish(rod_layer.last_point)
 				_rod_drawing = false
+			if _rail_drawing:
+				rod_layer.cancel_rail()
+				_rail_drawing = false
 			var yellow = yellow_rule()
 			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
 				yellow.cancel()
@@ -222,6 +232,10 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 			rod_layer.finish(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
 			_rod_drawing = false
 			return
+		if not button.pressed and _rail_drawing:
+			rod_layer.finish_rail(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
+			_rail_drawing = false
+			return
 		if not button.pressed and yellow.drawing != null and yellow.drawing.source_surface == self:
 			yellow.finish(self, _mouse_point())
 			return
@@ -239,7 +253,12 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 				if _inside(_mouse_point()):
 					rod_layer.place_anchor(_mouse_point())
 				return
-			if tool in [Tool.RECT, Tool.BUCKET, Tool.NAIL]:
+			if tool == Tool.RECT:
+				if _inside(_mouse_point()):
+					_rail_drawing = true
+					rod_layer.begin_rail(_mouse_point())
+				return
+			if tool in [Tool.BUCKET, Tool.NAIL]:
 				return
 		if not button.pressed and ink_material_id() == InkPalette.YELLOW.id and tool == Tool.CIRCLE:
 			return
@@ -1244,6 +1263,7 @@ func _save_snapshot(path: String) -> Error:
 	file.store_buffer("INK2".to_ascii_buffer())
 	var rule = yellow_rule()
 	file.store_var({"black": black_image.save_png_to_buffer(), "rod": rod_layer.pixels.save_png_to_buffer(), "anchors": rod_layer.anchor_points,
+		"rails": rod_layer.rails, "slider_pins": rod_layer.slider_pins,
 		"springs": rule.draft_data(self) if rule != null else [], "blue": blue_layer.cells,
 		"motors": blue_rule().draft_data(self) if blue_rule() != null else []})
 	file.flush()
@@ -1305,6 +1325,8 @@ func load_ink(path: String) -> Error:
 		rods.load_png_from_buffer(rod_data.rod)
 		rod_layer.pixels = rods
 		rod_layer.anchor_points = rod_data.anchors
+		rod_layer.rails = rod_data.get("rails", []).duplicate(true)
+		rod_layer.slider_pins = rod_data.get("slider_pins", []).duplicate(true)
 		rod_layer.refresh()
 		var health = _health_node()
 		if not ink_free and health != null:

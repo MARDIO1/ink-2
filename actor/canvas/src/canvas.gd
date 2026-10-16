@@ -83,6 +83,8 @@ func _ready() -> void:
 	_workbench_home_transform = workbench.transform
 	var rod_pixels: Image = surface.rod_layer.pixels.duplicate() if surface.rod_layer.pixels != null else null
 	var rod_anchors: PackedVector2Array = surface.rod_layer.anchor_points.duplicate()
+	var rod_rails: Array = surface.rod_layer.rails.duplicate(true)
+	var rod_pins: Array = surface.rod_layer.slider_pins.duplicate(true)
 	var blue_cells: PackedVector2Array = surface.blue_layer.cells.duplicate()
 	surface.canvas_size = canvas_size
 	surface.blue_layer.cells = blue_cells
@@ -91,6 +93,8 @@ func _ready() -> void:
 	if rod_pixels != null and rod_pixels.get_used_rect().has_area():
 		surface.rod_layer.pixels = rod_pixels
 		surface.rod_layer.anchor_points = rod_anchors
+		surface.rod_layer.rails = rod_rails
+		surface.rod_layer.slider_pins = rod_pins
 		surface.rod_layer.resize(canvas_size)
 	_place_controls()
 	_prepare_workbench_structure()

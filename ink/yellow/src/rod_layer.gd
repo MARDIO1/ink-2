@@ -6,8 +6,12 @@ const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const Hinge := preload("res://ink/yellow/src/hinge.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
+const Rail := preload("res://ink/yellow/src/rail.gd")
+const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
 @export var pixels: Image
 @export var anchor_points: PackedVector2Array = []
+@export var rails: Array = []
+@export var slider_pins: Array = []
 var texture: ImageTexture
 var source_surface
 var last_point := Vector2.ZERO
@@ -16,6 +20,9 @@ var changed: Dictionary = {}
 var prior_anchors: PackedVector2Array
 var ink_delta := 0
 var prior_springs: Array = []
+var rail_drawing := false
+var rail_origin := Vector2.ZERO
+var rail_cursor := Vector2.ZERO
 
 func _ready() -> void:
 	source_surface = get_parent()
@@ -31,6 +38,12 @@ func resize(size: Vector2i, offset := Vector2i.ZERO) -> void:
 		pixels = expanded
 		for index in anchor_points.size():
 			anchor_points[index] += Vector2(offset)
+		for rail in rails:
+			rail["a"] = Vector2(rail.a) + Vector2(offset)
+			rail["b"] = Vector2(rail.b) + Vector2(offset)
+		for pin in slider_pins:
+			pin["source"] = Vector2(pin.source) + Vector2(offset)
+			pin["position"] = Vector2(pin.position) + Vector2(offset)
 	refresh()
 
 func refresh() -> void:
@@ -43,6 +56,40 @@ func _draw() -> void:
 	for point in anchor_points:
 		if _black(point) and pixels.get_pixelv(Vector2i(point.floor())).a > 0:
 			draw_texture(Hinge.BEARING, point - Vector2(5.5, 5.5))
+	for rail in rails:
+		_draw_centerline(Vector2(rail.a), Vector2(rail.b))
+	for pin in slider_pins:
+		if _black(Vector2(pin.source)):
+			_draw_slider_pin(Vector2(pin.position))
+	if rail_drawing:
+		var width := float(source_surface.brush_size)
+		draw_line(rail_origin, rail_cursor, Palette.YELLOW.color, width, false)
+		draw_line(rail_origin, rail_cursor, _rail_color(), 2.0, false)
+
+func _rail_color() -> Color:
+	var color: Color = Palette.YELLOW.color.darkened(0.48)
+	color.a = 1.0
+	return color
+
+func _draw_centerline(a: Vector2, b: Vector2) -> void:
+	var length := a.distance_to(b)
+	var steps := maxi(1, ceili(length))
+	var run_start := -1
+	for index in steps + 1:
+		var point := a.lerp(b, float(index) / steps)
+		var visible: bool = source_surface._inside(point) and pixels.get_pixelv(Vector2i(point.floor())).a > 0
+		if visible and run_start < 0:
+			run_start = index
+		if run_start >= 0 and (not visible or index == steps):
+			var last := index if visible and index == steps else index - 1
+			if last >= run_start:
+				draw_line(a.lerp(b, float(run_start) / steps), a.lerp(b, float(last) / steps), _rail_color(), 2.0, false)
+			run_start = -1
+
+func _draw_slider_pin(point: Vector2) -> void:
+	var rect := Rect2(point - Vector2(4.5, 4.5), Vector2(9.0, 9.0))
+	draw_rect(rect, Color(0.08, 0.07, 0.02, 1.0), true)
+	draw_rect(Rect2(point - Vector2(2.5, 2.5), Vector2(5.0, 5.0)), Palette.YELLOW.color, true)
 
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
@@ -113,7 +160,107 @@ func place_anchor(point: Vector2) -> bool:
 	refresh()
 	return true
 
+func begin_rail(point: Vector2) -> void:
+	rail_drawing = true
+	rail_origin = point.floor() + Vector2.ONE * 0.5
+	rail_cursor = rail_origin
+	queue_redraw()
+
+func extend_rail(point: Vector2) -> void:
+	if not rail_drawing:
+		return
+	rail_cursor = point.clamp(Vector2.ZERO, Vector2(source_surface.canvas_size) - Vector2.ONE)
+	queue_redraw()
+
+func finish_rail(point: Vector2) -> bool:
+	if not rail_drawing:
+		return false
+	extend_rail(point)
+	rail_drawing = false
+	if rail_origin.distance_to(rail_cursor) < 3.0:
+		var placed := place_slider_pin(rail_cursor)
+		queue_redraw()
+		return placed
+	var before_rails: Array = rails.duplicate(true)
+	var before_pins: Array = slider_pins.duplicate(true)
+	var changed_pixels := {}
+	var delta := _paint_rail(rail_origin, rail_cursor, source_surface.brush_size, changed_pixels)
+	if changed_pixels.is_empty():
+		queue_redraw()
+		return false
+	rails.append({"a": rail_origin, "b": rail_cursor, "width": source_surface.brush_size})
+	source_surface.push_undo_step({"rod_pixels": changed_pixels, "rod_anchors": anchor_points.duplicate(),
+		"rod_rails": before_rails, "rod_pins": before_pins, "rod_delta": delta})
+	refresh()
+	return true
+
+func cancel_rail() -> void:
+	rail_drawing = false
+	queue_redraw()
+
+func _paint_rail(a: Vector2, b: Vector2, width: int, changed_pixels: Dictionary) -> int:
+	var direction := (b - a).normalized()
+	var normal := direction.orthogonal()
+	var length := a.distance_to(b)
+	var half := maxf(0.5, width * 0.5)
+	var low := Vector2i((a.min(b) - Vector2.ONE * half).floor()).max(Vector2i.ZERO)
+	var high := Vector2i((a.max(b) + Vector2.ONE * half).ceil()).min(source_surface.canvas_size - Vector2i.ONE)
+	var room: int = int(source_surface._ink_room(Palette.YELLOW.id))
+	var health = source_surface._health_node()
+	var delta := 0
+	for y in range(low.y, high.y + 1):
+		for x in range(low.x, high.x + 1):
+			var cell := Vector2i(x, y)
+			var relative := Vector2(cell) + Vector2.ONE * 0.5 - a
+			var along := relative.dot(direction)
+			if along < 0.0 or along > length or absf(relative.dot(normal)) > half:
+				continue
+			if pixels.get_pixelv(cell).a > 0 or room <= 0:
+				continue
+			changed_pixels[cell] = false
+			pixels.set_pixelv(cell, Palette.YELLOW.color)
+			delta += 1
+			room -= 1
+			if not source_surface.ink_free and health != null:
+				health.reduce(Palette.YELLOW.id, 1)
+	return delta
+
+func place_slider_pin(point: Vector2) -> bool:
+	var source := point.floor() + Vector2.ONE * 0.5
+	if not _black(source):
+		return false
+	var best: Dictionary = {}
+	var best_distance := INF
+	for rail in rails:
+		var a := Vector2(rail.a)
+		var b := Vector2(rail.b)
+		var closest := Geometry2D.get_closest_point_to_segment(source, a, b)
+		var distance := source.distance_to(closest)
+		if distance <= float(rail.width) * 0.5 and distance < best_distance \
+		and pixels.get_pixelv(Vector2i(closest.floor())).a > 0:
+			best = {"source": source, "position": closest}
+			best_distance = distance
+	if best.is_empty():
+		return false
+	for pin in slider_pins:
+		if Vector2(pin.source).distance_to(source) < 1.0:
+			return false
+	var before := slider_pins.duplicate(true)
+	slider_pins.append(best)
+	source_surface.push_undo_step({"rod_pixels": {}, "rod_anchors": anchor_points.duplicate(),
+		"rod_rails": rails.duplicate(true), "rod_pins": before, "rod_delta": 0})
+	refresh()
+	return true
+
 func erase_anchor(point: Vector2) -> bool:
+	for index in range(slider_pins.size() - 1, -1, -1):
+		if Vector2(slider_pins[index].position).distance_squared_to(point) <= 30.25:
+			var before_pins := slider_pins.duplicate(true)
+			slider_pins.remove_at(index)
+			source_surface.push_undo_step({"rod_pixels": {}, "rod_anchors": anchor_points.duplicate(),
+				"rod_rails": rails.duplicate(true), "rod_pins": before_pins, "rod_delta": 0})
+			refresh()
+			return true
 	var nearest := -1
 	var nearest_distance := 5.5 * 5.5
 	for index in anchor_points.size():
@@ -133,6 +280,10 @@ func undo(step: Dictionary) -> void:
 	for cell: Vector2i in step.rod_pixels:
 		pixels.set_pixelv(cell, Palette.YELLOW.color if step.rod_pixels[cell] else Color.TRANSPARENT)
 	anchor_points = step.rod_anchors
+	if step.has("rod_rails"):
+		rails = step.rod_rails.duplicate(true)
+	if step.has("rod_pins"):
+		slider_pins = step.rod_pins.duplicate(true)
 	if step.has("rod_springs"):
 		source_surface.yellow_rule().restore_drafts(source_surface, step.rod_springs, true)
 	var health = source_surface._health_node()
@@ -150,6 +301,8 @@ func clear(refund := true) -> void:
 			health.add(Palette.YELLOW.id, count)
 	pixels.fill(Color.TRANSPARENT)
 	anchor_points.clear()
+	rails.clear()
+	slider_pins.clear()
 	refresh()
 
 func make_shape():
@@ -160,6 +313,24 @@ func make_shape():
 			if pixels.get_pixel(x, y).a > 0:
 				shape.set_pixel(x, y, Palette.YELLOW.id)
 	return shape
+
+func _rail_spans(rail: Dictionary, shape) -> Array:
+	var a := Vector2(rail.a)
+	var b := Vector2(rail.b)
+	var steps := maxi(1, ceili(a.distance_to(b)))
+	var spans: Array = []
+	var start := -1
+	for index in steps + 1:
+		var point := a.lerp(b, float(index) / steps)
+		var exists: bool = shape.get_pixel(int(floorf(point.x)), int(floorf(point.y))) == Palette.YELLOW.id
+		if exists and start < 0:
+			start = index
+		if start >= 0 and (not exists or index == steps):
+			var last := index if exists and index == steps else index - 1
+			if last > start:
+				spans.append([a.lerp(b, float(start) / steps), a.lerp(b, float(last) / steps)])
+			start = -1
+	return spans
 
 func solidify(world) -> void:
 	var physics = world.world
@@ -175,6 +346,12 @@ func solidify(world) -> void:
 			if not black.is_empty():
 				anchors[point] = black
 				connected_bodies.append(black.body)
+		for pin in slider_pins:
+			if original.get_pixel(int(pin.position.x), int(pin.position.y)) == 0:
+				continue
+			var black: Dictionary = Stroke.find_anchor(physics, world.to_local(source_surface.to_global(Vector2(pin.source))))
+			if not black.is_empty() and not connected_bodies.has(black.body):
+				connected_bodies.append(black.body)
 		var obstacles: Array = []
 		for body in physics.bodies:
 			if not connected_bodies.has(body):
@@ -182,6 +359,14 @@ func solidify(world) -> void:
 		solid._remove_overlaps(original, source_surface, obstacles)
 		for part in Destruction.split(original, 1):
 			solid._spawn_component(world, source_surface.global_position, part, {}, false)
+			for rail in rails:
+				for span in _rail_spans(rail, part):
+					var runtime_rail := Rail.new()
+					runtime_rail.saved_a = world.to_local(source_surface.to_global(Vector2(span[0])))
+					runtime_rail.saved_b = world.to_local(source_surface.to_global(Vector2(span[1])))
+					runtime_rail.rail_width = int(rail.width)
+					world.add_child(runtime_rail)
+					runtime_rail.owner = world
 			for point: Vector2 in anchors:
 				if part.get_pixel(int(point.x), int(point.y)) == 0:
 					continue
@@ -191,4 +376,13 @@ func solidify(world) -> void:
 				world.add_child(hinge)
 				hinge.owner = world
 				hinge.restore()
+	for pin in slider_pins:
+		var source_world: Vector2 = world.to_local(source_surface.to_global(Vector2(pin.source)))
+		if Stroke.find_anchor(physics, source_world).is_empty():
+			continue
+		var runtime_pin := SliderPin.new()
+		runtime_pin.saved_source = source_world
+		runtime_pin.saved_position = world.to_local(source_surface.to_global(Vector2(pin.position)))
+		world.add_child(runtime_pin)
+		runtime_pin.owner = world
 	clear(false)

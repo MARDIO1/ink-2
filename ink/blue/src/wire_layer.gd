@@ -7,7 +7,6 @@ const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const DIRS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 
 #region 数据与显示
-signal pixels_removed(points: Array)
 var _cells := PackedVector2Array()
 var _cells_dirty := false
 @export var cells: PackedVector2Array:
@@ -44,7 +43,6 @@ var energy_lines := PackedVector2Array()
 var energy_colors := PackedColorArray()
 var _energy_display: Node2D
 var tail_lines := PackedVector2Array()
-var flash_points: Array = []
 var version := 0
 var layout_version := 0 # 只有整批替换才使电机接触范围缓存失效；烧断只删像素。
 
@@ -164,10 +162,6 @@ func _draw_energy() -> void:
 		# 一层明亮光晕加亮芯，避免叠加两遍半透明外晕。
 		_energy_display.draw_multiline(energy_lines, Color(0.25, 0.7, 1.0, minf(0.85, 0.3 * highlight_brightness)), 5.0)
 		_energy_display.draw_multiline_colors(energy_lines, energy_colors, highlight_core_width)
-	for flash: Array in flash_points:
-		var alpha: float = maxf(0.0, 1.0 - (Time.get_ticks_msec() - flash[1]) / 200.0)
-		_energy_display.draw_circle(flash[0], 10.0, Color(0.4, 0.8, 1.0, alpha * 0.3))
-		_energy_display.draw_circle(flash[0], 4.0, Color(1, 1, 1, alpha))
 
 func sync_pose() -> void:
 	if active and body != null:
@@ -178,9 +172,6 @@ func sync_pose() -> void:
 
 func _process(_delta: float) -> void:
 	sync_pose()
-	if not flash_points.is_empty():
-		flash_points = flash_points.filter(func(flash): return Time.get_ticks_msec() - flash[1] < 200)
-		_energy_display.queue_redraw()
 
 func restore() -> void:
 	if body != null:

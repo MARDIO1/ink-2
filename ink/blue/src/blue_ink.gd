@@ -24,8 +24,9 @@ var _pending_wires: Dictionary = {}
 const EnergyFlow := preload("res://ink/blue/src/energy_flow.gd")
 var flow := EnergyFlow.new()
 @export var propagation_speed := 600.0
-@export var emission_interval := 0.5
-@export var motor_buffer_seconds := 0.6
+## 单包能量按此周期同比增加，因此降低发包频率不会降低平均功率。
+@export var emission_interval := 1.0
+@export var motor_buffer_seconds := 1.05
 @export var energy_lifetime := 20.0
 
 func _ready() -> void:

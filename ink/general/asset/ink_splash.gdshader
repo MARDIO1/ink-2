@@ -1,10 +1,10 @@
 shader_type canvas_item;
 render_mode blend_mix, unshaded;
 
-// 黑墨喷溅：全部在片元里解析求值 —— 没有粒子、没有贴图、没有实体。
+// 通用墨水飞溅：颜色由事件传入；全部在片元里解析求值，没有粒子、贴图或实体。
 // 墨点是一个个**轴对齐的小方块**（硬边，不做抗锯齿），没有主体块 —— 整簇就是飞出去的方块。
 // 位置由 (出生时刻, 方向, 速度, 重力) 直接算出，不需要逐帧模拟，也不存轨迹。
-// ⚠️ 数组长度 8 必须和 Ink/src/ink_spray.gd 的 MAX_SPLATS 一致。
+// ⚠️ 数组长度 8 必须和 ink/general/src/ink_splash.gd 的 MAX_SPLATS 一致。
 
 uniform int splat_count = 0;
 uniform float time = 0.0;

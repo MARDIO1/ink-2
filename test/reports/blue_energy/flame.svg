@@ -2,27 +2,27 @@
 <style>text{font:13px sans-serif;pointer-events:none}rect:hover{stroke:black;stroke-width:2}</style>
 <rect width="1200" height="230" fill="#fffaf0"/>
 <text x="10" y="20">Blue ink - measured wall-time spans (aggregate, not sampled CPU stacks)</text>
-<g><title>BlueInk.resolve_fixed: 3111.82 ms cumulative; 100.00% of blue</title><rect x="10.00" y="188" width="1179.60" height="31" fill="#ffbe69"/>
+<g><title>BlueInk.resolve_fixed: 3520.04 ms cumulative; 100.00% of blue</title><rect x="10.00" y="188" width="1179.60" height="31" fill="#ffbe69"/>
 <text x="14.00" y="208">BlueInk.resolve_fixed</text>
 </g>
-<g><title>local contacts: 20.91 ms cumulative; 0.67% of blue</title><rect x="10.00" y="153" width="7.53" height="31" fill="#ffa35b"/>
+<g><title>local contacts: 23.00 ms cumulative; 0.65% of blue</title><rect x="10.00" y="153" width="7.31" height="31" fill="#ffa35b"/>
 </g>
-<g><title>production: 9.34 ms cumulative; 0.30% of blue</title><rect x="17.93" y="153" width="3.14" height="31" fill="#ffa35b"/>
+<g><title>production: 4.95 ms cumulative; 0.14% of blue</title><rect x="17.71" y="153" width="1.26" height="31" fill="#ffa35b"/>
 </g>
-<g><title>advance: 2994.24 ms cumulative; 96.22% of blue</title><rect x="21.47" y="153" width="1135.02" height="31" fill="#ffa35b"/>
-<text x="25.47" y="173">advance</text>
+<g><title>advance: 3398.24 ms cumulative; 96.54% of blue</title><rect x="19.37" y="153" width="1138.77" height="31" fill="#ffa35b"/>
+<text x="23.37" y="173">advance</text>
 </g>
-<g><title>native call + transport: 2746.88 ms cumulative; 88.27% of blue</title><rect x="21.47" y="118" width="1041.22" height="31" fill="#f57d50"/>
-<text x="25.47" y="138">native call + transport</text>
+<g><title>native call + transport: 3233.43 ms cumulative; 91.86% of blue</title><rect x="19.37" y="118" width="1083.52" height="31" fill="#f57d50"/>
+<text x="23.37" y="138">native call + transport</text>
 </g>
-<g><title>decode / cuts: 227.59 ms cumulative; 7.31% of blue</title><rect x="1063.09" y="118" width="85.90" height="31" fill="#f57d50"/>
+<g><title>decode / display: 142.91 ms cumulative; 4.06% of blue</title><rect x="1103.29" y="118" width="47.51" height="31" fill="#f57d50"/>
 </g>
-<g><title>highlight geometry: 113.50 ms cumulative; 3.65% of blue</title><rect x="1063.09" y="83" width="42.64" height="31" fill="#e7594a"/>
+<g><title>highlight geometry: 105.64 ms cumulative; 3.00% of blue</title><rect x="1103.29" y="83" width="35.01" height="31" fill="#e7594a"/>
 </g>
-<g><title>readback / local removal: 114.09 ms cumulative; 3.67% of blue</title><rect x="1106.13" y="83" width="42.86" height="31" fill="#e7594a"/>
+<g><title>readback: 37.27 ms cumulative; 1.06% of blue</title><rect x="1138.70" y="83" width="12.09" height="31" fill="#e7594a"/>
 </g>
-<g><title>command encoding: 19.77 ms cumulative; 0.64% of blue</title><rect x="1149.39" y="118" width="7.10" height="31" fill="#f57d50"/>
+<g><title>command encoding: 21.91 ms cumulative; 0.62% of blue</title><rect x="1151.19" y="118" width="6.94" height="31" fill="#f57d50"/>
 </g>
-<g><title>prune / motor / fuel / adapter: 87.33 ms cumulative; 2.81% of blue</title><rect x="1156.89" y="153" width="32.71" height="31" fill="#ffa35b"/>
+<g><title>prune / motor / fuel / adapter: 93.86 ms cumulative; 2.67% of blue</title><rect x="1158.54" y="153" width="31.06" height="31" fill="#ffa35b"/>
 </g>
 </svg>

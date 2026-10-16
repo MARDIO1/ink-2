@@ -4,6 +4,8 @@ extends Node2D
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
 const Hinge := preload("res://ink/yellow/src/hinge.gd")
+const Rail := preload("res://ink/yellow/src/rail.gd")
+const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
 @export_range(0.0, 1.0, 0.01) var yellow_opacity: float = 0.75
 @export_range(1.0, 64.0, 1.0) var dash_length: float = 8.0
 @export_range(1.0, 64.0, 1.0) var dash_gap: float = 6.0
@@ -29,6 +31,7 @@ var _mask_bounds: Rect2i
 var _mask_revision: int = -1
 var _wear_cursor: int = 0
 var _spring_audio: Dictionary = {}
+var _splashed_strokes: Dictionary = {}
 var _spring_voices: Array[AudioStreamPlayer2D] = []
 var _next_spring_voice: int = 0
 var _render_opacity: float = -1.0
@@ -341,8 +344,12 @@ func _spring_tension(stroke) -> float:
 	return stroke.joint.stiffness * (a.distance_to(b) - stroke.rest_length) + stroke.joint.damping * speed
 
 func observe_fracture(world, body, pieces: Array) -> void:
-	for child in _world.get_children():
+	for child in _world.get_children().duplicate():
 		if child is Hinge and not child.is_queued_for_deletion():
+			child.rebind(world, body, pieces)
+		elif child is Rail and not child.is_queued_for_deletion():
+			child.rebind(world, body, pieces)
+		elif child is SliderPin and not child.is_queued_for_deletion():
 			child.rebind(world, body, pieces)
 	for stroke in strokes:
 		stroke.rebind(world, body, pieces)
@@ -353,10 +360,17 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 	var world = context.world
 	var delta: float = _world.fixed_dt
 	_player = context.get("player_body")
+	# SLIDER 本身没有有限端点；每个固定物理步都按关节真实行程检查脱轨，
+	# 不依赖渲染帧或画布是否正在显示。
+	for child in _world.get_children():
+		if child is SliderPin and not child.is_queued_for_deletion():
+			child.update_constraint_state()
 	var wear_started: int = Time.get_ticks_usec()
 	for offset in strokes.size():
 		var stroke = strokes[(offset + _wear_cursor) % strokes.size()]
 		if stroke.state != Stroke.State.ACTIVE:
+			if stroke.state == Stroke.State.DYING:
+				_emit_stroke_splash(stroke)
 			_release_tracked_spring(stroke.get_instance_id())
 			continue
 		for index in stroke.anchors.size():
@@ -383,6 +397,23 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 			stroke.erode(count)
 	_wear_cursor = (_wear_cursor + 1) % maxi(1, strokes.size())
 	return {}
+
+
+## 黄色不是 PBody 像素删除；整根进入死亡态时显式交给通用飞溅层，且只发一次。
+func _emit_stroke_splash(stroke) -> void:
+	var key: int = stroke.get_instance_id()
+	if _splashed_strokes.has(key):
+		return
+	_splashed_strokes[key] = true
+	var splash = get_parent().get_node_or_null("InkSplash")
+	if splash == null or not splash.has_method("emit_splash"):
+		return
+	var center: Vector2 = stroke.pixel_world(Vector2(stroke.bounds.get_center()))
+	var direction := Vector2.UP
+	if stroke.raster_path.size() >= 2:
+		direction = (stroke.pixel_world(stroke.raster_path[-1])
+			- stroke.pixel_world(stroke.raster_path[0])).orthogonal().normalized()
+	splash.emit_splash(center, direction, float(stroke.cells.size()), Palette.YELLOW.id)
 
 
 ## 载荷分为三档；每跨一档重放一次紧绷声，使用至少 6 dB 的级差，避免听感挤在一起。

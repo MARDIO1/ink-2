@@ -1,5 +1,5 @@
 extends Node2D
-## 黑墨喷溅：伤害落地时在受击点溅出一簇墨，随伤害放大范围，之后慢慢淡掉。
+## 通用墨水飞溅：墨水受伤或像素被破坏时，按实际材质颜色溅出一簇墨。
 ##
 ## **纯 shader**：没有粒子、没有贴图、没有刚体。整个效果就是一张盖住喷溅范围的四
 ## 边形 + 一个片元着色器；每次喷溅只在着色器里存一条 (位置, 方向, 出生时刻, 强度)，
@@ -8,13 +8,13 @@ extends Node2D
 ## 喷出方向 = 受击方被推的方向（砸地朝上、被侧撞朝撞击方向），见 impact_damage._record_hit()。
 ##
 ## 纯表现：不进物理世界、不动墨水账。受击方是玩家时按黑墨喷（InkHealth 只扣黑墨），
-## 其余按受击处的材料色 —— 材料不是墨水就不喷。
-## 由 SimulationRuntime 通过 observe_damage 能力接口调用，本脚本不认识伤害规则。
+## 其余按被删除处的材料色；钉子等非墨水材质不喷。
+## 由 SimulationRuntime 通过 observe_damage / observe_removals 能力接口调用。
 
 #region 依赖
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
-const SPLAT_SHADER := preload("res://ink/black/asset/ink_splat.gdshader")
-## 着色器里同时能演的喷溅条数。⚠️ 必须和 ink_splat.gdshader 里的数组长度 8 一致。
+const SPLAT_SHADER := preload("res://ink/general/asset/ink_splash.gdshader")
+## 着色器里同时能演的喷溅条数。⚠️ 必须和 ink_splash.gdshader 里的数组长度 8 一致。
 const MAX_SPLATS := 8
 #endregion
 
@@ -53,7 +53,7 @@ const MAX_SPLATS := 8
 @export var dedup_cell: float = 24.0
 @export_range(0.0, 1.0, 0.01) var dedup_seconds: float = 0.12
 ## 一个固定步最多喷几簇；同一步里碎裂会产生大量事件，只演最大的几次。
-@export_range(1, 32, 1) var max_sprays_per_step: int = 4
+@export_range(1, 32, 1) var max_sprays_per_step: int = 8
 #endregion
 
 
@@ -112,6 +112,10 @@ func _push_shader_params() -> void:
 
 
 #region 规则接口
+func service_name() -> StringName:
+	return &"ink_splash"
+
+
 ## SimulationRuntime 在每个固定步后调用；只生成表现，返回前不改任何物理状态。
 func observe_damage(_context: Dictionary, hits: Array) -> void:
 	if hits.is_empty():
@@ -132,6 +136,51 @@ func observe_damage(_context: Dictionary, hits: Array) -> void:
 			continue
 		_spray(hit)
 		sprayed += 1
+
+
+## 在像素真正提交前读取原材质。按颜色分别归并，爆炸、腐蚀和普通断裂共用此入口。
+func observe_removals(_context: Dictionary, body, removals: Dictionary,
+		retention: float = 1.0) -> void:
+	if body == null or removals.is_empty():
+		return
+	var groups: Dictionary = {}
+	for shape in removals:
+		if not body.shapes.has(shape):
+			continue
+		for cell: Vector2i in removals[shape]:
+			var material_id: int = shape.get_pixel(cell.x, cell.y)
+			if not InkPalette.is_ink(material_id):
+				continue
+			var group: Dictionary = groups.get_or_add(material_id,
+				{"material": material_id, "local_sum": Vector2.ZERO, "count": 0})
+			group.local_sum += Vector2(cell) + Vector2.ONE * 0.5
+			group.count += 1
+	if groups.is_empty():
+		return
+	var candidates: Array = groups.values()
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.count) > int(b.count))
+	for index in mini(candidates.size(), max_sprays_per_step):
+		var group: Dictionary = candidates[index]
+		var local: Vector2 = group.local_sum / float(group.count)
+		var position: Vector2 = body.to_world(local)
+		var direction: Vector2 = (position - body.aabb.get_center()).normalized()
+		if direction.is_zero_approx():
+			direction = Vector2.UP
+		emit_splash(position, direction,
+			maxf(float(group.count) * retention, min_damage), int(group.material))
+
+
+## 非像素实体（黄色弹簧等）通过这个通用入口播放同一种飞溅。
+func emit_splash(position: Vector2, direction: Vector2, amount: float,
+		material_id: int) -> void:
+	if not InkPalette.is_ink(material_id):
+		return
+	var event := {"position": position,
+		"direction": direction.normalized() if not direction.is_zero_approx() else Vector2.UP,
+		"amount": maxf(amount, min_damage), "material": material_id, "player": false}
+	if _claim(event):
+		_spray(event)
 #endregion
 
 
@@ -144,7 +193,7 @@ func _has_damage(hit: Dictionary) -> bool:
 ## 认领一次事件：同一处在冷却内只喷一次，避免碎裂的连续子步连喷。
 func _claim(hit: Dictionary) -> bool:
 	var now_ms: int = Time.get_ticks_msec()
-	var key := _cell_key(hit["position"])
+	var key := _cell_key(hit)
 	if now_ms - int(_last_spray_ms.get(key, -1000000)) < roundi(dedup_seconds * 1000.0):
 		return false
 	_last_spray_ms[key] = now_ms
@@ -160,8 +209,11 @@ func _ink_color(hit: Dictionary) -> Color:
 	return InkPalette.color_for_material_id(int(hit.get("material", 0)))
 
 
-func _cell_key(position: Vector2) -> Vector2i:
-	return Vector2i((position / maxf(dedup_cell, 1.0)).floor())
+func _cell_key(hit: Dictionary) -> Vector3i:
+	var cell := Vector2i((Vector2(hit["position"]) / maxf(dedup_cell, 1.0)).floor())
+	var material_id: int = InkPalette.BLACK.id if bool(hit.get("player", false)) \
+		else int(hit.get("material", 0))
+	return Vector3i(cell.x, cell.y, material_id)
 
 
 func _prune_history(now_ms: int) -> void:
