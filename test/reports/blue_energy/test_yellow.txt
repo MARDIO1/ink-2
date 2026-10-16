@@ -1,0 +1,59 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS invalid endpoint costs no ink
+PASS valid black endpoints submit independently
+PASS normal canvas uses compact yellow raster
+PASS area charges only path, terminals excluded
+PASS yellow leaves underlying black unchanged
+PASS identical endpoints can make parallel spring
+PASS parallel strokes each own their area
+PASS yellow stroke undo refunds precisely
+PASS yellow cannot anchor to another yellow
+PASS yellow eraser deletes spring by terminal and refunds ink
+PASS terminal erase undo restores paid spring
+PASS dashed spring has visible gaps and remains structurally intact
+PASS spring terminals render above yellow line
+SOLID bodies=2 pixels=800 rejected=0
+PASS solidification creates one native spring and no yellow body
+PASS only black carries physical mass
+PASS zero-damping native spring stays bounded
+PASS spring model includes elastic load for wear
+PASS compressed spring pushes outward
+SPRING peak_load=689387.20703125 peak_speed=175.430923461914 length_error=3.12661743164063
+PASS moving spring terminals stay on physical anchors without inheriting deformation
+PASS wear changes area without changing endpoint sprites
+RESTORE bodies=2 pixels=800 fragments=0 kept=false
+PASS reclaim returns remaining yellow directly to bottle
+PASS reclaim never writes yellow into blueprint
+PASS same-body endpoints accepted
+SOLID bodies=1 pixels=2400 rejected=0
+PASS same-body stroke stays dormant
+PASS fracture rebinds exact surviving pixels and activates spring
+PASS destroyed black anchor immediately releases constraint
+PASS wear cuts a dashed segment without treating initial gaps as cracks
+PASS identical yellow strokes always produce the same wear sequence
+PASS fixed cracks start at 44, 50 and 56 percent around stroke middle
+PASS fixed middle cracks eventually cut across path
+PASS damage retains refundable pixels after cut
+WEAR area=3381 batches=7 total_us=1020 avg_batch_us=145
+PASS large negative-coordinate stroke builds connected native occupancy
+PASS large wear batch deletes exactly its budget
+LARGE_WEAR area=50466 batch_us=2893
+PASS long dashed yellow has no artificial length cap
+PASS compact long constraint avoids a giant diagonal texture
+PASS compact long constraint still maps both terminal centres to world endpoints
+PASS 1 parallel springs remain finite and bounded
+PASS 1 center-anchored springs preserve free rotation
+PARALLEL count=1 avg_substep_us=15 energy_ratio=0.98254905562641 spin=2.0
+PASS 10 parallel springs remain finite and bounded
+PASS 10 center-anchored springs preserve free rotation
+PARALLEL count=10 avg_substep_us=21 energy_ratio=0.83850362195284 spin=2.0
+PASS 100 parallel springs remain finite and bounded
+PASS 100 center-anchored springs preserve free rotation
+PARALLEL count=100 avg_substep_us=92 energy_ratio=0.20181235864705 spin=2.0
+PASS export fixture draws a valid spring
+SOLID bodies=2 pixels=1800 rejected=0
+PASS yellow export keeps ordered source data
+PASS packed scene roundtrip preserves yellow source and rest length
+PASS reloaded scene resolves black anchors and recreates spring once
+[YellowInk] 46 checks, 0 failures

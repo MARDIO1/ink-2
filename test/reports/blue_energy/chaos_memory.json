@@ -1,0 +1,14 @@
+﻿[
+    {
+        "Id":  94104,
+        "WorkingSetMiB":  6.2,
+        "PeakWorkingSetMiB":  6.2,
+        "PrivateMiB":  1.3
+    },
+    {
+        "Id":  84164,
+        "WorkingSetMiB":  588.2,
+        "PeakWorkingSetMiB":  711.5,
+        "PrivateMiB":  751.6
+    }
+]

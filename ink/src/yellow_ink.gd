@@ -2,8 +2,8 @@ extends Node2D
 
 #region 配置与状态
 const Palette := preload("res://ink/src/ink_palette.gd")
-const Stroke := preload("res://actor/yellow/src/yellow_stroke.gd")
-const Hinge := preload("res://actor/yellow/src/yellow_hinge.gd")
+const Stroke := preload("res://ink/src/yellow/stroke.gd")
+const Hinge := preload("res://ink/src/yellow/hinge.gd")
 @export_range(0.0, 1.0, 0.01) var yellow_opacity: float = 0.75
 @export_range(1.0, 64.0, 1.0) var dash_length: float = 8.0
 @export_range(1.0, 64.0, 1.0) var dash_gap: float = 6.0
@@ -32,7 +32,7 @@ var _spring_audio: Dictionary = {}
 var _spring_voices: Array[AudioStreamPlayer2D] = []
 var _next_spring_voice: int = 0
 var _render_opacity: float = -1.0
-const OVERLAP_SHADER := preload("res://actor/yellow/asset/overlap.gdshader")
+const OVERLAP_SHADER := preload("res://ink/asset/yellow/overlap.gdshader")
 #endregion
 
 #region 绘制与固化

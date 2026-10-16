@@ -2,8 +2,8 @@ extends RefCounted
 
 const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
-const Stroke := preload("res://actor/yellow/src/yellow_stroke.gd")
-const Hinge := preload("res://actor/yellow/src/yellow_hinge.gd")
+const Stroke := preload("res://ink/src/yellow/stroke.gd")
+const Hinge := preload("res://ink/src/yellow/hinge.gd")
 const Palette := preload("res://ink/src/ink_palette.gd")
 const TOKEN := &"canvas_undo_identity"
 

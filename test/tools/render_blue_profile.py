@@ -7,14 +7,20 @@ from pathlib import Path
 import hashlib
 import html
 import json
+import sys
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-OUT = Path(__file__).resolve().parents[2] / "reports" / "blue_performance"
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[2] / "test" / "reports" / "blue_performance"
 DATA = {name: json.loads((OUT / f"{name}.json").read_text()) for name in ("before", "after")}
+if (OUT / "before_runtime.json").exists():
+    # Runtime baseline uses old BlueInk and the new display; drawing baseline
+    # was captured separately before either production file was edited.
+    baseline = json.loads((OUT / "before_runtime.json").read_text())
+    DATA["before"]["results"] += [r for r in baseline["results"] if r.get("spans")]
 
 
 def tree(spans):
@@ -66,6 +72,8 @@ for scenario in [name for name in before if name in after]:
     b, a = before[scenario], after[scenario]
     speedup = b["median_us"] / max(a["median_us"], 1)
     rows.append(f'<tr><td>{scenario}</td><td>{b["median_us"]/1000:.3f}</td><td>{a["median_us"]/1000:.3f}</td><td>{speedup:.1f}x</td></tr>')
+    if not b.get("spans") or not a.get("spans"):
+        continue
     sections.append(f'<article id="{scenario}"><h2>{scenario}</h2>{svg(b,"before")}{svg(a,"after")}</article>')
     for variant, result in [("before", b), ("after", a)]:
         origin = min(s["ts"] for s in result["spans"])
@@ -79,7 +87,7 @@ document = '''<!doctype html><meta charset="utf-8"><title>Blue ink measured flam
 <script>const articles=[...document.querySelectorAll('article')],menu=document.querySelector('select');for(const a of articles){menu.add(new Option(a.id,a.id))}function show(){articles.forEach(a=>a.classList.toggle('active',a.id===menu.value))}menu.onchange=show;menu.value=articles.find(a=>a.id==='full_pipeline_4steps')?.id||articles[0].id;show();document.querySelectorAll('.span').forEach(g=>g.onclick=()=>{const s=g.ownerSVGElement,h=s.dataset.full.split(' ')[3];s.setAttribute('viewBox',`${g.dataset.x} 0 ${g.dataset.w} ${h}`)});</script>'''
 (OUT / "flamegraph.html").write_text(document, encoding="utf-8")
 
-scenario = "full_pipeline_4steps" if "full_pipeline_4steps" in before else "living_motion"
+scenario = next(name for name in ["two_long_moving_2048", "full_pipeline_4steps", "living_motion"] if name in before)
 fig, axes = plt.subplots(2, 1, figsize=(15, 8), facecolor="#faf8f3")
 for ax, variant, result in zip(axes, ("BEFORE", "AFTER"), (before[scenario], after[scenario])):
     nodes = tree(result["spans"])

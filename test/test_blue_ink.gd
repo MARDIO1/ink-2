@@ -1,8 +1,8 @@
 extends SceneTree
 ## 蓝色端到端回归：画布、物性、供电、燃料与普通红色爆炸边界。
 const Palette := preload("res://ink/src/ink_palette.gd")
-const Wire := preload("res://actor/blue/src/blue_wire_layer.gd")
-const Motor := preload("res://actor/blue/src/blue_motor.gd")
+const Wire := preload("res://ink/src/blue/wire_layer.gd")
+const Motor := preload("res://ink/src/blue/motor.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 var checks := 0
@@ -31,6 +31,12 @@ func paint(rect: Rect2i, color: Color) -> void:
 func tick() -> Dictionary:
 	return rule.resolve_fixed(runtime._context())
 
+func settle(seconds := 0.5) -> void:
+	for i in ceili(seconds / scene.fixed_dt):
+		var result := tick()
+		if not result.get("fuel_removals", {}).is_empty():
+			runtime.commit_fuel(scene.world, result.fuel_removals)
+
 func run() -> void:
 	scene = load("res://map/asset/imported/main.tscn").instantiate()
 	scene.auto_step = false
@@ -41,6 +47,9 @@ func run() -> void:
 	surface = canvas.surface
 	runtime = scene.get_node("SimulationRuntime")
 	rule = runtime.get_node("BlueInk")
+	rule.energy_per_red_pixel = 1.0e12
+	rule.emission_interval = 0.1
+	rule.motor_buffer_seconds = 0.2
 	canvas.position = Vector2(5000, 5000)
 	canvas.canvas_size = Vector2i(240, 160)
 	var health = scene.get_node("Player/InkHealth")
@@ -94,6 +103,8 @@ func run() -> void:
 	check("motor activates and wire clears from canvas", motor.active and motor.body != null and surface.blue_layer.cells.is_empty())
 	check("one PBody carries black red and wire", rule.objects(Wire).size() == 1 and rule.objects(Wire)[0].body == motor.body and motor.body.shapes[0].pixel_count() == 2120)
 	var result := tick()
+	check("motor waits for propagated energy", motor.received_power == 0.0)
+	settle(0.2)
 	check("red contact powers motor from rest", motor.received_power > rule.idle_power and motor.applied_force > 0.0 and motor.body.linear_velocity.x > 0.0)
 	check("impulse energy stays inside allocated budget", motor.used_power <= motor.received_power * 1.00001)
 	motor.body.linear_velocity = Vector2(-1000, 0)
@@ -103,7 +114,9 @@ func run() -> void:
 	motor.body.angular_velocity = 0.0
 	var saved_source: float = rule.source_power_per_pixel
 	rule.source_power_per_pixel = rule.idle_power / 100.0
-	tick()
+	motor.energy_buffer = 0.0
+	rule.flow = rule.EnergyFlow.new()
+	settle(0.3)
 	check("under idle budget burns without thrust", motor.received_power > 0.0 and motor.applied_force == 0.0 and motor.used_power == motor.received_power)
 	rule.source_power_per_pixel = saved_source
 	var red = runtime.get_node("RedInk")
@@ -119,13 +132,9 @@ func run() -> void:
 	check("batched fuel deletes actual red pixels", removed > 0)
 	check("normal fuel consumption never schedules explosion", red._pending.is_empty())
 	if not motor.is_queued_for_deletion():
-		tick()
+		settle(0.8)
 		check("burned contact gap stops supply", motor.received_power == 0.0)
-	# 离散最宽路径：短细路线与长粗路线并存。
-	rule._nodes = [{"capacity": 8.0}, {"capacity": 1.0}, {"capacity": 3.0}, {"capacity": 3.0}, {"capacity": 8.0}]
-	var tree: Dictionary = rule.widest_tree([[1, 2], [0, 4], [0, 3], [2, 4], [1, 3]], {0: 8.0})
-	check("widest path beats shorter thin route", tree.capacity[4] == 3.0 and tree.parent[4] == 3)
-	rule._dirty = true
+	check("global grid and path search removed", not rule.has_method("_build_graph") and not rule.has_method("widest_tree"))
 	# 正常消耗不改变外部破坏引爆行为。
 	var red_body = null
 	var red_shape = null
@@ -165,7 +174,7 @@ func run() -> void:
 	await process_frame
 	motor = rule.objects(Motor)[0]
 	rule.energy_per_red_pixel = 1.0e12
-	tick()
+	settle()
 	check("regenerated motor resolves saved black anchor", motor.valid(scene.world) and motor.received_power > 0.0)
 	canvas.solid.sync_serializable_bodies(scene)
 	for object in rule.objects(Wire) + rule.objects(Motor):
@@ -179,7 +188,8 @@ func run() -> void:
 	await process_frame
 	var reloaded_rule = reloaded.get_node("SimulationRuntime/BlueInk")
 	var reloaded_runtime = reloaded.get_node("SimulationRuntime")
-	reloaded_rule.resolve_fixed(reloaded_runtime._context())
+	for i in 30:
+		reloaded_rule.resolve_fixed(reloaded_runtime._context())
 	check("packed roundtrip restores blue carrier and motor power", reloaded_rule.objects(Wire).size() == 1 and reloaded_rule.objects(Motor).size() == 1 and reloaded_rule.objects(Motor)[0].received_power > 0.0)
 	reloaded.queue_free()
 	await process_frame
@@ -199,7 +209,7 @@ func run() -> void:
 	check("reclaim returns blue overlay and motor without refunding bottle", surface.blue_layer.cells.size() == count and not rule.objects(Motor)[0].active and health.ink_of(Palette.BLUE.id) == before_reclaim)
 	check("reclaim undo restores active wire and body", surface.undo_last_edit())
 	await process_frame
-	tick()
+	settle()
 	motor = rule.objects(Motor)[0]
 	check("reclaimed undo circuit still supplies power", motor.active and motor.received_power > 0.0)
 	# 大刚体承受一次横切，蓝色跟随碎片，断线即停机。
@@ -211,7 +221,7 @@ func run() -> void:
 				if shape.get_pixel(x, y) != 0:
 					cut.get_or_add(shape, {})[Vector2i(x, y)] = true
 	runtime.commit_fuel(scene.world, {body: cut})
-	tick()
+	settle(0.8)
 	check("fracture migrates surviving motor anchor", motor.valid(scene.world))
 	check("cut black also cuts blue supply", motor.received_power == 0.0 and rule.objects(Wire).size() == 2)
 	# 平移碎片闭合切口，恢复接触只导电，不合并物理体。
@@ -219,7 +229,7 @@ func run() -> void:
 	motor_body.position.x -= 5.0
 	motor_body.refresh_com()
 	motor_body.update_aabb()
-	tick()
+	settle()
 	check("touching cut wires reconnect without welding", motor.received_power > 0.0 and rule.objects(Wire)[0].body != rule.objects(Wire)[1].body)
 	var anchor_shape = motor.body.shapes[0]
 	runtime.commit_fuel(scene.world, {motor.body: {anchor_shape: {motor.cell: true}}})
@@ -246,15 +256,35 @@ func run() -> void:
 	await reset_canvas()
 	await test_power_sharing()
 	await reset_canvas()
+	await test_short_boundary()
+	await reset_canvas()
+	await test_arrow_surface_and_grip()
+	await reset_canvas()
 	await test_partial_reclaim()
 	await reset_canvas()
 	await test_dynamic_cache()
+	test_wire_tiles()
 	if "--preview-blue" in OS.get_cmdline_user_args():
 		await preview_blue()
 	scene.queue_free()
 	await process_frame
 	print("BLUE_INK_RESULT checks=%d failures=%d" % [checks, failures])
 	quit(0 if failures == 0 else 1)
+
+func test_wire_tiles() -> void:
+	var wire := Wire.new()
+	wire.cells = PackedVector2Array([Vector2(-65, -1), Vector2(-1, -1), Vector2(64, 64), Vector2(2048, 2048)])
+	root.add_child(wire)
+	check("sparse diagonal display allocates occupied tiles only", wire._images.size() == 4 and wire._images.values().all(func(image): return image.get_size() == Vector2i(64, 64)))
+	var actual: Color = wire._images[Vector2i(-2, -1)].get_pixel(63, 63)
+	var expected: Color = Palette.BLUE.color
+	check("negative coordinate tile keeps exact blue pixel", actual.a == 1.0 and absf(actual.r - expected.r) <= 1.0 / 255.0 and absf(actual.g - expected.g) <= 1.0 / 255.0 and absf(actual.b - expected.b) <= 1.0 / 255.0)
+	var retained = wire._textures[Vector2i(32, 32)]
+	wire.erase(Vector2i(-65, -1), false)
+	wire.flush_display()
+	check("erase removes empty tile and synchronizes saved cells", not wire._textures.has(Vector2i(-2, -1)) and wire.cells.size() == 3)
+	check("local edit preserves distant texture", wire._textures[Vector2i(32, 32)] == retained)
+	wire.queue_free()
 
 func reset_canvas() -> void:
 	rule.cancel()
@@ -271,155 +301,181 @@ func reset_canvas() -> void:
 				scene.world.remove_body(body)
 	surface.clear()
 	surface._undo_steps.clear()
-	rule._fuel.clear()
-	rule._dirty = true
-	rule._elapsed = 0.0
+	rule.flow = rule.EnergyFlow.new()
 	await process_frame
 
 func test_slip_ring() -> void:
-	paint(Rect2i(20, 20, 30, 30), Color.BLACK)
+	# 电源放在转子扫掠半径外，避免旋转测试直接穿过红色形成额外接触/短路。
+	paint(Rect2i(20, 20, 140, 30), Color.BLACK)
 	paint(Rect2i(10, 25, 10, 12), Palette.RED.color)
-	paint(Rect2i(100, 20, 30, 30), Color.BLACK)
-	surface.rod_layer.begin(Vector2(30.5, 30.5))
-	surface.rod_layer.finish(Vector2(110.5, 30.5))
+	paint(Rect2i(210, 20, 30, 30), Color.BLACK)
+	surface.rod_layer.begin(Vector2(140.5, 30.5))
+	surface.rod_layer.finish(Vector2(235.5, 30.5))
+	surface.rod_layer.place_anchor(Vector2(140.5, 30.5))
+	surface.rod_layer.place_anchor(Vector2(220.5, 30.5))
 	surface.blue_layer.begin(Vector2(20.5, 30.5))
-	surface.blue_layer.extend(Vector2(110.5, 30.5))
+	surface.blue_layer.extend(Vector2(220.5, 30.5))
 	surface.blue_layer.finish()
-	rule.begin(surface, Vector2(110.5, 26.5))
-	rule.finish(surface, Vector2(140.5, 26.5))
+	rule.begin(surface, Vector2(220.5, 26.5))
+	rule.finish(surface, Vector2(235.5, 26.5))
 	canvas.generate()
 	await process_frame
 	var hinges: Array = rule.objects(rule.Hinge)
 	check("rod and black retain separate bodies and hinges", hinges.size() == 2)
 	var wires: Array = rule.objects(Wire)
 	check("blue attaches to rod and black without extra PBody", wires.size() == 3)
-	# 两侧导线彼此不接触，只在轴的 11px 贴图范围内通过滑环接通。
+	# 导线穿过轴承后仍延伸；两侧相距 5px，只能在完整贴图区域通过滑环接通。
 	for wire in wires:
 		var pixels: PackedVector2Array = []
 		if wire.carrier_material == Palette.YELLOW.id:
-			for x in range(30, 111):
+			for x in range(140, 235):
 				pixels.append(Vector2(x, 31))
 		elif Wire.material_at(wire.body, Vector2i(20, 26)) == Palette.BLACK.id:
-			for x in range(20, 34):
+			for x in range(20, 158):
 				pixels.append(Vector2(x, 26))
 		else:
-			for x in range(108, 121):
+			for x in range(218, 237):
 				pixels.append(Vector2(x, 26))
 		wire.cells = pixels
 		wire.rebuild()
-	rule._dirty = true
 	var motor = rule.objects(Motor)[0]
-	tick()
+	var rod_wire = wires.filter(func(w): return w.carrier_material == Palette.YELLOW.id)[0]
+	var rod_cells: PackedVector2Array = rod_wire.cells.duplicate()
+	rod_wire.cells = PackedVector2Array()
+	rod_wire.rebuild()
+	settle(0.8)
+	check("one-sided bearing contact supplies no energy", motor.received_power == 0.0 and rule.flow.bridges.is_empty())
+	rod_wire.cells = rod_cells
+	rod_wire.rebuild()
+	settle()
 	check("two-sided full-bearing region supplies wheel motor", motor.received_power > 0.0)
+	# 围绕左轴同步转动杆与从动黑块，抽查整圈接触姿态；不靠原世界坐标方向输电。
+	var source_body = wires.filter(func(w): return w.carrier_material == Palette.BLACK.id and w.body != motor.body)[0].body
+	var source_hinge = hinges.filter(func(h): return h.black_anchor.body == source_body)[0]
+	var pivot: Vector2 = rule.Anchor.anchor_world(source_hinge.yellow_anchor)
+	var poses: Array = []
+	for body in [rod_wire.body, motor.body]:
+		poses.append([body, body.position, body.rotation])
+	var intact_cells: Array = wires.map(func(w): return w.cells.duplicate())
+	for angle in [PI * 0.5, PI, PI * 1.5, 0.0]:
+		for index in wires.size():
+			wires[index].cells = intact_cells[index]
+			wires[index].rebuild()
+		for pose: Array in poses:
+			pose[0].position = pivot + (pose[1] - pivot).rotated(angle)
+			pose[0].rotation = pose[2] + angle
+		rule.flow = rule.EnergyFlow.new()
+		motor.energy_buffer = 0.0
+		settle(0.8)
+		check("slip ring retains supply at %d degrees" % roundi(rad_to_deg(angle)), motor.received_power > 0.0)
 	for hinge in hinges:
 		hinge.remove_joint()
 		hinge.queue_free()
-	tick()
+	settle(1.0)
 	check("destroyed bearing removes slip ring", motor.received_power == 0.0)
 
 func profile_blue() -> void:
-	for length in [200, 1800]:
-		await reset_canvas()
-		canvas.canvas_size = Vector2i(length + 80, 100)
-		surface.ink_free = true
-		paint(Rect2i(20, 20, length + 20, 30), Color.BLACK)
-		paint(Rect2i(10, 25, 10, 12), Palette.RED.color)
-		surface.brush_size = 5
-		surface.blue_layer.begin(Vector2(20.5, 30.5))
-		surface.blue_layer.extend(Vector2(length + 20.5, 30.5))
-		surface.blue_layer.finish()
-		rule.begin(surface, Vector2(length + 10.5, 30.5))
-		rule.finish(surface, Vector2(length + 40.5, 30.5))
-		canvas.generate(false)
-		rule.energy_per_red_pixel = 1.0e15
-		var start := Time.get_ticks_usec()
-		tick()
-		var build_us: int = Time.get_ticks_usec() - start
-		var samples: Array[int] = []
-		for index in 30:
-			start = Time.get_ticks_usec()
-			tick()
-			samples.append(Time.get_ticks_usec() - start)
-		samples.sort()
-		var wire = rule.objects(Wire)[0]
-		var fuel_samples: Array[int] = []
-		var reconnect_us := 0
-		for batch in 10:
-			var body = null
-			var edge := -2147483648
-			for candidate in scene.world.bodies:
-				if candidate.position.x < 4000.0:
-					continue
-				for shape in candidate.shapes:
-					var rect: Rect2i = shape.local_aabb()
-					for y in range(rect.position.y, rect.end.y):
-						for x in range(rect.position.x, rect.end.x):
-							if shape.get_pixel(x, y) == Palette.RED.id and x > edge:
-								edge = x
-								body = candidate
-			if body == null:
-				break
-			var plan := {}
-			for shape in body.shapes:
-				for y in range(25, 37):
-					if shape.get_pixel(edge, y) == Palette.RED.id:
-						plan.get_or_add(shape, {})[Vector2i(edge, y)] = true
-			start = Time.get_ticks_usec()
-			runtime.commit_fuel(scene.world, {body: plan})
-			fuel_samples.append(Time.get_ticks_usec() - start)
-			if batch == 0:
-				start = Time.get_ticks_usec()
-				tick()
-				reconnect_us = Time.get_ticks_usec() - start
-		fuel_samples.sort()
-		print("BLUE_PROFILE pixels=%d first_us=%d tick_median_us=%d tick_p95_us=%d fuel_batches=%d fuel12_median_us=%d fuel12_max_us=%d contact_rebuild_us=%d" % [wire.cells.size(), build_us, samples[15], samples[28], fuel_samples.size(), fuel_samples[fuel_samples.size() / 2], fuel_samples[-1], reconnect_us])
-
+	print("Use res://map/test/blue_energy_stress.tscn -- --bench --case=chaos")
 func test_power_sharing() -> void:
 	paint(Rect2i(20, 20, 160, 30), Color.BLACK)
-	surface.brush_size = 3
-	for y in [25.5, 40.5]:
-		surface.blue_layer.begin(Vector2(20.5, y))
-		surface.blue_layer.extend(Vector2(160.5, y))
-		surface.blue_layer.finish()
-		rule.begin(surface, Vector2(120.5, y))
-		rule.finish(surface, Vector2(150.5, y))
+	paint(Rect2i(10, 25, 10, 12), Palette.RED.color)
+	surface.brush_size = 7
+	surface.blue_layer.begin(Vector2(20.5, 30.5))
+	surface.blue_layer.extend(Vector2(170.5, 30.5))
+	surface.blue_layer.finish()
+	for x in [50, 140]:
+		rule.begin(surface, Vector2(x + 0.5, 30.5))
+		rule.finish(surface, Vector2(x + 20.5, 30.5))
 	canvas.generate(false)
-	var source := PBody.new()
-	source.position = surface.global_position
-	source.tags["living"] = true
-	source.tags["supply_power"] = 100000000.0
-	var shape := Shape.new()
-	shape.fill_rect(Rect2i(10, 20, 10, 30), Palette.BLACK.id)
-	scene.world.add_body(source, [shape])
-	tick()
+	rule.energy_per_red_pixel = 1.0e15
 	var motors: Array = rule.objects(Motor)
-	check("living supply divides across independent networks", is_equal_approx(motors[0].received_power, 50000000.0) and is_equal_approx(motors[1].received_power, 50000000.0))
-	check("living source does not short networks", rule._circuit.size() == 2)
+	motors[0].brush_width = 1
+	settle(0.1)
+	check("upstream motor receives first before downstream arrival", motors[0].energy_buffer > 0.0 and motors[1].energy_buffer == 0.0)
+	settle(0.5)
+	check("unused upstream energy continues to downstream motor", motors[1].received_power > 0.0)
+	check("motor buffer remains bounded", motors.all(func(m): return m.energy_buffer <= m.buffer_capacity))
+	var emitted: float = rule.flow.stats.injected
+	var fed: float = rule.flow.stats.consumed
+	check("source prepays packets including travel losses", emitted > 0.0 and emitted >= fed)
+
+func test_short_boundary() -> void:
+	paint(Rect2i(20, 20, 160, 30), Color.BLACK)
+	paint(Rect2i(95, 40, 4, 4), Palette.RED.color)
+	surface.brush_size = 3
+	surface.blue_layer.begin(Vector2(20.5, 30.5))
+	surface.blue_layer.extend(Vector2(170.5, 30.5))
+	surface.blue_layer.finish()
+	canvas.generate(false)
+	var wire = rule.objects(Wire)[0]
+	var body = wire.body
+	var velocity: Vector2 = body.linear_velocity
+	rule.flow.inject(wire, Vector2i(70, 30), 1, 100.0)
+	rule.flow.inject(wire, Vector2i(130, 30), 0, 100.0)
+	settle(0.2)
+	check("short cuts blue while preserving black and nearby red", not wire.mask.has(Vector2i(100, 30)) and body.shapes[0].get_pixel(100, 30) == Palette.BLACK.id and body.shapes[0].get_pixel(95, 40) == Palette.RED.id)
+	check("short produces neither red explosion nor physical impulse", scene.get_node("SimulationRuntime/RedInk")._pending.is_empty() and body.linear_velocity == velocity)
+
+func test_arrow_surface_and_grip() -> void:
+	paint(Rect2i(20, 20, 180, 60), Color.BLACK)
+	surface.brush_size = 5
+	rule.begin(surface, Vector2(18.5, 40.5))
+	check("arrow start snaps onto nearby black", rule.drawing != null and rule.drawing.position.x >= surface.global_position.x + 20.0)
+	rule.cancel()
+	rule.begin(surface, Vector2(40.5, 40.5))
+	rule.finish(surface, Vector2(230.5, 40.5))
+	var draft = rule.objects(Motor)[0]
+	check("whole arrow clips to black including head", draft.position.x + draft.tip.x < surface.global_position.x + 201.0)
+	rule.clear_drafts(surface)
+	await process_frame
+	rule.begin(surface, Vector2(60.5, 40.5))
+	rule.finish(surface, Vector2(120.5, 40.5))
+	surface.blue_layer.begin(Vector2(20.5, 40.5))
+	surface.blue_layer.extend(Vector2(160.5, 40.5))
+	surface.blue_layer.finish()
+	canvas.generate(false)
+	var motor = rule.objects(Motor)[0]
 	var player = scene.get_node("Player")
-	var feet = player.get_node("PlayerInput")
 	var hand = player.get_node("Arm/Hand/HandControl")
-	var old_feet: float = feet.debug_active_power
-	var old_hand: float = hand.debug_active_power
-	feet.debug_active_power = feet.max_power * 0.25
-	hand.debug_active_power = hand.max_power * 0.5
-	check("player export subtracts both active movement budgets", is_equal_approx(rule._living_power(player.body, player), feet.max_power * 0.75 + hand.max_power * 0.5))
-	feet.debug_active_power = old_feet
-	hand.debug_active_power = old_hand
-	# 在第一条线路增加一台电机，不改变第二条线路分到的能源。
-	var motor := Motor.new()
-	motor.position = surface.to_global(Vector2(60.5, 25.5))
-	motor.tip = Vector2(20, 0)
-	motor.brush_width = 3
-	scene.add_child(motor)
-	motor.bind(rule.Anchor.find_anchor(scene.world, motor.position))
-	motor.owner = scene
+	var wire = rule.objects(Wire)[0]
+	# 直接把手靠在导线上也不应供能；只有真实有效的抓握关节才打开端口。
+	hand.body.position += wire.body.to_world(Vector2(30.5, 40.5)) - hand.body.com_world()
+	settle(0.3)
+	check("touch without grip never supplies biological power", rule.flow.stats.injected == 0.0 and motor.received_power == 0.0)
+	check("grip fixture creates real joint", hand._begin_grab(wire.body, wire.body.to_world(Vector2(30.5, 40.5))))
+	settle(0.5)
+	check("gripping wire supplies marked biological energy", motor.received_power > 0.0 and motor.biological_energy > 0.0)
+	var weight: float = (player.body.mass + player.get_node("Arm").body.mass + hand.body.mass) * scene.world.gravity.length()
+	check("biological thrust cannot lift the player", motor.applied_force <= weight * 0.5)
+	var bio_motors: Array = [motor]
+	for i in 3:
+		var extra := Motor.new()
+		extra.position = motor.position
+		extra.tip = motor.tip
+		extra.brush_width = motor.brush_width
+		scene.add_child(extra)
+		extra.bind(rule.Anchor.find_anchor(scene.world, extra.position))
+		bio_motors.append(extra)
+	for engine in bio_motors:
+		engine.buffer_capacity = engine.power_limit(rule.power_per_width) * rule.motor_buffer_seconds
+		engine.receive_energy(engine.buffer_capacity, engine.buffer_capacity)
 	tick()
-	check("motors split their network equally without redistribution", is_equal_approx(motors[0].received_power, 25000000.0) and is_equal_approx(motor.received_power, 25000000.0) and is_equal_approx(motors[1].received_power, 50000000.0))
-	source.position.x -= 20.0
-	source.refresh_com()
-	source.update_aabb()
+	var total_force := 0.0
+	for engine in bio_motors:
+		total_force += engine.applied_force
+	check("stacking biological motors shares one sub-weight thrust ceiling", total_force > 0.0 and total_force <= weight * 0.5 + 0.01)
+	hand._release_grab()
+	settle(0.8)
+	check("release stops biological supply and expires buffer", motor.received_power == 0.0 and motor.biological_energy == 0.0)
+	var tiny := Motor.new()
+	tiny.tip = Vector2(10, 0)
+	tiny.brush_width = 5
+	check("small arrow has reduced force and power ceiling", tiny.power_limit(rule.power_per_width) < 4000000.0)
+	tiny.free()
+	var at := Vector2i(95, 40)
+	runtime._physics.carve(scene.world, {motor.body: {motor.body.shapes[0]: {at: true}}})
 	tick()
-	check("lost living contact immediately stops every motor", motor.received_power == 0.0 and motors[0].received_power == 0.0 and motors[1].received_power == 0.0)
+	check("losing a non-anchor arrow pixel dissolves the whole motor", motor.is_queued_for_deletion())
 
 func preview_blue() -> void:
 	await reset_canvas()
@@ -486,42 +542,4 @@ func drag_canvas(from: Vector2, to: Vector2) -> void:
 
 
 func test_dynamic_cache() -> void:
-	paint(Rect2i(20, 20, 160, 30), Color.BLACK)
-	paint(Rect2i(10, 25, 10, 12), Palette.RED.color)
-	surface.brush_size = 5
-	surface.blue_layer.begin(Vector2(20.5, 30.5))
-	surface.blue_layer.extend(Vector2(170.5, 30.5))
-	surface.blue_layer.finish()
-	rule.begin(surface, Vector2(120.5, 30.5))
-	rule.finish(surface, Vector2(150.5, 30.5))
-	canvas.generate(false)
-	var probe := PBody.new()
-	probe.position = canvas.position + Vector2(60, 30)
-	var shape := Shape.new()
-	shape.fill_rect(Rect2i(0, 0, 4, 4), Palette.BLACK.id)
-	scene.world.add_body(probe, [shape])
-	rule.set_profile_enabled(true)
-	tick()
-	rule.take_profile()
-	probe.position.x += 0.1
-	probe.refresh_com()
-	probe.update_aabb()
-	tick()
-	var counters: Dictionary = rule.take_profile()
-	check("ordinary nearby motion does not rebuild circuit or scan chunks", counters.get("circuit_rebuilds", 0) == 0 and counters.get("source_chunk_scans", 0) == 0)
-	rule.observe_fracture(scene.world, probe, [probe])
-	tick()
-	counters = rule.take_profile()
-	check("irrelevant fracture does not invalidate circuit", counters.get("circuit_rebuilds", 0) == 0)
-	probe.tags["living"] = true
-	probe.tags["supply_power"] = 100000000.0
-	tick()
-	counters = rule.take_profile()
-	check("new living contact still invalidates circuit immediately", counters.get("circuit_rebuilds", 0) == 1)
-	probe.position.x += 0.1
-	probe.refresh_com()
-	probe.update_aabb()
-	tick()
-	counters = rule.take_profile()
-	check("moving source reuses unchanged red contact pair", counters.get("pair_cache_hits", 0) >= 1 and counters.get("pair_queries", 0) == 1 and counters.get("source_chunk_scans", 0) == 0)
-	rule.set_profile_enabled(false)
+	check("new flow keeps no grid/path cache", not rule.has_method("_topology_stamp") and not rule.has_method("_rebuild_circuit"))

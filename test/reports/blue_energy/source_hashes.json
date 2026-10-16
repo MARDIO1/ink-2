@@ -1,0 +1,12 @@
+{
+  "ink/src/blue/energy_flow.gd": "513c2af66cb854cf9699ed8d79700d2f5bff1de57540cc26af8af00737005fa1",
+  "ink/src/blue/motor.gd": "f17d1e588f195eb59d1313553f8eb17f5877c63e39a69c071d72aedb71a1277e",
+  "ink/src/blue/wire_layer.gd": "1eecb7c72f6baddeba55541e66ea7257578e8dc7b63d11db06b8c88aaf90a7c0",
+  "ink/src/blue_ink.gd": "e81198e7ad85b251592cede296d8e8f44bcd96188ba48b63d1a5771cd809da1d",
+  "ink/native/energy_extension.cpp": "d9e9eaa29ddc9e085e31024fdb05b0a13688410f8a5a9ec80a5cf31bc6303c16",
+  "ink/native/energy_kernel.hpp": "74899e641c02726c073d0e1974fce1720421cafd19360c819f0e9c6fe0ebabef",
+  "ink/native/ink_energy.dll": "bbcbe0c919be52f4f476debb508d5f129429058be6dd253b2ee1845f42db2773",
+  "ink/native/ink_energy.gdextension": "3fece3bc05c0934a54591bf1ea6911bdd4ea29e8f0fd9288c862828fe423babc",
+  "ink/native/~ink_energy.dll": "b45cc41f60cdbfe2ec47525282e3fd868a68c9503347a3bd09c209ddaab67050",
+  "test/tools/blue_energy_stress.gd": "e7966d691a092f14ea49f57197aa0960f4efe8ad2b0c79e126c2a98201fc8235"
+}

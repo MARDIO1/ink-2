@@ -1,10 +1,11 @@
 extends Node
-## 供能即启动。导线图只含蓝色，不通过红色、生物或动力箭头串接电网。
+## 蓝墨编辑/保存与运行时接口适配。导线、箭头和能源传播各有独立实现。
+## 传播在 blue/energy_flow.gd；箭头自己的收费/施力在 blue/motor.gd，不建立电网或路径树。
 const Palette := preload("res://ink/src/ink_palette.gd")
-const Wire := preload("res://actor/blue/src/blue_wire_layer.gd")
-const Motor := preload("res://actor/blue/src/blue_motor.gd")
-const Anchor := preload("res://actor/yellow/src/yellow_stroke.gd")
-const Hinge := preload("res://actor/yellow/src/yellow_hinge.gd")
+const Wire := preload("res://ink/src/blue/wire_layer.gd")
+const Motor := preload("res://ink/src/blue/motor.gd")
+const Anchor := preload("res://ink/src/yellow/stroke.gd")
+const Hinge := preload("res://ink/src/yellow/hinge.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 
 #region 配置与状态
@@ -16,22 +17,15 @@ const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 @export_range(0.02, 1.0, 0.01) var fuel_interval := 0.1
 var drawing = null
 var _world = null
-var _fuel: Dictionary = {}
-var _elapsed := 0.0
-var _nodes: Array = []
-var _links: Array = []
-var _indices: Dictionary = {}
-var _dirty := true
-var _circuit_stamp: Array = []
-var _circuit: Array = []
-var _graph_power := -1.0
 var _profile_enabled := false
 var _profile: Dictionary = {}
 var _pending_wires: Dictionary = {}
-var _source_cache: Dictionary = {}
-var _source_bounds: Dictionary = {}
-var _wire_bounds: Dictionary = {}
-var _pair_contacts: Dictionary = {}
+const EnergyFlow := preload("res://ink/src/blue/energy_flow.gd")
+var flow := EnergyFlow.new()
+@export var propagation_speed := 600.0
+@export var emission_interval := 0.5
+@export var motor_buffer_seconds := 0.6
+@export var energy_lifetime := 20.0
 
 func _ready() -> void:
 	_world = get_parent().get_parent()
@@ -58,20 +52,47 @@ func take_profile() -> Dictionary:
 #region 绘制、固化与回收
 func begin(surface, point: Vector2) -> void:
 	cancel()
-	if not surface._inside(point) or surface.material_at(int(point.x), int(point.y)) != Palette.BLACK.id:
+	var nearest := Vector2i(point.floor())
+	var distance := INF
+	for y in range(nearest.y - 6, nearest.y + 7):
+		for x in range(nearest.x - 6, nearest.x + 7):
+			var at := Vector2i(x, y)
+			if surface._inside(at) and surface.material_at(x, y) == Palette.BLACK.id:
+				var value := point.distance_squared_to(Vector2(at) + Vector2.ONE * 0.5)
+				if value < distance:
+					distance = value
+					nearest = at
+	if distance > 36.0:
 		return
 	surface._begin_undo_step()
 	drawing = Motor.new()
 	drawing.preview = true
 	drawing.source_surface = surface
 	drawing.source_canvas = _world.get_path_to(surface)
-	drawing.position = surface.to_global(point.floor() + Vector2.ONE * 0.5)
+	drawing.position = surface.to_global(Vector2(nearest) + Vector2.ONE * 0.5)
 	drawing.brush_width = surface.brush_size
 	_world.add_child(drawing)
 
 func extend(surface, point: Vector2) -> void:
 	if drawing != null and drawing.source_surface == surface:
-		drawing.tip = surface.to_global(point) - drawing.position
+		var requested: Vector2 = surface.to_global(point) - drawing.position
+		var low := 0.0
+		var high := 1.0
+		for iteration in 9:
+			var factor := high if iteration == 0 else (low + high) * 0.5
+			var fits := true
+			for offset in Motor.pixels_for(requested * factor, drawing.brush_width):
+				var at := Vector2i(surface.to_local(drawing.position + offset).floor())
+				if not surface._inside(at) or surface.material_at(at.x, at.y) != Palette.BLACK.id:
+					fits = false
+					break
+			if fits:
+				low = factor
+				if factor == 1.0:
+					break
+			else:
+				high = factor
+		drawing.tip = requested * low
 		drawing.queue_redraw()
 
 func finish(surface, point: Vector2) -> bool:
@@ -82,7 +103,7 @@ func finish(surface, point: Vector2) -> bool:
 	drawing = null
 	var length: float = motor.tip.length()
 	motor.area = maxi(1, ceili(length * motor.brush_width + motor.brush_width * motor.brush_width))
-	if not surface._inside(point) or length < 1.0 or motor.area > surface._ink_room(Palette.BLUE.id):
+	if length < 1.0 or motor.area > surface._ink_room(Palette.BLUE.id):
 		motor.queue_free()
 		surface._cancel_undo_step()
 		return false
@@ -121,7 +142,6 @@ func solidify(surface) -> void:
 			motor.queue_free()
 		else:
 			motor.bind(anchor)
-	_dirty = true
 
 ## 固化前把裸导线加入联合实体；覆盖黑色仅保留导电标记。
 func merge_shape(surface, shape) -> void:
@@ -141,7 +161,6 @@ func attach_wires(surface, bodies: Array, pixels: Dictionary) -> void:
 				cells.append(Vector2(cell))
 		if not cells.is_empty():
 			add_wire(body, cells)
-	_dirty = true
 
 func add_wire(body, cells: PackedVector2Array):
 	var wire := Wire.new()
@@ -153,13 +172,14 @@ func add_wire(body, cells: PackedVector2Array):
 	wire.rotation = body.rotation
 	_world.add_child(wire)
 	wire.owner = _world
+	wire.remember_revision()
 	return wire
 
 func erase_draft_anchor(surface, at: Vector2i) -> void:
 	for motor in objects(Motor):
 		if motor.active or motor.preview or motor.source_surface != surface:
 			continue
-		if Vector2i(surface.to_local(motor.position).floor()) == at:
+		if motor.covers(surface.to_global(Vector2(at) + Vector2.ONE * 0.5)):
 			surface._bump_ink(Palette.BLUE.id, -motor.area)
 			motor.queue_free()
 
@@ -197,7 +217,6 @@ func reclaim(surface, selection := Rect2i()) -> void:
 		if retained.is_empty():
 			wire.queue_free()
 	surface.blue_layer.refresh()
-	_dirty = true
 
 func observe_fracture(physics, body, pieces: Array) -> void:
 	for motor in objects(Motor):
@@ -217,10 +236,11 @@ func observe_fracture(physics, body, pieces: Array) -> void:
 				if physics.bodies.has(piece) and material in [Palette.BLACK.id, Palette.BLUE.id, Palette.YELLOW.id]:
 					groups.get_or_add(piece, []).append(Vector2(at))
 					break
+		var replacements: Array = []
 		for piece in groups:
-			add_wire(piece, PackedVector2Array(groups[piece]))
+			replacements.append(add_wire(piece, PackedVector2Array(groups[piece])))
+		flow.rebind_wire(wire, replacements)
 		wire.queue_free()
-		_dirty = true
 #endregion
 
 #region 编辑历史
@@ -262,7 +282,6 @@ func restore(surface, saved: Array, remove_ids: Dictionary = {}) -> void:
 		object.set_meta("canvas_undo_identity", entry.id)
 		_world.add_child(object)
 		object.owner = _world
-	_dirty = true
 
 func draft_data(surface) -> Array:
 	var data: Array = []
@@ -288,554 +307,19 @@ func restore_draft_data(surface, data: Array) -> void:
 		surface._bump_ink(Palette.BLUE.id, motor.area)
 #endregion
 
-#region 电网与接触
-func _build_graph() -> void:
-	_pair_contacts.clear()
-	_nodes.clear()
-	_links.clear()
-	_indices.clear()
-	for wire in objects(Wire):
-		if not wire.active or wire.body == null:
-			continue
-		var map := {}
-		# 合并同宽连通区域，保留截面瓶颈。
-		for at: Vector2i in wire.mask:
-			if map.has(at):
-				continue
-			var index: int = _nodes.size()
-			var width: float = wire.widths[at]
-			_nodes.append({"wire": wire, "cell": at, "capacity": width * power_per_width})
-			_links.append({})
-			var queue: Array[Vector2i] = [at]
-			map[at] = index
-			var cursor := 0
-			while cursor < queue.size():
-				var current: Vector2i = queue[cursor]
-				cursor += 1
-				for direction in Wire.DIRS:
-					var next: Vector2i = current + direction
-					if wire.mask.has(next) and not map.has(next) and wire.widths[next] == width:
-						map[next] = index
-						queue.append(next)
-		_indices[wire] = map
-		for at: Vector2i in map:
-			for direction in Wire.DIRS:
-				if map.has(at + direction) and map[at] != map[at + direction]:
-					_links[map[at]][map[at + direction]] = true
-	for index in _links.size():
-		_links[index] = _links[index].keys()
-	_dirty = false
-	_graph_power = power_per_width
-	_circuit_stamp.clear()
-
-func _connect(links: Array, a: int, b: int) -> void:
-	if a != b and not links[a].has(b):
-		links[a].append(b)
-		links[b].append(a)
-
-func _contact_graph(physics) -> Dictionary:
-	var links: Array = _links.duplicate(true)
-	var buckets := {}
-	var sources := {}
-	var source_bounds: Dictionary = _source_bounds
-	for wire in _indices:
-		if wire.is_queued_for_deletion() or not physics.bodies.has(wire.body):
-			_dirty = true
-			continue
-		wire.sync_pose()
-		for body in source_bounds:
-			if not rect_world(body, source_bounds[body]).grow(1.5).intersects(_wire_bounds[wire]):
-				continue
-			var contact := _source_contact(wire, body)
-			if not contact.ports.is_empty():
-				var source: Dictionary = sources.get_or_add(body, {"ports": {}, "cells": {}, "living": body.tags.has("living")})
-				source.ports.merge(contact.ports)
-				source.cells.merge(contact.cells)
-		var other_wires := false
-		for other in _indices:
-			if other != wire and _wire_bounds[wire].grow(1.5).intersects(_wire_bounds[other]):
-				other_wires = true
-				break
-		if not other_wires:
-			continue
-		for at: Vector2i in wire.boundary:
-			var index: int = _indices[wire][at]
-			var point: Vector2 = wire.body.to_world(Vector2(at) + Vector2.ONE * 0.5)
-			var bucket := Vector2i(point.floor())
-			if other_wires:
-				for direction in [Vector2i.ZERO] + Wire.DIRS:
-					for other in buckets.get(bucket + direction, []):
-						if _nodes[other.index].wire != wire and point.distance_squared_to(other.point) <= 2.26:
-							_connect(links, index, other.index)
-				buckets.get_or_add(bucket, []).append({"index": index, "point": point})
-	# 电滑环只连接轴贴图范围内、分属轴两侧刚体的导线。
-	for hinge in objects(Hinge):
-		if hinge.joint == null or not hinge.joint.is_active() or hinge.yellow_anchor.is_empty() or hinge.black_anchor.is_empty():
-			continue
-		var sides: Array = [[], []]
-		var point: Vector2 = Anchor.anchor_world(hinge.yellow_anchor)
-		for side in 2:
-			var body = hinge.yellow_anchor.body if side == 0 else hinge.black_anchor.body
-			for wire in _indices:
-				if wire.body != body:
-					continue
-				var half: Vector2 = Vector2(hinge.texture.get_size()) * 0.5
-				for at: Vector2i in _indices[wire]:
-					if Rect2(point - half, half * 2.0).has_point(body.to_world(Vector2(at) + Vector2.ONE * 0.5)):
-						sides[side].append(_indices[wire][at])
-		if not sides[0].is_empty() and not sides[1].is_empty():
-			for index: int in sides[0] + sides[1]:
-				_connect(links, sides[0][0], index)
-	return {"links": links, "sources": sources}
-
-func _source_contact(wire, body) -> Dictionary:
-	var stamp: Array = [_source_cache[body].revision]
-	if body != wire.body:
-		stamp.append(wire.body.to_local(body.position))
-		stamp.append(body.rotation - wire.body.rotation)
-	var pairs: Dictionary = _pair_contacts.get_or_add(wire, {})
-	var cached: Dictionary = pairs.get(body, {})
-	if cached.get("stamp", []) == stamp:
-		if _profile_enabled:
-			_profile.pair_cache_hits = _profile.get("pair_cache_hits", 0) + 1
-		return cached
-	if _profile_enabled:
-		_profile.pair_queries = _profile.get("pair_queries", 0) + 1
-	var region: Rect2 = _source_bounds[body]
-	if body != wire.body:
-		var corners := [region.position, Vector2(region.end.x, region.position.y), region.end, Vector2(region.position.x, region.end.y)]
-		var first: Vector2 = wire.body.to_local(body.to_world(corners[0]))
-		region = Rect2(first, Vector2.ZERO)
-		for corner: Vector2 in corners:
-			region = region.expand(wire.body.to_local(body.to_world(corner)))
-	region = region.grow(1.0).intersection(wire.local_bounds())
-	var pixels: Array = []
-	var lo := Vector2i(region.position.floor())
-	var hi := Vector2i(region.end.ceil())
-	if maxi(0, hi.x - lo.x) * maxi(0, hi.y - lo.y) < wire.boundary.size():
-		for y in range(lo.y, hi.y + 1):
-			for x in range(lo.x, hi.x + 1):
-				if wire.boundary_mask.has(Vector2i(x, y)):
-					pixels.append(Vector2i(x, y))
-	else:
-		for at: Vector2i in wire.boundary:
-			if region.has_point(Vector2(at) + Vector2.ONE * 0.5):
-				pixels.append(at)
-	var ports := {}
-	var cells := {}
-	for at: Vector2i in pixels:
-		var point: Vector2 = wire.body.to_world(Vector2(at) + Vector2.ONE * 0.5)
-		for direction in [Vector2i.ZERO] + Wire.DIRS:
-			var cell: Vector2i = at + direction if body == wire.body else Vector2i(body.to_local(point + Vector2(direction)).floor())
-			var material: int = Wire.material_at(body, cell)
-			if material == Palette.RED.id or (body.tags.has("living") and material != 0):
-				ports[_indices[wire][at]] = true
-				cells[cell] = true
-	cached = {"stamp": stamp, "ports": ports, "cells": cells}
-	pairs[body] = cached
-	return cached
-
-func _motor_ports(motor) -> Array:
-	var ports := {}
-	var start: Vector2 = motor.position
-	var end: Vector2 = start + motor.tip.rotated(motor.rotation)
-	for wire in _indices:
-		var a: Vector2 = wire.body.to_local(start)
-		var b: Vector2 = wire.body.to_local(end)
-		var radius: float = maxf(0.5, motor.brush_width * 0.5)
-		var lo := Vector2i((a.min(b) - Vector2.ONE * radius).floor())
-		var hi := Vector2i((a.max(b) + Vector2.ONE * radius).ceil())
-		var candidates: Array = []
-		if (hi.x - lo.x + 1) * (hi.y - lo.y + 1) < _indices[wire].size():
-			for y in range(lo.y, hi.y + 1):
-				for x in range(lo.x, hi.x + 1):
-					if _indices[wire].has(Vector2i(x, y)):
-						candidates.append(Vector2i(x, y))
-		else:
-			candidates = _indices[wire].keys()
-		for at: Vector2i in candidates:
-			var point := Vector2(at) + Vector2.ONE * 0.5
-			if point.distance_to(Geometry2D.get_closest_point_to_segment(point, a, b)) <= radius:
-				ports[_indices[wire][at]] = true
-	return ports.keys()
-
-## 最大堆用于最宽路径；同容量按步数、节点序号稳定选择。
-func _better(a: Array, b: Array) -> bool:
-	return a[0] > b[0] or (a[0] == b[0] and (a[1] < b[1] or (a[1] == b[1] and a[2] < b[2])))
-
-func _push(heap: Array, item: Array) -> void:
-	heap.append(item)
-	var index := heap.size() - 1
-	while index > 0:
-		var parent := (index - 1) / 2
-		if not _better(heap[index], heap[parent]):
-			break
-		var swap = heap[index]
-		heap[index] = heap[parent]
-		heap[parent] = swap
-		index = parent
-
-func _pop(heap: Array) -> Array:
-	var item: Array = heap[0]
-	var tail = heap.pop_back()
-	if not heap.is_empty():
-		heap[0] = tail
-		var index := 0
-		while index * 2 + 1 < heap.size():
-			var child := index * 2 + 1
-			if child + 1 < heap.size() and _better(heap[child + 1], heap[child]):
-				child += 1
-			if not _better(heap[child], heap[index]):
-				break
-			var swap = heap[index]
-			heap[index] = heap[child]
-			heap[child] = swap
-			index = child
-	return item
-
-func widest_tree(links: Array, roots: Dictionary) -> Dictionary:
-	var capacity := {}
-	var distance := {}
-	var parent := {}
-	var heap: Array = []
-	for index: int in roots:
-		capacity[index] = minf(roots[index], _nodes[index].capacity)
-		distance[index] = 0
-		parent[index] = -1
-		_push(heap, [capacity[index], 0, index])
-	var settled := {}
-	while not heap.is_empty():
-		var item := _pop(heap)
-		var index: int = item[2]
-		if settled.has(index):
-			continue
-		settled[index] = true
-		for next: int in links[index]:
-			if settled.has(next):
-				continue
-			var available: float = minf(capacity[index], _nodes[next].capacity)
-			var steps: int = distance[index] + 1
-			if available > capacity.get(next, -1.0) or (available == capacity.get(next, -1.0) and steps < distance.get(next, 2147483647)):
-				capacity[next] = available
-				distance[next] = steps
-				parent[next] = index
-				_push(heap, [available, steps, next])
-	return {"capacity": capacity, "distance": distance, "parent": parent}
-#endregion
-
-#region 功率与燃料
-func _living_power(body, player) -> float:
-	if player == null:
-		return maxf(0.0, float(body.tags.get("supply_power", 0.0)))
-	var bodies: Array = [player.body, player.get_node("Arm").body, player.get_node("Arm/Hand").body]
-	if not bodies.has(body):
-		return maxf(0.0, float(body.tags.get("supply_power", 0.0)))
-	var feet = player.get_node("PlayerInput")
-	var hand = player.get_node("Arm/Hand/HandControl")
-	return maxf(0.0, feet.max_power - feet.debug_active_power) + maxf(0.0, hand.max_power - hand.debug_active_power)
-
+#region Runtime adapter
 func resolve_fixed(context: Dictionary) -> Dictionary:
 	var started := Time.get_ticks_usec()
-	var physics = context.world
-	if _graph_power != power_per_width:
-		_dirty = true
-	for wire in objects(Wire):
-		if wire.active and wire.prune(physics):
-			_dirty = true
-	var motors: Array = []
-	for motor in objects(Motor):
-		motor.received_power = 0.0
-		motor.used_power = 0.0
-		motor.applied_force = 0.0
-		if not motor.active:
-			continue
-		if not motor.valid(physics):
-			motor.queue_free()
-			continue
-		motor.sync_pose()
-		motors.append(motor)
-	if _dirty:
-		_build_graph()
-	if _nodes.is_empty() or motors.is_empty():
-		return _finish_fixed(context, started)
-	_refresh_sources(physics)
-	var stamp := _topology_stamp(physics, motors)
-	if stamp != _circuit_stamp:
-		_circuit_stamp = stamp
-		_rebuild_circuit(physics, motors)
-	var delta: float = context.pixel_world.fixed_dt
-	for component in _circuit:
-		var total := 0.0
-		var supplied: Array = []
-		for source in component.sources:
-			var power: float = _living_power(source.body, context.get("player_node")) if source.living else source.cells.size() * source_power_per_pixel
-			if not source.living:
-				var credit: float = _fuel.get(source.body, {}).get("credit", 0.0)
-				power = minf(power, maxf(0.0, source.cells.size() - credit) * energy_per_red_pixel / maxf(delta, 0.001))
-			power /= source.nets
-			total += power
-			supplied.append(power)
-		if total <= 0.0 or component.motors.is_empty():
-			continue
-		var used := 0.0
-		for entry in component.motors:
-			var available: float = minf(total / component.motors.size(), minf(entry.limit, entry.motor.brush_width * power_per_width))
-			entry.motor.received_power = available
-			used += drive(entry.motor, available, delta)
-		for index in component.sources.size():
-			var source: Dictionary = component.sources[index]
-			if source.living:
-				continue
-			var fuel: Dictionary = _fuel.get_or_add(source.body, {"credit": 0.0, "contacts": {}})
-			fuel.credit += used * supplied[index] / total * delta / maxf(energy_per_red_pixel, 0.001)
-			fuel.contacts.merge(source.cells)
-	return _finish_fixed(context, started)
-
-func rect_world(body, rect: Rect2) -> Rect2:
-	var points := [body.to_world(rect.position), body.to_world(Vector2(rect.end.x, rect.position.y)), body.to_world(rect.end), body.to_world(Vector2(rect.position.x, rect.end.y))]
-	var result := Rect2(points[0], Vector2.ZERO)
-	for point: Vector2 in points:
-		result = result.expand(point)
-	return result
-
-func _refresh_sources(physics) -> void:
-	# 先按导线自身包围盒筛刚体，再按形状版本缓存红色范围；运动不重扫像素块。
-	_wire_bounds.clear()
-	_source_bounds.clear()
-	for wire in _indices:
-		_wire_bounds[wire] = rect_world(wire.body, wire.local_bounds())
-	for body in _source_cache.keys():
-		if not physics.bodies.has(body):
-			_source_cache.erase(body)
-			for pairs: Dictionary in _pair_contacts.values():
-				pairs.erase(body)
-	for body in physics.bodies:
-		var relevant := false
-		for rect: Rect2 in _wire_bounds.values():
-			if rect.grow(1.5).intersects(body.aabb):
-				relevant = true
-				break
-		if not relevant:
-			continue
-		var revision: Array = [body.tags.has("living")]
-		for shape in body.shapes:
-			revision.append(shape.get_instance_id())
-			revision.append(shape.revision)
-		var cached: Dictionary = _source_cache.get(body, {})
-		if cached.get("revision", []) != revision:
-			var bounds := Rect2i()
-			var found := false
-			for shape in body.shapes:
-				if body.tags.has("living"):
-					bounds = bounds.merge(shape.local_aabb()) if found else shape.local_aabb()
-					found = true
-					continue
-				for key: int in shape.chunks:
-					if shape.chunks[key].mat.has(Palette.RED.id):
-						var chunk_rect := Rect2i(Shape.key_x(key) * 8, Shape.key_y(key) * 8, 8, 8)
-						bounds = bounds.merge(chunk_rect) if found else chunk_rect
-						found = true
-				if _profile_enabled:
-					_profile.source_chunk_scans = _profile.get("source_chunk_scans", 0) + shape.chunks.size()
-			cached = {"revision": revision, "bounds": Rect2(bounds).grow(1.5), "found": found}
-			_source_cache[body] = cached
-		if cached.found:
-			_source_bounds[body] = cached.bounds
-
-func _topology_stamp(_physics, motors: Array) -> Array:
-	# 只追踪可能改变电气关系的对象；普通刚体靠近和无关破坏不使电网失效。
-	var stamp: Array = [power_per_width]
-	for wire in _indices:
-		stamp.append(wire.get_instance_id())
-		for shape in wire.body.shapes:
-			stamp.append(shape.get_instance_id())
-			stamp.append(shape.revision)
-		for body in _source_bounds:
-			if not rect_world(body, _source_bounds[body]).grow(1.5).intersects(_wire_bounds[wire]):
-				continue
-			stamp.append(body.get_instance_id())
-			stamp.append(_source_cache[body].revision)
-			if body != wire.body:
-				stamp.append(wire.body.to_local(body.position))
-				stamp.append(body.rotation - wire.body.rotation)
-		for other in _indices:
-			if other == wire or not _wire_bounds[wire].grow(1.5).intersects(_wire_bounds[other]):
-				continue
-			stamp.append(other.get_instance_id())
-			if other.body != wire.body:
-				stamp.append(wire.body.to_local(other.body.position))
-				stamp.append(other.body.rotation - wire.body.rotation)
-		for motor in motors:
-			var end: Vector2 = motor.position + motor.tip.rotated(motor.rotation)
-			var motor_rect := Rect2(motor.position.min(end), (motor.position - end).abs()).grow(motor.brush_width * 0.5)
-			if not motor_rect.intersects(_wire_bounds[wire]):
-				continue
-			stamp.append(motor.get_instance_id())
-			stamp.append(motor.body.get_instance_id())
-			stamp.append(motor.anchor_local)
-			stamp.append(motor.tip)
-			stamp.append(motor.brush_width)
-			if motor.body != wire.body:
-				stamp.append(wire.body.to_local(motor.position))
-				stamp.append(motor.rotation - wire.body.rotation)
-	var wired_bodies := {}
-	for wire in _indices:
-		wired_bodies[wire.body] = true
-	for hinge in objects(Hinge):
-		if hinge.yellow_anchor.is_empty() or hinge.black_anchor.is_empty() or not wired_bodies.has(hinge.yellow_anchor.body) or not wired_bodies.has(hinge.black_anchor.body):
-			continue
-		stamp.append(hinge.get_instance_id())
-		stamp.append(hinge.joint != null and hinge.joint.is_active())
-		for anchor: Dictionary in [hinge.yellow_anchor, hinge.black_anchor]:
-			if not anchor.is_empty():
-				stamp.append(anchor.body.rotation)
-				stamp.append(anchor.body.to_local(Anchor.anchor_world(hinge.yellow_anchor)))
-	return stamp
-
-func _rebuild_circuit(physics, motors: Array) -> void:
+	flow.speed = maxf(100.0, propagation_speed)
+	flow.interval = maxf(0.02, emission_interval)
+	flow.lifetime = energy_lifetime
+	flow.pixel_power = power_per_width
+	var result: Dictionary = flow.update(self, context)
 	if _profile_enabled:
-		_profile.circuit_rebuilds = _profile.get("circuit_rebuilds", 0) + 1
-	var graph := _contact_graph(physics)
-	var links: Array = graph.links
-	var components := {}
-	var node_component := {}
-	for index in _nodes.size():
-		if node_component.has(index):
-			continue
-		var queue: Array = [index]
-		node_component[index] = index
-		var cursor := 0
-		while cursor < queue.size():
-			var current: int = queue[cursor]
-			cursor += 1
-			for next: int in links[current]:
-				if not node_component.has(next):
-					node_component[next] = index
-					queue.append(next)
-		components[index] = {"roots": {}, "sources": [], "motors": []}
-	var grouped := {}
-	var player = _world.get_node_or_null("Player")
-	for body in graph.sources:
-		var source: Dictionary = graph.sources[body]
-		var key = body
-		if player != null and body in [player.body, player.get_node("Arm").body, player.get_node("Arm/Hand").body]:
-			key = player
-		var group: Dictionary = grouped.get_or_add(key, {"ports": {}, "body": body, "living": source.living, "cells": {}})
-		group.ports.merge(source.ports)
-		group.cells.merge(source.cells)
-	for source in grouped.values():
-		var nets := {}
-		for index: int in source.ports:
-			nets.get_or_add(node_component[index], []).append(index)
-		source["nets"] = nets.size()
-		for net in nets:
-			components[net].sources.append(source)
-			for index: int in nets[net]:
-				components[net].roots[index] = INF
-	var trees := {}
-	for motor in motors:
-		var ports := _motor_ports(motor)
-		if ports.is_empty():
-			continue
-		# 接触多个电网时只取一网，优先有源且路径瓶颈最大的网络，不用箭头串线。
-		var chosen := -1
-		var capacity := -1.0
-		for index: int in ports:
-			var net: int = node_component[index]
-			if components[net].roots.is_empty():
-				continue
-			if not trees.has(net):
-				trees[net] = widest_tree(links, components[net].roots)
-			var available: float = trees[net].capacity.get(index, 0.0)
-			if available > capacity:
-				chosen = net
-				capacity = available
-		if chosen < 0:
-			continue
-		var same_net: Array = []
-		for index: int in ports:
-			if node_component[index] == chosen:
-				same_net.append(index)
-		components[chosen].motors.append({"motor": motor, "ports": same_net})
-	_circuit.clear()
-	for net in components:
-		var component: Dictionary = components[net]
-		if component.roots.is_empty() or component.motors.is_empty():
-			continue
-		var tree: Dictionary = trees[net]
-		var descendants := {}
-		for entry in component.motors:
-			var best: int = entry.ports[0]
-			for index: int in entry.ports:
-				if tree.capacity.get(index, 0.0) > tree.capacity.get(best, 0.0) or (tree.capacity.get(index, 0.0) == tree.capacity.get(best, 0.0) and tree.distance.get(index, 0) < tree.distance.get(best, 0)):
-					best = index
-			entry["path"] = []
-			var at := best
-			while at >= 0 and tree.parent.has(at):
-				entry.path.append(at)
-				descendants[at] = descendants.get(at, 0) + 1
-				at = tree.parent[at]
-		for entry in component.motors:
-			entry["limit"] = INF
-			for index: int in entry.path:
-				entry.limit = minf(entry.limit, _nodes[index].capacity / descendants[index])
-			entry.erase("path")
-		_circuit.append(component)
-
-func _finish_fixed(context: Dictionary, started: int) -> Dictionary:
-	_elapsed += context.pixel_world.fixed_dt
-	var removals := {}
-	if _elapsed >= fuel_interval:
-		_elapsed = fmod(_elapsed, fuel_interval)
-		removals = consume_fuel(context.world)
-	if _profile_enabled:
-		_profile.resolve_us = _profile.get("resolve_us", 0) + Time.get_ticks_usec() - started
+		var elapsed := Time.get_ticks_usec() - started
+		flow.stats["resolve_total_us"] = flow.stats.get("resolve_total_us", 0) + elapsed
+		_profile.resolve_us = _profile.get("resolve_us", 0) + elapsed
 		_profile.calls = _profile.get("calls", 0) + 1
-		_profile.nodes = _nodes.size()
-	return {"fuel_removals": removals}
-
-## 预测本步冲量的动能变化，起步速度为零也不会免费获得无限推力。
-func drive(motor, available: float, delta: float) -> float:
-	if available <= 0.0:
-		return 0.0
-	var base: float = minf(available, idle_power)
-	var budget: float = maxf(0.0, available - base)
-	var direction: Vector2 = motor.tip.normalized().rotated(motor.rotation)
-	var force: float = motor.tip.length() * force_per_length
-	var arm: Vector2 = motor.position - motor.body.com_world()
-	var cross: float = arm.cross(direction)
-	var inverse_mass: float = motor.body.inv_mass + cross * cross * motor.body.inv_inertia
-	var velocity: float = motor.body.velocity_at(motor.position).dot(direction)
-	# |F*v| 与冲量新增动能均计费；反向做功不回充。
-	var a: float = 0.5 * force * force * inverse_mass * delta
-	var b: float = absf(force * velocity)
-	var scale := 0.0
-	if budget > 0.0:
-		scale = minf(1.0, 2.0 * budget / maxf(b + sqrt(b * b + 4.0 * a * budget), 0.001))
-	force *= scale
-	motor.applied_force = force
-	motor.body.apply_impulse(direction * force * delta, motor.position)
-	motor.used_power = base + a * scale * scale + b * scale
-	return motor.used_power
-
-## 只从已供能的接触前沿删除，不排序整块燃料，不隔空吃内部像素。
-func consume_fuel(physics) -> Dictionary:
-	var removals := {}
-	for body in _fuel.keys():
-		if not physics.bodies.has(body):
-			_fuel.erase(body)
-			continue
-		var fuel: Dictionary = _fuel[body]
-		var remaining: int = int(fuel.credit)
-		for at: Vector2i in fuel.contacts:
-			if remaining <= 0:
-				break
-			for shape in body.shapes:
-				if shape.get_pixel(at.x, at.y) == Palette.RED.id:
-					removals.get_or_add(body, {}).get_or_add(shape, {})[at] = true
-					fuel.credit -= 1.0
-					remaining -= 1
-					break
-		fuel.contacts.clear()
-	return removals
+		_profile.active_cells = flow.active_cells()
+	return result
 #endregion

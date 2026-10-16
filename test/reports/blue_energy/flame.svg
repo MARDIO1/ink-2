@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230">
+<style>text{font:13px sans-serif;pointer-events:none}rect:hover{stroke:black;stroke-width:2}</style>
+<rect width="1200" height="230" fill="#fffaf0"/>
+<text x="10" y="20">Blue ink - measured wall-time spans (aggregate, not sampled CPU stacks)</text>
+<g><title>BlueInk.resolve_fixed: 3113.94 ms cumulative; 100.00% of blue</title><rect x="10.00" y="188" width="1179.60" height="31" fill="#ffbe69"/>
+<text x="14.00" y="208">BlueInk.resolve_fixed</text>
+</g>
+<g><title>local contacts: 21.58 ms cumulative; 0.69% of blue</title><rect x="10.00" y="153" width="7.78" height="31" fill="#ffa35b"/>
+</g>
+<g><title>production: 9.73 ms cumulative; 0.31% of blue</title><rect x="18.18" y="153" width="3.29" height="31" fill="#ffa35b"/>
+</g>
+<g><title>advance: 2995.89 ms cumulative; 96.21% of blue</title><rect x="21.86" y="153" width="1134.87" height="31" fill="#ffa35b"/>
+<text x="25.86" y="173">advance</text>
+</g>
+<g><title>native call + transport: 2749.06 ms cumulative; 88.28% of blue</title><rect x="21.86" y="118" width="1041.33" height="31" fill="#f57d50"/>
+<text x="25.86" y="138">native call + transport</text>
+</g>
+<g><title>decode / cuts: 226.48 ms cumulative; 7.27% of blue</title><rect x="1063.60" y="118" width="85.42" height="31" fill="#f57d50"/>
+</g>
+<g><title>highlight geometry: 112.86 ms cumulative; 3.62% of blue</title><rect x="1063.60" y="83" width="42.37" height="31" fill="#e7594a"/>
+</g>
+<g><title>readback / local removal: 113.61 ms cumulative; 3.65% of blue</title><rect x="1106.36" y="83" width="42.65" height="31" fill="#e7594a"/>
+</g>
+<g><title>command encoding: 20.35 ms cumulative; 0.65% of blue</title><rect x="1149.42" y="118" width="7.31" height="31" fill="#f57d50"/>
+</g>
+<g><title>prune / motor / fuel / adapter: 86.74 ms cumulative; 2.79% of blue</title><rect x="1157.13" y="153" width="32.47" height="31" fill="#ffa35b"/>
+</g>
+</svg>

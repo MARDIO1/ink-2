@@ -1,0 +1,5232 @@
+{
+	"checks": 4,
+	"failures": 0,
+	"results": [
+		{
+			"median_us": 4714,
+			"scenario": "horizontal_256_draw64_total"
+		},
+		{
+			"max_us": 85,
+			"median_us": 55,
+			"p95_us": 85,
+			"scenario": "horizontal_256_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 1129,
+			"median_us": 123,
+			"p95_us": 1129,
+			"scenario": "horizontal_256_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 1851,
+			"scenario": "horizontal_256_finish"
+		},
+		{
+			"median_us": 12403,
+			"scenario": "horizontal_1024_draw64_total"
+		},
+		{
+			"max_us": 169,
+			"median_us": 51,
+			"p95_us": 169,
+			"scenario": "horizontal_1024_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 208,
+			"median_us": 112,
+			"p95_us": 208,
+			"scenario": "horizontal_1024_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 8207,
+			"scenario": "horizontal_1024_finish"
+		},
+		{
+			"median_us": 20561,
+			"scenario": "horizontal_2048_draw64_total"
+		},
+		{
+			"max_us": 118,
+			"median_us": 69,
+			"p95_us": 118,
+			"scenario": "horizontal_2048_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 208,
+			"median_us": 126,
+			"p95_us": 208,
+			"scenario": "horizontal_2048_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 14061,
+			"scenario": "horizontal_2048_finish"
+		},
+		{
+			"median_us": 6233,
+			"scenario": "diagonal_256_draw64_total"
+		},
+		{
+			"max_us": 159,
+			"median_us": 73,
+			"p95_us": 159,
+			"scenario": "diagonal_256_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 217,
+			"median_us": 117,
+			"p95_us": 217,
+			"scenario": "diagonal_256_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 2865,
+			"scenario": "diagonal_256_finish"
+		},
+		{
+			"median_us": 16590,
+			"scenario": "diagonal_1024_draw64_total"
+		},
+		{
+			"max_us": 87,
+			"median_us": 46,
+			"p95_us": 87,
+			"scenario": "diagonal_1024_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 161,
+			"median_us": 82,
+			"p95_us": 161,
+			"scenario": "diagonal_1024_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 10558,
+			"scenario": "diagonal_1024_finish"
+		},
+		{
+			"median_us": 31135,
+			"scenario": "diagonal_2048_draw64_total"
+		},
+		{
+			"max_us": 78,
+			"median_us": 42,
+			"p95_us": 78,
+			"scenario": "diagonal_2048_held_still",
+			"spans": []
+		},
+		{
+			"max_us": 151,
+			"median_us": 76,
+			"p95_us": 151,
+			"scenario": "diagonal_2048_other_color",
+			"spans": []
+		},
+		{
+			"median_us": 19805,
+			"scenario": "diagonal_2048_finish"
+		},
+		{
+			"median_us": 170559,
+			"scenario": "solidify_2048"
+		},
+		{
+			"median_us": 29345,
+			"scenario": "first_circuit_2048"
+		},
+		{
+			"max_us": 200,
+			"median_us": 139,
+			"p95_us": 200,
+			"scenario": "steady_2048",
+			"spans": [
+				{
+					"dur": 11,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3623684
+				},
+				{
+					"dur": 9,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3623697
+				},
+				{
+					"dur": 4,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3623711
+				},
+				{
+					"dur": 58,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3623661
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3648148
+				},
+				{
+					"dur": 19,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3648174
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3648207
+				},
+				{
+					"dur": 130,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3648099
+				},
+				{
+					"dur": 17,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3650310
+				},
+				{
+					"dur": 14,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3650331
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3650363
+				},
+				{
+					"dur": 105,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3650275
+				},
+				{
+					"dur": 17,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3652438
+				},
+				{
+					"dur": 14,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3652460
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3652486
+				},
+				{
+					"dur": 101,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3652401
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3658539
+				},
+				{
+					"dur": 18,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3658563
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3658593
+				},
+				{
+					"dur": 120,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3658490
+				},
+				{
+					"dur": 19,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3665895
+				},
+				{
+					"dur": 16,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3665918
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3665948
+				},
+				{
+					"dur": 9,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3665965
+				},
+				{
+					"dur": 125,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3665852
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3670692
+				},
+				{
+					"dur": 18,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3670718
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3670750
+				},
+				{
+					"dur": 137,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3670635
+				},
+				{
+					"dur": 26,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3676815
+				},
+				{
+					"dur": 19,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3676846
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3676880
+				},
+				{
+					"dur": 144,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3676755
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3684204
+				},
+				{
+					"dur": 18,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3684230
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3684261
+				},
+				{
+					"dur": 123,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3684156
+				},
+				{
+					"dur": 24,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3688848
+				},
+				{
+					"dur": 18,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3688876
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3688908
+				},
+				{
+					"dur": 130,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3688796
+				},
+				{
+					"dur": 27,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3694971
+				},
+				{
+					"dur": 22,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3695004
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3695043
+				},
+				{
+					"dur": 165,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3694899
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3701943
+				},
+				{
+					"dur": 16,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3701967
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3701995
+				},
+				{
+					"dur": 5,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3702015
+				},
+				{
+					"dur": 119,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3701903
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3707002
+				},
+				{
+					"dur": 17,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3707027
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3707054
+				},
+				{
+					"dur": 115,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3706956
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3714565
+				},
+				{
+					"dur": 18,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3714590
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3714622
+				},
+				{
+					"dur": 120,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3714519
+				},
+				{
+					"dur": 30,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3719252
+				},
+				{
+					"dur": 26,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3719287
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3719332
+				},
+				{
+					"dur": 177,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3719177
+				},
+				{
+					"dur": 28,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3725408
+				},
+				{
+					"dur": 21,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3725443
+				},
+				{
+					"dur": 10,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3725479
+				},
+				{
+					"dur": 158,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3725342
+				},
+				{
+					"dur": 29,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3732852
+				},
+				{
+					"dur": 22,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3732886
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3732923
+				},
+				{
+					"dur": 160,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3732784
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3737322
+				},
+				{
+					"dur": 15,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3737345
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3737370
+				},
+				{
+					"dur": 5,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3737387
+				},
+				{
+					"dur": 119,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3737276
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3743429
+				},
+				{
+					"dur": 17,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3743454
+				},
+				{
+					"dur": 9,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3743484
+				},
+				{
+					"dur": 124,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3743380
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3750935
+				},
+				{
+					"dur": 19,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3750963
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3750997
+				},
+				{
+					"dur": 140,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3750878
+				}
+			]
+		},
+		{
+			"max_us": 1015,
+			"median_us": 520,
+			"p95_us": 1015,
+			"scenario": "moving_wire_2048",
+			"spans": [
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3855444
+				},
+				{
+					"dur": 24,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3855468
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3855509
+				},
+				{
+					"dur": 139,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3855522
+				},
+				{
+					"dur": 177,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3855496
+				},
+				{
+					"dur": 88,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3855703
+				},
+				{
+					"dur": 68,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3855794
+				},
+				{
+					"dur": 387,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3855495
+				},
+				{
+					"dur": 8,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3855889
+				},
+				{
+					"dur": 504,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3855400
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3861835
+				},
+				{
+					"dur": 26,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3861860
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3861903
+				},
+				{
+					"dur": 143,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3861916
+				},
+				{
+					"dur": 181,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3861890
+				},
+				{
+					"dur": 88,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3862102
+				},
+				{
+					"dur": 69,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3862193
+				},
+				{
+					"dur": 393,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3861889
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3862289
+				},
+				{
+					"dur": 503,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3861799
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3864722
+				},
+				{
+					"dur": 26,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3864750
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3864794
+				},
+				{
+					"dur": 143,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3864806
+				},
+				{
+					"dur": 181,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3864780
+				},
+				{
+					"dur": 85,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3864992
+				},
+				{
+					"dur": 73,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3865080
+				},
+				{
+					"dur": 395,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3864778
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3865180
+				},
+				{
+					"dur": 507,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3864687
+				},
+				{
+					"dur": 18,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3866265
+				},
+				{
+					"dur": 22,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3866286
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3866321
+				},
+				{
+					"dur": 126,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3866332
+				},
+				{
+					"dur": 158,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3866311
+				},
+				{
+					"dur": 73,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3866497
+				},
+				{
+					"dur": 68,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3866573
+				},
+				{
+					"dur": 350,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3866310
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3866666
+				},
+				{
+					"dur": 445,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3866233
+				},
+				{
+					"dur": 37,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3870774
+				},
+				{
+					"dur": 45,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3870815
+				},
+				{
+					"dur": 7,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3870882
+				},
+				{
+					"dur": 252,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3870901
+				},
+				{
+					"dur": 307,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3870866
+				},
+				{
+					"dur": 135,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3871224
+				},
+				{
+					"dur": 89,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3871364
+				},
+				{
+					"dur": 608,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3870865
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3871479
+				},
+				{
+					"dur": 772,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3870719
+				},
+				{
+					"dur": 19,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3876737
+				},
+				{
+					"dur": 23,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3876758
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3876793
+				},
+				{
+					"dur": 160,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3876804
+				},
+				{
+					"dur": 218,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3876784
+				},
+				{
+					"dur": 146,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3877059
+				},
+				{
+					"dur": 131,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3877211
+				},
+				{
+					"dur": 589,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3876783
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3877379
+				},
+				{
+					"dur": 4,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3877390
+				},
+				{
+					"dur": 691,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3876706
+				},
+				{
+					"dur": 25,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3883787
+				},
+				{
+					"dur": 25,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3883815
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3883857
+				},
+				{
+					"dur": 136,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3883872
+				},
+				{
+					"dur": 175,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3883845
+				},
+				{
+					"dur": 86,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3884051
+				},
+				{
+					"dur": 67,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3884139
+				},
+				{
+					"dur": 382,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3883844
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3884233
+				},
+				{
+					"dur": 501,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3883745
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3888798
+				},
+				{
+					"dur": 23,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3888821
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3888858
+				},
+				{
+					"dur": 127,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3888869
+				},
+				{
+					"dur": 158,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3888848
+				},
+				{
+					"dur": 73,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3889033
+				},
+				{
+					"dur": 69,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3889108
+				},
+				{
+					"dur": 349,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3888847
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3889202
+				},
+				{
+					"dur": 449,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3888765
+				},
+				{
+					"dur": 36,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3894982
+				},
+				{
+					"dur": 45,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3895022
+				},
+				{
+					"dur": 6,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3895088
+				},
+				{
+					"dur": 352,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3895107
+				},
+				{
+					"dur": 406,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3895072
+				},
+				{
+					"dur": 69,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3895505
+				},
+				{
+					"dur": 63,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3895576
+				},
+				{
+					"dur": 587,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3895070
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3895663
+				},
+				{
+					"dur": 745,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3894930
+				},
+				{
+					"dur": 19,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3901874
+				},
+				{
+					"dur": 22,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3901896
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3901931
+				},
+				{
+					"dur": 128,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3901943
+				},
+				{
+					"dur": 161,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3901921
+				},
+				{
+					"dur": 73,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3902109
+				},
+				{
+					"dur": 63,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3902185
+				},
+				{
+					"dur": 347,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3901920
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3902273
+				},
+				{
+					"dur": 442,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3901843
+				},
+				{
+					"dur": 20,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3907008
+				},
+				{
+					"dur": 22,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3907031
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3907066
+				},
+				{
+					"dur": 132,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3907077
+				},
+				{
+					"dur": 164,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3907056
+				},
+				{
+					"dur": 68,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3907248
+				},
+				{
+					"dur": 63,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3907319
+				},
+				{
+					"dur": 345,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3907055
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3907406
+				},
+				{
+					"dur": 445,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3906976
+				},
+				{
+					"dur": 19,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3913017
+				},
+				{
+					"dur": 22,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3913038
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3913072
+				},
+				{
+					"dur": 120,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3913083
+				},
+				{
+					"dur": 150,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3913063
+				},
+				{
+					"dur": 68,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3913241
+				},
+				{
+					"dur": 66,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3913312
+				},
+				{
+					"dur": 334,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3913062
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3913402
+				},
+				{
+					"dur": 4,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3913417
+				},
+				{
+					"dur": 437,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3912987
+				},
+				{
+					"dur": 18,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3920157
+				},
+				{
+					"dur": 21,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3920177
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3920209
+				},
+				{
+					"dur": 125,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3920219
+				},
+				{
+					"dur": 156,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3920201
+				},
+				{
+					"dur": 70,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3920384
+				},
+				{
+					"dur": 63,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3920457
+				},
+				{
+					"dur": 338,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3920200
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3920544
+				},
+				{
+					"dur": 424,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3920132
+				},
+				{
+					"dur": 41,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3925271
+				},
+				{
+					"dur": 45,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3925315
+				},
+				{
+					"dur": 7,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3925391
+				},
+				{
+					"dur": 150,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3925410
+				},
+				{
+					"dur": 205,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3925365
+				},
+				{
+					"dur": 70,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3925595
+				},
+				{
+					"dur": 64,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3925667
+				},
+				{
+					"dur": 384,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3925364
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3925753
+				},
+				{
+					"dur": 544,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3925221
+				},
+				{
+					"dur": 19,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3932304
+				},
+				{
+					"dur": 25,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3932326
+				},
+				{
+					"dur": 6,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3932372
+				},
+				{
+					"dur": 154,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3932392
+				},
+				{
+					"dur": 205,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3932354
+				},
+				{
+					"dur": 121,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3932607
+				},
+				{
+					"dur": 100,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3932730
+				},
+				{
+					"dur": 505,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3932353
+				},
+				{
+					"dur": 12,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3932869
+				},
+				{
+					"dur": 616,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3932277
+				},
+				{
+					"dur": 38,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3937378
+				},
+				{
+					"dur": 55,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3937420
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3937487
+				},
+				{
+					"dur": 127,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3937498
+				},
+				{
+					"dur": 158,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3937478
+				},
+				{
+					"dur": 80,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3937664
+				},
+				{
+					"dur": 66,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3937746
+				},
+				{
+					"dur": 353,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3937477
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3937836
+				},
+				{
+					"dur": 526,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3937321
+				},
+				{
+					"dur": 37,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3943530
+				},
+				{
+					"dur": 46,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3943571
+				},
+				{
+					"dur": 6,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3943664
+				},
+				{
+					"dur": 293,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3943687
+				},
+				{
+					"dur": 389,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3943623
+				},
+				{
+					"dur": 169,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3944087
+				},
+				{
+					"dur": 134,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3944261
+				},
+				{
+					"dur": 810,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3943622
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3944443
+				},
+				{
+					"dur": 988,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3943478
+				},
+				{
+					"dur": 17,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3950856
+				},
+				{
+					"dur": 20,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3950875
+				},
+				{
+					"dur": 2,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3950906
+				},
+				{
+					"dur": 121,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3950915
+				},
+				{
+					"dur": 148,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3950898
+				},
+				{
+					"dur": 71,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3951071
+				},
+				{
+					"dur": 63,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3951144
+				},
+				{
+					"dur": 327,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3950897
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3951229
+				},
+				{
+					"dur": 4,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 3951239
+				},
+				{
+					"dur": 412,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3950833
+				},
+				{
+					"dur": 16,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3955533
+				},
+				{
+					"dur": 21,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3955551
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3955580
+				},
+				{
+					"dur": 113,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3955589
+				},
+				{
+					"dur": 137,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3955574
+				},
+				{
+					"dur": 58,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3955734
+				},
+				{
+					"dur": 60,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3955794
+				},
+				{
+					"dur": 297,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3955573
+				},
+				{
+					"dur": 4,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3955875
+				},
+				{
+					"dur": 391,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3955493
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 3961524
+				},
+				{
+					"dur": 32,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 3961550
+				},
+				{
+					"dur": 4,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 3961594
+				},
+				{
+					"dur": 193,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 3961605
+				},
+				{
+					"dur": 231,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 3961585
+				},
+				{
+					"dur": 92,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 3961851
+				},
+				{
+					"dur": 95,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 3961946
+				},
+				{
+					"dur": 482,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 3961584
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 3962073
+				},
+				{
+					"dur": 594,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 3961494
+				}
+			]
+		},
+		{
+			"max_us": 1712,
+			"median_us": 1162,
+			"p95_us": 1712,
+			"scenario": "two_long_moving_2048",
+			"spans": [
+				{
+					"dur": 19,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4025835
+				},
+				{
+					"dur": 25,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4025855
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4025888
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4025895
+				},
+				{
+					"dur": 645,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4025900
+				},
+				{
+					"dur": 142,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4026556
+				},
+				{
+					"dur": 823,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4025882
+				},
+				{
+					"dur": 84,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4026728
+				},
+				{
+					"dur": 73,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4026814
+				},
+				{
+					"dur": 1021,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4025881
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4026907
+				},
+				{
+					"dur": 1105,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4025811
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4030596
+				},
+				{
+					"dur": 33,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4030619
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4030663
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4030673
+				},
+				{
+					"dur": 639,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4030679
+				},
+				{
+					"dur": 142,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4031331
+				},
+				{
+					"dur": 826,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4030654
+				},
+				{
+					"dur": 93,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4031510
+				},
+				{
+					"dur": 82,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4031606
+				},
+				{
+					"dur": 1052,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4030654
+				},
+				{
+					"dur": 4,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4031712
+				},
+				{
+					"dur": 1156,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4030567
+				},
+				{
+					"dur": 20,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4033478
+				},
+				{
+					"dur": 29,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4033500
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4033539
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4033548
+				},
+				{
+					"dur": 618,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4033554
+				},
+				{
+					"dur": 141,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4034185
+				},
+				{
+					"dur": 803,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4033531
+				},
+				{
+					"dur": 87,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4034366
+				},
+				{
+					"dur": 78,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4034455
+				},
+				{
+					"dur": 1020,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4033530
+				},
+				{
+					"dur": 4,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4034556
+				},
+				{
+					"dur": 4,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 4034566
+				},
+				{
+					"dur": 1120,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4033452
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4035761
+				},
+				{
+					"dur": 29,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4035786
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4035825
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4035835
+				},
+				{
+					"dur": 597,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4035841
+				},
+				{
+					"dur": 135,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4036450
+				},
+				{
+					"dur": 775,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4035818
+				},
+				{
+					"dur": 90,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4036629
+				},
+				{
+					"dur": 78,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4036722
+				},
+				{
+					"dur": 1001,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4035817
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4036823
+				},
+				{
+					"dur": 1103,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4035731
+				},
+				{
+					"dur": 48,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4040431
+				},
+				{
+					"dur": 56,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4040483
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4040558
+				},
+				{
+					"dur": 4,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4040576
+				},
+				{
+					"dur": 657,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4040585
+				},
+				{
+					"dur": 131,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4041254
+				},
+				{
+					"dur": 849,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4040544
+				},
+				{
+					"dur": 83,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4041420
+				},
+				{
+					"dur": 76,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4041505
+				},
+				{
+					"dur": 1056,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4040543
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4041604
+				},
+				{
+					"dur": 1235,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4040379
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4046360
+				},
+				{
+					"dur": 27,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4046383
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4046420
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4046429
+				},
+				{
+					"dur": 576,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4046434
+				},
+				{
+					"dur": 131,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4047021
+				},
+				{
+					"dur": 746,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4046413
+				},
+				{
+					"dur": 83,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4047187
+				},
+				{
+					"dur": 75,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4047272
+				},
+				{
+					"dur": 952,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4046412
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4047369
+				},
+				{
+					"dur": 1046,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4046334
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4053999
+				},
+				{
+					"dur": 26,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4054022
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4054058
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4054068
+				},
+				{
+					"dur": 649,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4054074
+				},
+				{
+					"dur": 137,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4054742
+				},
+				{
+					"dur": 840,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4054050
+				},
+				{
+					"dur": 90,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4054920
+				},
+				{
+					"dur": 78,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4055013
+				},
+				{
+					"dur": 1060,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4054049
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4055114
+				},
+				{
+					"dur": 1151,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4053975
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4058533
+				},
+				{
+					"dur": 29,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4058557
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4058598
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4058608
+				},
+				{
+					"dur": 624,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4058614
+				},
+				{
+					"dur": 136,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4059252
+				},
+				{
+					"dur": 807,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4058589
+				},
+				{
+					"dur": 98,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4059428
+				},
+				{
+					"dur": 79,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4059529
+				},
+				{
+					"dur": 1039,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4058588
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4059633
+				},
+				{
+					"dur": 1147,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4058500
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4065471
+				},
+				{
+					"dur": 26,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4065494
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4065531
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4065541
+				},
+				{
+					"dur": 628,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4065547
+				},
+				{
+					"dur": 141,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4066188
+				},
+				{
+					"dur": 814,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4065523
+				},
+				{
+					"dur": 99,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4066369
+				},
+				{
+					"dur": 81,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4066471
+				},
+				{
+					"dur": 1050,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4065522
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4066577
+				},
+				{
+					"dur": 4,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 4066590
+				},
+				{
+					"dur": 1149,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4065447
+				},
+				{
+					"dur": 46,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4070760
+				},
+				{
+					"dur": 50,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4070810
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4070871
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4070881
+				},
+				{
+					"dur": 602,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4070887
+				},
+				{
+					"dur": 135,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4071501
+				},
+				{
+					"dur": 781,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4070863
+				},
+				{
+					"dur": 95,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4071673
+				},
+				{
+					"dur": 78,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4071771
+				},
+				{
+					"dur": 1009,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4070862
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4071877
+				},
+				{
+					"dur": 1183,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4070706
+				},
+				{
+					"dur": 49,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4076776
+				},
+				{
+					"dur": 57,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4076832
+				},
+				{
+					"dur": 5,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4076911
+				},
+				{
+					"dur": 6,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4076929
+				},
+				{
+					"dur": 1061,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4076941
+				},
+				{
+					"dur": 136,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4078016
+				},
+				{
+					"dur": 1265,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4076895
+				},
+				{
+					"dur": 99,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4078192
+				},
+				{
+					"dur": 81,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4078293
+				},
+				{
+					"dur": 1507,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4076893
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4078406
+				},
+				{
+					"dur": 1695,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4076724
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4083758
+				},
+				{
+					"dur": 28,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4083783
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4083824
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4083835
+				},
+				{
+					"dur": 647,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4083841
+				},
+				{
+					"dur": 133,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4084502
+				},
+				{
+					"dur": 829,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4083815
+				},
+				{
+					"dur": 103,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4084673
+				},
+				{
+					"dur": 78,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4084778
+				},
+				{
+					"dur": 1062,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4083813
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4084881
+				},
+				{
+					"dur": 1163,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4083730
+				},
+				{
+					"dur": 46,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4088805
+				},
+				{
+					"dur": 58,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4088855
+				},
+				{
+					"dur": 6,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4088935
+				},
+				{
+					"dur": 6,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4088952
+				},
+				{
+					"dur": 1056,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4088964
+				},
+				{
+					"dur": 132,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4090033
+				},
+				{
+					"dur": 1255,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4088919
+				},
+				{
+					"dur": 100,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4090203
+				},
+				{
+					"dur": 76,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4090306
+				},
+				{
+					"dur": 1483,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4088917
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4090406
+				},
+				{
+					"dur": 1663,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4088756
+				},
+				{
+					"dur": 49,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4094998
+				},
+				{
+					"dur": 57,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4095051
+				},
+				{
+					"dur": 6,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4095128
+				},
+				{
+					"dur": 6,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4095149
+				},
+				{
+					"dur": 953,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4095161
+				},
+				{
+					"dur": 132,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4096127
+				},
+				{
+					"dur": 1153,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4095113
+				},
+				{
+					"dur": 95,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4096295
+				},
+				{
+					"dur": 78,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4096392
+				},
+				{
+					"dur": 1376,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4095111
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4096493
+				},
+				{
+					"dur": 1559,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4094945
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4101766
+				},
+				{
+					"dur": 31,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4101789
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4101832
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4101842
+				},
+				{
+					"dur": 595,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4101848
+				},
+				{
+					"dur": 133,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4102456
+				},
+				{
+					"dur": 774,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4101823
+				},
+				{
+					"dur": 96,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4102625
+				},
+				{
+					"dur": 82,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4102723
+				},
+				{
+					"dur": 1002,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4101822
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4102829
+				},
+				{
+					"dur": 4,
+					"name": "consume_fuel",
+					"stack": [
+						"resolve_fixed",
+						"consume_fuel"
+					],
+					"ts": 4102841
+				},
+				{
+					"dur": 1104,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4101743
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4106986
+				},
+				{
+					"dur": 34,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4107012
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4107058
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4107067
+				},
+				{
+					"dur": 603,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4107074
+				},
+				{
+					"dur": 137,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4107689
+				},
+				{
+					"dur": 786,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4107049
+				},
+				{
+					"dur": 108,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4107864
+				},
+				{
+					"dur": 78,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4107974
+				},
+				{
+					"dur": 1023,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4107048
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4108077
+				},
+				{
+					"dur": 1129,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4106959
+				},
+				{
+					"dur": 21,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4114115
+				},
+				{
+					"dur": 28,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4114138
+				},
+				{
+					"dur": 2,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4114177
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4114186
+				},
+				{
+					"dur": 598,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4114192
+				},
+				{
+					"dur": 138,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4114802
+				},
+				{
+					"dur": 779,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4114168
+				},
+				{
+					"dur": 93,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4114974
+				},
+				{
+					"dur": 78,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4115069
+				},
+				{
+					"dur": 998,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4114167
+				},
+				{
+					"dur": 6,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4115171
+				},
+				{
+					"dur": 1091,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4114091
+				},
+				{
+					"dur": 24,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4119146
+				},
+				{
+					"dur": 27,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4119172
+				},
+				{
+					"dur": 7,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4119210
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4119230
+				},
+				{
+					"dur": 602,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4119237
+				},
+				{
+					"dur": 132,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4119851
+				},
+				{
+					"dur": 789,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4119202
+				},
+				{
+					"dur": 95,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4120021
+				},
+				{
+					"dur": 85,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4120119
+				},
+				{
+					"dur": 1025,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4119201
+				},
+				{
+					"dur": 11,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4120236
+				},
+				{
+					"dur": 1137,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4119118
+				},
+				{
+					"dur": 23,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4125215
+				},
+				{
+					"dur": 28,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4125240
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4125286
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4125296
+				},
+				{
+					"dur": 625,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4125302
+				},
+				{
+					"dur": 134,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4125940
+				},
+				{
+					"dur": 811,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4125271
+				},
+				{
+					"dur": 94,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4126113
+				},
+				{
+					"dur": 77,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4126210
+				},
+				{
+					"dur": 1036,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4125270
+				},
+				{
+					"dur": 5,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4126312
+				},
+				{
+					"dur": 1138,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4125185
+				},
+				{
+					"dur": 22,
+					"name": "_refresh_sources",
+					"stack": [
+						"resolve_fixed",
+						"_refresh_sources"
+					],
+					"ts": 4132510
+				},
+				{
+					"dur": 28,
+					"name": "_topology_stamp",
+					"stack": [
+						"resolve_fixed",
+						"_topology_stamp"
+					],
+					"ts": 4132534
+				},
+				{
+					"dur": 3,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4132575
+				},
+				{
+					"dur": 3,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4132586
+				},
+				{
+					"dur": 650,
+					"name": "_wire_pair",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_wire_pair"
+					],
+					"ts": 4132591
+				},
+				{
+					"dur": 134,
+					"name": "_source_contact",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph",
+						"_source_contact"
+					],
+					"ts": 4133253
+				},
+				{
+					"dur": 830,
+					"name": "_contact_graph",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_contact_graph"
+					],
+					"ts": 4132566
+				},
+				{
+					"dur": 109,
+					"name": "_motor_ports",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"_motor_ports"
+					],
+					"ts": 4133427
+				},
+				{
+					"dur": 78,
+					"name": "widest_tree",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit",
+						"widest_tree"
+					],
+					"ts": 4133539
+				},
+				{
+					"dur": 1073,
+					"name": "_rebuild_circuit",
+					"stack": [
+						"resolve_fixed",
+						"_rebuild_circuit"
+					],
+					"ts": 4132564
+				},
+				{
+					"dur": 7,
+					"name": "drive",
+					"stack": [
+						"resolve_fixed",
+						"drive"
+					],
+					"ts": 4133644
+				},
+				{
+					"dur": 1183,
+					"name": "resolve_fixed",
+					"stack": [
+						"resolve_fixed"
+					],
+					"ts": 4132474
+				}
+			]
+		}
+	],
+	"variant": "after"
+}

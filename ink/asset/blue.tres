@@ -7,5 +7,5 @@ script = ExtResource("1")
 display_name = "blue"
 id = 11
 color = Color(0.06, 0.38, 0.95, 1)
-compress_strength = 15.0
-shear_strength = 4.5
+compress_strength = 50.0
+shear_strength = 15.0

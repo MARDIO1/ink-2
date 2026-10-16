@@ -1,0 +1,25 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS straight width 1 neither branches internally nor shorts
+PASS straight width 7 neither branches internally nor shorts
+PASS straight width 17 neither branches internally nor shorts
+PASS thick bend transports energy without self short
+PASS bend energy ledger balances
+PASS thick diagonal staircase transports without self short
+PASS thick fork delivers to all forward branches
+PASS thick fork splits equally by geometric outlet
+PASS fork never duplicates energy
+PASS narrow then wide does not restore lost energy
+PASS head-on both parity phases burn wire 19
+PASS head-on both parity phases burn wire 20
+PASS perpendicular arrivals merge without short
+PASS fractional speed keeps distance remainder
+PASS same-source closed loop shorts and stops
+PASS multiple pixels per update never skip an intermediate cut
+PASS strictly touching independent carriers pass energy
+PASS passing wire also branches through slip ring
+PASS rotated slip ring feeds both local directions without duplicating energy
+PASS fracture preserves packet age and does not bill a second emission
+PASS snapshot grows by live data without repeating simulation
+PASS large fracture readback grows without advancing or dropping directions
+BLUE_ENERGY_RESULT checks=22 failures=0
