@@ -29,3 +29,8 @@
 - [代码审计](doc/代码审计.md)
 - [调研：喷射战士墨水与涟漪](doc/调研-喷射战士墨水与涟漪.md)
 - [像素打字机对话框](ui/dialogue/doc/对话框.md)
+- [蓝图系统](actor/blueprint/doc/blueprints.md)
+- [传送门](actor/portal/doc/portal.md)
+- [安全脱困](actor/player/doc/safe_unstuck.md)
+- [画布邻近交互](actor/canvas/doc/canvas_proximity.md)
+- [编辑撤销](debug/creative/doc/editing_undo.md)

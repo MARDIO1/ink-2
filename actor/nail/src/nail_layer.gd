@@ -5,15 +5,19 @@
 @tool
 extends Node2D
 
-const NAIL_TEXTURE := preload("res://actor/nail/asset/nail.png")
-## 新钉子贴图为 32x32，固定点对齐图片中心。
-const ANCHOR_CENTER := Vector2(16.0, 16.0)
+const Nail := preload("res://actor/nail/src/nail.gd")
+const NAIL_TEXTURE := Nail.NAIL_TEXTURE
+const ANCHOR_CENTER := Nail.ANCHOR_CENTER
 #endregion
 
 
 #region 数据
 ## 钉子像素 -> true。
 var nails := {}
+
+
+func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 
 func add(pixel: Vector2i) -> void:
@@ -38,5 +42,5 @@ func clear() -> void:
 func _draw() -> void:
 	for pixel: Vector2i in nails:
 		#贴图的固定点对准该画布像素的中心，钉子就长在它钉的那个像素上。
-		draw_texture(NAIL_TEXTURE, Vector2(pixel) + Vector2(0.5, 0.5) - ANCHOR_CENTER)
+		draw_texture_rect(NAIL_TEXTURE, Nail.visual_rect(pixel), false)
 #endregion

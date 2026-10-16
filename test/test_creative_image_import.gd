@@ -51,7 +51,7 @@ func _run() -> void:
 	_check("existing image remains available", image != null and image.global_position == Vector2(98, 198)
 		and image.source_format == "png")
 	var surface: CanvasItem = level.get_node("SmallCanvas/CanvasSurface")
-	var ink: CanvasItem = level.get_node("SmallCanvas/CanvasSurface/BlackSprite")
+	var ink: CanvasItem = level.get_node("SmallCanvas/CanvasSurface/BlackTiles")
 	var player_visual: CanvasItem = level.get_node("Player/Visual")
 	_check("paper < imported image < ink < player", surface.z_index == -2
 		and not surface.z_as_relative and image.z_index == -1 and not image.z_as_relative

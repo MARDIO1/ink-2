@@ -5,11 +5,15 @@
 @tool
 extends Area2D
 
-signal selection_delete_requested(rect: Rect2i)
+signal selection_move_requested(rect: Rect2i, offset: Vector2i, mask: Dictionary)
+signal ink_shortage(required: int, available: int)
 
 signal edit_committed
 
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
+const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
+const GearTool := preload("res://actor/canvas/src/gear_tool.gd")
+var gear_tool: Node2D
 #endregion
 
 #region 初始化
@@ -30,6 +34,10 @@ var _dirty_hi := Vector2i(-(1 << 30), -(1 << 30))
 var _rod_drawing := false
 var _rail_drawing := false
 func _ready() -> void:
+	gear_tool = GearTool.new()
+	gear_tool.name = "GearTool"
+	gear_tool.z_index = 12
+	add_child(gear_tool)
 	black_tiles.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_resize()
@@ -87,6 +95,9 @@ func _draw() -> void:
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
+	var blueprints := get_node_or_null("/root/Blueprints")
+	if blueprints != null and blueprints.blocks_world_event(event):
+		return
 	if event is InputEventMouseButton:
 		# 工具栏是屏幕固定 GUI，但本节点使用全局输入；若不主动拦截，按钮点击会同时
 		# 穿透到背后的世界画布。松开事件仍要放行，用来正确结束已开始的笔画/形状。
@@ -100,6 +111,14 @@ func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	_poll_snapshot()
+	if gear_tool != null and gear_tool.dragging:
+		gear_tool.update_preview(_mouse_point())
+		return
+	var low_now: bool = not ink_free and get_parent().active \
+	and _ink_room(ink_material_id()) < MIN_PAINT_INK
+	if low_now and not _low_ink_announced:
+		_warn_ink_shortage(MIN_PAINT_INK)
+	_low_ink_announced = low_now
 	var blue = blue_rule()
 	if blue != null and blue.drawing != null and blue.drawing.source_surface == self:
 		blue.extend(self, _mouse_point())
@@ -109,7 +128,8 @@ func _process(_delta: float) -> void:
 		return
 	if _rod_drawing:
 		rod_layer.extend(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
-		return
+		if tool != Tool.ERASER:
+			return
 	if _rail_drawing:
 		rod_layer.extend_rail(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
 		return
@@ -119,6 +139,8 @@ func _process(_delta: float) -> void:
 		return
 	if _selecting:
 		_update_selection()
+	elif _selection_dragging:
+		_update_selection_drag()
 	elif _shaping:
 		_update_shape()
 	elif _painting:
@@ -126,34 +148,44 @@ func _process(_delta: float) -> void:
 
 ## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；
 ## 直线按拖拽起终点绘制；墨水桶灌满封闭空区。LINE 追加在末尾以保持旧地图工具枚举值兼容。
-enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE }
+enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE, SELECT_CIRCLE, GEAR, GEAR_8 }
 
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
 var _last_point := Vector2.ZERO
 var _undo_steps: Array[Dictionary] = []
+var _redo_steps: Array[Dictionary] = []
 var _undo_capture := {}
 var _undo_capturing := false
 var _blue_undo := {}
 const MAX_UNDO_STEPS := 64
-## 框选删除只负责交互与预览；真正删除由 Canvas 完成，因为固化实体属于 PixelWorld。
+## 框选只负责交互；移动和删除交给 Canvas，以便和固化实体共用撤销事务。
 var _selecting := false
 var _selection_origin := Vector2.ZERO
+var _selected_rect := Rect2i()
+var _selected_circle := false
+var _selection_dragging := false
+## Ctrl+左拖只移动选框，不搬动框内任何图层。
+var _selection_frame_only_drag := false
+var _selection_drag_origin := Vector2.ZERO
+var _selection_drag_start := Rect2i()
 @onready var selection_overlay: Node2D = $SelectionOverlay
-# 墨水桶一次保留的最大像素数。允许灌到画布边缘，但不能让误点把超大地图
-# 整张扫描进内存而卡住编辑器。
-const MAX_BUCKET_PIXELS := 250000
 ## 形状拖拽中：起点、预览期间被改过的像素（原色）、本次新增的墨水量。
 var _shaping := false
 var _shape_origin := Vector2.ZERO
 var _shape_saved := {}
 var _shape_delta := 0
+var _shape_shortage_notified := false
+var _paint_shortage_notified := false
+var _low_ink_announced := false
+const MIN_PAINT_INK := 1000
 ## 当前工具；切换时中断正在进行的笔画或形状。
 @export var tool: Tool = Tool.HAND:
 	set(value):
+		if gear_tool != null:
+			gear_tool.cancel()
 		if _rod_drawing:
-			rod_layer.finish(rod_layer.last_point)
-			_rod_drawing = false
+			_finish_rod_stroke(rod_layer.last_point)
 		if _rail_drawing:
 			rod_layer.cancel_rail()
 			_rail_drawing = false
@@ -161,10 +193,11 @@ var _shape_delta := 0
 			var yellow = yellow_rule()
 			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
 				yellow.cancel()
-		if _selecting:
+		if _selecting or _selection_dragging or has_selection():
 			_cancel_selection()
 		if _shaping:
 			_revert_shape()
+			_flush_ink()
 			_cancel_undo_step()
 		elif _painting:
 			_commit_undo_step()
@@ -178,14 +211,16 @@ var _shape_delta := 0
 	set(value):
 		if selected_ink != value and is_node_ready():
 			if _rod_drawing:
-				rod_layer.finish(rod_layer.last_point)
-				_rod_drawing = false
+				_finish_rod_stroke(rod_layer.last_point)
 			if _rail_drawing:
 				rod_layer.cancel_rail()
 				_rail_drawing = false
 			var yellow = yellow_rule()
 			if yellow != null and yellow.drawing != null and yellow.drawing.source_surface == self:
 				yellow.cancel()
+		if selected_ink != value:
+			_low_ink_announced = false
+			_paint_shortage_notified = false
 		if is_node_ready() and selected_ink != value:
 			_finish_blue_edit()
 		selected_ink = value
@@ -207,10 +242,23 @@ func nail_color() -> Color:
 
 
 func _is_nail(color: Color) -> bool:
-	return color == nail_color()
+	return InkPalette.material_id_at_color(color) == InkPalette.nail_material_id()
 
 
 func _on_mouse_button(button: InputEventMouseButton) -> void:
+	if tool in [Tool.GEAR, Tool.GEAR_8]:
+		if button.button_index == MOUSE_BUTTON_LEFT:
+			if button.pressed and _inside(_mouse_point()):
+				gear_tool.begin(_mouse_point(), 8 if tool == Tool.GEAR_8 else 12)
+			elif not button.pressed:
+				gear_tool.finish(_mouse_point())
+		return
+	if button.pressed and button.button_index == MOUSE_BUTTON_LEFT \
+	and tool in [Tool.BRUSH, Tool.NAIL, Tool.RECT, Tool.CIRCLE, Tool.LINE, Tool.BUCKET] \
+	and _inside(_mouse_point()):
+		_paint_shortage_notified = false
+		if not _can_start_paint():
+			return
 	var blue = blue_rule()
 	if button.button_index == MOUSE_BUTTON_LEFT and blue != null:
 		if not button.pressed and blue_layer.drawing:
@@ -229,9 +277,9 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	var yellow = yellow_rule()
 	if button.button_index == MOUSE_BUTTON_LEFT and yellow != null:
 		if not button.pressed and _rod_drawing:
-			rod_layer.finish(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
-			_rod_drawing = false
-			return
+			_finish_rod_stroke(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
+			if tool != Tool.ERASER:
+				return
 		if not button.pressed and _rail_drawing:
 			rod_layer.finish_rail(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
 			_rail_drawing = false
@@ -239,12 +287,15 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 		if not button.pressed and yellow.drawing != null and yellow.drawing.source_surface == self:
 			yellow.finish(self, _mouse_point())
 			return
-		if button.pressed and ink_material_id() == InkPalette.YELLOW.id:
-			if tool == Tool.ERASER and _inside(_mouse_point()) and rod_layer.erase_anchor(_mouse_point()):
+		if button.pressed and tool == Tool.ERASER and _inside(_mouse_point()):
+			if ink_material_id() == InkPalette.YELLOW.id and rod_layer.erase_anchor(_mouse_point()):
 				return
-			if tool in [Tool.BRUSH, Tool.ERASER] and _inside(_mouse_point()):
+			_rod_drawing = true
+			rod_layer.begin(_mouse_point(), true)
+		if button.pressed and ink_material_id() == InkPalette.YELLOW.id:
+			if tool == Tool.BRUSH and _inside(_mouse_point()):
 				_rod_drawing = true
-				rod_layer.begin(_mouse_point(), tool == Tool.ERASER)
+				rod_layer.begin(_mouse_point())
 				return
 			if tool == Tool.LINE:
 				yellow.begin(self, _mouse_point())
@@ -265,6 +316,8 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	if button.button_index == MOUSE_BUTTON_MIDDLE:
 		if ink_material_id() == InkPalette.YELLOW.id:
 			return
+		if button.pressed and not _can_start_paint():
+			return
 		_painting = false
 		if button.pressed:
 			_begin_undo_step()
@@ -274,6 +327,9 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	if button.button_index != MOUSE_BUTTON_LEFT:
 		return
 	if not button.pressed:
+		if _selection_dragging:
+			_finish_selection_drag()
+			return
 		if _selecting:
 			_finish_selection()
 			return
@@ -287,7 +343,14 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	var point := _mouse_point()
 	if not _inside(point):
 		return
-	if tool == Tool.SELECT_DELETE:
+	if tool in [Tool.SELECT_DELETE, Tool.SELECT_CIRCLE]:
+		if has_selection() and _selection_contains(Vector2i(point.floor())):
+			_selection_dragging = true
+			_selection_frame_only_drag = button.ctrl_pressed
+			_selection_drag_origin = point
+			_selection_drag_start = _selected_rect
+			return
+		_cancel_selection()
 		_selecting = true
 		_selection_origin = point
 		_update_selection()
@@ -302,6 +365,7 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	if tool == Tool.RECT or tool == Tool.CIRCLE or tool == Tool.LINE:
 		_begin_undo_step()
 		_shaping = true
+		_shape_shortage_notified = false
 		_shape_origin = point
 		_update_shape()
 		return
@@ -313,6 +377,17 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	_paint_color = color
 	_last_point = point
 	_stroke(point, point, color)
+
+
+func _finish_rod_stroke(point: Vector2) -> void:
+	if not _rod_drawing:
+		return
+	var merge_with_eraser := tool == Tool.ERASER and _painting
+	var rod_step: Dictionary = rod_layer.finish(point, not merge_with_eraser)
+	_rod_drawing = false
+	if merge_with_eraser:
+		_commit_undo_step(rod_step)
+		_painting = false
 
 
 ## 当前工具左键落笔的颜色；null 表示这个工具不落笔。
@@ -347,8 +422,11 @@ func _continue_stroke() -> void:
 	var point := _mouse_point()
 	#移出画布时停笔，避免从外侧拖回时突然补一条线
 	if not _inside(point):
+		if tool == Tool.ERASER and _rod_drawing:
+			_finish_rod_stroke(_last_point)
+		else:
+			_commit_undo_step()
 		_painting = false
-		_commit_undo_step()
 		return
 	_stroke(_last_point, point, _paint_color)
 	_last_point = point
@@ -375,24 +453,102 @@ func _selection_rect(from: Vector2, to: Vector2) -> Rect2i:
 	return Rect2i(position, first.max(last) - position + Vector2i.ONE)
 
 
+func _circle_selection_rect(from: Vector2, to: Vector2) -> Rect2i:
+	var center := Vector2i(from.floor()).clamp(Vector2i.ZERO, canvas_size - Vector2i.ONE)
+	var edge := Vector2i(to.floor()).clamp(Vector2i.ZERO, canvas_size - Vector2i.ONE)
+	var radius := int(floor(Vector2(center).distance_to(Vector2(edge))))
+	# 保持完整圆形在画布内；奇数直径使按下点始终是中心像素。
+	var canvas_radius := mini(mini(center.x, center.y),
+		mini(canvas_size.x - center.x - 1, canvas_size.y - center.y - 1))
+	radius = mini(radius, canvas_radius)
+	return Rect2i(center - Vector2i.ONE * radius, Vector2i.ONE * (radius * 2 + 1))
+
+
+func _current_selection_rect(point: Vector2) -> Rect2i:
+	if tool == Tool.SELECT_CIRCLE:
+		return _circle_selection_rect(_selection_origin, point)
+	return _selection_rect(_selection_origin, point)
+
+
 func _update_selection() -> void:
 	if not _selecting:
 		return
 	var point := _mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2(0.001, 0.001))
-	selection_overlay.set_selection(_selection_rect(_selection_origin, point))
+	selection_overlay.set_selection(_current_selection_rect(point), tool == Tool.SELECT_CIRCLE)
 
 
 func _finish_selection() -> void:
 	if not _selecting:
 		return
 	var point := _mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2(0.001, 0.001))
-	var rect := _selection_rect(_selection_origin, point)
+	_selected_rect = _current_selection_rect(point)
+	_selected_circle = tool == Tool.SELECT_CIRCLE
+	_selecting = false
+	selection_overlay.set_selection(_selected_rect, _selected_circle)
+
+
+func _selection_contains(point: Vector2i) -> bool:
+	if not _selected_rect.has_point(point):
+		return false
+	if not _selected_circle:
+		return true
+	return SelectionMask.contains(selection_mask(), point)
+
+
+func selection_mask() -> Dictionary:
+	if not _selected_circle or not has_selection():
+		return {}
+	return {"circle_rect": _selected_rect}
+
+
+func _selection_offset() -> Vector2i:
+	var delta := Vector2i((_mouse_point() - _selection_drag_origin).round())
+	return Vector2i(
+		clampi(delta.x, -_selection_drag_start.position.x,
+			canvas_size.x - _selection_drag_start.end.x),
+		clampi(delta.y, -_selection_drag_start.position.y,
+			canvas_size.y - _selection_drag_start.end.y))
+
+
+func _update_selection_drag() -> void:
+	selection_overlay.set_selection(Rect2i(
+		_selection_drag_start.position + _selection_offset(), _selection_drag_start.size), _selected_circle)
+
+
+func _finish_selection_drag() -> void:
+	if not _selection_dragging:
+		return
+	var offset := _selection_offset()
+	_selection_dragging = false
+	_complete_selection_drag(offset)
+
+
+func _complete_selection_drag(offset: Vector2i) -> void:
+	if offset != Vector2i.ZERO and not _selection_frame_only_drag:
+		selection_move_requested.emit(_selection_drag_start, offset, selection_mask())
+	_selected_rect = Rect2i(_selection_drag_start.position + offset, _selection_drag_start.size)
+	_selection_frame_only_drag = false
+	selection_overlay.set_selection(_selected_rect, _selected_circle)
+
+
+func has_selection() -> bool:
+	return _selected_rect.has_area()
+
+
+func selection_rect() -> Rect2i:
+	return _selected_rect
+
+
+func clear_selected_area() -> void:
 	_cancel_selection()
-	selection_delete_requested.emit(rect)
 
 
 func _cancel_selection() -> void:
 	_selecting = false
+	_selection_dragging = false
+	_selection_frame_only_drag = false
+	_selected_rect = Rect2i()
+	_selected_circle = false
 	if is_instance_valid(selection_overlay):
 		selection_overlay.clear_selection()
 #endregion
@@ -605,6 +761,8 @@ func clear(refund := true) -> void:
 	if refund and blue_rule() != null:
 		blue_rule().clear_drafts(self)
 	blue_layer.clear()
+	if gear_tool != null:
+		gear_tool.cancel()
 	var yellow = yellow_rule()
 	if refund and yellow != null:
 		yellow.clear_drafts(self)
@@ -629,9 +787,13 @@ func write_pixel(pixel: Vector2i, color: Color) -> bool:
 	if pixel.x < 0 or pixel.y < 0 or pixel.x >= canvas_size.x or pixel.y >= canvas_size.y:
 		return false
 	if InkPalette.material_id_at_color(color) == InkPalette.YELLOW.id:
-		var health = _health_node()
-		if health != null and not ink_free:
-			health.add(InkPalette.YELLOW.id, 1)
+		if ink_free:
+			# 地图编辑器墨化：黄墨回到独立图层，下一次固化仍保持黄墨机制。
+			rod_layer.pixels.set_pixelv(pixel, color)
+		else:
+			var health = _health_node()
+			if health != null:
+				health.add(InkPalette.YELLOW.id, 1)
 		return true
 	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
@@ -648,6 +810,7 @@ func write_pixel(pixel: Vector2i, color: Color) -> bool:
 ## 把 CPU 像素缓冲刷到贴图；批量写入后调用一次。
 func refresh() -> void:
 	_flush_texture()
+	rod_layer.refresh()
 	_flush_ink()
 
 
@@ -656,7 +819,7 @@ func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 	#画之前先看瓶里还剩多少 px；擦除不设上限，钉子不花墨水。
 	var room := 1 << 30
 	if color.a > 0.5 and not _is_nail(color):
-		room = _ink_room(ink_material_id())
+		room = _drawable_ink_room(ink_material_id())
 	var delta := 0
 	var steps := maxi(1, int(ceil(from.distance_to(to))))
 	for i in range(steps + 1):
@@ -664,6 +827,9 @@ func _stroke(from: Vector2, to: Vector2, color: Color) -> void:
 	_flush_texture()
 	blue_layer.flush_display()
 	_flush_ink()
+	if color.a > 0.5 and not _is_nail(color) \
+	and _ink_room(ink_material_id()) < MIN_PAINT_INK:
+		_warn_ink_shortage(MIN_PAINT_INK)
 
 
 ## 笔触直径，单位 px；圆形笔刷，绘制和擦除使用同一尺寸。
@@ -781,27 +947,32 @@ func material_at(x: int, y: int) -> int:
 
 
 #region 矩形 / 圆形 / 直线
-#拖拽预览：每动一次先把上一帧改过的像素还原，再按新位置重画一圈。
-#松手才记账，所以拖拽过程不会反复扣墨水。
+#拖拽预览：每动一次先把上一帧改过的像素还原、退还墨水，再按新位置重画一圈。
 func _update_shape() -> void:
+	_preview_shape(_mouse_point())
+
+
+func _preview_shape(to_point: Vector2) -> void:
 	_revert_shape()
-	var to: Vector2 = _mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size))
+	# 上一帧预览已从像素中撤回，必须先把对应墨水退回瓶子。
+	# 否则下面读到的是“上一帧已扣款”的余额，矩形就会隔帧缺边。
+	_flush_ink()
+	var to: Vector2 = to_point.clamp(Vector2.ZERO, Vector2(canvas_size))
 	var pixels := _shape_pixels(_shape_origin, to)
-	var color := ink_color()
-	var room := _ink_room(ink_material_id())
-	var delta := 0
+	var room := _drawable_ink_room(ink_material_id())
+	var needed := 0
 	for pixel: Vector2i in pixels:
-		var prior := black_image.get_pixelv(pixel)
-		if prior == color:
-			continue                      # 已经是这个颜色：不用记也不用重画
-		var had: bool = prior.a > 0.5
-		if not had and delta >= room:
-			continue                      # 墨水不够：剩下的格子不落笔
-		_shape_saved[pixel] = prior
-		_set_pixel_raw(pixel, color)
-		if not had:
-			delta += 1
-	_shape_delta = delta
+		if black_image.get_pixelv(pixel).a <= 0.5:
+			needed += 1
+	if needed > room:
+		if not _shape_shortage_notified:
+			_warn_ink_shortage(needed + MIN_PAINT_INK - 1)
+			_shape_shortage_notified = true
+		return                            # 墨水不够时不留下单边残缺形状
+	for pixel: Vector2i in pixels:
+		_shape_saved[pixel] = black_image.get_pixelv(pixel)
+		_set_pixel_raw(pixel, ink_color())
+	_shape_delta = needed
 	_flush_texture()
 	_flush_ink()
 
@@ -907,14 +1078,16 @@ func _bucket_fill(point: Vector2) -> bool:
 	if not _inside(start):
 		return false
 	var data := black_image.get_data()
+	var rod_data: PackedByteArray = rod_layer.pixels.get_data()
 	var seen := PackedByteArray()
 	seen.resize(w * h)
 	var stack := PackedInt32Array()
 	var targets := PackedInt32Array()
-	var room := mini(_ink_room(ink_material_id()), MAX_BUCKET_PIXELS)
+	var material_id: int = ink_material_id()
+	var room := _drawable_ink_room(material_id)
 
 	var first := start.y * w + start.x
-	if data[first * 4 + 3] > 127:
+	if data[first * 4 + 3] > 127 or rod_data[first * 4 + 3] > 127:
 		return false                  # 点在实心像素上：什么都不做
 	seen[first] = 1
 	stack.append(first)
@@ -925,31 +1098,39 @@ func _bucket_fill(point: Vector2) -> bool:
 		targets.append(idx)
 		var x := idx % w
 		var y := idx / w
+		if x == 0 or x == w - 1 or y == 0 or y == h - 1:
+			return false                  # 连到纸张边缘，说明不是封闭图形
 		if targets.size() > room:
-			if room == MAX_BUCKET_PIXELS:
-				print("墨水桶：区域过大（上限 %d px），请先用边框分隔" % MAX_BUCKET_PIXELS)
-			else:
-				print("墨水不足：这一片灌不下（瓶里 %d px）" % room)
+			print("墨水不足：这一片灌不下（瓶里 %d px）" % _ink_room(material_id))
+			_warn_ink_shortage(targets.size() + MIN_PAINT_INK - 1)
 			return false
-		if x > 0 and seen[idx - 1] == 0 and data[(idx - 1) * 4 + 3] <= 127:
+		if x > 0 and seen[idx - 1] == 0 and data[(idx - 1) * 4 + 3] <= 127 \
+		and rod_data[(idx - 1) * 4 + 3] <= 127:
 			seen[idx - 1] = 1
 			stack.append(idx - 1)
-		if x + 1 < w and seen[idx + 1] == 0 and data[(idx + 1) * 4 + 3] <= 127:
+		if x + 1 < w and seen[idx + 1] == 0 and data[(idx + 1) * 4 + 3] <= 127 \
+		and rod_data[(idx + 1) * 4 + 3] <= 127:
 			seen[idx + 1] = 1
 			stack.append(idx + 1)
-		if y > 0 and seen[idx - w] == 0 and data[(idx - w) * 4 + 3] <= 127:
+		if y > 0 and seen[idx - w] == 0 and data[(idx - w) * 4 + 3] <= 127 \
+		and rod_data[(idx - w) * 4 + 3] <= 127:
 			seen[idx - w] = 1
 			stack.append(idx - w)
-		if y + 1 < h and seen[idx + w] == 0 and data[(idx + w) * 4 + 3] <= 127:
+		if y + 1 < h and seen[idx + w] == 0 and data[(idx + w) * 4 + 3] <= 127 \
+		and rod_data[(idx + w) * 4 + 3] <= 127:
 			seen[idx + w] = 1
 			stack.append(idx + w)
 
+	# 整块空区统一从透明变为同一颜色；保存原图字节比逐像素 Dictionary
+	# 撤销记录省得多，大图填充不会因为历史记录而占用数百 MB。
+	if _undo_capturing:
+		_undo_capture = {"bucket_before": data.duplicate(),
+			"bucket_material": material_id, "bucket_count": targets.size()}
 	var pixel := PackedByteArray([
 		int(ink_color().r * 255.0), int(ink_color().g * 255.0),
 		int(ink_color().b * 255.0), 255])
 	for idx: int in targets:
 		var target := Vector2i(idx % w, idx / w)
-		_track_undo_pixel(target)
 		_mark_dirty(target)
 		var at := idx * 4
 		data[at] = pixel[0]
@@ -967,7 +1148,7 @@ func _bucket_fill(point: Vector2) -> bool:
 #region 撤销
 ## 删除框内当前画布像素。调用方可先把固化实体的框内像素采样回来，
 ## 两部分会作为同一个撤销步骤被 Ctrl+Z 恢复。
-func erase_rect(rect: Rect2i) -> bool:
+func erase_rect(rect: Rect2i, mask: Dictionary = {}) -> bool:
 	var clipped := rect.intersection(Rect2i(Vector2i.ZERO, canvas_size))
 	if not clipped.has_area():
 		return false
@@ -978,10 +1159,10 @@ func erase_rect(rect: Rect2i) -> bool:
 	for key in _tile_keys(clipped):
 		var box := _tile_content(key).intersection(clipped)
 		if box.has_area():
-			changed = _erase_box(box) or changed
+			changed = _erase_box(box, mask) or changed
 	# 蓝线不在 black_image 的瓦片内容框里；单独处理剩余的纯蓝像素。
 	for pixel: Vector2i in blue_layer.mask.keys():
-		if clipped.has_point(pixel):
+		if clipped.has_point(pixel) and SelectionMask.contains(mask, pixel):
 			_set_pixel_raw(pixel, Color.TRANSPARENT)
 			changed = true
 	if changed:
@@ -993,20 +1174,49 @@ func erase_rect(rect: Rect2i) -> bool:
 
 ## 把一个矩形里的有墨格子擦成透明。先按原始字节挑出有墨的格子再擦：
 ## 框里绝大多数格子是空的，逐格 get_pixelv 白付一次引擎调用（600x400 实测 18.9 ms）。
-func _erase_box(box: Rect2i) -> bool:
+func _erase_box(box: Rect2i, mask: Dictionary = {}) -> bool:
 	var width := canvas_size.x
 	var data := black_image.get_data()
 	var targets := PackedInt32Array()
 	for y in range(box.position.y, box.end.y):
 		var row := y * width
 		for x in range(box.position.x, box.end.x):
-			if data[(row + x) * 4 + 3] > 127:
+			if data[(row + x) * 4 + 3] > 127 and SelectionMask.contains(mask, Vector2i(x, y)):
 				targets.append(row + x)
 	if targets.is_empty():
 		return false
 	data = PackedByteArray()          # 放开引用，下面的写入才不触发整图写时复制
 	for index in targets:
 		_set_pixel_raw(Vector2i(index % width, index / width), Color.TRANSPARENT)
+	return true
+
+
+## 剪切并平移选区的普通墨水和钉子；先缓存源像素，重叠拖动不会擦坏内容。
+func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> bool:
+	if offset == Vector2i.ZERO or rect.size.x <= 0 or rect.size.y <= 0:
+		return false
+	if rect.position.x < 0 or rect.position.y < 0 or rect.end.x > canvas_size.x \
+	or rect.end.y > canvas_size.y or rect.position.x + offset.x < 0 \
+	or rect.position.y + offset.y < 0 or rect.end.x + offset.x > canvas_size.x \
+	or rect.end.y + offset.y > canvas_size.y:
+		return false
+	var source := {}
+	for y in range(rect.position.y, rect.end.y):
+		for x in range(rect.position.x, rect.end.x):
+			var point := Vector2i(x, y)
+			if not SelectionMask.contains(mask, point):
+				continue
+			var color := black_image.get_pixelv(point)
+			if color.a > 0.5:
+				source[point] = color
+	if source.is_empty():
+		return false
+	for point: Vector2i in source:
+		_set_pixel_raw(point, Color.TRANSPARENT)
+	for point: Vector2i in source:
+		_set_pixel_raw(point + offset, source[point])
+	_flush_texture()
+	_flush_ink()
 	return true
 
 
@@ -1023,22 +1233,28 @@ func _track_undo_pixel(pixel: Vector2i) -> void:
 	_undo_capture[pixel] = black_image.get_pixelv(pixel)
 
 
-func _commit_undo_step() -> void:
+func _commit_undo_step(rod_step: Dictionary = {}) -> void:
 	if not _undo_capturing:
 		return
 	_undo_capturing = false
 	if not _blue_undo.is_empty() and (blue_layer.cells != _blue_undo.cells or ink_px_of(InkPalette.BLUE.id) != _blue_undo.ledger or (blue_rule() != null and blue_rule().draft_data(self).size() != _blue_undo.motors.size())):
 		_undo_capture["blue"] = _blue_undo
 	_blue_undo = {}
-	if _undo_capture.is_empty():
+	if _undo_capture.is_empty() and rod_step.is_empty():
 		_undo_capture = {}
 		return
-	push_undo_step(_undo_capture)
+	if rod_step.is_empty():
+		push_undo_step(_undo_capture)
+	else:
+		if not _undo_capture.is_empty():
+			rod_step["black_pixels"] = _undo_capture.duplicate()
+		push_undo_step(rod_step)
 	_undo_capture = {}
 
 
 func push_undo_step(step: Dictionary) -> void:
 	_undo_steps.append(step)
+	_redo_steps.clear()
 	if _undo_steps.size() > MAX_UNDO_STEPS:
 		_undo_steps.pop_front()
 	edit_committed.emit()
@@ -1051,19 +1267,33 @@ func _cancel_undo_step() -> void:
 
 ## 撤销最近一次完整的画笔、橡皮、形状、墨水桶或钉子操作。
 func undo_last_edit() -> bool:
+	if gear_tool != null:
+		gear_tool.cancel()
 	if _undo_steps.is_empty():
 		return false
+	_cancel_selection()
 	if _shaping:
 		_revert_shape()
+		_flush_ink()
 	_shaping = false
 	_painting = false
 	_cancel_undo_step()
 	var step: Dictionary = _undo_steps.pop_back()
+	var after := _capture_redo_state(step)
+	if step.has("bucket_before"):
+		_restore_bucket_image(step.bucket_before, step.bucket_material, -step.bucket_count)
+		_redo_steps.append({"undo": step, "after": after})
+		return true
 	if step.has("rod_pixels"):
 		rod_layer.undo(step)
+		if step.has("black_pixels"):
+			_restore_black_pixels(step.black_pixels)
+		_redo_steps.append({"undo": step, "after": after})
 		return true
 	if step.has("transaction"):
 		get_parent().History.restore(get_parent(), step.transaction)
+		_finish_redo_capture(after)
+		_redo_steps.append({"undo": step, "after": after})
 		return true
 	if step.has("yellow"):
 		var yellow = yellow_rule()
@@ -1075,20 +1305,127 @@ func undo_last_edit() -> bool:
 						stroke = candidate
 						break
 			yellow.undo(stroke, self)
+		_finish_redo_capture(after)
+		_redo_steps.append({"undo": step, "after": after})
 		return true
 	var blue_saved: Dictionary = step.get("blue", {})
-	step.erase("blue")
-	for pixel: Vector2i in step:
-		_set_pixel_raw(pixel, step[pixel])
+	for pixel in step:
+		if pixel is Vector2i:
+			_set_pixel_raw(pixel, step[pixel])
 	if not blue_saved.is_empty():
-		blue_layer.cells = blue_saved.cells
-		blue_layer.rebuild()
-		if blue_rule() != null:
-			blue_rule().restore(self, blue_saved.motors)
-		_bump_ink(InkPalette.BLUE.id, int(blue_saved.ledger) - ink_px_of(InkPalette.BLUE.id))
+		_restore_blue_edit(blue_saved)
 	_flush_texture()
 	_flush_ink()
+	_redo_steps.append({"undo": step, "after": after})
 	return true
+
+
+## Ctrl+Y：回到撤销前的状态，并保留同一操作供再次 Ctrl+Z。
+func redo_last_edit() -> bool:
+	if gear_tool != null:
+		gear_tool.cancel()
+	if _redo_steps.is_empty():
+		return false
+	_cancel_selection()
+	var entry: Dictionary = _redo_steps.pop_back()
+	var step: Dictionary = entry.undo
+	var after: Dictionary = entry.after
+	if after.has("transaction"):
+		get_parent().History.restore(get_parent(), after.transaction)
+	elif after.has("bucket_after"):
+		_restore_bucket_image(after.bucket_after, after.bucket_material, after.bucket_count)
+	elif after.has("rod_pixels"):
+		rod_layer.undo(after)
+		if after.has("black_pixels"):
+			_restore_black_pixels(after.black_pixels)
+	else:
+		for pixel in after:
+			if pixel is Vector2i:
+				_set_pixel_raw(pixel, after[pixel])
+		if after.has("blue"):
+			_restore_blue_edit(after.blue)
+		_flush_texture()
+		_flush_ink()
+	_undo_steps.append(step)
+	return true
+
+
+func _capture_redo_state(step: Dictionary) -> Dictionary:
+	if step.has("bucket_before"):
+		return {"bucket_after": black_image.get_data(),
+			"bucket_material": step.bucket_material, "bucket_count": step.bucket_count}
+	if step.has("transaction") or step.has("yellow"):
+		var bounds: Rect2 = step.get("transaction", {}).get("bounds", Rect2())
+		var state: Dictionary = get_parent().History.capture(get_parent(), step.has("transaction"), bounds)
+		if bounds.has_area():
+			state["bounds"] = bounds
+		if step.has("transaction"):
+			for id in step.transaction.remove_ids:
+				state.remove_ids[id] = true
+		return {"transaction": state}
+	if step.has("rod_pixels"):
+		var current := {"rod_pixels": {}, "rod_anchors": rod_layer.anchor_points.duplicate(),
+			"rod_delta": -int(step.rod_delta)}
+		for cell: Vector2i in step.rod_pixels:
+			current.rod_pixels[cell] = rod_layer.pixels.get_pixelv(cell).a > 0.5
+		if step.has("rod_springs"):
+			current.rod_springs = yellow_rule().draft_data(self)
+		if step.has("black_pixels"):
+			current.black_pixels = {}
+			for cell in step.black_pixels:
+				if cell is Vector2i:
+					current.black_pixels[cell] = black_image.get_pixelv(cell)
+			if step.black_pixels.has("blue"):
+				current.black_pixels["blue"] = _capture_blue_edit()
+		return current
+	var current := {}
+	for pixel in step:
+		if pixel is Vector2i:
+			current[pixel] = black_image.get_pixelv(pixel)
+	if step.has("blue"):
+		current["blue"] = _capture_blue_edit()
+	return current
+
+
+func _capture_blue_edit() -> Dictionary:
+	return {"cells": blue_layer.cells.duplicate(),
+		"motors": blue_rule().capture(self) if blue_rule() != null else [],
+		"ledger": ink_px_of(InkPalette.BLUE.id)}
+
+
+func _restore_blue_edit(state: Dictionary) -> void:
+	blue_layer.cells = state.cells
+	blue_layer.rebuild()
+	if blue_rule() != null:
+		blue_rule().restore(self, state.motors)
+	_bump_ink(InkPalette.BLUE.id, int(state.ledger) - ink_px_of(InkPalette.BLUE.id))
+
+
+func _restore_bucket_image(data: PackedByteArray, material_id: int, count: int) -> void:
+	black_image.set_data(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8, data)
+	rebuild_ink_tiles()
+	_bump_ink(material_id, count)
+	_flush_ink()
+
+
+func _restore_black_pixels(pixels: Dictionary) -> void:
+	for cell in pixels:
+		if cell is Vector2i:
+			_set_pixel_raw(cell, pixels[cell])
+	if pixels.has("blue"):
+		_restore_blue_edit(pixels.blue)
+	_flush_texture()
+	_flush_ink()
+
+
+func _finish_redo_capture(after: Dictionary) -> void:
+	if not after.has("transaction"):
+		return
+	var state: Dictionary = after.transaction
+	var health = _health_node()
+	if health != null:
+		for id in state.health:
+			state.health_delta[id] = state.health[id] - health.ink_of(id)
 #endregion
 
 
@@ -1124,6 +1461,27 @@ func _ink_room(material_id: int) -> int:
 	if health == null:
 		return 1 << 30
 	return (1 << 30) if ink_free else maxi(0, int(health.ink_of(material_id)))
+
+
+## 作画最多消耗到 999 px；达到门槛后下一笔会被拒绝。
+func _drawable_ink_room(material_id: int) -> int:
+	if ink_free:
+		return 1 << 30
+	return maxi(0, _ink_room(material_id) - MIN_PAINT_INK + 1)
+
+
+func _can_start_paint() -> bool:
+	if ink_free or _ink_room(ink_material_id()) >= MIN_PAINT_INK:
+		return true
+	_warn_ink_shortage(MIN_PAINT_INK)
+	return false
+
+
+func _warn_ink_shortage(required: int) -> void:
+	if ink_free or _paint_shortage_notified:
+		return
+	_paint_shortage_notified = true
+	ink_shortage.emit(required, _ink_room(ink_material_id()))
 
 
 #惰性解析墨水源：Player 可能比画布晚就绪。

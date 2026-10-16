@@ -1,0 +1,12 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://actor/player/inkman_character.tscn" id="2_visual"]
+
+[node name="Inkman" type="Node2D"]
+z_index = 1000
+
+[node name="Visual" parent="." instance=ExtResource("2_visual")]
+position = Vector2(0, -90)
+scale = Vector2(0.45, 0.45)
+center_when_run_alone = false
+mouse_hand_follows_cursor = false

@@ -65,3 +65,17 @@ tooltip_text = "滚动鼠标滚轮查看全部关卡"
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 12
+
+[node name="BackButton" type="Button" parent="."]
+layout_mode = 1
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -100.0
+offset_right = 100.0
+offset_top = -60.0
+offset_bottom = -16.0
+text = "返回主菜单  Esc"
+
+[connection signal="pressed" from="BackButton" to="." method="_on_back_pressed"]

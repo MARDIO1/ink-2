@@ -5,6 +5,8 @@
 extends Node
 
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
+const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
+const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const ANCHOR_TAG := "static_anchor_points"
 ## 墨水物品所在的组；存关卡时用它区分"画出来的东西"和地形/生物。
 const INK_GROUP := "ink_item"
@@ -62,7 +64,12 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 		blue.merge_shape(surface, shape)
 	var previous: Array = world.world.bodies.duplicate()
 	var ink_pixels: int = shape.pixel_count()
-	var rejected_pixels: int = _remove_overlaps(shape, surface, world.world.bodies)
+	var overlap_bodies: Array = world.world.bodies.duplicate()
+	# 齿轮通过轴承与支座分层重叠；墨化后再固化不能把支座的轴心挖掉。
+	for child in world.get_children():
+		if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
+			overlap_bodies.erase(child.yellow_anchor.body)
+	var rejected_pixels: int = _remove_overlaps(shape, surface, overlap_bodies)
 
 	# 连通分量 -> 刚体。静态岛再按 BLOCK_SIZE 切块：破坏代价于是以块封顶。
 	# 岛的静态判据与原来一致（岛内有没有钉子像素），不能改成按块判：
@@ -317,13 +324,19 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		return
 	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
 	var targets: Array = []
+	# 齿轮保持独立部件，避免墨化时与背后的支座焊成一个静态岛。
+	var gears := {}
+	if not keep_bodies:
+		for child in world.get_children():
+			if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
+				gears[child.yellow_anchor.body] = true
 	for child in world.get_children():
 		#⚠️ 只认刚体节点本身：Nail 这种外观节点也带 body 属性，
 		#   按 body 过滤会把它当刚体收走 —— remove_body_node 参数类型不符，直接报错/崩溃。
 		if not child is PixelBody2D:
 			continue
 		var body = child.get("body")
-		if body == null or body.tags.has(LIVING_TAG):
+		if body == null or body.tags.has(LIVING_TAG) or gears.has(body):
 			continue
 		if body.aabb.intersects(canvas_rect):
 			targets.append(child)
@@ -366,7 +379,8 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 
 ## 把框内的固化像素采样回画布并从世界实体中摘除。
 ## 与完整“返回画布”不同，这里保留钉子材质，供框删撤销时精确恢复到画布。
-func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
+func rasterize_rect(surface, world, local_rect: Rect2i, moved_pixels: Dictionary = {},
+		mask: Dictionary = {}) -> int:
 	if world == null or surface == null or local_rect.size.x <= 0 or local_rect.size.y <= 0:
 		return 0
 	var clipped := local_rect.intersection(Rect2i(Vector2i.ZERO, surface.canvas_size))
@@ -390,7 +404,7 @@ func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
 		var plan: Dictionary = {}
 		var anchors: Dictionary = {}
 		_collect_nail_anchors(world, body, anchors)
-		removed += _sample_body_rect(surface, body, clipped, plan)
+		removed += _sample_body_rect(surface, body, clipped, plan, moved_pixels, mask)
 		if plan.is_empty():
 			continue
 		var result: Dictionary = _fracture_preserving_remainders(world, body, plan, anchors)
@@ -399,6 +413,43 @@ func rasterize_rect(surface, world, local_rect: Rect2i) -> int:
 			world.remove_child(node)
 			node.queue_free()
 	return removed
+
+
+## 把框选时从实体中摘下的像素在新位置重新生成实体，保持移动前的碰撞状态。
+func spawn_moved_pixels(surface, world, moved_pixels: Dictionary, offset: Vector2i,
+		editor_placed_nails := false) -> void:
+	if moved_pixels.is_empty():
+		return
+	var shape := PixelShape.new()
+	var white := PixelShape.new()
+	var anchors: Dictionary = {}
+	var yellow_refund := 0
+	for point: Vector2i in moved_pixels:
+		var destination: Vector2i = point + offset
+		var material: int = moved_pixels[point]
+		if material == InkPalette.WHITE.id:
+			white.set_pixel(destination.x, destination.y, material)
+		else:
+			shape.set_pixel(destination.x, destination.y, material)
+		if material == InkPalette.nail_material_id():
+			anchors[destination] = true
+		if material == InkPalette.YELLOW.id and not surface.ink_free:
+			yellow_refund += 1
+		# 采样只是临时的：新位置仍属于实体，不能再留一层蓝图像素。
+		if material == InkPalette.YELLOW.id and surface.ink_free:
+			surface.rod_layer.pixels.set_pixelv(destination, Color.TRANSPARENT)
+		elif material != InkPalette.YELLOW.id:
+			surface.write_pixel(destination, Color.TRANSPARENT)
+	var parts: Array = Destruction.split(shape, 1)
+	if not white.is_empty():
+		parts.append(white)
+	for part in parts:
+		_spawn_component(world, surface.global_position, part, anchors, editor_placed_nails)
+	if yellow_refund > 0:
+		var health = surface._health_node()
+		if health != null:
+			health.reduce(InkPalette.YELLOW.id, yellow_refund)
+	surface.refresh()
 
 
 ## 把运行时 PBody 的当前像素形状写回可被 PackedScene 保存的节点。
@@ -438,6 +489,9 @@ func sync_serializable_bodies(world) -> void:
 			world._body_nodes[index] = body_node
 		_write_body_node(body_node, body, world)
 	world.realign_body_nodes()
+	for child in world.get_children():
+		if child is GearBearing and not child.is_queued_for_deletion():
+			child._process(0.0)
 
 
 ## 画布回收属于编辑操作，留在画布外的像素必须继续作为可编辑实体存在。
@@ -495,7 +549,8 @@ func _write_body_node(body_node, body, owner: Node) -> void:
 		shape_node.owner = owner
 
 
-func _sample_body_rect(surface, body, local_rect: Rect2i, plan: Dictionary) -> int:
+func _sample_body_rect(surface, body, local_rect: Rect2i, plan: Dictionary,
+		moved_pixels: Dictionary = {}, mask: Dictionary = {}) -> int:
 	var sampled := 0
 	var selection_bounds := _selection_bounds_in_body(surface, body, local_rect)
 	for shape in body.shapes:
@@ -512,9 +567,12 @@ func _sample_body_rect(surface, body, local_rect: Rect2i, plan: Dictionary) -> i
 				var target := Vector2i((local - Vector2(0.5, 0.5)).round())
 				if not local_rect.has_point(target):
 					continue
+				if not SelectionMask.contains(mask, target):
+					continue
 				if not plan.has(shape):
 					plan[shape] = {}
 				plan[shape][shape_pixel] = true
+				moved_pixels[target] = material
 				if material == InkPalette.BLUE.id:
 					sampled += 1
 					continue
@@ -616,6 +674,11 @@ func _sample_body(surface, body, plan: Dictionary, collect_plan := true, refund_
 				# 钉子和墨水一起返回蓝图，再次固化时仍作为锚点。
 				var color = _canvas_color(surface, material)
 				if color == null:
+					continue
+				# 多个实体落在同一画布像素时，先写入的红/黄不能被后来的普通墨盖掉。
+				var prior: int = surface.material_at(target.x, target.y)
+				if (prior == InkPalette.RED.id or prior == InkPalette.YELLOW.id) \
+				and material != InkPalette.RED.id and material != InkPalette.YELLOW.id:
 					continue
 				surface.write_pixel(target, color)
 				written += 1

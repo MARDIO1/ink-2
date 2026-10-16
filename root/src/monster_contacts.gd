@@ -57,6 +57,9 @@ func resolve_contacts(_context: Dictionary, contacts: Array) -> Dictionary:
 			var receiver = receiver_ref.get_ref()
 			if receiver == null or receiver._dead or receiver._hit_cooldown > 0.0 or float(contact.approach) < receiver.minimum_hit_speed:
 				continue
+			# 自己出招撞到玩家躯干不能打断自己；玩家手部的反击仍可打断。
+			if other == player_body and receiver._attack != null and receiver._attack.busy():
+				continue
 			if other.is_static and (normal * sign).dot(-down) > 0.6:
 				continue
 			var impulse := Vector2.ZERO

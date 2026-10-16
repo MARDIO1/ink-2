@@ -6,8 +6,11 @@
 extends Sprite2D
 
 const NAIL_TEXTURE := preload("res://actor/nail/asset/nail.png")
-## 新钉子贴图为 32x32，固定点对齐图片中心。
-const ANCHOR_CENTER := Vector2(16.0, 16.0)
+## 44×44 的原始像素贴图；画布内钉子与实体共用，不缩放物理锚点。工具栏使用独立图标。
+const ANCHOR_CENTER := Vector2(22.0, 22.0)
+## 仅缩小外观；固定点、材质像素和碰撞完全不变，旧地图重建时同样使用。
+const VISUAL_SCALE := 0.5
+
 ## 所有运行时钉子外观都进入这个组，地图编辑器只切显示，不改物理锚点。
 const VISUAL_GROUP := &"nail_visual"
 ## 地图编辑器可单独预览预置钉子；切回游玩后只隐藏这类钉子的外观。
@@ -26,6 +29,11 @@ var hide_outside_map_editor := false
 
 
 #region 挂载
+static func visual_rect(pixel: Vector2i) -> Rect2:
+	return Rect2(Vector2(pixel) + Vector2(0.5, 0.5) - ANCHOR_CENTER * VISUAL_SCALE,
+		Vector2(NAIL_TEXTURE.get_size()) * VISUAL_SCALE)
+
+
 func _enter_tree() -> void:
 	add_to_group(VISUAL_GROUP)
 	refresh_visibility()
@@ -40,6 +48,7 @@ func setup(target_body, target_pixel: Vector2i, editor_placed := false) -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	centered = false
 	offset = -ANCHOR_CENTER        # 固定点落在节点原点
+	scale = Vector2.ONE * VISUAL_SCALE
 	process_physics_priority = 20  # 和 pbody_visual 一样，等世界走完再读位置
 	refresh_visibility()
 	_follow()

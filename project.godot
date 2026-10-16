@@ -17,10 +17,18 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://ui/icon/int_fff.png"
 config/windows_native_icon="res://ui/icon/int_fff.ico"
 
+[audio]
+
+default_bus_layout="res://sound/default_bus_layout.tres"
+
 [autoload]
 
 SceneTransition="*res://ui/transition/scene_transition.gd"
 InkRuntime="*res://ink/general/src/ink_runtime.gd"
+AudioSettings="*res://sound/src/audio_settings.gd"
+Blueprints="*res://ui/blueprint/src/blueprint_system.gd"
+InkCursor="*res://ui/cursor/cursor.tscn"
+UIFeedback="*res://ui/theme/src/ui_feedback.gd"
 
 [display]
 

@@ -73,6 +73,8 @@ func _ready() -> void:
 		call_deferred("_restore")
 
 func _restore() -> void:
+	if not activated or state != State.ACTIVE:
+		return
 	var world = get_parent().get("world")
 	if world == null:
 		return

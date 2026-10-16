@@ -131,6 +131,10 @@ func _run() -> void:
 	var creative := level.get_node("Creative")
 	creative.auto_save_edits = false
 	creative.auto_save_on_exit = false
+	# 地面必须在进入编辑器前就带 living 标签：编辑器的 return_to_canvas 会把画布范围内的
+	# 静态实体重新采回墨水，未受保护的测试支撑会被整段吃掉，地面从此消失。
+	var ground_body = level.get_node("Ground").body
+	ground_body.tags["living"] = true
 	creative.set_active(true)
 	var monster = creative.place_monster(
 		monster_kind, Vector2(0, -40), false, "physics-test"
@@ -140,8 +144,9 @@ func _run() -> void:
 	var monster_body = monster.body if monster != null else null
 	# 本测试隔离碰撞求解；高速撞墙不能先触发死亡并删除被测角色。
 	monster.contact_damage_scale = 0.0
+	monster.attacks_enabled = false # 本回归只验证碰撞，不让主动攻击干扰测量。
 	_protect_shield(monster)
-	var ground_body = level.get_node("Ground").body
+	ground_body = level.get_node("Ground").body
 	# 碰撞回归需要完整地面；像素破坏另测，不能让下落或撞击删除测试支撑。
 	ground_body.tags["living"] = true
 	var editor_freeze_valid: bool = monster_body != null and monster_body.frozen
@@ -185,6 +190,10 @@ func _run() -> void:
 	print("[MonsterPhysics] level soles: ", soles_valid,
 		"; raised lower foot (source px): ", monster._ragdoll.foot_height_correction)
 	creative.set_active(false)
+	# 地图编辑器退出时会把画布重新固化，测试必须跟随当前 Ground 的新物理体，
+	# 不能继续拿进入编辑器前的旧 PBody 引用做接触断言。
+	ground_body = level.get_node("Ground").body
+	ground_body.tags["living"] = true
 	editor_freeze_valid = editor_freeze_valid and not monster_body.frozen
 	for part in monster._ragdoll.parts:
 		editor_freeze_valid = editor_freeze_valid and not part.body.frozen

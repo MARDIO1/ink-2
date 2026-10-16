@@ -91,6 +91,10 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 		for side in [[contact.a, a_origin, a_dir, a_material, b_material, -1.0],
 				[contact.b, b_origin, b_dir, b_material, a_material, 1.0]]:
 			var body: PBody = side[0]
+			var other: PBody = contact.b if body == contact.a else contact.a
+			# 主动攻击和炸弹按独立命中窗口扣血，不能再叠加同一次碰撞伤害。
+			if body == player_body and other.tags.has("scripted_attack"):
+				continue
 			# 玩家用生命值结算；其他生物的物理壳只负责阻挡和受力，不参与像素碎裂。
 			if body != player_body and body.tags.has(LIVING_TAG):
 				continue

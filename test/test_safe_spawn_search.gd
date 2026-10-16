@@ -86,14 +86,26 @@ func _run() -> void:
 	var lower: Dictionary = await search.find([target])
 	_check("nearby search includes supported positions below checkpoint", not lower.is_empty() and lower.position.y > origin.y)
 	_remove(lower_floor)
+	var remote_origin := Vector2(100000, -100000)
+	var narrow_floor = _block(remote_origin + Vector2(1100, 200), Vector2i(24, 12))
+	search = Search.new()
+	search.setup(recovery, level.world, player.body, hand)
+	var expanded: Dictionary = await search.find_expanded([{"position": remote_origin, "rotation": 0.0}])
+	_check("expanded search finds distant narrow support", not expanded.is_empty() and expanded.position.x > remote_origin.x + 1000.0)
+	_check("expanded search has bounded candidates", search.candidates_checked <= Search.MAX_EXPANDED_CANDIDATES)
+	if not expanded.is_empty():
+		player.teleport_to(level.to_global(expanded.position), expanded.rotation)
+		search.pairs_checked = Search.MAX_PAIRS * 4
+		_check("verification owns budget independent of search", await search.verify(expanded.position, expanded.rotation))
+	_remove(narrow_floor)
 	search = Search.new()
 	search.setup(recovery, level.world, player.body, hand)
 	_check("unsupported empty space rejected", (await search.find([target])).is_empty())
-	# ESC 失败不移动玩家，并保持暂停和错误提示。
+	# 整片区域无地形时不强制传送、不弹提示，也不锁死菜单。
 	var ui: Node = load("res://ui/game_ui.tscn").instantiate()
 	root.add_child(ui)
 	var marker := Marker2D.new()
-	marker.position = origin
+	marker.position = Vector2(100000, -100000)
 	level.add_child(marker)
 	recovery._visited_points.clear()
 	recovery._visited_points.append(marker)
@@ -103,11 +115,12 @@ func _run() -> void:
 	var esc: Node = get_first_node_in_group(&"esc_menu")
 	esc.open_menu()
 	var escaped: bool = await esc._on_escape_stuck_button_pressed()
-	_check("failed recovery stays paused with message", not escaped and paused and esc.visible and esc._recovery_status.visible)
+	_check("unsupported recovery stays silent and menu usable", not escaped and paused and esc.visible and not esc._recovery_status.visible and recovery.recovery_error.is_empty())
 	_check("failed search leaves player untouched", player.body.position == previous)
 	_check("failure releases button lock", not esc._recovery_busy and not esc.continue_button.disabled)
 	_check("failure message does not ask player to clear items", not recovery.recovery_error.contains("清理"))
 	# 恢复游玩前突然有物品进入已选落点，首个真实物理步应自动重新搜索。
+	marker.position = origin
 	_block(origin + Vector2(-300, ceilf(bounds.end.y) + 2), Vector2i(700, 16))
 	_check("safe recovery succeeds", await esc._on_escape_stuck_button_pressed())
 	var chosen: Vector2 = player.body.position
@@ -130,7 +143,7 @@ func _run() -> void:
 			break
 		await process_frame
 	_check("repeated post-physics obstruction automatically relocates", not paused and player.body.position.distance_to(chosen) > 1.0 and not esc._recovery_status.visible)
-	_check("automatic retries share candidate budget", recovery.last_search_stats.candidates <= Search.MAX_CANDIDATES)
+	_check("automatic retries have bounded candidate budget", recovery.last_search_stats.candidates <= Search.MAX_EXPANDED_CANDIDATES)
 	_check("second intruder not deleted", level.world.bodies.has(second_intruder))
 	paused = true
 	for i in 200:

@@ -1,7 +1,7 @@
 extends Sprite2D
 ## 生成稿的同一纸条外框，内部血量由着色器实时绘制。
-const SOURCE := "res://actor/monster/health_bar_concept.png"
-const BAR_SHADER := preload("res://actor/monster/health_bar.gdshader")
+const SOURCE := "res://actor/monster/asset/health_bar_concept.png"
+const BAR_SHADER := preload("res://actor/monster/asset/health_bar.gdshader")
 static var _atlas: AtlasTexture
 var _material: ShaderMaterial
 

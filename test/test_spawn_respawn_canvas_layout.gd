@@ -44,10 +44,14 @@ func _run_layout_test() -> void:
 	fall_death.set("_body", player.get("body"))
 	player.body.position = respawn.global_position + Vector2(8.0, 0.0)
 	player.body.refresh_com()
+	creative.active = false # 只有实际游玩时经过复活范围才可解锁。
+	fall_death._checkpoints_initialized = false
+	fall_death._update_visited_points()
 	valid = valid and fall_death._find_respawn_target() == respawn
 	player.body.position = spawn.global_position + Vector2(8.0, 0.0)
 	player.body.refresh_com()
 	valid = valid and fall_death._find_respawn_target() == spawn
+	creative.active = true
 
 	valid = valid and creative.undo_last_edit()
 	valid = valid and (not is_instance_valid(added_canvas) or added_canvas.is_queued_for_deletion())

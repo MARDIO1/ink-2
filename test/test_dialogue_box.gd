@@ -25,7 +25,7 @@ func _run() -> void:
 	var integrated_esc := game_ui.get_node_or_null("Esc") as CanvasLayer
 	var integrated_log_button := game_ui.get_node_or_null("Hud/Root/LogButton") as TextureButton
 	_check(integrated_dialogue != null, "GameUI 应装配 DialogueBox")
-	_check(integrated_dialogue.lines.size() == 3, "GameUI 中的对话框应加载默认台词")
+	_check(not integrated_dialogue.root.visible and integrated_dialogue.viewed_lines.is_empty(), "GameUI 对话必须等待触发，不自动播放或污染日志")
 	_check(integrated_esc != null, "GameUI 应装配 ESC 菜单")
 	_check(integrated_esc.layer > integrated_dialogue.layer,
 		"ESC 菜单及压暗遮罩必须绘制在剧情框之上（ESC=%d，剧情=%d）" % [
@@ -45,6 +45,9 @@ func _run() -> void:
 	root.add_child(dialogue)
 	dialogue.set_process(false)
 	await process_frame
+	_check(dialogue.viewed_lines.is_empty() and dialogue.current_line == -1, "未触发的对话不得记录为已经阅读")
+	dialogue.start_dialogue(PackedStringArray(["纸上醒来", "移动按空格键跳跃", "单击继续"]))
+	await process_frame
 
 	var pixel_text: SubViewportContainer = dialogue.get_node(
 		"Root/DialoguePanel/PixelText"
@@ -53,15 +56,15 @@ func _run() -> void:
 	var dialogue_font: Font = dialogue.dialogue_label.get_theme_font("font")
 	_check(dialogue.viewed_lines.size() == 1,
 		"history should initially contain only the first displayed line")
-	_check(dialogue.lines.size() == 3, "应从 JSON 读入三句示例台词")
-	_check(dialogue.current_line == 0, "应自动从第一句开始")
+	_check(dialogue.lines.size() == 3, "触发后使用提供的三句台词")
+	_check(dialogue.current_line == 0, "触发对话从第一句开始")
 	_check(dialogue.dialogue_label.visible_characters == 0, "第一句应从零个字符开始打字")
 	_check(not dialogue.next_hint.visible, "打字时不应显示继续提示")
 	_check(pixel_text.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 		"低分辨率文字必须以最近邻方式放大")
 	_check(pixel_text.stretch_shrink == 1,
 		"文字内部不得再次二倍放大；只允许项目全局视口缩放一次")
-	_check(viewport.size == Vector2i(864, 144),
+	_check(viewport.size == Vector2i(pixel_text.size),
 		"文字视口应与对话框内容区保持一比一逻辑像素")
 	_check(pixel_text.material is ShaderMaterial, "文字视口应使用硬边像素化材质")
 	_check(dialogue_font.resource_path.ends_with("ipix_ui_font.tres"),

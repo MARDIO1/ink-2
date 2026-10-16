@@ -6,6 +6,7 @@ const Stroke := preload("res://ink/yellow/src/stroke.gd")
 const Hinge := preload("res://ink/yellow/src/hinge.gd")
 const Rail := preload("res://ink/yellow/src/rail.gd")
 const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
+const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 @export_range(0.0, 1.0, 0.01) var yellow_opacity: float = 0.75
 @export_range(1.0, 64.0, 1.0) var dash_length: float = 8.0
 @export_range(1.0, 64.0, 1.0) var dash_gap: float = 6.0
@@ -47,6 +48,7 @@ func _ready() -> void:
 	for index in spring_voice_count:
 		var voice := AudioStreamPlayer2D.new()
 		voice.name = "SpringVoice%d" % index
+		voice.bus = &"SFX"
 		voice.max_distance = 2400.0
 		voice.attenuation = 1.0
 		add_child(voice)
@@ -114,8 +116,11 @@ func finish(surface, point: Vector2) -> bool:
 		_discard(stroke)
 		return false
 	stroke.preview = false
-	if not stroke.build_pixels() or not stroke.connected() \
-	or (not surface.ink_free and stroke.original_area > surface._ink_room(Palette.YELLOW.id)):
+	if not stroke.build_pixels() or not stroke.connected():
+		_discard(stroke)
+		return false
+	if not surface.ink_free and stroke.original_area > surface._drawable_ink_room(Palette.YELLOW.id):
+		surface._warn_ink_shortage(stroke.original_area + surface.MIN_PAINT_INK - 1)
 		_discard(stroke)
 		return false
 	stroke.paid = not surface.ink_free
@@ -158,11 +163,72 @@ func erase_spring_ends(surface, from: Vector2, to: Vector2) -> void:
 	for stroke in strokes.duplicate():
 		if stroke.state != Stroke.State.EDITING or stroke.source_surface != surface:
 			continue
-		for at in [stroke.path[0], stroke.path[-1]]:
-			var local: Vector2 = surface.to_local(_world.to_global(at))
-			if local.distance_to(Geometry2D.get_closest_point_to_segment(local, from, to)) <= surface.brush_size * 0.5:
-				undo(stroke, surface)
+		if stroke.path.size() < 2:
+			continue
+		var a: Vector2 = surface.to_local(_world.to_global(stroke.path[0]))
+		var b: Vector2 = surface.to_local(_world.to_global(stroke.path[-1]))
+		var reach: float = (surface.brush_size + stroke.brush_width) * 0.5
+		if Geometry2D.segment_intersects_segment(from, to, a, b) != null \
+		or a.distance_to(Geometry2D.get_closest_point_to_segment(a, from, to)) <= reach \
+		or b.distance_to(Geometry2D.get_closest_point_to_segment(b, from, to)) <= reach \
+		or from.distance_to(Geometry2D.get_closest_point_to_segment(from, a, b)) <= reach \
+		or to.distance_to(Geometry2D.get_closest_point_to_segment(to, a, b)) <= reach:
+			undo(stroke, surface)
+
+
+func erase_strokes_in_rect(surface, rect: Rect2i, mask: Dictionary = {}) -> bool:
+	var erased := false
+	for stroke in strokes.duplicate():
+		if not is_instance_valid(stroke) or stroke.source_surface != surface \
+		or stroke.state >= Stroke.State.DYING:
+			continue
+		var hit := false
+		for cell: Vector2i in stroke.cells:
+			var point := Vector2i(surface.to_local(stroke.pixel_world(Vector2(cell) + Vector2.ONE * 0.5)).floor())
+			if rect.has_point(point) and SelectionMask.contains(mask, point):
+				hit = true
 				break
+		if not hit:
+			continue
+		stroke.remove_joint()
+		refund(stroke, surface, stroke.cells.size())
+		strokes.erase(stroke)
+		stroke.get_parent().remove_child(stroke)
+		stroke.queue_free()
+		erased = true
+	return erased
+
+
+## 只有整条弹簧位于框内才移动，避免只搬走一个端点破坏约束。
+func move_drafts_in_rect(surface, rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> bool:
+	if offset == Vector2i.ZERO:
+		return false
+	var delta: Vector2 = _world.to_local(surface.to_global(Vector2(offset))) \
+		- _world.to_local(surface.to_global(Vector2.ZERO))
+	var global_delta: Vector2 = surface.to_global(Vector2(offset)) - surface.to_global(Vector2.ZERO)
+	var moved := false
+	for stroke in strokes:
+		if not is_instance_valid(stroke) or stroke.source_surface != surface \
+		or stroke.state != Stroke.State.EDITING or not stroke.compact_raster \
+		or stroke.path.size() < 2:
+			continue
+		var first := Vector2i(surface.to_local(_world.to_global(stroke.path[0])).floor())
+		var last := Vector2i(surface.to_local(_world.to_global(stroke.path[-1])).floor())
+		if not rect.has_point(first) or not rect.has_point(last):
+			continue
+		if not SelectionMask.contains(mask, first) or not SelectionMask.contains(mask, last):
+			continue
+		for index in stroke.path.size():
+			stroke.path[index] += delta
+		if is_instance_valid(stroke.visual):
+			stroke.visual.position += delta
+		if is_instance_valid(stroke.endpoint_a):
+			stroke.endpoint_a.global_position += global_delta
+		if is_instance_valid(stroke.endpoint_b):
+			stroke.endpoint_b.global_position += global_delta
+		stroke.queue_redraw()
+		moved = true
+	return moved
 
 func draft_data(surface) -> Array:
 	var data: Array = []
@@ -222,7 +288,7 @@ func clear_drafts(surface) -> void:
 			strokes.erase(stroke)
 			stroke.queue_free()
 
-func reclaim(surface) -> void:
+func reclaim(surface, keep_drafts := false) -> void:
 	for stroke in strokes.duplicate():
 		if stroke.get_meta(&"corroded", false):
 			continue
@@ -233,6 +299,15 @@ func reclaim(surface) -> void:
 			if surface._inside(surface.to_local(stroke.pixel_world(Vector2(cell) + Vector2.ONE * 0.5))):
 				selected.append(cell)
 		if selected.is_empty():
+			continue
+		if keep_drafts and selected.size() == stroke.cells.size() and stroke.state == Stroke.State.ACTIVE:
+			# 编辑器需要保留整条黄墨弹簧：卸掉关节，转回可再次固化的草稿。
+			stroke.remove_joint()
+			stroke.anchors.clear()
+			stroke.activated = false
+			stroke.state = Stroke.State.EDITING
+			stroke.source_surface = surface
+			stroke.source_canvas = _world.get_path_to(surface)
 			continue
 		refund(stroke, surface, selected.size())
 		for cell in selected:

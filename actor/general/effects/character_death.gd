@@ -74,6 +74,8 @@ func _copy_piece(source: Sprite2D) -> void:
 	if source.texture.get_image().get_used_rect().size == Vector2i.ZERO:
 		return
 	var sprite := Sprite2D.new()
+	if source.name == "BombArt":
+		sprite.name = "BombArt"
 	sprite.texture = source.texture
 	sprite.centered = source.centered
 	sprite.offset = source.offset
@@ -107,7 +109,8 @@ func _copy_piece(source: Sprite2D) -> void:
 		mask = source.get_parent().get_node_or_null(role + "OcclusionMask") as Sprite2D
 	if role == "BodyBone":
 		mask = source.get_parent().get_node_or_null("BodyOcclusionMask") as Sprite2D
-	if mask != null:
+	# 手持炸弹是独立实心图像，不能复用手臂的线稿遮罩。
+	if mask != null and source.name != "BombArt":
 		mask_texture = mask.texture
 	var bounds := Rect2(source.texture.get_image().get_used_rect())
 	bounds.position += source.offset

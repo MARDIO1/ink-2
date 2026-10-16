@@ -52,9 +52,9 @@ script = ExtResource("7_water")
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.31
-anchor_top = 0.52
+anchor_top = 0.56
 anchor_right = 0.69
-anchor_bottom = 0.8
+anchor_bottom = 0.94
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -67,21 +67,30 @@ theme_override_constants/separation = 16
 custom_minimum_size = Vector2(280, 58)
 layout_mode = 2
 theme_type_variation = &"MenuActionButton"
-focus_neighbor_bottom = NodePath("../QuitButton")
+focus_neighbor_bottom = NodePath("../SoundButton")
 mouse_default_cursor_shape = 2
 text = "开始"
 icon = ExtResource("3_play")
 expand_icon = true
 
-[node name="QuitButton" type="Button" parent="ButtonCenter/Buttons"]
+[node name="SoundButton" type="Button" parent="ButtonCenter/Buttons"]
 custom_minimum_size = Vector2(280, 58)
 layout_mode = 2
 theme_type_variation = &"MenuActionButton"
 focus_neighbor_top = NodePath("../StartButton")
+focus_neighbor_bottom = NodePath("../QuitButton")
+text = "声音设置"
+
+[node name="QuitButton" type="Button" parent="ButtonCenter/Buttons"]
+custom_minimum_size = Vector2(280, 58)
+layout_mode = 2
+theme_type_variation = &"MenuActionButton"
+focus_neighbor_top = NodePath("../SoundButton")
 mouse_default_cursor_shape = 2
 text = "退出"
 icon = ExtResource("4_exit")
 expand_icon = true
 
 [connection signal="pressed" from="ButtonCenter/Buttons/StartButton" to="." method="_on_start_button_pressed"]
+[connection signal="pressed" from="ButtonCenter/Buttons/SoundButton" to="." method="_on_sound_button_pressed"]
 [connection signal="pressed" from="ButtonCenter/Buttons/QuitButton" to="." method="_on_quit_button_pressed"]

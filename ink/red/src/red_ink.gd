@@ -39,6 +39,7 @@ func _ready() -> void:
 	for index in explosion_voice_count:
 		var voice := AudioStreamPlayer2D.new()
 		voice.name = "ExplosionVoice%d" % index
+		voice.bus = &"SFX"
 		voice.max_distance = 2400.0
 		voice.attenuation = 1.0
 		add_child(voice)

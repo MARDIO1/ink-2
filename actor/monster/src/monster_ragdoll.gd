@@ -468,6 +468,8 @@ func update_balance(delta: float, paused: bool, recovering: bool, walking: bool,
 			if str(bone.name).ends_with("Leg"):
 				# 没有实际行进驱动时不让动画交替抬脚，保持双脚承重。
 				desired = float(part.rest_angle)
+		if monster != null and monster._attack != null:
+			desired = monster._attack.desired_angle(monster, part, desired)
 		# 腿保留承重能力；增加阻尼比而非削弱支撑，避免半弯状态卡住。
 		var leg_stiffness := 180.0 if shield_body != null and not shield_broken else 230.0
 		var stiffness := leg_stiffness if str(part.bone.name).ends_with("Leg") else 120.0
@@ -476,6 +478,8 @@ func update_balance(delta: float, paused: bool, recovering: bool, walking: bool,
 		var load_inertia: float = limb.inertia
 		var motor_damping := 40.0 if str(part.bone.name).ends_with("Leg") else 32.0
 		var max_speed := MAX_RECOVERY_ANGULAR_SPEED
+		if monster != null and monster._attack != null and monster._attack.busy() and str(part.bone.name).ends_with("Arm"):
+			max_speed = 5.0
 		if not shield_holder.is_empty() and part == shield_holder and shield_body != null and not shield_broken:
 			load_inertia += limb.mass * limb.com_world().distance_squared_to(pivot)
 			load_inertia += shield_body.inertia + shield_body.mass * shield_body.com_world().distance_squared_to(pivot)

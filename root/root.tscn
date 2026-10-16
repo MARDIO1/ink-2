@@ -18,3 +18,4 @@ level_music = ExtResource("4_level_music")
 
 [node name="Music" type="AudioStreamPlayer" parent="."]
 process_mode = 3
+bus = &"BGM"

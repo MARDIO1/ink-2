@@ -11,6 +11,7 @@ const MONSTER_TAG := "map_monster"
 const Ragdoll := preload("res://actor/monster/src/monster_ragdoll.gd")
 const HealthBar := preload("res://actor/monster/src/monster_health_bar.gd")
 const DeathEffect := preload("res://actor/general/effects/character_death.gd")
+const Attack := preload("res://actor/monster/src/monster_attack.gd")
 signal health_changed(current: float, maximum: float)
 signal died
 const HEALTH_MULTIPLIER := 5.0
@@ -20,6 +21,8 @@ var _health_bar: Sprite2D
 var _dead := false
 @export var contact_damage_scale := 0.001
 var _ragdoll: RefCounted
+var _attack: RefCounted
+@export var attacks_enabled := true
 
 ## 前两个编号只为兼容旧地图与测试保留，已不再对应可放置场景或美术资源。
 ## 新放置栏只会提供 BOMB_SIDE 和后续的 SHIELD_SOLDIER。
@@ -91,6 +94,8 @@ var _hit_recovery := 0.0
 var _animation: AnimationPlayer
 var _shield_visual: Sprite2D
 var _shield_visual_revision: Array = []
+var _shield_count_revision: Array = []
+var _shield_remaining_pixels := 0
 ## 盾兵当前朝向：1=面朝右，-1=面朝左。变化时需重建 ragdoll 以翻转肢体与盾牌。
 var _current_facing := -1
 var _turning_shield_shapes: Array = []
@@ -119,6 +124,7 @@ func _ready() -> void:
 	max_health = (2000.0 if kind == Kind.SHIELD_SOLDIER else (500.0 if kind == Kind.BOMB_SIDE else 1000.0)) * HEALTH_MULTIPLIER
 	health = max_health
 	if not Engine.is_editor_hint():
+		_attack = Attack.new()
 		_health_bar = HealthBar.new()
 		_health_bar.name = "MonsterHealthBar"
 		add_child(_health_bar)
@@ -256,6 +262,30 @@ func sync_physics_from_node(rebuild_shape := false) -> void:
 		physics_world.world.unfreeze(physics_body)
 
 
+## 编辑拖动只平移已冻结的组件，复用形状、关节和包围盒，不逐次扫描像素。
+func sync_editor_translation() -> void:
+	if not _editor_physics_paused or _body == null:
+		sync_physics_from_node()
+		return
+	var physics_world := _find_physics_world()
+	if physics_world == null:
+		return
+	var shift: Vector2 = physics_world.to_local(global_position) - _body.position
+	if shift.is_zero_approx():
+		return
+	var bodies: Array = [_body]
+	if _ragdoll != null:
+		for part in _ragdoll.parts:
+			bodies.append(part.body)
+		if _ragdoll.shield_body != null:
+			bodies.append(_ragdoll.shield_body)
+	for physics_body in bodies:
+		physics_body.position += shift
+		physics_body.aabb.position += shift
+		physics_body.swept_aabb.position += shift
+		physics_body.refresh_com()
+
+
 ## 编辑模式冻结碰撞壳；游玩模式恢复动力学。
 func set_editor_physics_paused(paused: bool) -> void:
 	_editor_physics_paused = paused
@@ -289,10 +319,12 @@ func _physics_process(delta: float) -> void:
 	_hit_cooldown = maxf(0.0, _hit_cooldown - delta)
 	_hit_recovery = maxf(0.0, _hit_recovery - delta)
 	if physical_enabled:
-		_update_walk_state()
+		if _attack != null:
+			_attack.update(self, delta)
+		_update_walk_state(_attack == null or not _attack.busy())
 		if _ragdoll != null:
 			_ragdoll.update_balance(delta, _editor_physics_paused, _hit_recovery > 0.0, walking, self)
-		# 实体小兵的攻击只走已求解接触；不再用手心点与速度猜测命中。
+		# 玩家对小怪的受击仍由已求解接触送入；主动攻击有独立单次命中窗口。
 		return
 	if _hit_cooldown > 0.0:
 		return
@@ -369,6 +401,8 @@ func receive_contact_impact(point: Vector2, impulse: Vector2, hit_body = null, a
 	if attack:
 		apply_damage(impulse.length() * contact_damage_scale, hit_body)
 	_hit_recovery = 0.45
+	if _attack != null:
+		_attack.cancel(self)
 	# 接触报告仍在遍历原生碰撞对，此时删除刚体会使后续接触句柄失效。
 	# 朝向在下一物理帧起点即时刷新，受击回调只更新停走状态。
 	_update_walk_state(false)
@@ -624,6 +658,15 @@ func _refresh_physics_for_facing() -> void:
 	_sync_shield_visual()
 
 
+## 攻击蓄力前锁定朝向；仅镜像横轴，并刷新对应物理形状。
+func face_direction(direction: int) -> void:
+	if direction == _current_facing or _visual == null or _editor_physics_paused:
+		return
+	_current_facing = direction
+	_visual.scale.x = absf(_visual.scale.x) * (1.0 if direction < 0 else -1.0)
+	_refresh_physics_for_facing()
+
+
 func _create_shield_visual() -> void:
 	if not has_shield or _visual == null:
 		return
@@ -641,6 +684,7 @@ func _create_shield_visual() -> void:
 	_shield_visual.offset = _shield_visual.texture.get_size() * 0.5 \
 		- (Vector2(bounds.position) + Vector2(bounds.size) * 0.5)
 	_shield_visual_revision.clear()
+	_shield_count_revision.clear()
 	_shield_visual.visible = not shield_broken
 
 
@@ -657,10 +701,16 @@ func _sync_shield_visual() -> void:
 		return
 	var facing_scale := 1.0 if _current_facing < 0 else -1.0
 	var size := shield_scale * absf(scale.x)
-	var remaining_pixels := 0
+	var count_revision: Array = [shield_body.id]
 	for shape in shield_body.shapes:
-		remaining_pixels += shape.pixel_count()
-	if remaining_pixels < _ragdoll.shield_initial_pixels:
+		count_revision.append(shape)
+		count_revision.append(shape.revision)
+	if count_revision != _shield_count_revision:
+		_shield_count_revision = count_revision
+		_shield_remaining_pixels = 0
+		for shape in shield_body.shapes:
+			_shield_remaining_pixels += shape.pixel_count()
+	if _shield_remaining_pixels < _ragdoll.shield_initial_pixels:
 		_sync_damaged_shield_texture(shield_body)
 		_shield_visual.global_transform = Transform2D(
 			physics_world.global_rotation + shield_body.rotation,

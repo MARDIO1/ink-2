@@ -18,7 +18,7 @@ const ImpactSoundProfile := preload("res://root/src/impact_sound_profile.gd")
 @export_range(64.0, 10000.0, 1.0) var max_distance: float = 2400.0
 @export_range(0.1, 8.0, 0.1) var attenuation: float = 1.0
 @export var sound_duration: float = 0.075
-@export var audio_bus: StringName = &"Master"
+@export var audio_bus: StringName = &"SFX"
 @export var impact_stream: AudioStream
 @export var sound_profiles: Array[ImpactSoundProfile] = []
 #endregion

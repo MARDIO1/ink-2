@@ -8,6 +8,7 @@ const PixelScale := preload("res://addons/pixel_destruction/core/pixel_scale.gd"
 @export_range(1.0, 1.5, 0.01) var canvas_zoom_multiplier := 1.15
 @export var canvas_zoom_response := 6.0
 var _canvas_zoom_weight := 0.0
+var _editor_drag_locked := false
 
 var player_body = null
 #endregion
@@ -22,6 +23,8 @@ func _ready() -> void:
 
 #region 物理跟随
 func _physics_process(_delta: float) -> void:
+	if _editor_drag_locked:
+		return
 	if player_body == null:
 		var player_node := get_node_or_null(player_path)
 		if player_node != null:
@@ -29,6 +32,13 @@ func _physics_process(_delta: float) -> void:
 	if player_body != null:
 		global_position = player_body.com_world()
 	_update_canvas_zoom(_delta)
+
+
+func set_editor_drag_locked(locked: bool) -> void:
+	_editor_drag_locked = locked
+	if locked:
+		reset_smoothing()
+		force_update_scroll()
 
 
 func _update_canvas_zoom(delta: float) -> void:

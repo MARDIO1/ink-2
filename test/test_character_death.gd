@@ -47,7 +47,13 @@ func _run() -> void:
 		_check("no corpse colliders or motors", released)
 		var effect = get_nodes_in_group(&"character_death_effect").back()
 		effects.append(effect)
-		_check("five part snapshot and shield preserved", effect.pieces.size() == (6 if kind == 3 else 5))
+		_check("five part snapshot and held item preserved", effect.pieces.size() == (5 if kind == 1 else 6))
+		if kind == 2:
+			var bomb_mask_valid := false
+			for piece in effect.pieces:
+				if piece.sprite.name == "BombArt":
+					bomb_mask_valid = piece.mask == piece.sprite.texture
+			_check("held bomb uses its own solid mask", bomb_mask_valid)
 		_check("enemy death uses visible lower edge when rotated", effect._origin.distance_to(expected_foot) < 0.01)
 		_check("enemy death has no extra draw effects", not effect.has_method("_draw")
 			and effect.get_children().all(func(child): return child is Sprite2D))
@@ -55,6 +61,18 @@ func _run() -> void:
 			and not effect.is_in_group("ink_item") and not effect.is_in_group("map_monster"))
 		creative.active = true
 	creative.set_active(false)
+	# 进入地图编辑器会把可回收实体还原进画布；玩家死亡验收需要一个独立可抓取道具，
+	# 因此在编辑器回收了基准 Box 时重新装配一份干净关卡。
+	if not level.has_node("Box"):
+		level.queue_free()
+		await process_frame
+		level = (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
+		level.get_node("Creative").auto_save_edits = false
+		level.get_node("Creative").auto_save_on_exit = false
+		root.add_child(level)
+		level.get_node("debugHUD").process_mode = Node.PROCESS_MODE_DISABLED
+		await process_frame
+		await physics_frame
 	var player = level.get_node("Player")
 	var death = player.get_node("FallDeath")
 	var hand = player.get_node("Arm/Hand/HandControl")

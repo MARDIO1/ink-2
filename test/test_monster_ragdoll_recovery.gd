@@ -27,6 +27,7 @@ func run() -> void:
 		kind = 2
 	var monster = creative.place_monster(kind, Vector2(0, -20), false, "recovery-check")
 	monster.contact_damage_scale = 0.0
+	monster.attacks_enabled = false
 	await process_frame
 	await physics_frame
 	if "--mirror" in OS.get_cmdline_user_args():

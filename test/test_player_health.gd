@@ -31,7 +31,7 @@ func _run() -> void:
 	_check("ink colors keep separate ledgers", health.ink_of(black_id) == black_before
 		and health.ink_of(grey_id) == health.max_of(grey_id) - 1234.0)
 	_check("HUD reads black health only", is_equal_approx(hud.bottle_fill.value, 100.0)
-		and hud.ink_meter.text == "黑墨 20000 px")
+		and hud.health_bar.value == 100.0 and hud.ink_meter.text == "黑墨 20000 px")
 	health.damage(death.hurt_sound_threshold - 1.0)
 	_check("damage below feedback threshold stays silent", not hurt_sound.playing
 		and death._hit_flash_items.is_empty())
@@ -56,9 +56,19 @@ func _run() -> void:
 		and bottle.material == bottle_material and hand_art.material == hand_material
 		and arm_curve.material == arm_material)
 	hurt_sound.stop()
+	health.add(black_id, health.max_of(black_id))
+	player.apply_collision_damage(5000.0)
+	_check("nonlethal damage refreshes both meters", hud.health_bar.value == 75.0
+		and hud.bottle_fill.value == 75.0 and hud.ink_meter.text == "黑墨 15000 px" and not death._dead)
+	# 黑墨只有极小余量时，其他颜色总量的近似相等不能吞掉归零 UI 通知。
+	health.reduce(black_id, health.ink_of(black_id) - 0.01)
+	var ui_zero_before_death := [false]
+	health.depleted.connect(func(_material): ui_zero_before_death[0] = hud.health_bar.value == 0.0 and hud.bottle_fill.value == 0.0)
 
 	death._body = player.body
-	health.damage(health.ink_of(black_id))
+	health.damage(health.max_of(black_id))
+	_check("empty black ink triggers death", death._dead and health.ink_of(black_id) == 0.0)
+	_check("HUD reaches zero before depleted callback", ui_zero_before_death[0] and hud.ink_meter.text == "黑墨 0 px")
 	_check("empty black ink triggers death sound once", death._dead
 		and health.ink_of(black_id) == 0.0 and death_sound.playing and not hurt_sound.playing)
 	death_sound.stop()
@@ -66,6 +76,7 @@ func _run() -> void:
 	_check("respawn refills only black health", not death._dead
 		and health.ink_of(black_id) == health.max_of(black_id)
 		and health.ink_of(grey_id) == health.max_of(grey_id) - 1234.0)
+	_check("respawn restores both health meters", hud.health_bar.value == 100.0 and hud.bottle_fill.value == 100.0)
 
 	scene.get_node("Player/Arm/Hand/HandControl")._release_grab()
 	scene.get_node("Player/Arm/Hand/HandControl")._remove_arm()
