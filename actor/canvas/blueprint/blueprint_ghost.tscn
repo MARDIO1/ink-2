@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://actor/canvas/blueprint/src/blueprint_ghost.gd" id="1_ghost"]
+
+[node name="BlueprintGhost" type="Node2D"]
+texture_filter = 1
+z_index = 50
+script = ExtResource("1_ghost")

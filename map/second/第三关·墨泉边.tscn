@@ -38,7 +38,6 @@ data = {
 [node name="Main" type="Node2D" unique_id=1412278551]
 process_priority = 10
 script = ExtResource("1_world")
-max_linear_velocity = 1000.0
 max_angular_velocity = 60.0
 ccd_ignore_mass = 100.0
 min_fragment_pixels = 5

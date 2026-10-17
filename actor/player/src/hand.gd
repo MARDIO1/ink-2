@@ -235,7 +235,7 @@ func _limit_power(force: Vector2, torque: float, hand_position: Vector2, delta: 
 		+ torques.y * player_body.angular_velocity
 	)
 	var impulse_energy_rate: float = (
-		force.length_squared() * (side["inv_mass"] + player_body.inv_mass)
+		force.length_squared() * (_power_inverse_mass(force, side) + player_body.inv_mass)
 		+ side_torque * side_torque * side["inv_inertia"]
 		+ torques.y * torques.y * player_body.inv_inertia
 	)
@@ -251,6 +251,41 @@ func _limit_power(force: Vector2, torque: float, hand_position: Vector2, delta: 
 		scale = clampf(scale, 0.0, 1.0)
 	debug_active_power = maxf(a * scale * scale + b * scale, 0.0) / delta
 	return force * scale
+
+
+## 返回力作用点沿当前施力方向的手侧有效逆质量。
+## 动态 Hinge 会把平移冲量传给物块，同时允许物块绕抓点转动，因此它既不是轻手自身
+## 的逆质量，也不是简单的组合质量。这里用两刚体点约束的有效质量矩阵计算；其它模式
+## 沿用 _hand_side() 的刚体近似。
+func _power_inverse_mass(force: Vector2, side: Dictionary) -> float:
+	if not rotate_grip or grabbed_body == null or grabbed_body.is_static \
+			or grip_joint == null or not grip_joint.is_active() or force.is_zero_approx():
+		return side["inv_mass"]
+	var anchor: Vector2 = grip_joint.anchor_b_world()
+	var hand_lever: Vector2 = anchor - body.com_world()
+	var payload_lever: Vector2 = anchor - grabbed_body.com_world()
+	var hand_tangent := Vector2(-hand_lever.y, hand_lever.x)
+	var payload_tangent := Vector2(-payload_lever.y, payload_lever.x)
+	var common_inverse_mass: float = body.inv_mass + grabbed_body.inv_mass
+	var k_xx: float = common_inverse_mass \
+		+ body.inv_inertia * hand_tangent.x * hand_tangent.x \
+		+ grabbed_body.inv_inertia * payload_tangent.x * payload_tangent.x
+	var k_xy: float = body.inv_inertia * hand_tangent.x * hand_tangent.y \
+		+ grabbed_body.inv_inertia * payload_tangent.x * payload_tangent.y
+	var k_yy: float = common_inverse_mass \
+		+ body.inv_inertia * hand_tangent.y * hand_tangent.y \
+		+ grabbed_body.inv_inertia * payload_tangent.y * payload_tangent.y
+	var determinant: float = k_xx * k_yy - k_xy * k_xy
+	if determinant <= 0.000000000001 or not is_finite(determinant):
+		return side["inv_mass"]
+	var direction: Vector2 = force.normalized()
+	var inverse_k_direction := Vector2(
+		(k_yy * direction.x - k_xy * direction.y) / determinant,
+		(-k_xy * direction.x + k_xx * direction.y) / determinant
+	)
+	var effective: float = body.inv_mass \
+		- body.inv_mass * body.inv_mass * direction.dot(inverse_k_direction)
+	return clampf(effective, side["motor_inv_mass"], body.inv_mass)
 #endregion
 
 
@@ -415,7 +450,8 @@ func reset_after_player_teleport() -> void:
 ## 执行器手侧：自由手、动态抓握组合体、固定抓点。
 ## Hinge 只释放相对转动，抓点平移仍会拖动物体，所以线性约化质量必须算上物体；
 ## 但不像 Weld 那样合并质心和惯量，保留物体绕抓点自由转动。
-## motor_inv_mass 用于从目标加速度求力；inv_mass 用于力直接施加到轻手时的保守功率预测。
+## motor_inv_mass 用于从目标加速度求力；inv_mass 是非铰接模式的功率预测基准。
+## 动态 Hinge 的方向相关有效逆质量由 _power_inverse_mass() 单独计算。
 func _hand_side() -> Dictionary:
 	if grabbed_body != null and grabbed_body.is_static:
 		# 固定抓点的 Hinge 仍有绕指尖转动的动能，Weld 才完全固定。

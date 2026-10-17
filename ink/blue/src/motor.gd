@@ -93,10 +93,14 @@ func receive_energy(energy: float, biological: float = 0.0) -> float:
 	return taken
 
 ## 能源已在发出时收费；这里只按实际施力消耗电机缓冲，不再回溯电源。
-func power_limit(per_width: float) -> float:
-	return brush_width * per_width * pow(minf(1.0, tip.length() / 120.0), 2.0)
+func length_scale(exponent: float, minimum: float) -> float:
+	return maxf(clampf(minimum, 0.0, 1.0), pow(minf(1.0, tip.length() / 120.0), exponent))
 
-func consume(delta: float, force_per_length: float, power_per_width: float, idle_power: float, force_limit: float = INF) -> void:
+func power_limit(per_width: float, exponent := 2.0, minimum := 0.0) -> float:
+	return brush_width * per_width * length_scale(exponent, minimum)
+
+func consume(delta: float, force_per_length: float, power_per_width: float, idle_power: float,
+		force_limit: float = INF, exponent := 2.0, minimum := 0.0) -> void:
 	buffer_age += delta
 	biological_age += delta
 	if biological_age > hold_seconds:
@@ -105,20 +109,21 @@ func consume(delta: float, force_per_length: float, power_per_width: float, idle
 	if buffer_age > hold_seconds:
 		energy_buffer = 0.0
 		biological_energy = 0.0
-	received_power = minf(power_limit(power_per_width), energy_buffer / maxf(delta, release_seconds))
-	used_power = drive(received_power, delta, force_per_length, idle_power, force_limit)
+	received_power = minf(power_limit(power_per_width, exponent, minimum), energy_buffer / maxf(delta, release_seconds))
+	used_power = drive(received_power, delta, force_per_length, idle_power, force_limit, exponent, minimum)
 	var fraction := biological_energy / maxf(energy_buffer, 0.001)
 	energy_buffer = maxf(0.0, energy_buffer - used_power * delta)
 	biological_energy = minf(energy_buffer, maxf(0.0, biological_energy - used_power * delta * fraction))
 
-func drive(available: float, delta: float, force_per_length: float, idle_power: float, force_limit: float = INF) -> float:
+func drive(available: float, delta: float, force_per_length: float, idle_power: float,
+		force_limit: float = INF, exponent := 2.0, minimum := 0.0) -> float:
 	applied_force = 0.0
 	if available <= 0.0:
 		return 0.0
 	var base := minf(available, idle_power)
 	var budget := maxf(0.0, available - base)
 	var direction := tip.normalized().rotated(rotation)
-	var force := minf(force_limit, tip.length() * force_per_length * pow(minf(1.0, tip.length() / 120.0), 2.0))
+	var force := minf(force_limit, tip.length() * force_per_length * length_scale(exponent, minimum))
 	var arm: Vector2 = position - body.com_world()
 	var cross := arm.cross(direction)
 	var inverse_mass: float = body.inv_mass + cross * cross * body.inv_inertia
@@ -134,12 +139,10 @@ func drive(available: float, delta: float, force_per_length: float, idle_power: 
 	return base + a * scale * scale + b * scale
 
 func _draw() -> void:
-	var color: Color = Palette.BLUE.color
-	if tip.length() > 0.01:
-		var direction := tip.normalized()
-		var back := tip - direction * minf(tip.length(), maxf(6.0, brush_width * 2.0))
-		draw_line(Vector2.ZERO, back, color, brush_width)
-		draw_colored_polygon(PackedVector2Array([tip, back + direction.orthogonal() * brush_width, back - direction.orthogonal() * brush_width]), color)
+	# 内部保持纯蓝，只把外轮廓栅格化；占用格与承载校验使用同一份像素足迹。
+	for point in pixels_for(tip, brush_width):
+		var at := Vector2i(point)
+		draw_rect(Rect2(Vector2(at), Vector2.ONE), Palette.BLUE.color, true)
 
 func _ready() -> void:
 	z_index = 9

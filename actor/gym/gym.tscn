@@ -10,7 +10,7 @@ script = ExtResource("1_gym")
 layout_mode = 3
 anchors_preset = 0
 offset_right = 435.0
-offset_bottom = 330.0
+offset_bottom = 620.0
 theme = ExtResource("2_theme")
 theme_type_variation = &"CardPanel"
 
@@ -40,7 +40,7 @@ custom_minimum_size = Vector2(96, 0)
 layout_mode = 2
 focus_mode = 0
 mouse_default_cursor_shape = 2
-tooltip_text = "把当前数值写回 Player 配置文件"
+tooltip_text = "把当前数值写回玩家、墨水和材质配置文件"
 text = "保存为默认"
 
 [node name="Knobs" type="VBoxContainer" parent="Panel/Rows"]

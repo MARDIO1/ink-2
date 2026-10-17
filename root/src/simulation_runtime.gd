@@ -2,6 +2,8 @@ extends Node
 ## 游戏模拟协调层：把物理帧交给规则接口，再把规则产生的通用效果交回 PhysicsStep。
 ## 本脚本只依赖能力接口，不判断红、黄、蓝等具体颜色。
 
+@export var tuning_config: Resource
+
 #region 状态与依赖
 @onready var _physics = $PhysicsStep
 @onready var _feet = $"../Player/PlayerInput"
@@ -25,7 +27,32 @@ var _profile: Dictionary = {}
 #region 生命周期
 ## 等待关卡和玩家完成初始化，再接管固定步，避免世界在同一帧被推进两次。
 func _ready() -> void:
+	_apply_tuning()
 	call_deferred("_start")
+
+
+## 规则节点仍暴露直观属性；共享资源只负责让所有关卡和 Gym 使用同一套默认值。
+func _apply_tuning() -> void:
+	if tuning_config == null:
+		return
+	var config_properties := {}
+	for property: Dictionary in tuning_config.get_property_list():
+		config_properties[str(property.name)] = true
+	var groups := {
+		"BlueInk": "blue_",
+		"YellowInk": "yellow_",
+		"RedInk": "red_",
+		"WhiteInk": "white_",
+	}
+	for child_name: String in groups:
+		var target := get_node_or_null(child_name)
+		if target == null:
+			continue
+		var prefix: String = groups[child_name]
+		for property: Dictionary in target.get_property_list():
+			var name := str(property.name)
+			if config_properties.has(prefix + name):
+				target.set(name, tuning_config.get(prefix + name))
 
 
 ## 收集规则接口、注册服务并初始化纯物理边界。

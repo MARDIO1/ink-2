@@ -1,0 +1,6 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://ink/general/src/ink_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")

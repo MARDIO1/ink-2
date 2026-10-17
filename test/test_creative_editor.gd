@@ -39,7 +39,7 @@ func _run() -> void:
 		"PASS" if play_toolbar_valid else "FAIL")
 	var health_ui: Array[Node] = get_nodes_in_group("health_ui")
 	var exit_button: TextureButton = game_ui.get_node("Hud/Root/ExitButton")
-	valid = valid and health_ui.size() == 4
+	valid = valid and health_ui.size() == 5
 	for item in health_ui:
 		valid = valid and item.visible
 	creative.set_active(true)

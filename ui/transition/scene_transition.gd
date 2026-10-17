@@ -2,8 +2,8 @@ extends CanvasLayer
 ## 常驻的切换遮罩：遮屏期间暂停世界，真实加载完成后揭幕。
 
 enum Style { PAGE, INK, TEAR, DRAFT }
-const OverlayShader := preload("res://ui/transition/asset/transition.gdshader")
-const LoadingInk := preload("res://ui/transition/src/loading_ink.gd")
+const OverlayShader := preload("res://ui/transition/transition.gdshader")
+const LoadingInk := preload("res://ui/transition/loading_ink.gd")
 const UIFont := preload("res://ui/theme/asset/ipix_ui_font.tres")
 var busy := false
 var style := Style.PAGE

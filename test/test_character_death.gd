@@ -61,6 +61,18 @@ func _run() -> void:
 			and not effect.is_in_group("ink_item") and not effect.is_in_group("map_monster"))
 		creative.active = true
 	creative.set_active(false)
+	# 进入地图编辑器会把可回收实体还原进画布；玩家死亡验收需要一个独立可抓取道具，
+	# 因此在编辑器回收了基准 Box 时重新装配一份干净关卡。
+	if not level.has_node("Box"):
+		level.queue_free()
+		await process_frame
+		level = (load("res://test/fixtures/maps/base_level.tscn") as PackedScene).instantiate()
+		level.get_node("Creative").auto_save_edits = false
+		level.get_node("Creative").auto_save_on_exit = false
+		root.add_child(level)
+		level.get_node("debugHUD").process_mode = Node.PROCESS_MODE_DISABLED
+		await process_frame
+		await physics_frame
 	var player = level.get_node("Player")
 	var death = player.get_node("FallDeath")
 	var hand = player.get_node("Arm/Hand/HandControl")

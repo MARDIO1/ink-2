@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/blueprint/src/blueprint_preview.gd" id="1_preview"]
+
+[node name="BlueprintPreview" type="Control"]
+texture_filter = 1
+mouse_filter = 2
+script = ExtResource("1_preview")

@@ -193,9 +193,13 @@ func _run() -> void:
 	_check("red ink resolves ordinary sound/damage/radial impulse pipeline", not reaction.impulses.is_empty()
 		and reaction.impulses.size() == queued_count and reaction.player_damage > 0.0)
 	player.apply_collision_damage(reaction.player_damage, reaction.get("player_impacts", []))
-	_check("real lethal blast empties health and HUD together", player.get_node("FallDeath")._dead
-		and health.ink_of(1) == 0.0 and hud.health_bar.value == 0.0
-		and hud.bottle_fill.value == 0.0 and hud.ink_meter.text == "黑墨 0 px")
+	var blast_lost: float = before - health.ink_of(1)
+	print("[MonsterAttack] blast damage=%.1f lost=%.1f max=%.1f dead=%s" % [
+		reaction.player_damage, blast_lost, health.max_of(1), str(player.get_node("FallDeath")._dead)])
+	_check("blast drains a large share of health without one-shotting",
+		blast_lost >= health.max_of(1) * 0.4 and blast_lost < health.max_of(1)
+		and not player.get_node("FallDeath")._dead
+		and is_equal_approx(hud.health_bar.value, 100.0 * health.ink_of(1) / health.max_of(1)))
 	await process_frame
 	_check("explosion sprite expires", get_nodes_in_group(&"monster_projectile").is_empty())
 	# 实心墙必须挡住攻击和爆炸，不能隔墙扣血。

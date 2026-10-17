@@ -48,7 +48,10 @@ func resize(size: Vector2i, offset := Vector2i.ZERO) -> void:
 	refresh()
 
 func refresh() -> void:
-	texture = ImageTexture.create_from_image(pixels)
+	if texture != null and texture.get_size() == Vector2(pixels.get_size()):
+		texture.update(pixels)
+	else:
+		texture = ImageTexture.create_from_image(pixels)
 	queue_redraw()
 
 func _draw() -> void:
@@ -119,6 +122,7 @@ func extend(point: Vector2) -> void:
 	source_surface._brush_line(out, last_point, point)
 	var health = source_surface._health_node()
 	var room: int = int(source_surface._drawable_ink_room(Palette.YELLOW.id))
+	var visual_changed := false
 	for cell: Vector2i in out:
 		if not source_surface._inside(Vector2(cell)):
 			continue
@@ -130,6 +134,7 @@ func extend(point: Vector2) -> void:
 		if not changed.has(cell):
 			changed[cell] = had
 		pixels.set_pixelv(cell, Color.TRANSPARENT if erasing else Palette.YELLOW.color)
+		visual_changed = true
 		var delta := -1 if erasing else 1
 		ink_delta += delta
 		if not source_surface.ink_free and health != null:
@@ -139,11 +144,13 @@ func extend(point: Vector2) -> void:
 		for index in range(anchor_points.size() - 1, -1, -1):
 			if pixels.get_pixelv(Vector2i(anchor_points[index].floor())).a <= 0:
 				anchor_points.remove_at(index)
+				visual_changed = true
 		source_surface.yellow_rule().erase_spring_ends(source_surface, last_point, point)
 	last_point = point
 	if not erasing and source_surface._ink_room(Palette.YELLOW.id) < source_surface.MIN_PAINT_INK:
 		source_surface._warn_ink_shortage(source_surface.MIN_PAINT_INK)
-	refresh()
+	if visual_changed or erasing:
+		refresh()
 
 func finish(point: Vector2, record_undo := true) -> Dictionary:
 	extend(point)
@@ -165,9 +172,13 @@ func erase_rect(rect: Rect2i, mask: Dictionary = {}) -> bool:
 	var removed := 0
 	for y in range(clipped.position.y, clipped.end.y):
 		for x in range(clipped.position.x, clipped.end.x):
-			if SelectionMask.contains(mask, Vector2i(x, y)) and pixels.get_pixel(x, y).a > 0.5:
-				pixels.set_pixel(x, y, Color.TRANSPARENT)
-				removed += 1
+			if not SelectionMask.contains(mask, Vector2i(x, y)):
+				continue
+			if pixels.get_pixel(x, y).a <= 0.5:
+				continue
+			pixels.set_pixel(x, y, Color.TRANSPARENT)
+			removed += 1
+	var old_anchor_count := anchor_points.size()
 	for index in range(anchor_points.size() - 1, -1, -1):
 		var anchor := Vector2i(anchor_points[index].floor())
 		if clipped.has_point(anchor) and SelectionMask.contains(mask, anchor):
@@ -179,12 +190,16 @@ func erase_rect(rect: Rect2i, mask: Dictionary = {}) -> bool:
 			if clipped.has_point(at) and SelectionMask.contains(mask, at):
 				return false
 		return true)
-	if removed > 0 and not source_surface.ink_free:
+	if removed == 0 and old_anchor_count == anchor_points.size() \
+	and old_pin_count == slider_pins.size():
+		return false
+	if not source_surface.ink_free:
 		var health = source_surface._health_node()
 		if health != null:
 			health.add(Palette.YELLOW.id, removed)
 	refresh()
-	return removed > 0 or old_pin_count != slider_pins.size()
+	return removed > 0 or old_anchor_count != anchor_points.size() \
+	or old_pin_count != slider_pins.size()
 
 ## 选区移动同步移动像素、锚点和轨道元数据，不丢失新轴系。
 func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> bool:
