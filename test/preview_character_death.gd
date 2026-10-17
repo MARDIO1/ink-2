@@ -16,7 +16,7 @@ func _run() -> void:
 	root.add_child(paper)
 	var stage := Node2D.new()
 	root.add_child(stage)
-	var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
+	var level := (load("res://test/fixtures/maps/base_level.tscn") as PackedScene).instantiate()
 	level.get_node("Creative").auto_save_edits = false
 	level.get_node("Creative").auto_save_on_exit = false
 	root.add_child(level)

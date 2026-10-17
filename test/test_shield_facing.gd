@@ -20,7 +20,7 @@ func _shield_above_feet(monster: Node2D) -> bool:
 	return absf(shield_bottom - sole) < 0.1
 
 func _run() -> void:
-	var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
+	var level := (load("res://test/fixtures/maps/base_level.tscn") as PackedScene).instantiate()
 	root.add_child(level)
 	await process_frame
 	await physics_frame

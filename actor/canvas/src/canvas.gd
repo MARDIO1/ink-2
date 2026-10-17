@@ -20,6 +20,7 @@ const EditorControlIconSource := preload("res://actor/canvas/asset/editor_contro
 const EXPAND_CANVAS_ICON_REGION := Rect2(228, 128, 116, 116)
 const EDITOR_CONTROL_ICON_REGION := Rect2(340, 340, 116, 116)
 const PLAY_TOOL_COLUMNS := 2
+const TOOLBAR_TEXT_COLOR := Color("414141")
 const EDITOR_TOOL_COLUMNS := 2
 const PLAY_TOOL_BUTTON_WIDTH := 32.0
 const PLAY_TOOL_BUTTON_HEIGHT := 43.0
@@ -121,6 +122,20 @@ func _ready() -> void:
 		surface.ink_shortage.connect(_show_ink_shortage)
 		# 进入正常游戏时始终从“手”开始，不能继承地图保存时的画笔状态。
 		_apply_tool(SurfaceScript.Tool.HAND if active else surface.tool)
+	_apply_toolbar_text_color(workbench)
+	if _side_panel != null:
+		_apply_toolbar_text_color(_side_panel)
+
+
+## 左右画布工具栏统一深灰文字；不改变图标原图和墨水色块。
+func _apply_toolbar_text_color(node: Node) -> void:
+	if node is Label:
+		node.add_theme_color_override("font_color", TOOLBAR_TEXT_COLOR)
+	elif node is Button:
+		for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_disabled_color", "font_hover_pressed_color"]:
+			node.add_theme_color_override(state, TOOLBAR_TEXT_COLOR)
+	for child in node.get_children():
+		_apply_toolbar_text_color(child)
 #endregion
 
 
@@ -475,7 +490,7 @@ func _build_side_panel() -> void:
 	panel.add_theme_constant_override("separation", 4)
 	add_child(panel)
 	_side_panel = panel
-	var screen_layer := preload("res://actor/canvas/src/side_panel_layout.gd").new()
+	var screen_layer := preload("res://actor/canvas/toolbar/toolbar.tscn").instantiate()
 	screen_layer.name = "SidePanelLayer"
 	screen_layer.canvas = self
 	screen_layer.panel = panel
@@ -797,9 +812,22 @@ func _refresh_workbench_visibility() -> void:
 	if not active:
 		_set_workbench_visible(false)
 		return
+	if not Engine.is_editor_hint() and not _map_editor_mode and _side_panel == null:
+		return # 动态色盘装配完成后再参与归属交接。
+	var creative := get_parent().get_node_or_null("Creative")
+	if not _map_editor_mode and creative != null and creative.active:
+		_set_workbench_visible(false)
+		return
 	# 单独预览或编辑地图时，工具栏保持可见。
-	if player == null or _screen_fixed:
+	if _screen_fixed or Engine.is_editor_hint():
 		_set_workbench_visible(true)
+		if not Engine.is_editor_hint():
+			surface.set_process_input(active)
+		return
+	if player == null:
+		var owner_canvas := _choose_play_toolbar_owner()
+		_set_workbench_visible(owner_canvas == self)
+		surface.set_process_input(active and owner_canvas == self)
 		return
 	var distance := _distance_from_player_to_canvas()
 	var was_nearby := _workbench_nearby
@@ -807,9 +835,102 @@ func _refresh_workbench_visibility() -> void:
 		_workbench_nearby = distance <= maxf(toolbar_hide_distance, toolbar_show_distance)
 	else:
 		_workbench_nearby = distance <= minf(toolbar_show_distance, toolbar_hide_distance)
-	_set_workbench_visible(_workbench_nearby)
+	var owner_canvas := _choose_play_toolbar_owner()
+	_set_workbench_visible(_workbench_nearby and owner_canvas == self)
+	surface.set_process_input(active and owner_canvas == self)
 	if was_nearby and not _workbench_nearby and not _map_editor_mode:
 		_restore_hand_on_departure()
+
+
+## 邻近画布共用一套视觉；绘制和点击工具栏时保持归属。
+func _choose_play_toolbar_owner() -> Node:
+	var level := get_parent()
+	# 临时归属放在视口，避免把 WeakRef 写入编辑器保存的地图。
+	var viewport := get_viewport()
+	var owners: Dictionary = viewport.get_meta(&"play_toolbar_owners", {})
+	var level_id := level.get_instance_id()
+	if not owners.has(level_id):
+		owners[level_id] = null
+		viewport.set_meta(&"play_toolbar_owners", owners)
+		level.tree_exiting.connect(func(): owners.erase(level_id), CONNECT_ONE_SHOT)
+	var reference: WeakRef = owners[level_id]
+	var previous: Node = reference.get_ref() if reference != null else null
+	var locked: bool = previous != null and previous._toolbar_interacting()
+	var candidates: Array = []
+	for item in get_tree().get_nodes_in_group(&"canvas_workbench"):
+		if item.get_parent() != level or not item.active or not item.is_visible_in_tree() \
+		or item._map_editor_mode or item._screen_fixed or item._side_brush_slider == null:
+			continue
+		if item.player == null or (item == previous and locked) or item._distance_from_player_to_canvas() <= (item.toolbar_hide_distance if item == previous else item.toolbar_show_distance):
+			candidates.append(item)
+	var chosen: Node = null
+	var best_score := INF
+	var hovered_canvas: Node = null
+	var mouse := get_viewport().get_mouse_position()
+	for item in candidates:
+		var local: Vector2 = item.get_global_transform_with_canvas().affine_inverse() * mouse
+		if Rect2(Vector2.ZERO, Vector2(item.canvas_size)).has_point(local):
+			hovered_canvas = item
+		var score: float = item._toolbar_player_score()
+		if score < best_score:
+			best_score = score
+			chosen = item
+	if candidates.has(previous):
+		var hovered := get_viewport().gui_get_hovered_control()
+		var on_toolbar: bool = hovered != null and (previous.buttons.is_ancestor_of(hovered) \
+			or previous._side_panel != null and previous._side_panel.is_ancestor_of(hovered) or hovered == previous.toggle_button)
+		if locked or on_toolbar:
+			chosen = previous
+		elif hovered_canvas != null:
+			chosen = hovered_canvas
+		elif previous._toolbar_player_score() <= best_score + 40.0:
+			chosen = previous
+	elif hovered_canvas != null:
+		chosen = hovered_canvas
+	if chosen != previous and chosen != null:
+		# 空档仍记住正在淡出的实例，下一块画布可接续其位置和透明度。
+		owners[level_id] = weakref(chosen)
+		if previous != null and chosen != null and not previous._map_editor_mode and not previous._screen_fixed:
+			chosen._inherit_play_toolbar(previous)
+	return chosen
+
+
+func _toolbar_interacting() -> bool:
+	return surface._painting or surface._shaping or surface._selecting or surface._selection_dragging \
+		or surface._rod_drawing or surface._rail_drawing or surface.blue_layer.drawing \
+		or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+
+
+func _toolbar_player_score() -> float:
+	if player == null:
+		return 0.0
+	var body = player.get("body")
+	var player_position: Vector2 = get_parent().to_global(body.com_world()) if body != null else player.global_position
+	return _distance_from_player_to_canvas() + global_position.distance_to(player_position) * 0.05
+
+
+func _inherit_play_toolbar(previous: Node) -> void:
+	var previous_layout := previous.get_node_or_null("SidePanelLayer")
+	var layout := get_node_or_null("SidePanelLayer")
+	if previous_layout != null and layout != null:
+		layout.adopt_positions(previous_layout)
+	_workbench_hidden = previous._workbench_hidden
+	select_ink(previous.surface.selected_ink)
+	set_brush_size(previous.surface.brush_size)
+	_side_brush_slider.set_value_no_signal(previous.surface.brush_size)
+	set_tool(previous.surface.tool)
+	for pair in [[previous.buttons, buttons], [previous.toggle_button, toggle_button], [previous._side_panel, _side_panel]]:
+		if pair[0] == null or pair[1] == null:
+			continue
+		pair[1].scale = pair[0].scale
+		pair[1].modulate.a = pair[0].modulate.a
+		var tween: Tween = pair[0].get_meta(&"toolbar_tween") if pair[0].has_meta(&"toolbar_tween") else null
+		if tween != null:
+			tween.kill()
+		previous._set_toolbar_input(pair[0], false)
+		pair[0].set_meta(&"toolbar_wanted", false)
+		pair[0].hide()
+	previous.surface.set_process_input(false)
 
 
 func is_player_near_workbench() -> bool:
@@ -864,13 +985,13 @@ func _animate_toolbar(control: Control, show: bool) -> void:
 	control.pivot_offset = Vector2(control.size.x * 0.5, 0.0)
 	if first or not active or _map_editor_mode or toolbar_transition_seconds <= 0.0:
 		control.visible = show
-		control.scale = Vector2.ONE if show else Vector2.ONE * 0.15
+		control.scale = Vector2.ONE if show else Vector2.ONE * 0.96
 		control.modulate.a = 1.0 if show else 0.0
 		return
 	control.visible = true
 	var tween := create_tween().set_parallel(true)
 	control.set_meta(&"toolbar_tween", tween)
-	tween.tween_property(control, "scale", Vector2.ONE if show else Vector2.ONE * 0.15,
+	tween.tween_property(control, "scale", Vector2.ONE if show else Vector2.ONE * 0.96,
 		toolbar_transition_seconds).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(control, "modulate:a", 1.0 if show else 0.0, toolbar_transition_seconds)
 	if not show:
@@ -1231,7 +1352,7 @@ func _input(event: InputEvent) -> void:
 	var blueprints := get_node_or_null("/root/Blueprints")
 	if blueprints != null and blueprints.blocks_world_event(event):
 		return
-	if not _map_editor_mode and not _workbench_nearby:
+	if not _map_editor_mode and (not _workbench_nearby or _choose_play_toolbar_owner() != self):
 		return
 	# 框选工具下，在选区内按右键直接删除；工具栏上的右键仍由弹出菜单处理。
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT \

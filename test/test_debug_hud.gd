@@ -14,7 +14,7 @@ func _check(title: String, condition: bool) -> void:
 
 
 func _run() -> void:
-	var scene := preload("res://map/asset/imported/main.tscn").instantiate()
+	var scene := preload("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame

@@ -1,16 +1,18 @@
 extends Control
-## 关卡选择：递归扫 `res://map` 下的 `.tscn`，只留**真关卡**，点一个换一个。
-##
-## 判据是内容判据（不靠目录名）：场景状态里存在名为 `Player` 的节点。
-## 地形件（一块烘好的静态图）没有 Player，自动被排除；创造模式 F5 存出来的新关卡
-## （`debug/creative/src/creative.gd` 的 `map_path`）自动进列表，不用改这里。
+## 正式地图按阅读顺序列出；Peak 独立放在最后，不加入纸页传送路线。
 ##
 ## 列表由 ScrollContainer 承载：只允许纵向滚动，鼠标停在列表上时可直接滚轮浏览；
 ## 所以导入更多地图后，下方按钮不会落在屏幕外而无法选择。
 
 const LEVEL_DIR := "res://map"
 const PLAYER_NODE := "Player"
-const NON_LEVEL_SCENE := "res://map/asset/imported/main.tscn"
+const LEVEL_PATHS: Array[String] = [
+	"res://map/asset/imported/扉页.tscn",
+	"res://map/asset/imported/第一页.tscn",
+	"res://map/asset/imported/第二页.tscn",
+	"res://map/asset/imported/第三页.tscn",
+	"res://map/asset/imported/peak.tscn",
+]
 ## 列表按钮宽度，避免被 CenterContainer 挤成一条。
 const BUTTON_SIZE := Vector2(340, 46)
 
@@ -101,35 +103,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_back_pressed()
 
 
-## `res://map` 下所有真关卡的路径，已排序。
+## 返回正式地图；开发测试夹具不进入玩家目录。
 static func find_levels() -> PackedStringArray:
 	var found := PackedStringArray()
-	_scan(LEVEL_DIR, found)
-	found.sort()
+	for path in LEVEL_PATHS:
+		if ResourceLoader.exists(path, "PackedScene") and _has_player(path):
+			found.append(path)
 	return found
 
 
-static func _scan(dir_path: String, found: PackedStringArray) -> void:
-	var dir := DirAccess.open(dir_path)
-	if dir == null:
-		push_error("关卡选择：打不开 %s" % dir_path)
-		return
-	dir.list_dir_begin()
-	var entry := dir.get_next()
-	while entry != "":
-		var path := dir_path.path_join(entry)
-		if dir.current_is_dir():
-			if not entry.begins_with("."):
-				_scan(path, found)
-		else:
-			# 导出后文本场景会变成 .scn，并通过原路径的 .remap 文件访问。
-			if entry.ends_with(".tscn.remap"):
-				path = path.trim_suffix(".remap")
-			if path.ends_with(".tscn") and path != NON_LEVEL_SCENE \
-			and not found.has(path) and _has_player(path):
-				found.append(path)
-		entry = dir.get_next()
-	dir.list_dir_end()
+static func next_level(current: String) -> String:
+	var index := LEVEL_PATHS.find(current)
+	# 只连接前三次翻页；第三页和 Peak 都没有自动下一关。
+	if index < 0 or index >= 3:
+		return ""
+	var destination := LEVEL_PATHS[index + 1]
+	return destination if ResourceLoader.exists(destination, "PackedScene") else ""
 
 
 ## 真关卡的判据：场景里有一个叫 `Player` 的节点。只看结构，不实例化、不进游戏。

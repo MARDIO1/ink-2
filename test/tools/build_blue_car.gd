@@ -5,7 +5,7 @@ const BlueInk := preload("res://ink/blue/src/blue_ink.gd")
 const Motor := preload("res://ink/blue/src/motor.gd")
 const Hinge := preload("res://ink/yellow/src/hinge.gd")
 const Wire := preload("res://ink/blue/src/wire_layer.gd")
-const DESTINATION := "res://map/asset/blue_car.tscn"
+const DESTINATION := "res://test/fixtures/maps/blue_car.tscn"
 var level
 var surface
 
@@ -24,7 +24,7 @@ func paint(rect: Rect2i, color: Color) -> void:
 			surface.black_image.set_pixel(x, y, color)
 
 func run() -> void:
-	level = load("res://map/asset/imported/main.tscn").instantiate()
+	level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	await process_frame

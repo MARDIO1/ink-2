@@ -22,10 +22,10 @@ func _run() -> void:
 	await process_frame
 	await app._show_level_select()
 	_check("page opens level select", app.ui_root.get_child(0).has_signal("level_chosen") and not transition.busy)
-	var first: bool = await app.request_level_change("res://map/asset/imported/main.tscn")
+	var first: bool = await app.request_level_change("res://test/fixtures/maps/base_level.tscn")
 	_check("ink opens level, unlocks and resumes", first and transition.style == transition.Style.INK and not paused and not transition.busy)
 	var old_level: WeakRef = weakref(app.level_root.get_child(0))
-	var second: bool = await app.request_level_change("res://map/asset/imported/main.tscn")
+	var second: bool = await app.request_level_change("res://test/fixtures/maps/base_level.tscn")
 	await process_frame
 	_check("tear replaces old level", second and transition.style == transition.Style.TEAR and old_level.get_ref() == null)
 	var creative: Node = app.level_root.get_child(0).get_node("Creative")
@@ -55,7 +55,7 @@ func _run() -> void:
 	_check("real tutorial returns to play", not creative.active and not transition.busy)
 	await transition.begin(transition.Style.INK, "测试加载中…")
 	_check("cover pauses scene", paused and transition.busy)
-	var refused: bool = await app.request_level_change("res://map/asset/imported/main.tscn")
+	var refused: bool = await app.request_level_change("res://test/fixtures/maps/base_level.tscn")
 	_check("duplicate request rejected", not refused)
 	await transition.finish()
 	paused = true

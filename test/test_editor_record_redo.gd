@@ -20,7 +20,7 @@ func _yellow_at(surface, point: Vector2i) -> bool:
 
 
 func _run() -> void:
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	level.materials.append(Palette.RED)
 	level.materials.append(Palette.YELLOW)

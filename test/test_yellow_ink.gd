@@ -35,7 +35,7 @@ func paint(rect: Rect2i) -> void:
 	surface.refresh()
 
 func run() -> void:
-	scene = load("res://map/asset/imported/main.tscn").instantiate()
+	scene = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame

@@ -214,7 +214,13 @@ var density_scale := 1.0
 ## 拥有它的刚体，由 PBody.rebuild 写入（Teardown 的 GetShapeBody）。
 ## ⚠️ 一个 Shape 只应属于一个刚体；如果同一个 Shape 被塞进两个刚体，
 ##    这里只会记住最后一个。
-var owner_body = null
+var _owner_body_ref: WeakRef
+var owner_body:
+	get:
+		return _owner_body_ref.get_ref() if _owner_body_ref != null else null
+	set(value):
+		# 刚体拥有形状；反向查询不能再持有刚体，否则每次拆分/撤销都会留下引用环。
+		_owner_body_ref = weakref(value) if value != null else null
 
 static func make_key(cx: int, cy: int) -> int:
 	return (cx << 32) | (cy & 0xFFFFFFFF)

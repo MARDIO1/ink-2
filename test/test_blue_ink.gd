@@ -38,7 +38,7 @@ func settle(seconds := 0.5) -> void:
 			runtime.commit_fuel(scene.world, result.fuel_removals)
 
 func run() -> void:
-	scene = load("res://map/asset/imported/main.tscn").instantiate()
+	scene = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame
@@ -375,7 +375,7 @@ func test_slip_ring() -> void:
 	check("destroyed bearing removes slip ring", motor.received_power == 0.0)
 
 func profile_blue() -> void:
-	print("Use res://map/test/blue_energy_stress.tscn -- --bench --case=chaos")
+	print("Use res://test/fixtures/maps/blue_energy_stress.tscn -- --bench --case=chaos")
 func test_power_sharing() -> void:
 	paint(Rect2i(20, 20, 160, 30), Color.BLACK)
 	paint(Rect2i(10, 25, 10, 12), Palette.RED.color)

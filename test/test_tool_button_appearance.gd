@@ -24,7 +24,7 @@ func _run() -> void:
 	var second: Button = selector.list.get_child(1)
 	_check("level buttons keep identical color", first.get_theme_stylebox("hover").bg_color == second.get_theme_stylebox("normal").bg_color)
 	selector.queue_free()
-	var scene: Node = load("res://map/asset/imported/main.tscn").instantiate()
+	var scene: Node = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame

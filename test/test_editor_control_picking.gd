@@ -34,7 +34,7 @@ func _disable_physics(node: Node) -> void:
 
 
 func _run() -> void:
-	var level: Node = load("res://map/asset/imported/main.tscn").instantiate()
+	var level: Node = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	root.add_child(level)
 	await process_frame
 	creative = level.get_node("Creative")

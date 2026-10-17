@@ -31,6 +31,11 @@ const _PixelSprite2D := preload("res://addons/pixel_destruction/nodes/pixel_spri
 const _PixelJoint2D := preload("res://addons/pixel_destruction/nodes/pixel_joint_2d.gd")
 const PixelScale := preload("res://addons/pixel_destruction/core/pixel_scale.gd")
 
+@export_group("关卡墨水配额")
+## 开局各色墨水量（材质 ID -> 像素数）；未填的颜色沿用玩家 max_ink。
+## 黑 1、灰 4、红 8、黄 9、白 10、蓝 11。
+@export var starting_ink: Dictionary[int, float] = {}
+
 
 ## **每个固定步**走完时发出，参数就是这个世界。
 ##

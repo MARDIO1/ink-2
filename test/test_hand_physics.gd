@@ -1,6 +1,6 @@
 extends SceneTree
 
-const MAIN_SCENE := preload("res://map/asset/imported/main.tscn")
+const MAIN_SCENE := preload("res://test/fixtures/maps/base_level.tscn")
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const DT := 1.0 / 60.0

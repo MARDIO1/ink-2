@@ -16,7 +16,7 @@ func _move(body, center: Vector2) -> void:
 	body.update_aabb()
 
 func _run() -> void:
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	current_scene = level

@@ -16,7 +16,7 @@ func _position_player(body, position: Vector2) -> void:
 	body.update_aabb()
 
 func _run() -> void:
-	var level: Node = load("res://map/asset/imported/main.tscn").instantiate()
+	var level: Node = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	root.add_child(level)
 	await process_frame
 	level.get_node("SimulationRuntime").set_physics_process(false)
@@ -41,9 +41,9 @@ func _run() -> void:
 	_check("departure returns hand and tool", hand.enabled and canvas.surface.tool == canvas.SurfaceScript.Tool.HAND)
 	_check("fading buttons cannot be clicked", canvas.tool_grid.get_node("Brush").disabled)
 	await create_timer(0.1).timeout
-	_check("closing interpolates scale and opacity", canvas.buttons.scale.x > 0.15 and canvas.buttons.scale.x < 1.0 and canvas.buttons.modulate.a > 0.0 and canvas.buttons.modulate.a < 1.0)
+	_check("closing gently interpolates scale and opacity", canvas.buttons.scale.x > 0.96 and canvas.buttons.scale.x < 1.0 and canvas.buttons.modulate.a > 0.0 and canvas.buttons.modulate.a < 1.0)
 	await create_timer(0.25).timeout
-	_check("toolbar finishes shrinking and hiding", not canvas.buttons.visible and canvas.buttons.scale.x < 0.2 and canvas._side_panel.modulate.a == 0.0)
+	_check("toolbar finishes gentle fade without collapsing", not canvas.buttons.visible and is_equal_approx(canvas.buttons.scale.x, 0.96) and canvas._side_panel.modulate.a == 0.0)
 	camera._update_canvas_zoom(1.0)
 	_check("leaving restores camera zoom", camera.zoom.x < near_zoom.x and camera._canvas_zoom_weight < 0.01)
 	_position_player(body, near_position)

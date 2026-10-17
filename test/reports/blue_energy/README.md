@@ -58,7 +58,7 @@
 
 ```powershell
 $godot = 'T:/GODOT/tool/Godot_v4.7.2-stable_win64_console.exe'
-& $godot --path . --scene res://map/test/blue_energy_stress.tscn -- --bench --case=chaos
+& $godot --path . --scene res://test/fixtures/maps/blue_energy_stress.tscn -- --bench --case=chaos
 & $godot --headless --path . --script res://test/tools/profile_energy_scaling.gd
 python test/tools/render_energy_profile.py
 ```

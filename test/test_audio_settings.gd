@@ -32,7 +32,7 @@ func _run() -> void:
 	await process_frame
 	var music := app.get_node("Music") as AudioStreamPlayer
 	check("menu background music routes to BGM", music.bus == &"BGM" and music.playing)
-	var level = app.load_level(load("res://map/asset/imported/main.tscn"))
+	var level = app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
 	level.auto_step = false
 	app._set_screen(load("res://ui/game_ui.tscn").instantiate())
 	await process_frame

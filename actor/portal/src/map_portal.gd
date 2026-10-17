@@ -257,9 +257,7 @@ func resolve_destination() -> String:
 	var creative := _level().get_node_or_null("Creative") if _level() != null else null
 	if creative != null and not str(creative.get("map_path")).is_empty():
 		current = str(creative.get("map_path"))
-	var levels := LevelList.find_levels()
-	var index := levels.find(current)
-	return levels[index + 1] if index >= 0 and index + 1 < levels.size() else ""
+	return LevelList.next_level(current)
 
 
 func _activate() -> void:

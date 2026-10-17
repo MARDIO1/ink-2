@@ -15,7 +15,7 @@ func _visible_bottom(sprite: Sprite2D) -> float:
 	return bottom
 
 func _run() -> void:
-	var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
+	var level := (load("res://test/fixtures/maps/base_level.tscn") as PackedScene).instantiate()
 	# 在平地上隔离支撑测试，避免加宽后的盾牌搭在训练装置或箱子上。
 	for obstacle in ["Box", "Gym"]:
 		var node := level.get_node_or_null(obstacle)

@@ -116,7 +116,7 @@ func _run() -> void:
 	var monster_kind := MapMonsterScript.Kind.SHIELD_SOLDIER if "--great-shield" in OS.get_cmdline_user_args() else MapMonsterScript.Kind.LITTLE_SOLDIER
 	if "--bomb-side" in OS.get_cmdline_user_args():
 		monster_kind = MapMonsterScript.Kind.BOMB_SIDE
-	var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
+	var level := (load("res://test/fixtures/maps/base_level.tscn") as PackedScene).instantiate()
 	# 测试场只保留地面、玩家和被测怪物，移除演示道具干扰。
 	level.get_node("Box").free()
 	level.get_node("Gym").free()

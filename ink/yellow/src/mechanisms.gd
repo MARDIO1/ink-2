@@ -10,7 +10,7 @@ var cranks: Array = []
 var coupler = null
 
 func _ready() -> void:
-	level = load("res://map/asset/imported/main.tscn").instantiate()
+	level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	add_child(level)
 	await get_tree().process_frame

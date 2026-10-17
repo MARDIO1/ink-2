@@ -17,7 +17,7 @@ func _run() -> void:
 	root.add_child(app)
 	current_scene = app
 	root.get_node("SceneTransition").duration = 0.01
-	for path in ["res://map/asset/imported/扉页.tscn", "res://map/asset/imported/第一关.tscn", "res://map/asset/imported/扉页.tscn", "res://map/asset/imported/第一关.tscn"]:
+	for path in ["res://map/asset/imported/扉页.tscn", "res://map/asset/imported/第一页.tscn", "res://map/asset/imported/扉页.tscn", "res://map/asset/imported/第一页.tscn"]:
 		await app.request_level_change(path)
 		await process_frame
 		await process_frame

@@ -1,6 +1,6 @@
 extends SceneTree
-const Codec := preload("res://actor/blueprint/src/blueprint_codec.gd")
-const Store := preload("res://actor/blueprint/src/blueprint_store.gd")
+const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
+const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 var checks := 0
 var failures := 0
@@ -16,9 +16,12 @@ func check(label: String, condition: bool) -> void:
 
 func _run() -> void:
 	var app = load("res://root/root.tscn").instantiate()
+	# 本测试只验证蓝图输入链；音乐由 test_audio_integration 覆盖。
+	app.menu_music = null
+	app.level_music = null
 	root.add_child(app)
 	current_scene = app
-	var level = app.load_level(load("res://map/asset/imported/main.tscn"))
+	var level = app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
 	level.auto_step = false
 	app._set_screen(app.ui_scene.instantiate())
 	await process_frame
@@ -155,7 +158,7 @@ func _run() -> void:
 	var data := Codec.capture(canvas, Rect2i(24, 24, 104, 80))
 	system.begin_placement(data)
 	check("placement preview starts before reload", system.placing)
-	app.load_level(load("res://map/asset/imported/main.tscn"))
+	app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
 	app.level_root.get_child(0).auto_step = false
 	await process_frame
 	await process_frame

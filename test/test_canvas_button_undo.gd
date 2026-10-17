@@ -14,7 +14,7 @@ func _initialize() -> void:
 	call_deferred("run")
 
 func run() -> void:
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	await process_frame
@@ -25,7 +25,7 @@ func run() -> void:
 	surface.clear()
 	var health = surface._health_node()
 	var original_ink: float = health.ink_of(Palette.BLACK.id)
-	var actions = canvas.get_node("SidePanel/HistoryActions")
+	var actions = canvas._side_panel.get_node("HistoryActions")
 	actions.refresh()
 	check("empty play history buttons are disabled", actions.undo_button.disabled and actions.redo_button.disabled)
 	surface._begin_undo_step()

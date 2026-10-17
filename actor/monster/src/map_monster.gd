@@ -23,6 +23,10 @@ var _dead := false
 var _ragdoll: RefCounted
 var _attack: RefCounted
 @export var attacks_enabled := true
+## 关卡实例可调整节奏，默认值保持其他地图原有行为。
+@export_range(0.25, 8.0, 0.05) var attack_cooldown_scale := 1.0
+@export_range(0.5, 4.0, 0.05) var attack_windup_scale := 1.0
+@export_range(0.25, 3.0, 0.05) var attack_range_scale := 1.0
 
 ## 前两个编号只为兼容旧地图与测试保留，已不再对应可放置场景或美术资源。
 ## 新放置栏只会提供 BOMB_SIDE 和后续的 SHIELD_SOLDIER。

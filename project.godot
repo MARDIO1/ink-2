@@ -26,7 +26,7 @@ default_bus_layout="res://sound/default_bus_layout.tres"
 SceneTransition="*res://ui/transition/src/scene_transition.gd"
 InkRuntime="*res://ink/general/src/ink_runtime.gd"
 AudioSettings="*res://sound/src/audio_settings.gd"
-Blueprints="*res://ui/blueprint/src/blueprint_system.gd"
+Blueprints="*res://ui/hud/blueprint/blueprint_system.tscn"
 InkCursor="*res://ui/cursor/cursor.tscn"
 UIFeedback="*res://ui/theme/src/ui_feedback.gd"
 

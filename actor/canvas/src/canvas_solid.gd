@@ -65,9 +65,11 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	var previous: Array = world.world.bodies.duplicate()
 	var ink_pixels: int = shape.pixel_count()
 	var overlap_bodies: Array = world.world.bodies.duplicate()
-	# 齿轮通过轴承与支座分层重叠；墨化后再固化不能把支座的轴心挖掉。
+	# 齿轮与支座分层重叠，但只有**靠支座锚点固定**的齿轮才需要保住轴心像素。
+	# 钉在世界的齿轮没有支座，轮盘必须整块从新墨里挖掉，否则新固化的支座会插进轮齿。
 	for child in world.get_children():
-		if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
+		if child is GearBearing and not child.is_queued_for_deletion() \
+		and not child.fixed_to_world and not child.yellow_anchor.is_empty():
 			overlap_bodies.erase(child.yellow_anchor.body)
 	var rejected_pixels: int = _remove_overlaps(shape, surface, overlap_bodies)
 

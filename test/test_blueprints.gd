@@ -1,6 +1,6 @@
 extends SceneTree
-const Codec := preload("res://actor/blueprint/src/blueprint_codec.gd")
-const Store := preload("res://actor/blueprint/src/blueprint_store.gd")
+const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
+const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Bearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
@@ -18,7 +18,7 @@ func check(label: String, condition: bool) -> void:
 		failures += 1
 
 func _run() -> void:
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	current_scene = level

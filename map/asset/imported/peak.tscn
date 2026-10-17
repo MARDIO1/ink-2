@@ -758,8 +758,8 @@ script = ExtResource("19_k51f5")
 [node name="Creative" type="Node" parent="." unique_id=233836758]
 process_physics_priority = 15
 script = ExtResource("20_qe8jr")
-map_path = "res://map/asset/imported/第一关.tscn"
-baked_map_path = "res://map/asset/imported/第一关.png"
+map_path = "res://map/asset/imported/peak.tscn"
+baked_map_path = "res://map/asset/imported/peak.png"
 edit_snapshot_path = "res://map/asset/imported/peak.edit.png"
 
 [node name="Monsters" type="Node2D" parent="." unique_id=1058009719]

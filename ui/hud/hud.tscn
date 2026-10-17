@@ -93,6 +93,7 @@ text = "墨水 20000 px"
 horizontal_alignment = 1
 
 [node name="ExitButton" type="TextureButton" parent="Root"]
+focus_mode = 0
 texture_filter = 1
 layout_mode = 1
 anchors_preset = -1
@@ -109,6 +110,7 @@ ignore_texture_size = true
 stretch_mode = 5
 
 [node name="LogButton" type="TextureButton" parent="Root"]
+focus_mode = 0
 texture_filter = 1
 layout_mode = 1
 anchors_preset = -1

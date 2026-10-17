@@ -16,18 +16,19 @@ func _ready() -> void:
 	world = get_parent().world
 	restore.call_deferred()
 
-static func find_material(physics, point: Vector2, material: int, except = null) -> Dictionary:
+static func find_material(physics, point: Vector2, material: int, except = null,
+		skip: Dictionary = {}) -> Dictionary:
 	for body in physics.bodies:
-		if body == except or body.tags.has("living"):
+		if body == except or skip.has(body) or body.tags.has("living"):
 			continue
 		var cell := Vector2i(body.to_local(point).floor())
 		if has_pixel(body, cell, material):
 			return {"body": body, "cell": cell, "local": body.to_local(point)}
 	return {}
 
-static func find_support(physics, point: Vector2, except = null) -> Dictionary:
+static func find_support(physics, point: Vector2, except = null, skip: Dictionary = {}) -> Dictionary:
 	for body in physics.bodies:
-		if body == except or body.tags.has("living"):
+		if body == except or skip.has(body) or body.tags.has("living"):
 			continue
 		var cell := Vector2i(body.to_local(point).floor())
 		for shape in body.shapes:
@@ -35,6 +36,21 @@ static func find_support(physics, point: Vector2, except = null) -> Dictionary:
 			if ink != 0:
 				return {"body": body, "cell": cell, "local": body.to_local(point), "material": ink}
 	return {}
+
+## 其他齿轮的轮体不能当这个齿轮的支座，否则两个齿轮会被真实 HINGE 铰死在一起。
+func _other_wheels() -> Dictionary:
+	var result: Dictionary = {}
+	var script = get_script()
+	var parent = get_parent()
+	if parent == null:
+		return result
+	for child in parent.get_children():
+		if child == self or child.get_script() != script:
+			continue
+		if not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
+			result[child.yellow_anchor.body] = true
+	return result
+
 
 func _editing() -> bool:
 	var creative := get_parent().get_node_or_null("Creative")
@@ -52,12 +68,12 @@ func restore() -> void:
 			if has_pixel(wheel.body, cell, gear_material):
 				yellow_anchor = {"body": wheel.body, "cell": cell, "local": wheel.body.to_local(yellow_position)}
 		if yellow_anchor.is_empty():
-			yellow_anchor = find_material(world, yellow_position, gear_material)
+			yellow_anchor = find_material(world, yellow_position, gear_material, null, _other_wheels())
 	if yellow_anchor.is_empty():
 		queue_free()
 		return
 	if not fixed_to_world and black_anchor.is_empty():
-		black_anchor = find_material(world, black_position, support_material, yellow_anchor.body)
+		black_anchor = find_material(world, black_position, support_material, yellow_anchor.body, _other_wheels())
 	connect_joint()
 
 func connect_joint() -> void:
@@ -89,7 +105,8 @@ func _process(_delta: float) -> void:
 	if not fixed_to_world:
 		if not _valid(black_anchor, support_material):
 			remove_joint()
-			black_anchor = find_material(world, black_position, support_material, yellow_anchor.body)
+			black_anchor = find_material(world, black_position, support_material,
+				yellow_anchor.body, _other_wheels())
 			if black_anchor.is_empty() and not _editing():
 				queue_free()
 				return
@@ -173,7 +190,7 @@ func finish_editor_drag(cancelled := false) -> void:
 		support_material = _editor_drag_start.support_material
 		fixed_to_world = _editor_drag_start.world
 	else:
-		black_anchor = find_support(world, yellow_position, body)
+		black_anchor = find_support(world, yellow_position, body, _other_wheels())
 		fixed_to_world = black_anchor.is_empty()
 		support_material = black_anchor.get("material", 0)
 		black_position = yellow_position

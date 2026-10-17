@@ -675,6 +675,13 @@ static func _call_components(r: Object, cmds: PackedByteArray, cap: int) -> Pack
 				% [res.size(), 4 + cap])
 		return PackedByteArray()
 	var written := res.decode_s32(0)
+	if written > cap and res.size() >= 12:
+		# 部分旧版 DLL 在容量不足时返回所需长度，而不是只报告头部长度。
+		# 保留完整头部，让调用方按包含分组计数的实际大小重试。
+		var groups := res.decode_s32(4)
+		var pairs := res.decode_s32(8)
+		if groups >= 0 and pairs >= 0 and written == 8 + groups * 4 + pairs * 16:
+			return res.slice(4, 12)
 	if written < 0 or written > cap:
 		push_error("PixelRaster.components written=%d 越界（cap=%d）—— 退回 GDScript" % [written, cap])
 		return PackedByteArray()

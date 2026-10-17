@@ -10,7 +10,7 @@ func _check(label: String, ok: bool) -> void:
 		failures += 1
 
 func _run() -> void:
-	var level: Node = load("res://map/asset/imported/main.tscn").instantiate()
+	var level: Node = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	await process_frame

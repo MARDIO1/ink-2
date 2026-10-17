@@ -53,7 +53,7 @@ func teeth_on_ring(body, radius: float, ink_material: int) -> int:
 	return transitions
 
 func _run() -> void:
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	await process_frame

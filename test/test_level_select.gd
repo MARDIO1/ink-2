@@ -11,15 +11,15 @@ func _run() -> void:
 	var valid := true
 	var paths := LevelSelectScript.find_levels()
 	var required_levels := PackedStringArray([
-		"res://map/asset/blue_car.tscn",
-		"res://map/asset/imported/peak.tscn",
 		"res://map/asset/imported/扉页.tscn",
-		"res://map/asset/imported/白色测试.tscn",
-		"res://map/asset/imported/第一关.tscn",
-		"res://map/second/第三关·墨泉边.tscn",
+		"res://map/asset/imported/第一页.tscn",
+		"res://map/asset/imported/第二页.tscn",
+		"res://map/asset/imported/第三页.tscn",
+		"res://map/asset/imported/peak.tscn",
 	])
-	valid = valid and not paths.has("res://map/asset/imported/main.tscn")
+	valid = valid and not paths.has("res://test/fixtures/maps/base_level.tscn")
 	valid = valid and paths.size() == required_levels.size()
+	valid = valid and paths == required_levels
 	for path in required_levels:
 		valid = valid and paths.has(path)
 	var deleted_levels := PackedStringArray([

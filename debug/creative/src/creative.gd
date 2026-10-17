@@ -31,12 +31,14 @@ const CONTROL_MODE := -13
 const LAYOUT_MODE_PLACE_PORTAL := -14
 const LAYOUT_MODE_DELETE_PORTAL := -16
 const LAYOUT_MODE_FOUNTAIN := -17
+const LAYOUT_MODE_DELETE_CANVAS := -18
 const LAYOUT_MODES := [
 	LAYOUT_MODE_MOVE_SPAWN,
 	LAYOUT_MODE_PLACE_RESPAWN,
 	LAYOUT_MODE_MOVE_RESPAWN,
 	LAYOUT_MODE_PLACE_CANVAS,
 	LAYOUT_MODE_MOVE_CANVAS,
+	LAYOUT_MODE_DELETE_CANVAS,
 	LAYOUT_MODE_PLACE_PORTAL,
 	LAYOUT_MODE_DELETE_PORTAL,
 	LAYOUT_MODE_FOUNTAIN,
@@ -915,6 +917,9 @@ func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
 				return true
 			LAYOUT_MODE_DELETE_PORTAL:
 				delete_portal(_pick_portal(world_position))
+				return true
+			LAYOUT_MODE_DELETE_CANVAS:
+				delete_play_canvas(_pick_play_canvas(world_position))
 				return true
 			LAYOUT_MODE_MOVE_SPAWN:
 				_begin_layout_drag(_pick_spawn_point(world_position), world_position)
@@ -1881,7 +1886,7 @@ func _build_monster_palette() -> void:
 		null,
 		[LAYOUT_MODE_PLACE_CANVAS, "PlacePlayCanvasButton", "新增画布", "先设置宽高，再单击地图放置画布"],
 		[LAYOUT_MODE_MOVE_CANVAS, "MovePlayCanvasButton", "移动画布", "左键拖动画布；右键删除画布；Ctrl+Z 撤销"],
-		null,
+		[LAYOUT_MODE_DELETE_CANVAS, "DeletePlayCanvasButton", "删除画布", "单击画布删除；Ctrl+Z 撤销"],
 		[LAYOUT_MODE_PLACE_PORTAL, "PlacePortalButton", "新增传送门", "打开子菜单选择目标地图，然后单击地图放置"],
 		[LAYOUT_MODE_DELETE_PORTAL, "DeletePortalButton", "删除传送门", "单击传送门删除；Ctrl+Z 撤销"],
 		[LAYOUT_MODE_FOUNTAIN, "InkFountainButton", "墨泉", "左键放置固定尺寸墨泉，右键删除；不可缩放"],

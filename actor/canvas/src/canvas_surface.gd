@@ -174,6 +174,7 @@ var _selection_drag_start := Rect2i()
 var _shaping := false
 var _shape_origin := Vector2.ZERO
 var _shape_saved := {}
+var _shape_preview_key: Array = []
 var _shape_delta := 0
 var _shape_shortage_notified := false
 var _paint_shortage_notified := false
@@ -947,38 +948,51 @@ func material_at(x: int, y: int) -> int:
 
 
 #region 矩形 / 圆形 / 直线
-#拖拽预览：每动一次先把上一帧改过的像素还原、退还墨水，再按新位置重画一圈。
+#拖拽预览：只修改新旧轮廓不同的像素，静止时跳过生成和上传。
 func _update_shape() -> void:
 	_preview_shape(_mouse_point())
 
 
 func _preview_shape(to_point: Vector2) -> void:
-	_revert_shape()
-	# 上一帧预览已从像素中撤回，必须先把对应墨水退回瓶子。
-	# 否则下面读到的是“上一帧已扣款”的余额，矩形就会隔帧缺边。
-	_flush_ink()
 	var to: Vector2 = to_point.clamp(Vector2.ZERO, Vector2(canvas_size))
+	var key := [_shape_origin, to, tool, brush_size, ink_material_id(), _ink_room(ink_material_id())]
+	if key == _shape_preview_key:
+		return
 	var pixels := _shape_pixels(_shape_origin, to)
-	var room := _drawable_ink_room(ink_material_id())
+	# 余额加回当前预览占用量，只更新新旧轮廓的差集。
+	var room := _drawable_ink_room(ink_material_id()) + _shape_delta
 	var needed := 0
 	for pixel: Vector2i in pixels:
-		if black_image.get_pixelv(pixel).a <= 0.5:
+		var original: Color = _shape_saved.get(pixel, black_image.get_pixelv(pixel))
+		if original.a <= 0.5:
 			needed += 1
 	if needed > room:
+		_revert_shape()
+		_flush_ink()
 		if not _shape_shortage_notified:
 			_warn_ink_shortage(needed + MIN_PAINT_INK - 1)
 			_shape_shortage_notified = true
+		key[5] = _ink_room(ink_material_id())
+		_shape_preview_key = key
 		return                            # 墨水不够时不留下单边残缺形状
+	for pixel: Vector2i in _shape_saved.keys():
+		if not pixels.has(pixel):
+			_set_pixel_raw(pixel, _shape_saved[pixel])
+			_shape_saved.erase(pixel)
 	for pixel: Vector2i in pixels:
-		_shape_saved[pixel] = black_image.get_pixelv(pixel)
-		_set_pixel_raw(pixel, ink_color())
+		if not _shape_saved.has(pixel):
+			_shape_saved[pixel] = black_image.get_pixelv(pixel)
+			_set_pixel_raw(pixel, ink_color())
 	_shape_delta = needed
 	_flush_texture()
 	_flush_ink()
+	key[5] = _ink_room(ink_material_id())
+	_shape_preview_key = key
 
 
 #把上一帧的预览还原成原样并清空记录。
 func _revert_shape() -> void:
+	_shape_preview_key.clear()
 	if _shape_saved.is_empty():
 		return
 	for pixel: Vector2i in _shape_saved:
@@ -994,6 +1008,7 @@ func _end_shape() -> void:
 	_shaping = false
 	_update_shape()
 	_shape_saved.clear()
+	_shape_preview_key.clear()
 	_flush_ink()
 	_shape_delta = 0
 
@@ -1026,11 +1041,22 @@ func _brush_rect(out: Dictionary, from: Vector2, to: Vector2) -> void:
 	right = maxi(right, left)
 	bottom = maxi(bottom, top)
 	var thickness := maxi(1, brush_size)
-	for y in range(top, bottom + 1):
+	# 上下两条横边与中间两条竖边分别生成，避免扫描空心矩形的内部面积。
+	var top_end := mini(top + thickness, bottom + 1)
+	var bottom_start := maxi(top_end, bottom - thickness + 1)
+	for y in range(top, top_end):
 		for x in range(left, right + 1):
-			if x - left < thickness or right - x < thickness \
-			or y - top < thickness or bottom - y < thickness:
-				out[Vector2i(x, y)] = true
+			out[Vector2i(x, y)] = true
+	for y in range(bottom_start, bottom + 1):
+		for x in range(left, right + 1):
+			out[Vector2i(x, y)] = true
+	var left_end := mini(left + thickness, right + 1)
+	var right_start := maxi(left_end, right - thickness + 1)
+	for y in range(top_end, bottom_start):
+		for x in range(left, left_end):
+			out[Vector2i(x, y)] = true
+		for x in range(right_start, right + 1):
+			out[Vector2i(x, y)] = true
 
 
 #沿线段撒笔刷脚印；步长 ≤ 笔刷半径，保证圈与圈之间不留缝。

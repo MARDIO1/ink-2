@@ -59,6 +59,19 @@ func _draw() -> void:
 	draw_line(Vector2(-6, 0), Vector2(6, 0), Color.BLACK)
 	draw_line(Vector2(0, -6), Vector2(0, 6), Color.BLACK)
 
+## 已经存在的齿轮轮体既不能当支座，也不能和新齿轮共用像素：
+## 共用像素的两个刚体会互相插入，各自又钉在固定芯点上，求解器只能硬顶到谁也转不动。
+static func gear_wheels(host) -> Dictionary:
+	var result: Dictionary = {}
+	for child in host.get_children():
+		if child.get_script() != Bearing:
+			continue
+		if child.is_queued_for_deletion() or child.yellow_anchor.is_empty():
+			continue
+		result[child.yellow_anchor.body] = true
+	return result
+
+
 func finish(point: Vector2):
 	if not dragging:
 		return null
@@ -68,18 +81,18 @@ func finish(point: Vector2):
 	var canvas = get_parent().get_parent()
 	if not canvas._map_editor_mode or radius < MIN_RADIUS:
 		return null
-	# 固化支座会清空画布并取消预览，先保留本次齿轮轮廓。
 	var gear_polygon := polygon.duplicate()
-	var state: Dictionary = History.capture(canvas, true)
-	# 圆心下有未固化支座时，先按已有固化管线生成它，再安装轴承。
-	var cell := Vector2i(center.floor())
-	if get_parent().material_at(cell.x, cell.y) != 0:
-		canvas.generate(false)
 	var host = canvas.world
 	var axle: Vector2 = host.to_local(get_parent().to_global(center))
-	var support: Dictionary = Bearing.find_support(host.world, axle)
-	var support_mat: int = support.get("material", 0)
+	var wheels := gear_wheels(host)
+	if _overlaps_wheels(wheels, axle):
+		return null
 	var extent := ceili(radius)
+	var state: Dictionary = History.capture(canvas, true)
+	# 只有已经存在的实体才算支座。放置齿轮不再顺带固化草稿：那样会把整张画布提交，
+	# 而且固出来的支座没有钉子，是动态刚体，齿轮跟着它一起掉。
+	var support: Dictionary = Bearing.find_support(host.world, axle, null, wheels)
+	var support_mat: int = support.get("material", 0)
 	var image := Image.create_empty(extent * 2 + 1, extent * 2 + 1, false, Image.FORMAT_R8)
 	for y in image.get_height():
 		for x in image.get_width():
@@ -98,6 +111,7 @@ func finish(point: Vector2):
 	node.owner = host
 	shape.owner = host
 	var body = host.add_body_node(node)
+	var anchor_local: Vector2 = body.to_local(axle)
 	var bearing := Bearing.new()
 	bearing.teeth = teeth
 	bearing.gear_material = ink_material
@@ -105,7 +119,7 @@ func finish(point: Vector2):
 	bearing.fixed_to_world = support.is_empty()
 	bearing.yellow_position = axle
 	bearing.black_position = axle
-	bearing.yellow_anchor = {"body": body, "cell": Vector2i.ZERO, "local": body.to_local(axle)}
+	bearing.yellow_anchor = {"body": body, "cell": Vector2i(anchor_local.floor()), "local": anchor_local}
 	bearing.black_anchor = support
 	host.add_child(bearing)
 	bearing.owner = host
@@ -114,3 +128,24 @@ func finish(point: Vector2):
 	bearing._process(0.0)
 	History.commit(canvas, state)
 	return bearing
+
+
+## 新齿轮的像素落在已有齿轮轮体上时拒绝落笔；齿只能啮合，不能重叠。
+func _overlaps_wheels(wheels: Dictionary, axle: Vector2) -> bool:
+	if wheels.is_empty():
+		return false
+	var extent := ceili(radius)
+	var origin := axle - Vector2.ONE * 0.5
+	var world_rect := Rect2(origin, Vector2.ONE * float(extent * 2 + 1))
+	for body in wheels:
+		if not body.aabb.intersects(world_rect):
+			continue
+		for j in range(-extent, extent + 1):
+			for i in range(-extent, extent + 1):
+				if not Geometry2D.is_point_in_polygon(Vector2(i, j), polygon):
+					continue
+				var cell := Vector2i(body.to_local(origin + Vector2(i, j)).floor())
+				for body_shape in body.shapes:
+					if body_shape.get_pixel(cell.x, cell.y) != 0:
+						return true
+	return false

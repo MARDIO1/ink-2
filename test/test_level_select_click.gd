@@ -22,7 +22,7 @@ func _run() -> void:
 	var buttons := selector.get_node("Center/Panel/Scroll/List").get_children()
 	var target: Button
 	for candidate in buttons:
-		if candidate.tooltip_text == "res://map/asset/imported/第一关.tscn":
+		if candidate.tooltip_text == "res://map/asset/imported/第一页.tscn":
 			target = candidate as Button
 			break
 	if target == null:

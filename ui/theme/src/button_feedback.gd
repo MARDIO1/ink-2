@@ -60,11 +60,23 @@ func _animate() -> void:
 func _draw() -> void:
 	if button == null or button.disabled or size.x < 6 or size.y < 6:
 		return
-	# 工具原图保持纯净：只在选中时给文字下方一条短墨线。
-	if _selected or (not image_tool and _weight > 0.01):
-		# 菜单按钮只显示短墨线，避免宽按钮上出现贯穿整行的白色横条。
-		var reach := minf(size.x - 8.0, 14.0 if image_tool else lerpf(18.0, 36.0, _weight))
-		var center := Vector2(size.x * 0.5, size.y - 3.0)
-		var half := Vector2(reach * 0.5, 0)
-		draw_line(center - half, center + half, Color.WHITE, 4.0)
-		draw_line(center - half, center + half, Color.BLACK, 2.0 if _held or _selected else 1.0)
+	var ink := Color(0.035, 0.031, 0.024, 1.0)
+	if image_tool:
+		# 工具已有图标动效；选中标记只留细墨线，去掉白色描边。
+		if _selected:
+			var center := Vector2(size.x * 0.5, size.y - 3.0)
+			draw_line(center - Vector2(7, 0), center + Vector2(7, 0), ink, 1.0)
+		return
+	# 用按钮内部的轻微明暗表达悬停和按下，保持原边框与命中区域不变。
+	var weight := maxf(_weight, 0.45 if _selected else (0.25 if button.has_focus() else 0.0))
+	if weight <= 0.01:
+		return
+	var tint := ink
+	var strength := 0.14
+	if button is Button:
+		var style := button.get_theme_stylebox("normal") as StyleBoxFlat
+		if style != null and style.bg_color.get_luminance() < 0.4:
+			tint = Color(0.969, 0.953, 0.855, 1.0)
+			strength = 0.12
+	tint.a = strength * weight
+	draw_rect(Rect2(Vector2(3, 3), size - Vector2(6, 6)), tint)
