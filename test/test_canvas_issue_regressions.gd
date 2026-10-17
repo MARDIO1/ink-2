@@ -1,6 +1,6 @@
 extends SceneTree
 
-const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
+const Store := preload("res://blueprint/src/blueprint_store.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const Surface := preload("res://actor/canvas/src/canvas_surface.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
@@ -90,16 +90,22 @@ func _run() -> void:
 	check("rectangle undo clears entire drag", surface.undo_last_edit() and surface.ink_px_of(Palette.BLACK.id) == 0)
 	check("rectangle redo restores final contour only", surface.redo_last_edit() and surface.ink_px_of(Palette.BLACK.id) == expected.size())
 	surface._revert_shape()
-	var data := {"version": 1, "id": "", "name": "cache", "description": "", "tags": [],
+	# 蓝图现在是 v2 格式：fixed_nails / background_nails 是必需键；文件名由 name 派生，
+	# 所以这里用不同的 name 而不是直接写 id。
+	var data := {"version": 2, "id": "", "name": "sample0", "description": "", "tags": [],
 		"updated": 0, "favorite": false, "editor_only": false, "size": [160, 192],
-		"pixels": [], "rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": []}
+		"pixels": [], "rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": [],
+		"fixed_nails": [], "background_nails": []}
 	for i in 160 * 192:
 		data.pixels.append([i, Palette.BLACK.id if i % 3 else Palette.GREY.id])
 	var store := Store.new()
 	store.directory = "user://canvas_issue_test_%d" % Time.get_ticks_usec()
 	var saved := true
 	for i in 5:
-		data.id = "sample%d" % i
+		# id 是记录身份：复用同一个 dict 存新记录前必须清空，
+		# 否则 save() 会把它当成"把 sample0 改名为 sample1"，顺手删掉旧文件。
+		data.id = ""
+		data.name = "sample%d" % i
 		saved = store.save(data) and saved
 	check("five representative 30k-pixel blueprints saved in isolated directory", saved)
 	start = Time.get_ticks_usec()
@@ -112,14 +118,17 @@ func _run() -> void:
 	check("warm listing reuses five validated file entries", cold.size() == 5 and warm.size() == 5 and store._cache.size() == 5)
 	warm[0].pixels.clear()
 	check("callers cannot mutate cached pixel data", store.read(warm[0].id).pixels.size() == 160 * 192)
+	# 文件名由 name 派生：改名等于换文件，后续读取要按新 id。
 	var changed := store.read("sample0")
 	changed.name = "renamed"
-	check("same-second save invalidates cache", store.save(changed) and store.read("sample0").name == "renamed")
-	var file := FileAccess.open(store.directory.path_join("sample0.inkbp"), FileAccess.WRITE)
+	check("renaming writes a new file and drops the old one",
+		store.save(changed) and store.read("renamed").name == "renamed"
+		and not FileAccess.file_exists(store.directory.path_join("sample0.inkbp")))
+	var file := FileAccess.open(store.directory.path_join("renamed.inkbp"), FileAccess.WRITE)
 	changed.name = "external size change"
 	file.store_string(JSON.stringify(changed))
 	file.close()
-	check("external file size change invalidates cache", store.read("sample0").name == changed.name)
+	check("external file size change invalidates cache", store.read("renamed").name == changed.name)
 	start = Time.get_ticks_usec()
 	var preview := Codec.preview(cold[0])
 	print("[CanvasIssues] 30k-pixel preview: %.2f ms" % ((Time.get_ticks_usec() - start) / 1000.0))
@@ -129,7 +138,7 @@ func _run() -> void:
 		var color := Palette.color_for_material_id(entry[1])
 		same = same and absf(actual.r - color.r) <= 1.0 / 255 and absf(actual.g - color.g) <= 1.0 / 255 and absf(actual.b - color.b) <= 1.0 / 255 and actual.a == color.a
 	check("batched preview preserves every pixel color", same)
-	check("trash removes cached blueprint from library", store.trash("sample0") and store.list_all().size() == 4)
+	check("trash removes cached blueprint from library", store.trash("renamed") and store.list_all().size() == 4)
 	var ui = load("res://ui/game_ui.tscn").instantiate()
 	root.add_child(ui)
 	await process_frame

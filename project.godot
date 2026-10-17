@@ -122,3 +122,13 @@ common/physics_interpolation=true
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.93, 0.91, 0.78, 1)
+
+[debug]
+
+; 这几类只是既有代码风格问题（局部变量重名/继承属性重名/未使用的私有成员），
+; 每次编辑器重载刷满输出面板会淹没真正的报错，这里统一降级为忽略。
+; 真正的解析错误仍然是 error，不会被这两行挡住。
+gdscript/warnings/shadowed_variable=0
+gdscript/warnings/shadowed_variable_base_class=0
+gdscript/warnings/shadowed_global_identifier=0
+gdscript/warnings/unused_private_class_variable=0

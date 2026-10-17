@@ -16,6 +16,7 @@ const YellowAxle := preload("res://ink/yellow/src/axle.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
+const InkPanel := preload("res://actor/canvas/panel/src/ink_panel.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
 const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
@@ -514,100 +515,18 @@ var _side_brush_slider: VSlider = null
 var _selected_ink_label: Label
 
 
-#右侧面板由色表生成：加一种墨水这里不用改。
+#右侧面板由色表生成：加一种墨水这里不用改。构建逻辑见 `panel/src/ink_panel.gd`。
 func _build_side_panel() -> void:
-	var panel := VBoxContainer.new()
-	panel.name = "SidePanel"
-	panel.z_index = 100
-	panel.theme = buttons.theme
-	panel.add_theme_constant_override("separation", 4)
-	add_child(panel)
-	_side_panel = panel
-	var screen_layer := preload("res://actor/canvas/toolbar/toolbar.tscn").instantiate()
-	screen_layer.name = "SidePanelLayer"
-	screen_layer.canvas = self
-	screen_layer.panel = panel
-	add_child(screen_layer)
-	var title_slot := Control.new()
-	title_slot.name = "TitleSlot"
-	title_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(title_slot)
-	var title := Label.new()
-	title.name = "Title"
-	title.text = "色盘"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 12)
-	title_slot.add_child(title)
-	# 保留原标题的布局高度，只移动文字，避免色块和滑条随容器重新排布。
-	title_slot.custom_minimum_size = title.get_combined_minimum_size()
-	title.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	title.position.y = -4.0
-	var controls := HBoxContainer.new()
-	controls.name = "Controls"
-	controls.add_theme_constant_override("separation", 8)
-	panel.add_child(controls)
-	var colors := VBoxContainer.new()
-	colors.name = "Colors"
-	colors.add_theme_constant_override("separation", 10)
-	controls.add_child(colors)
-	for i in InkPalette.ink_count():
-		var color: Color = InkPalette.color_at(i)
-		var style := StyleBoxFlat.new()
-		style.bg_color = color
-		style.corner_radius_top_left = 17
-		style.corner_radius_top_right = 17
-		style.corner_radius_bottom_left = 17
-		style.corner_radius_bottom_right = 17
-		style.border_width_left = 1
-		style.border_width_top = 1
-		style.border_width_right = 1
-		style.border_width_bottom = 1
-		style.border_color = Color(0.035, 0.031, 0.024, 1.0)
-		var button := Button.new()
-		button.name = "Ink%dButton" % i
-		button.toggle_mode = true
-		button.focus_mode = Control.FOCUS_NONE
-		button.custom_minimum_size = Vector2(34.0, 34.0)
-		button.tooltip_text = "%s（材质 %d）" % [
-			InkPalette.ink_name(i), InkPalette.material_id_of(InkPalette.ink_at(i))]
-		button.add_theme_color_override(
-			"font_color", Color.WHITE if color.get_luminance() < 0.5 else Color.BLACK)
-		button.add_theme_stylebox_override("normal", style)
-		button.add_theme_stylebox_override("hover", style)
-		button.add_theme_stylebox_override("pressed", style)
-		button.add_theme_stylebox_override("focus", style)
-		button.pressed.connect(select_ink.bind(i))
-		colors.add_child(button)
-		_ink_buttons.append(button)
-		InkSelectionIndicator.install(button, color)
-	_selected_ink_label = Label.new()
-	_selected_ink_label.name = "SelectedInkLabel"
-	_selected_ink_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_selected_ink_label.add_theme_font_size_override("font_size", 10)
-	panel.add_child(_selected_ink_label)
-	var history := preload("res://actor/canvas/src/history_actions.gd").new()
-	history.name = "HistoryActions"
-	history.canvas = self
-	history.compact = true
-	panel.add_child(history)
-	var source_pen := brush_panel.get_node("PenSlider") as HSlider
-	source_pen.min_value = 1.0
-	source_pen.max_value = float(brush_size_max)
-	source_pen.step = 1.0
-	source_pen.tick_count = brush_size_max
-	source_pen.value = clampf(source_pen.value, 1.0, float(brush_size_max))
-	_side_brush_slider = VSlider.new()
-	_side_brush_slider.name = "BrushSizeSlider"
-	_side_brush_slider.custom_minimum_size = Vector2(18.0, 166.0)
-	_side_brush_slider.min_value = source_pen.min_value
-	_side_brush_slider.max_value = source_pen.max_value
-	_side_brush_slider.step = source_pen.step
-	_side_brush_slider.tick_count = source_pen.tick_count
-	_side_brush_slider.value = source_pen.value
-	_side_brush_slider.tooltip_text = source_pen.tooltip_text
-	_side_brush_slider.theme = buttons.theme
-	_side_brush_slider.value_changed.connect(_on_pen_slider_changed)
-	controls.add_child(_side_brush_slider)
+	var built: Dictionary = InkPanel.build(self, buttons.theme,
+		brush_panel.get_node("PenSlider") as HSlider, {
+			"select_ink": select_ink,
+			"pen_changed": _on_pen_slider_changed,
+			"brush_max": brush_size_max,
+		})
+	_side_panel = built.panel
+	_ink_buttons = built.buttons
+	_side_brush_slider = built.slider
+	_selected_ink_label = built.label
 	set_brush_size(int(round(_side_brush_slider.value)))
 	select_ink(surface.selected_ink)
 	_place_side_panel()
@@ -851,7 +770,7 @@ func _refresh_workbench_visibility() -> void:
 	if not Engine.is_editor_hint() and not _map_editor_mode and _side_panel == null:
 		return # 动态色盘装配完成后再参与归属交接。
 	var creative := get_parent().get_node_or_null("Creative")
-	if not _map_editor_mode and creative != null and creative.active:
+	if not _map_editor_mode and creative != null and creative.get("active") == true:
 		_set_workbench_visible(false, false)
 		return
 	# 单独预览或编辑地图时，工具栏保持可见。

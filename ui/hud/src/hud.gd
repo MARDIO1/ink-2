@@ -73,7 +73,7 @@ func _bind_level(level: Node) -> void:
 
 
 func _apply_debug_visibility() -> void:
-	var editing: bool = is_instance_valid(_creative) and _creative.active
+	var editing: bool = is_instance_valid(_creative) and _creative.get("active") == true
 	var enabled: bool = _debug_requested and not editing and is_instance_valid(debug_hud)
 	if is_instance_valid(debug_hud):
 		debug_hud.visible = enabled
@@ -115,7 +115,7 @@ func _switch_debug_hud() -> bool:
 		_bind_level(level)
 	if not is_instance_valid(debug_hud):
 		return false
-	if is_instance_valid(_creative) and _creative.active:
+	if is_instance_valid(_creative) and _creative.get("active") == true:
 		return false
 	_debug_requested = not _debug_requested
 	_apply_debug_visibility()

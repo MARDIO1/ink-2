@@ -189,7 +189,11 @@ func sync_pose() -> void:
 	position = body.to_world(anchor_local)
 	rotation = body.rotation + float(get_meta("local_angle", 0.0))
 
-func _process(_delta: float) -> void:
+## 和蓝墨覆盖层、刚体本体一致：在物理帧末尾更新变换，
+## 渲染帧不再写位置，物理插值才能把箭头跟着轮体一起插值。
+func _physics_process(_delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
 	if active and body != null:
 		sync_pose()
 

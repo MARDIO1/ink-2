@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
+const Place := preload("res://blueprint/src/blueprint_place.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 var checks := 0
 var failures := 0
@@ -45,8 +46,8 @@ func _run() -> void:
 		check("body geometry and collisions absent", body.shapes.is_empty() and body.rects.is_empty() and body.collision_layer == 0 and body.collision_mask == 0)
 		var point: Vector2 = body.position + state.rects[0].get_center().rotated(body.rotation)
 		canvas.position = point - Vector2(0.5, 0.5)
-		check("blueprint can occupy former body or hand position", Codec.placement_error(canvas, data, Vector2i.ZERO).is_empty())
-		check("blueprint commits at former player position", Codec.place(canvas, data, Vector2i.ZERO).is_empty())
+		check("blueprint can occupy former body or hand position", Place.placement_error(canvas, data, Vector2i.ZERO).is_empty())
+		check("blueprint commits at former player position", Place.place(canvas, data, Vector2i.ZERO).is_empty())
 		canvas.surface.undo_last_edit()
 	var before: Vector2 = player.body.position
 	Input.action_press("fly_right")

@@ -1,6 +1,6 @@
 extends SceneTree
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
-const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
+const Store := preload("res://blueprint/src/blueprint_store.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 var checks := 0
 var failures := 0

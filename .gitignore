@@ -37,3 +37,12 @@ desktop.ini
 .mono/
 bin/
 obj/
+
+# 本地临时与运行期产物（重构过程中的探针、日志、备份）
+.codex-tmp/
+.codex-build/
+.runtime_logs/
+.acl-recovery/
+.merge-backup/
+.level_backups/
+*.jsonl

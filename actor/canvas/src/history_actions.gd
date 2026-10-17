@@ -33,7 +33,7 @@ func _button(node_name: String, caption: String, hint: String, callback: Callabl
 
 func _editor() -> Node:
 	var creative := canvas.get_parent().get_node_or_null("Creative")
-	return creative if canvas._map_editor_mode and creative != null and creative.active else null
+	return creative if canvas._map_editor_mode and creative != null and creative.get("active") == true else null
 
 func _process(_delta: float) -> void:
 	refresh()
