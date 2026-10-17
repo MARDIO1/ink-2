@@ -192,7 +192,11 @@ func sync_pose() -> void:
 		if rotation != body.rotation:
 			rotation = body.rotation
 
-func _process(_delta: float) -> void:
+## 和刚体本体（pbody_visual）一样在物理帧末尾更新变换：项目开着物理插值，
+## 在 _process 里再写一次位置会盖掉插值结果，快速旋转时蓝色覆盖层会错开一帧。
+func _physics_process(_delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
 	sync_pose()
 
 func restore() -> void:

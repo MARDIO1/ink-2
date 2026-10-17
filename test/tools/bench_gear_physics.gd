@@ -49,7 +49,7 @@ func _run() -> void:
 	print("[bench] resolve_us=%d (per call %.2f ms)" % [
 		int(rule._profile.get("resolve_us", 0)),
 		float(rule._profile.get("resolve_us", 0)) / maxf(1.0, float(rule._profile.get("calls", 1))) / 1000.0])
-	for key in ["stamp_us", "consumers_us", "bridges_us", "contacts_us", "emit_us", "advance_us", "decode_us", "display_us", "kernel_us"]:
+	for key in ["stamp_us", "consumers_us", "bridges_us", "bridge_rebuilds", "bridge_cells", "bridge_scan_us", "bridge_nearest_us", "bridge_entry_us", "bridge_grid_us", "bridge_entry_count", "bridge_loop_us", "contacts_us", "emit_us", "advance_us", "decode_us", "display_us", "kernel_us"]:
 		print("[bench]   %-12s %8.2f ms" % [key, float(flow.stats.get(key, 0)) / 1000.0])
 	var counts := {"wire": 0, "motor": 0, "hinge": 0, "axle": 0, "rail": 0, "pin": 0, "body": 0}
 	for child in level.get_children():
