@@ -1,4 +1,4 @@
-extends Sprite2D
+﻿extends Sprite2D
 ## 两个真实像素锚点；复用现有 HINGE 与碎裂通知，不另设轴系耐久度。
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
@@ -34,17 +34,38 @@ static func has_pixel(body, cell: Vector2i, material: int) -> bool:
 	return false
 
 func restore() -> void:
-	if not yellow_anchor.is_empty():
+	if not yellow_anchor.is_empty() and not black_anchor.is_empty():
 		return
-	yellow_anchor = find_yellow(world, yellow_position)
-	black_anchor = Stroke.find_anchor(world, black_position)
+	var level := get_parent()
+	# 关卡重进时刚体是逐帧烘焙的（bake_bodies_per_frame 默认 1，第二页要几十帧）。
+	# 手动轴承必须等全部刚体落地再找锚点；否则会在锚点还不存在时把自己删掉，
+	# 黄墨因此丢掉连接信息，下一次固化就会把重叠段当冲突裁掉。
+	if level != null and level.get("body_bake_pending") == true:
+		await Signal(level, &"body_bake_completed")
+	for attempt in 240:
+		if world == null and is_inside_tree():
+			world = get_parent().world
+		if _bind_anchors():
+			return
+		if not is_inside_tree() or is_queued_for_deletion():
+			return
+		await get_tree().physics_frame
+	# 反复找不到也不能自毁：节点留着（隐藏），装置还有机会被重新连回去。
+	visible = false
+	push_warning("[Hinge] 未找到锚点，已保留待修复: %s" % yellow_position)
+
+
+func _bind_anchors() -> bool:
+	if yellow_anchor.is_empty() and world != null:
+		yellow_anchor = find_yellow(world, yellow_position)
+	if black_anchor.is_empty() and world != null:
+		black_anchor = Stroke.find_anchor(world, black_position)
 	if yellow_anchor.is_empty() or black_anchor.is_empty():
-		visible = false
-		queue_free()
-	else:
-		connect_joint()
-		_sync_visual()
-		visible = true
+		return false
+	connect_joint()
+	_sync_visual()
+	visible = true
+	return true
 
 func connect_joint() -> void:
 	if joint != null and joint.is_active():
@@ -94,7 +115,8 @@ func _sync_visual() -> void:
 	global_position = world_node.to_global(display_position) if world_node != null else display_position
 	global_rotation = 0.0
 	global_scale = Vector2.ONE
-	modulate.a = get_parent().get_node("SimulationRuntime/YellowInk").yellow_opacity
+	var yellow_ink := get_parent().get_node_or_null("SimulationRuntime/YellowInk")
+	modulate.a = yellow_ink.yellow_opacity if yellow_ink != null else 1.0
 
 func remove_joint() -> void:
 	if joint != null and joint.is_active():

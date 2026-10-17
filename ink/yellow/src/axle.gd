@@ -74,23 +74,28 @@ func restore() -> void:
 	var level := get_parent()
 	if level != null and level.get("body_bake_pending") == true:
 		await Signal(level, &"body_bake_completed")
-	if not is_inside_tree() or is_queued_for_deletion():
-		return
-	_sync_bearing()
-	if yellow_anchor.is_empty():
-		var wheel := get_node_or_null(wheel_path) if not wheel_path.is_empty() else null
-		if wheel != null and wheel.get("body") != null:
-			var cell := Vector2i(wheel.body.to_local(yellow_position).floor())
-			if has_pixel(wheel.body, cell, gear_material):
-				yellow_anchor = {"body": wheel.body, "cell": cell, "local": wheel.body.to_local(yellow_position)}
+	# 分帧烘焙完成后刚体才齐全；仍取不到就再等几帧，而不是立刻删掉这个轴。
+	for attempt in 240:
+		if not is_inside_tree() or is_queued_for_deletion():
+			return
+		_sync_bearing()
 		if yellow_anchor.is_empty():
-			yellow_anchor = find_material(world, yellow_position, gear_material, null)
-	if yellow_anchor.is_empty():
-		queue_free()
-		return
-	if not fixed_to_world and black_anchor.is_empty():
-		black_anchor = find_material(world, black_position, support_material, yellow_anchor.body)
-	connect_joint()
+			var wheel := get_node_or_null(wheel_path) if not wheel_path.is_empty() else null
+			if wheel != null and wheel.get("body") != null:
+				var cell := Vector2i(wheel.body.to_local(yellow_position).floor())
+				if has_pixel(wheel.body, cell, gear_material):
+					yellow_anchor = {"body": wheel.body, "cell": cell, "local": wheel.body.to_local(yellow_position)}
+			if yellow_anchor.is_empty():
+				yellow_anchor = find_material(world, yellow_position, gear_material, null)
+		if not yellow_anchor.is_empty():
+			if not fixed_to_world and black_anchor.is_empty():
+				black_anchor = find_material(world, black_position, support_material, yellow_anchor.body)
+			connect_joint()
+			return
+		await get_tree().physics_frame
+	# 找不到轴心时保留节点（隐藏），别把装置连接永久删掉。
+	visible = false
+	push_warning("[Axle] 未找到轴心，已保留待修复: %s" % yellow_position)
 	# 旧地图可能已经同时保存了两套轴；等同级手动轴承恢复后再去重。
 	_respect_manual_bearing.call_deferred()
 

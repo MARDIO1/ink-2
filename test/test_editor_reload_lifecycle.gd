@@ -4,6 +4,8 @@ const World := preload("res://addons/pixel_destruction/nodes/pixel_world.gd")
 const Body := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const Pixels := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 const Gear := preload("res://actor/canvas/src/gear_bearing.gd")
+const Hinge := preload("res://ink/yellow/src/hinge.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Machine := preload("res://map/src/ink_machine_checkpoint.gd")
 const Motor := preload("res://ink/blue/src/motor.gd")
 const Wire := preload("res://ink/blue/src/wire_layer.gd")
@@ -18,7 +20,7 @@ func check(label: String, okay: bool) -> void:
 	failures += int(not okay)
 	print("[EditorReload] %s %s" % ["PASS" if okay else "FAIL", label])
 
-func _body(level: Node, label: String, at: Vector2) -> void:
+func _body(level: Node, label: String, at: Vector2, material := 1) -> void:
 	var node := Body.new()
 	node.name = label
 	node.position = at
@@ -26,7 +28,7 @@ func _body(level: Node, label: String, at: Vector2) -> void:
 	shape.name = "Pixels"
 	shape.source = Pixels.Source.PAINT
 	shape.paint = Image.create_empty(8, 8, false, Image.FORMAT_R8)
-	shape.paint.fill(Color8(1, 0, 0))
+	shape.paint.fill(Color8(material, 0, 0))
 	node.add_child(shape)
 	level.add_child(node)
 	node.owner = level
@@ -37,6 +39,16 @@ func _fixture() -> PackedScene:
 	level.auto_step = false
 	_body(level, "Filler", Vector2(-100, -100))
 	_body(level, "Wheel", Vector2(100, 100))
+	# 手动轴承（hinge.gd）需要一个黄墨刚体和一个黑墨支座：
+	# 关卡重进时刚体是分帧烘焙的，轴承不能抢在锚点之前绑定时把自己删掉。
+	_body(level, "YellowRod", Vector2(200, 200), Palette.YELLOW.id)
+	_body(level, "Support", Vector2(200, 200))
+	var hinge := Hinge.new()
+	hinge.name = "ManualHinge"
+	hinge.yellow_position = Vector2(202, 202)
+	hinge.black_position = Vector2(202, 202)
+	level.add_child(hinge)
+	hinge.owner = level
 	var gear := Gear.new()
 	gear.name = "Bearing"
 	gear.wheel_path = NodePath("../Wheel")
@@ -93,7 +105,7 @@ func _run() -> void:
 	app._transition.duration = 0.01
 	var observed := {"complete": false}
 	var on_changed := func(level: Node) -> void:
-		observed.complete = not level.body_bake_pending and level.world.bodies.size() == 2
+		observed.complete = not level.body_bake_pending and level.world.bodies.size() == 4
 	app.level_changed.connect(on_changed)
 	var loaded: Node = await app.load_level(_fixture())
 	await process_frame
@@ -108,6 +120,8 @@ func _run() -> void:
 	restored.free()
 	check("gear survives and connects after staged bake", loaded.has_node("Bearing")
 		and loaded.get_node("Bearing").joint != null)
+	check("manual hinge waits for staged bake instead of deleting itself",
+		loaded.has_node("ManualHinge") and loaded.get_node("ManualHinge").joint != null)
 	check("machine waits for moving body", loaded.get_node("Machine").joint != null)
 	check("motor restores after black carrier exists", loaded.has_node("Motor")
 		and loaded.get_node("Motor").body == loaded.get_node("Wheel").body)

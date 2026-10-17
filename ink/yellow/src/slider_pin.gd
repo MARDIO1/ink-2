@@ -1,4 +1,4 @@
-extends Node2D
+﻿extends Node2D
 ## 黑色刚体上的方形滑块销；脱轨后保留，并寻找可接入的黄色直导轨。
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
@@ -26,17 +26,25 @@ func _ready() -> void:
 func restore() -> void:
 	if not black_anchor.is_empty():
 		return
-	black_anchor = Stroke.find_anchor(world, saved_source)
-	if black_anchor.is_empty():
-		visible = false
-		queue_free()
-		return
-	pin_local = black_anchor.body.to_local(saved_position)
-	_sync_visual()
-	visible = true
-	queue_redraw()
-	previous_position = pin_world()
-	try_attach()
+	# 分帧烘焙期间锚点还没生成，等烘焙完成再找；找不到也保留节点不自毁。
+	var level := get_parent()
+	if level != null and level.get("body_bake_pending") == true:
+		await Signal(level, &"body_bake_completed")
+	for attempt in 240:
+		black_anchor = Stroke.find_anchor(world, saved_source)
+		if not black_anchor.is_empty():
+			pin_local = black_anchor.body.to_local(saved_position)
+			_sync_visual()
+			visible = true
+			queue_redraw()
+			previous_position = pin_world()
+			try_attach()
+			return
+		if not is_inside_tree() or is_queued_for_deletion():
+			return
+		await get_tree().physics_frame
+	visible = false
+	push_warning("[SliderPin] 未找到锚点，已保留待修复: %s" % saved_source)
 
 func pin_world() -> Vector2:
 	return black_anchor.body.to_world(pin_local)
@@ -157,7 +165,8 @@ func _sync_visual() -> void:
 	global_position = world_node.to_global(pin_world()) if world_node != null else pin_world()
 	global_rotation = 0.0
 	global_scale = Vector2.ONE
-	modulate.a = get_parent().get_node("SimulationRuntime/YellowInk").yellow_opacity
+	var yellow_ink := get_parent().get_node_or_null("SimulationRuntime/YellowInk")
+	modulate.a = yellow_ink.yellow_opacity if yellow_ink != null else 1.0
 
 func _draw() -> void:
 	if black_anchor.is_empty() or is_queued_for_deletion():

@@ -1,4 +1,4 @@
-extends Node2D
+﻿extends Node2D
 ## 黄色实体导轨的中心线元数据。实体和碰撞仍由普通黄色像素刚体提供。
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Hinge := preload("res://ink/yellow/src/hinge.gd")
@@ -21,16 +21,25 @@ func _ready() -> void:
 func restore() -> void:
 	if body != null:
 		return
-	var candidate = _find_body(saved_a, saved_b)
-	if candidate == null:
-		queue_free()
-		return
-	body = candidate
-	local_a = body.to_local(saved_a)
-	local_b = body.to_local(saved_b)
-	_sync_visual()
-	visible = true
-	queue_redraw()
+	# 分帧烘焙期间黄墨刚体还没生成，等全部落地再找；找不到也保留节点不自毁。
+	var level := get_parent()
+	if level != null and level.get("body_bake_pending") == true:
+		await Signal(level, &"body_bake_completed")
+	for attempt in 240:
+		var candidate = _find_body(saved_a, saved_b)
+		if candidate != null:
+			body = candidate
+			local_a = body.to_local(saved_a)
+			local_b = body.to_local(saved_b)
+			_sync_visual()
+			visible = true
+			queue_redraw()
+			return
+		if not is_inside_tree() or is_queued_for_deletion():
+			return
+		await get_tree().physics_frame
+	visible = false
+	push_warning("[Rail] 未找到承载黄墨，已保留待修复: %s" % saved_a)
 
 func _find_body(a: Vector2, b: Vector2):
 	var steps := maxi(1, ceili(a.distance_to(b)))
@@ -127,7 +136,8 @@ func _sync_visual() -> void:
 	position = body.position
 	rotation = body.rotation
 	scale = Vector2.ONE
-	modulate.a = get_parent().get_node("SimulationRuntime/YellowInk").yellow_opacity
+	var yellow_ink := get_parent().get_node_or_null("SimulationRuntime/YellowInk")
+	modulate.a = yellow_ink.yellow_opacity if yellow_ink != null else 1.0
 
 func _draw() -> void:
 	if body == null:
