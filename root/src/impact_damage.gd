@@ -10,8 +10,18 @@ const ContactImpact := preload("res://root/src/contact_impact.gd")
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
 ## 碰撞冲量转为破坏预算的倍率；越大越容易删像素。
 @export var damage_scale: float = 0.012
-## 玩家生命扣除倍率；只放大最终黑墨损失，不改变材料裂纹、删除预算或冲量。
-@export var player_damage_multiplier: float = 100.0
+## 玩家生命扣除倍率（**怪以外**：落地、碎片、道具、静态地形等普通碰撞）。
+## 怪的主动攻击带 `scripted_attack`、走 `monster_attack.damage_player()`，不经过这里。
+## 只放大最终黑墨损失，不改变材料裂纹、删除预算或冲量。
+@export var player_damage_multiplier: float = 20.0
+## 小物块只在更猛烈的撞击下伤害玩家，并按独立倍率削弱。
+## 质量判定只读取刚体已有属性；不会增加射线、像素扫描或接触遍历。
+## 设为 0 可关闭对应闸门。静态地形不走该规则，仍使用普通碰撞参数。
+@export var player_small_body_max_mass: float = 400.0
+@export var player_small_body_min_approach: float = 600.0
+@export_range(0.0, 1.0, 0.05) var player_small_body_damage_scale: float = 0.25
+## 红墨爆炸冲量对玩家的倍率。与普通碰撞同档（1/5），炸弹不再一发致命。
+@export var explosion_player_damage_multiplier: float = 20.0
 ## 触发损坏的最小接近速度，单位 px/s；低于该值不结算，避免静态压力损坏。
 @export var min_approach: float = 300.0
 ## 厚度支撑累加上限，以表面材料强度归一化；超过后不再增加减伤。
@@ -100,6 +110,12 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 				continue
 			if protected_bodies.has(body) or dust.has(body):
 				continue
+			var player_multiplier: float = -1.0
+			if body == player_body and not other.is_static \
+					and player_small_body_max_mass > 0.0 and other.mass <= player_small_body_max_mass:
+				if contact.approach < player_small_body_min_approach:
+					continue
+				player_multiplier = player_damage_multiplier * player_small_body_damage_scale
 			var strength: float = world.material_strength(side[3]).x
 			if strength <= 0.0 and body != player_body:
 				continue
@@ -112,7 +128,7 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 			var path: Array = _trace(body, side[1], side[2], world, 0.0 if body == player_body else budget, body == player_body)
 			var seed: int = hash(Vector3i(roundi(point.x * 16.0), roundi(point.y * 16.0), roundi(impact.impulse)))
 			_damage_side(world, body, path, side[4], impact.impulse, player_body,
-				protected_bodies, result, side[1], side[2], seed, side[5])
+				protected_bodies, result, side[1], side[2], seed, side[5], player_multiplier)
 	return result
 
 
@@ -155,7 +171,7 @@ func _dust_bodies(world, player_body: PBody, protected_bodies: Array) -> Diction
 func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 		impulse: float, player_body: PBody, protected_bodies: Array, result: Dictionary,
 		origin: Vector2 = Vector2.INF, direction: Vector2 = Vector2.ZERO, seed: int = 0,
-		mirror: float = 1.0) -> void:
+		mirror: float = 1.0, player_multiplier: float = -1.0) -> void:
 	if protected_bodies.has(body) or path.is_empty():
 		return
 	var surface_strength: float = path[0].strength if path[0].has("strength") else world.material_strength(path[0].material).x
@@ -185,7 +201,8 @@ func _damage_side(world, body: PBody, path: Array, attacker_material: int,
 	if body == player_body:
 		# InkHealth 以像素计量；普通材料会用 budget / strength 个等效像素消费预算，
 		# 玩家不删形状；倍率只调生命损失，不反向改变通用材料破坏。
-		var damage: float = budget / surface_strength * maxf(player_damage_multiplier, 0.0)
+		var multiplier: float = player_damage_multiplier if player_multiplier < 0.0 else player_multiplier
+		var damage: float = budget / surface_strength * maxf(multiplier, 0.0)
 		result.player_damage += damage
 		if damage > 0.0:
 			if not result.has("player_impacts"):
@@ -384,6 +401,7 @@ func apply_impulse_damage(world, body: PBody, origin: Vector2, direction: Vector
 	var path: Array = _trace(body, origin, direction.normalized(), world,
 		0.0 if body == player_body else budget, body == player_body)
 	_damage_side(world, body, path, attacker_material, impulse, player_body, protected_bodies, result,
-		origin, direction.normalized(), hash(Vector3(origin.x, origin.y, impulse)))
+		origin, direction.normalized(), hash(Vector3(origin.x, origin.y, impulse)),
+		1.0, explosion_player_damage_multiplier)
 
 #endregion

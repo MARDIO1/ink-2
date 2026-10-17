@@ -43,9 +43,6 @@ func _inject_world(node: Variant) -> void:
 
 ## 把色表里的材质按 id 并进世界的 materials（同 id 覆盖，缺的追加）。
 func inject_materials(world: Node) -> void:
-	# 连杆的物性随 Black 的权威配置变化，避免维护第二套强度公式。
-	for property in ["density", "friction", "restitution", "compress_strength", "shear_strength"]:
-		InkPalette.YELLOW.set(property, InkPalette.BLACK.get(property))
 	var materials: Array = world.get("materials")
 	if materials == null:
 		return

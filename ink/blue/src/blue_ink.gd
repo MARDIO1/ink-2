@@ -10,12 +10,14 @@ const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 
 #region 配置与状态
 @export var force_per_length := 100000.0
-@export var power_per_width := 100000000.0
-@export var source_power_per_pixel := 100000000.0
+@export var power_per_width := 300000000.0
+@export var source_power_per_pixel := 300000000.0
 @export var idle_power := 10000000.0
 ## 红墨作为蓝色电源时的 J/像素；爆炸参数仍由 red_ink.gd 管理。
-@export var energy_per_red_pixel := 100000000.0
+@export var energy_per_red_pixel := 600000000.0
 @export_range(0.02, 1.0, 0.01) var fuel_interval := 0.1
+## 每个真实接触点只在这个固定半径内寻找可消耗红墨，不遍历整块燃料。
+@export_range(0, 8, 1) var fuel_contact_radius := 3
 var drawing = null
 var _world = null
 var _profile_enabled := false
@@ -25,9 +27,13 @@ const EnergyFlow := preload("res://ink/blue/src/energy_flow.gd")
 var flow := EnergyFlow.new()
 @export var propagation_speed := 600.0
 ## 单包能量按此周期同比增加，因此降低发包频率不会降低平均功率。
-@export var emission_interval := 1.0
-@export var motor_buffer_seconds := 1.05
+@export var emission_interval := 0.2
+@export var motor_buffer_seconds := 0.8
 @export var energy_lifetime := 20.0
+@export_range(0.25, 3.0, 0.05) var short_falloff_exponent := 1.0
+@export_range(0.0, 1.0, 0.05) var short_min_scale := 0.0
+@export var biological_default_power := 1000000000.0
+@export_range(0.0, 5.0, 0.05) var biological_force_weight_ratio := 1.5
 
 func _ready() -> void:
 	_world = get_parent().get_parent()

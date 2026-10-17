@@ -18,9 +18,14 @@ func _run() -> void:
 	var feet = scene.get_node("Player/PlayerInput")
 	var hand = scene.get_node("Player/Arm/Hand/HandControl")
 	var gym = scene.get_node("Gym")
-	_check("gym binds all 12 controller values", gym._targets.size() == 12)
-	_check("every gym row has numeric input", gym._numbers.size() == 12
+	_check("gym keeps all 12 controller values and adds ink tuning", gym._targets.size() > 12)
+	_check("every gym row has numeric input", gym._numbers.size() == gym._targets.size()
 		and gym._numbers.all(func(number): return number is SpinBox))
+	_check("gym includes yellow stiffness", gym._props.count("stiffness_per_width") == 1)
+	_check("gym includes six ink material property groups",
+		gym._props.count("density") == 6 and gym._props.count("friction") == 6
+		and gym._props.count("compress_strength") == 6
+		and gym._props.count("shear_strength") == 6)
 	_check("player reads controller config", is_equal_approx(
 		feet.max_force, player.controller_config.foot_max_force)
 		and is_equal_approx(hand.max_force, player.controller_config.hand_max_force))

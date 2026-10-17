@@ -309,7 +309,11 @@ func _test_dynamic_hinge(rig: Dictionary) -> void:
 	var modeled_mass: float = 1.0 / float(side["motor_inv_mass"])
 	_check("hinge/reduced mass includes object", is_equal_approx(modeled_mass, expected_mass),
 		"modeled=%.3f expected=%.3f" % [modeled_mass, expected_mass])
-	_check("hinge/power keeps direct hand mass", is_equal_approx(float(side["inv_mass"]), hand.inv_mass))
+	var power_inverse_mass: float = control._power_inverse_mass(Vector2.DOWN, side)
+	_check("hinge/power uses directional coupled mass",
+		power_inverse_mass < hand.inv_mass and power_inverse_mass > float(side["motor_inv_mass"]),
+		"power_inv=%.8f combined_inv=%.8f hand_inv=%.8f" % [
+			power_inverse_mass, side["motor_inv_mass"], hand.inv_mass])
 	var initial_hand_y: float = hand.com_world().y
 	var initial_relative_angle: float = wrapf(box.rotation - hand.rotation, -PI, PI)
 	var maximum_angle_change := 0.0

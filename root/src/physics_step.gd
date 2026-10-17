@@ -24,6 +24,10 @@ const ANCHOR_TAG: String = "static_anchor_points"
 ## _clamp_speeds 会直接修改所有动态体的线速度和角速度，因此不保持动量与能量；
 ## 角速度上限为 max_surface_speed / bounding_radius。
 @export var max_surface_speed: float = 1000.0
+## 「世界光速」= 世界线速度上限（px/s）。由 root 统一下发，关卡不再各写一份。
+@export var world_max_linear_velocity: float = 2000.0
+## 世界下落分量钳制（px/s，<=0 = 不钳）；只钳下落、不影响水平抛射与爆炸冲量。
+@export var world_terminal_speed: float = 650.0
 
 ## Rapier 逐体 CCD 的软预测距离（px），0 表示无提前量。
 @export var ccd_soft_prediction: float = 0.5
@@ -81,6 +85,9 @@ func setup(main, player, protected_bodies: Array, camera: Camera2D) -> void:
 	_push_knob(world, "ccd_max_substeps", 4)
 	_push_knob(world, "ccd_min_driver_thickness", 3.0)
 	_push_knob(world, "max_surface_speed", max_surface_speed)
+	# 世界级的速度上限统一从这里下发（改名/改值只改 root，不用动关卡场景）
+	_push_knob(world, "rp_max_linear_velocity", world_max_linear_velocity)
+	_push_knob(world, "terminal_speed", world_terminal_speed)
 	if _player != null and _player.body != null:
 		_player.body.collision_layer = PLAYER_LAYER
 	for body in _protected:

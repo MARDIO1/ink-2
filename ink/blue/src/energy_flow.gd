@@ -270,7 +270,8 @@ func update(rule, context: Dictionary) -> Dictionary:
 				motor.queue_free()
 				continue
 			motor.sync_pose()
-			motor.buffer_capacity = motor.power_limit(rule.power_per_width) * rule.motor_buffer_seconds
+			motor.buffer_capacity = motor.power_limit(rule.power_per_width,
+				rule.short_falloff_exponent, rule.short_min_scale) * rule.motor_buffer_seconds
 			motor.release_seconds = interval
 			motor.hold_seconds = maxf(rule.motor_buffer_seconds, interval * 1.1)
 			motors.append(motor)
@@ -292,12 +293,13 @@ func update(rule, context: Dictionary) -> Dictionary:
 	var bio_force := 0.0
 	if player != null:
 		var mass: float = player.body.mass + player.get_node("Arm").body.mass + player.get_node("Arm/Hand").body.mass
-		bio_force = mass * physics.gravity.length() * 0.5
+		bio_force = mass * physics.gravity.length() * rule.biological_force_weight_ratio
 	for motor in motors:
 		if motor.is_queued_for_deletion():
 			continue
 		var biological: bool = motor.biological_energy > 0.0
-		motor.consume(delta, rule.force_per_length, rule.power_per_width, rule.idle_power, bio_force if biological else INF)
+		motor.consume(delta, rule.force_per_length, rule.power_per_width, rule.idle_power,
+			bio_force if biological else INF, rule.short_falloff_exponent, rule.short_min_scale)
 		if biological:
 			bio_force = maxf(0.0, bio_force - motor.applied_force)
 	var result := {}
@@ -318,16 +320,52 @@ func update(rule, context: Dictionary) -> Dictionary:
 			fuel.erase(body)
 			continue
 		var account: Dictionary = fuel[body]
-		var count := int(account.credit)
-		for cell: Vector2i in account.contacts:
-			if count <= 0:
-				break
-			for shape in body.shapes:
-				if shape.get_pixel(cell.x, cell.y) == Palette.RED.id:
-					result.get_or_add(body, {}).get_or_add(shape, {})[cell] = true
-					account.credit -= 1.0
-					count -= 1
+		_settle_fuel_account(rule, body, account, result)
 	return {"fuel_removals": result}
+
+func _settle_fuel_account(rule, body, account: Dictionary, result: Dictionary) -> void:
+	var count := int(account.credit)
+	if count <= 0:
+		return
+	var protected: Dictionary = account.contacts
+	var selected := {}
+	# 固定 7x7（默认半径 3）局部查找；由外向内，避免先把接触层挖掉。
+	for radius in range(rule.fuel_contact_radius, 0, -1):
+		if count <= 0:
+			break
+		for origin: Vector2i in protected:
+			for y in range(-radius, radius + 1):
+				for x in range(-radius, radius + 1):
+					if maxi(absi(x), absi(y)) != radius:
+						continue
+					var cell := origin + Vector2i(x, y)
+					if protected.has(cell) or selected.has(cell):
+						continue
+					var shape = _red_shape_at(body, cell)
+					if shape != null:
+						result.get_or_add(body, {}).get_or_add(shape, {})[cell] = true
+						selected[cell] = true
+						account.credit -= 1.0
+						count -= 1
+						if count <= 0:
+							break
+				if count <= 0:
+					break
+	# 附近燃料已经用尽时才允许删除当前端子像素。
+	for cell: Vector2i in protected:
+		if count <= 0:
+			break
+		var shape = _red_shape_at(body, cell)
+		if shape != null:
+			result.get_or_add(body, {}).get_or_add(shape, {})[cell] = true
+			account.credit -= 1.0
+			count -= 1
+
+func _red_shape_at(body, cell: Vector2i):
+	for shape in body.shapes:
+		if shape.get_pixel(cell.x, cell.y) == Palette.RED.id:
+			return shape
+	return null
 
 func _rect_world(body, rect: Rect2) -> Rect2:
 	var result := Rect2(body.to_world(rect.position), Vector2.ZERO)
@@ -412,7 +450,8 @@ func _emit(rule, context: Dictionary, wires: Array) -> void:
 		# 玩家只能通过有效抓握端口供能，身体/手臂/手的擦碰都不发包。
 		if player_bodies.has(body):
 			continue
-		if body.tags.has("living") and float(body.tags.get("supply_power", 0.0)) <= 0.0:
+		if body.tags.has("living") and float(body.tags.get(
+			"supply_power", rule.biological_default_power)) <= 0.0:
 			continue
 		var rect := _bounds(body)
 		if not rect.has_area():
@@ -434,6 +473,7 @@ func _emit(rule, context: Dictionary, wires: Array) -> void:
 				group.ports.append_array(ports)
 		else:
 			var account: Dictionary = fuel.get_or_add(body, {"credit": 0.0, "contacts": {}})
+			account.contacts = contacts.duplicate()
 			var energy := minf(contacts.size() * rule.source_power_per_pixel * interval, maxf(0.0, contacts.size() - account.credit) * rule.energy_per_red_pixel)
 			var share: float = energy / contacts.size()
 			for cell: Vector2i in contacts:
@@ -443,7 +483,8 @@ func _emit(rule, context: Dictionary, wires: Array) -> void:
 				account.contacts[cell] = true
 			account.credit += energy / maxf(rule.energy_per_red_pixel, 0.001)
 	for group: Dictionary in groups.values():
-		var power: float = maxf(0.0, float(group.body.tags.get("supply_power", 0.0)))
+		var power: float = maxf(0.0, float(group.body.tags.get(
+			"supply_power", rule.biological_default_power)))
 		for port: Array in group.ports:
 			inject(port[0], port[1], port[2], power * interval / group.ports.size(), group.body.get_instance_id())
 	if player == null:

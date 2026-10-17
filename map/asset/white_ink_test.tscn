@@ -1,9 +1,9 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cx4wog1146wfl"]
 
 [ext_resource type="PackedScene" uid="uid://vqdlx81yhmw3" path="res://map/asset/imported/main.tscn" id="1"]
 [ext_resource type="Script" uid="uid://cvmua5pup1acc" path="res://map/src/white_ink_test.gd" id="2"]
 
-[node name="WhiteInkTest" type="Node2D"]
+[node name="WhiteInkTest" type="Node2D" unique_id=2040871376]
 script = ExtResource("2")
 
-[node name="Main" parent="." instance=ExtResource("1")]
+[node name="Main" parent="." unique_id=1230458212 instance=ExtResource("1")]
