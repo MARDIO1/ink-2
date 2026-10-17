@@ -494,9 +494,13 @@ func preview_blue() -> void:
 	surface.tool = surface.Tool.BRUSH
 	await drag_canvas(Vector2(50.5, 75.5), Vector2(150.5, 75.5))
 	check("windowed mouse brush draws blue wire", surface.blue_layer.mask.has(Vector2i(100, 75)))
-	surface.tool = surface.Tool.LINE
+	surface.tool = surface.Tool.RECT
 	await drag_canvas(Vector2(140.5, 75.5), Vector2(190.5, 75.5))
-	check("windowed mouse line creates blue motor", rule.objects(Motor).size() == 1)
+	check("windowed mouse rectangle creates blue motor", rule.objects(Motor).size() == 1)
+	surface.tool = surface.Tool.LINE
+	await drag_canvas(Vector2(60.5, 68.5), Vector2(120.5, 68.5))
+	check("windowed mouse line creates straight blue wire",
+		surface.blue_layer.mask.has(Vector2i(90, 68)))
 	await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://.godot/blue_preview.png")

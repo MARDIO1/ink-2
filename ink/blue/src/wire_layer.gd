@@ -33,6 +33,9 @@ var body = null
 var source_surface = null
 var last_point := Vector2.ZERO
 var drawing := false
+var line_drawing := false
+var line_origin := Vector2.ZERO
+var line_cursor := Vector2.ZERO
 const TILE_SIZE := 64
 var _images: Dictionary = {}
 var _textures: Dictionary = {}
@@ -153,6 +156,9 @@ func flush_display(sync_cells := true) -> void:
 func _draw() -> void:
 	for key: Vector2i in _textures:
 		draw_texture(_textures[key], Vector2(key * TILE_SIZE))
+	if line_drawing and source_surface != null:
+		draw_line(line_origin, line_cursor, Palette.BLUE.color,
+			float(source_surface.brush_size), false)
 
 func _draw_energy() -> void:
 	# 批量线段模拟光晕，避免每个能源格建立粒子节点或单独光源。
@@ -297,6 +303,75 @@ func finish() -> void:
 	cells = PackedVector2Array(mask.keys())
 	build_widths()
 	source_surface._commit_undo_step()
+
+## 蓝色直线工具：交互和栅格口径与黄色直导轨一致，宽度取当前 px 笔刷。
+func begin_line(point: Vector2) -> void:
+	source_surface._begin_undo_step()
+	line_drawing = true
+	line_origin = point.floor() + Vector2.ONE * 0.5
+	line_cursor = line_origin
+	queue_redraw()
+
+func extend_line(point: Vector2) -> void:
+	if not line_drawing:
+		return
+	line_cursor = point.clamp(Vector2.ZERO, Vector2(source_surface.canvas_size) - Vector2.ONE)
+	queue_redraw()
+
+func finish_line(point: Vector2) -> bool:
+	if not line_drawing:
+		return false
+	extend_line(point)
+	line_drawing = false
+	var changed := _paint_line(line_origin, line_cursor, source_surface.brush_size)
+	if changed > 0:
+		cells = PackedVector2Array(mask.keys())
+		build_widths()
+		flush_display(false)
+	source_surface._commit_undo_step()
+	queue_redraw()
+	return changed > 0
+
+func cancel_line() -> void:
+	if not line_drawing:
+		return
+	line_drawing = false
+	source_surface._commit_undo_step()
+	queue_redraw()
+
+func _paint_line(a: Vector2, b: Vector2, width: int) -> int:
+	var vector := b - a
+	var length := vector.length()
+	if length < 0.001:
+		return 0
+	var direction := vector / length
+	var normal := direction.orthogonal()
+	var half := maxf(0.5, width * 0.5)
+	var low := Vector2i((a.min(b) - Vector2.ONE * half).floor()).max(Vector2i.ZERO)
+	var high := Vector2i((a.max(b) + Vector2.ONE * half).ceil()).min(
+		source_surface.canvas_size - Vector2i.ONE)
+	var room: int = source_surface._ink_room(Palette.BLUE.id)
+	var changed := 0
+	for y in range(low.y, high.y + 1):
+		for x in range(low.x, high.x + 1):
+			var cell := Vector2i(x, y)
+			var relative := Vector2(cell) + Vector2.ONE * 0.5 - a
+			var along := relative.dot(direction)
+			if along < 0.0 or along > length or absf(relative.dot(normal)) > half:
+				continue
+			if mask.has(cell) or room <= 0:
+				continue
+			var material: int = source_surface.material_at(cell.x, cell.y)
+			if material != 0 and material != Palette.BLACK.id:
+				continue
+			mask[cell] = true
+			_cells.append(Vector2(cell))
+			_set_display_pixel(cell, Palette.BLUE.color)
+			source_surface._bump_ink(Palette.BLUE.id, 1)
+			room -= 1
+			changed += 1
+	source_surface._flush_ink()
+	return changed
 
 func erase(at: Vector2i, refund := true) -> void:
 	if mask.erase(at):

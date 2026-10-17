@@ -113,7 +113,7 @@ func _build_help_page() -> void:
 	content.custom_minimum_size.x = 336
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	content.text = "游玩\nA / D 移动 · 空格跳跃 · Tab 调试视图\n靠近画布展开工具栏，离开后恢复操纵。\n\n画布\n1 画笔 · 2 橡皮 · 3 形状 · 4 填充\n5 清空 · 6 框选 · 7 固化 · 8 墨化 · F 操纵\n画笔右键临时擦除；形状含矩形、圆形、直线。\n右键框选按钮切换矩形 / 圆形。\n左拖选区连同图像移动；Ctrl＋左拖只移动选框。\nBackspace 或框内右键删除；框选后可保存蓝图。\nCtrl＋Z 撤销 · Ctrl＋Y 重做（也可点击撤销/重做）。\n\n地图编辑器\nF2 进入/退出 · CapsLock 展开右侧工具\n9 钉子 · 0 扩展画布 · F5 打开地图保存窗口\n操纵：左键选中拖动，右键删除，滚轮缩放支持的物品。\n齿轮：按下定圆心，拖动定半径，使用当前颜色。\n传送门：先选择目标地图，再单击放置。\n\n蓝图手册\n可在任意位置查看；游玩时靠近画布才能放置。\n左键放置 · Shift＋左键连续放置 · 右键 / Esc 取消。\n含齿轮的蓝图仅地图编辑器可用。"
+	content.text = "游玩\nA / D 移动 · 空格跳跃 · Tab 调试视图\n靠近画布展开工具栏，离开后恢复操纵。\n\n画布\n1 画笔 · 2 橡皮 · 3 形状 · 4 填充\n5 清空 · 6 框选 · 7 固化 · 8 墨化 · F 操纵\n画笔右键临时擦除；形状含矩形、圆形、直线。\n灰墨＋圆形放固定钉子；白墨＋圆形放背景钉子。\n右键框选按钮切换矩形 / 圆形。\n左拖选区连同图像移动；Ctrl＋左拖只移动选框。\nBackspace 或框内右键删除；框选后可保存蓝图。\nCtrl＋Z 撤销 · Ctrl＋Y 重做（也可点击撤销/重做）。\n\n地图编辑器\nF2 进入/退出 · CapsLock 展开右侧工具\n9 固定钉子（兼容） · 0 扩展画布 · F5 打开地图保存窗口\n操纵：左键选中拖动，右键删除，滚轮缩放支持的物品。\n齿轮：按下定圆心，拖动定半径，使用当前颜色。\n传送门：先选择目标地图，再单击放置。\n\n蓝图手册\n可在任意位置查看；游玩时靠近画布才能放置。\n左键放置 · Shift＋左键连续放置 · 右键 / Esc 取消。\n含齿轮的蓝图仅地图编辑器可用。"
 	scroll.add_child(content)
 	var back := Button.new()
 	back.name = "BackButton"

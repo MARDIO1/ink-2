@@ -17,19 +17,25 @@ func check(label: String, okay: bool) -> void:
 		failures += 1
 
 func _run() -> void:
-	var source := Image.new()
-	source.load_png_from_buffer(FileAccess.get_file_as_bytes("res://actor/nail/asset/nail.png"))
-	var imported := Nail.NAIL_TEXTURE.get_image()
-	check("supplied 44px texture imported", source.get_size() == Vector2i(44, 44) and imported.get_size() == source.get_size())
-	check("transparent corners and black cross remain", imported.get_pixel(0, 0).a == 0 and imported.get_pixel(22, 22) == Color.BLACK)
+	var fixed_source := Image.new()
+	fixed_source.load_png_from_buffer(FileAccess.get_file_as_bytes("res://actor/nail/asset/fixed_nail.png"))
+	var background_source := Image.new()
+	background_source.load_png_from_buffer(FileAccess.get_file_as_bytes("res://actor/nail/asset/nail.png"))
+	var imported := Nail.FIXED_TEXTURE.get_image()
+	check("both 44px textures imported", fixed_source.get_size() == Vector2i(44, 44)
+		and background_source.get_size() == Vector2i(44, 44)
+		and imported.get_size() == fixed_source.get_size())
+	check("fixed nail has transparent corners and gray center", imported.get_pixel(0, 0).a == 0
+		and imported.get_pixel(22, 22).a == 1.0 and imported.get_pixel(22, 22) != Color.BLACK)
+	check("background nail keeps white head and black cross", Nail.BACKGROUND_TEXTURE.get_image().get_pixel(22, 22) == Color.BLACK)
 	var imported_matches := true
-	for y in source.get_height():
-		for x in source.get_width():
-			var pixel := source.get_pixel(x, y)
+	for y in fixed_source.get_height():
+		for x in fixed_source.get_width():
+			var pixel := fixed_source.get_pixel(x, y)
 			var actual := imported.get_pixel(x, y)
 			imported_matches = imported_matches and is_equal_approx(pixel.a, actual.a) and (pixel.a == 0 or pixel.is_equal_approx(actual))
 	check("opaque artwork and alpha preserved exactly", imported_matches)
-	check("canvas and body share texture and center", NailLayer.NAIL_TEXTURE == Nail.NAIL_TEXTURE and NailLayer.ANCHOR_CENTER == Vector2(source.get_size()) * 0.5)
+	check("canvas and body share texture and center", NailLayer.NAIL_TEXTURE == Nail.FIXED_TEXTURE and NailLayer.ANCHOR_CENTER == Vector2(fixed_source.get_size()) * 0.5)
 	var draft_rect := Nail.visual_rect(Vector2i(32, 32))
 	check("draft nail is half size around unchanged pixel center", draft_rect.size == Vector2(22, 22) and draft_rect.get_center() == Vector2(32.5, 32.5))
 	var icon = load("res://ui/asset/nail.tres")
@@ -52,14 +58,16 @@ func _run() -> void:
 	for y in range(16, 48):
 		for x in range(16, 48):
 			canvas.surface.write_pixel(Vector2i(x, y), Palette.BLACK.color)
-	canvas.surface.write_pixel(Vector2i(32, 32), Palette.nail_color())
+	canvas.surface.nail_layer.add(Vector2i(32, 32), Nail.Kind.FIXED)
 	canvas.surface.refresh()
-	check("draft nail remains one material pixel", canvas.surface.nail_layer.nails.size() == 1 and canvas.surface.material_at(32, 32) == Palette.nail_material_id())
+	check("draft nail overlays its base pixel", canvas.surface.nail_layer.nails.size() == 1
+		and canvas.surface.nail_layer.background_nails.is_empty()
+		and canvas.surface.material_at(32, 32) == Palette.BLACK.id)
 	check("draft nail uses nearest filtering", canvas.surface.nail_layer.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST)
 	var data := Codec.capture(canvas, Rect2i(0, 0, 64, 64))
 	var preview := Codec.preview(data)
 	var preview_matches := true
-	var displayed := source.duplicate() as Image
+	var displayed := fixed_source.duplicate() as Image
 	displayed.resize(22, 22, Image.INTERPOLATE_NEAREST)
 	for y in displayed.get_height():
 		for x in displayed.get_width():

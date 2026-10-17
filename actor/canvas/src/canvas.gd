@@ -119,6 +119,7 @@ func _ready() -> void:
 		_bind_buttons()
 		surface.selection_move_requested.connect(_move_selection)
 		surface.ink_shortage.connect(_show_ink_shortage)
+		surface.notice_requested.connect(_show_canvas_notice)
 		# 进入正常游戏时始终从“手”开始，不能继承地图保存时的画笔状态。
 		_apply_tool(SurfaceScript.Tool.HAND if active else surface.tool)
 #endregion
@@ -167,6 +168,12 @@ func _show_ink_shortage(required: int, available: int) -> void:
 		_ink_warning_panel.visible = false
 
 
+func _show_canvas_notice(message: String) -> void:
+	_show_ink_shortage(SurfaceScript.MIN_PAINT_INK, 0)
+	if _ink_warning_label != null:
+		_ink_warning_label.text = message
+
+
 #region 功能接口
 ## 关掉后整块画布不响应任何输入、按钮也不显示；创造模式用它切换小画布/大地图。
 @export var active := true:
@@ -197,12 +204,13 @@ func generate(record_undo := true) -> void:
 		record_undo = false
 		surface._undo_steps.clear()
 	var state: Dictionary = History.capture(self) if record_undo else {}
+	var nail_state: Dictionary = surface.nail_layer.snapshot()
 	# 只在落笔/抬笔时记录黑色；固化前擦掉的黑色不能重新成为轴。
 	for index in range(surface.rod_layer.anchor_points.size() - 1, -1, -1):
 		if not surface.rod_layer._black(surface.rod_layer.anchor_points[index]):
 			surface.rod_layer.anchor_points.remove_at(index)
 	solid.solidify(surface, world, _map_editor_mode)
-	surface.rod_layer.solidify(world)
+	surface.rod_layer.solidify(world, nail_state)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.solidify(surface)
@@ -1190,7 +1198,7 @@ func _on_pen_slider_changed(value: float) -> void:
 
 #region 复现文件与调试输入
 ## 开发复现文件留在 test，保存内容仍是未固化墨水。
-@export var capture_path: String = "res://test/canvas_capture.tres"
+@export var capture_path: String = "res://test/canvas_capture.snapshot"
 ## 大地图整图；存下来当参考图（没有节点读它）。
 @export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
 ## 开发用的 F5/F9 存读；创造模式接管 F5 时会被关掉，避免两套保存同时跑。

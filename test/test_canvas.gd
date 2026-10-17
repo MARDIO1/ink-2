@@ -67,7 +67,7 @@ func _run() -> void:
 	surface._stroke(Vector2(20, 20), Vector2(40, 20), Color.BLACK)
 	surface._place_nail(Vector2(30, 20))
 	# 使用项目内临时路径，确保无 user:// 写权限的 headless/沙箱环境也能验收；退出前删除。
-	var path: String = "res://test/.canvas_roundtrip.tmp.tres"
+	var path: String = "res://test/.canvas_roundtrip.tmp.snapshot"
 	var png_path: String = "res://test/.canvas_roundtrip.tmp.png"
 	for temp_path in [path, png_path]:
 		if FileAccess.file_exists(temp_path):
@@ -76,7 +76,7 @@ func _run() -> void:
 	canvas.baked_map_path = png_path
 	var before: PackedByteArray = surface.black_image.get_data()
 	await _press(KEY_F5)
-	valid = valid and ResourceLoader.exists(path)
+	valid = valid and FileAccess.file_exists(path)
 	surface.clear()
 	canvas.canvas_size = Vector2i(32, 32)
 	await _press(KEY_F9)
@@ -86,7 +86,15 @@ func _run() -> void:
 	canvas.position = Vector2(5000, 5000)      # 挪到空地：只回收这块刚体，别顺带把地形也收走
 	canvas.solid.solidify(surface, scene)
 	canvas.return_to_canvas()
-	valid = valid and surface.is_solid(20, 20) and surface.material_at(30, 20) == InkPalette.nail_material_id()
+	var restored_nail_ok: bool = surface.is_solid(20, 20) \
+		and surface.material_at(30, 20) == InkPalette.BLACK.id \
+		and surface.nail_layer.nails.has(Vector2i(30, 20))
+	if not restored_nail_ok:
+		print("[Canvas] inkify nail details solid=", surface.is_solid(20, 20),
+			" material=", surface.material_at(30, 20),
+			" nails=", surface.nail_layer.nails.keys())
+	print("[Canvas] nail overlay survives inkify: ", "PASS" if restored_nail_ok else "FAIL")
+	valid = valid and restored_nail_ok
 	await process_frame
 	canvas.position = home
 	#只回收画布内的部分：刚体跨在画布边上时，画布外的那半边留在世界里。
@@ -133,21 +141,27 @@ func _run() -> void:
 	canvas.solid.solidify(surface, scene)
 	valid = valid and scene.world.bodies.size() > body_count and not surface.is_solid(20, 20)
 	var nailed = scene.world.bodies[-1]
-	valid = valid and nailed.is_static and nailed.tags.has("static_anchor_points")
+	var fixed_body_ok: bool = nailed.is_static and nailed.tags.has("static_anchor_points")
 	var nail_shape = nailed.shapes[0]
-	valid = valid and nail_shape.get_pixel(30, 20) == InkPalette.nail_material_id()
+	fixed_body_ok = fixed_body_ok and nail_shape.get_pixel(30, 20) == InkPalette.BLACK.id
+	print("[Canvas] fixed overlay solidifies as static body: ", "PASS" if fixed_body_ok else "FAIL")
+	valid = valid and fixed_body_ok
 	var cut: Dictionary = {}
 	for y in range(180):
 		if nail_shape.get_pixel(35, y) != 0:
 			cut[Vector2i(35, y)] = true
 	var before_split: int = scene.world.bodies.size()
 	scene.get_node("SimulationRuntime").commit(scene.world, {nailed: {nail_shape: cut}})
-	valid = valid and nailed.is_static and scene.world.bodies.size() > before_split
-	valid = valid and not scene.world.bodies[-1].is_static
+	var split_ok: bool = nailed.is_static and scene.world.bodies.size() > before_split \
+		and not scene.world.bodies[-1].is_static
+	print("[Canvas] only anchored fragment stays static: ", "PASS" if split_ok else "FAIL")
+	valid = valid and split_ok
 	nail_shape = nailed.shapes[0]
 	scene.get_node("SimulationRuntime").commit(scene.world,
 		{nailed: {nail_shape: {Vector2i(30, 20): true}}})
-	valid = valid and not nailed.is_static and not nailed.tags.has("static_anchor_points")
+	var unpinned_ok: bool = not nailed.is_static and not nailed.tags.has("static_anchor_points")
+	print("[Canvas] removing anchor releases body: ", "PASS" if unpinned_ok else "FAIL")
+	valid = valid and unpinned_ok
 	print("[Canvas] resize, save/load, nail solidify/break: ", "PASS" if valid else "FAIL")
 	var hand = scene.get_node("Player/Arm/Hand/HandControl")
 	hand.set_physics_process(false)

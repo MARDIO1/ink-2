@@ -5,11 +5,16 @@
 @tool
 extends Sprite2D
 
-const NAIL_TEXTURE := preload("res://actor/nail/asset/nail.png")
+const BACKGROUND_TEXTURE := preload("res://actor/nail/asset/nail.png")
+const FIXED_TEXTURE := preload("res://actor/nail/asset/fixed_nail.png")
+const NAIL_TEXTURE := FIXED_TEXTURE
 ## 44×44 的原始像素贴图；画布内钉子与实体共用，不缩放物理锚点。工具栏使用独立图标。
 const ANCHOR_CENTER := Vector2(22.0, 22.0)
 ## 仅缩小外观；固定点、材质像素和碰撞完全不变，旧地图重建时同样使用。
 const VISUAL_SCALE := 0.5
+enum Kind { FIXED, BACKGROUND }
+const FIXED_TAG := "static_anchor_points"
+const BACKGROUND_TAG := "background_anchor_points"
 
 ## 所有运行时钉子外观都进入这个组，地图编辑器只切显示，不改物理锚点。
 const VISUAL_GROUP := &"nail_visual"
@@ -17,21 +22,25 @@ const VISUAL_GROUP := &"nail_visual"
 static var visuals_visible := true
 static var map_editor_active := false
 ## 钉子对应的材料 id；真源在 ink/general/src/ink_palette.gd。
-const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 #endregion
 
 
 #region 状态
 var body = null
 var pixel := Vector2i.ZERO
+var kind: Kind = Kind.FIXED
 var hide_outside_map_editor := false
 #endregion
 
 
 #region 挂载
-static func visual_rect(pixel: Vector2i) -> Rect2:
+static func texture_for(target_kind: Kind) -> Texture2D:
+	return BACKGROUND_TEXTURE if target_kind == Kind.BACKGROUND else FIXED_TEXTURE
+
+
+static func visual_rect(pixel: Vector2i, target_kind: Kind = Kind.FIXED) -> Rect2:
 	return Rect2(Vector2(pixel) + Vector2(0.5, 0.5) - ANCHOR_CENTER * VISUAL_SCALE,
-		Vector2(NAIL_TEXTURE.get_size()) * VISUAL_SCALE)
+		Vector2(texture_for(target_kind).get_size()) * VISUAL_SCALE)
 
 
 func _enter_tree() -> void:
@@ -40,11 +49,13 @@ func _enter_tree() -> void:
 
 
 ## 绑定到一个刚体上的某个钉子像素；调用前先 add_child。
-func setup(target_body, target_pixel: Vector2i, editor_placed := false) -> void:
+func setup(target_body, target_pixel: Vector2i, editor_placed := false,
+		target_kind: Kind = Kind.FIXED) -> void:
 	body = target_body
 	pixel = target_pixel
+	kind = target_kind
 	hide_outside_map_editor = editor_placed
-	texture = NAIL_TEXTURE
+	texture = texture_for(kind)
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	centered = false
 	offset = -ANCHOR_CENTER        # 固定点落在节点原点
@@ -65,8 +76,9 @@ func _physics_process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	if not _anchor_alive():
-		queue_free()               # 钉子像素被破坏/移走：外观跟着消失
-		return
+		if not _try_rebind():
+			queue_free()
+			return
 	_follow()
 
 
@@ -82,8 +94,27 @@ func _follow() -> void:
 func _anchor_alive() -> bool:
 	if body == null:
 		return false
-	for shape in body.shapes:
-		if shape.get_pixel(pixel.x, pixel.y) == InkPalette.nail_material_id():
-			return true
-	return false
+	var tag := BACKGROUND_TAG if kind == Kind.BACKGROUND else FIXED_TAG
+	return body.tags.get(tag, {}).has(pixel)
+
+
+func _try_rebind() -> bool:
+	var host = get_parent()
+	var physics = host.get("world") if host != null else null
+	if physics == null:
+		return false
+	var tag := BACKGROUND_TAG if kind == Kind.BACKGROUND else FIXED_TAG
+	var best = null
+	var best_distance := INF
+	for candidate in physics.bodies:
+		if candidate == null or not candidate.tags.get(tag, {}).has(pixel):
+			continue
+		var distance: float = candidate.to_world(Vector2(pixel) + Vector2.ONE * 0.5).distance_squared_to(global_position)
+		if distance < best_distance:
+			best = candidate
+			best_distance = distance
+	if best == null or best_distance > 4.0:
+		return false
+	body = best
+	return true
 #endregion

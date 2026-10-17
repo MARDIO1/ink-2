@@ -133,6 +133,8 @@ func extend(point: Vector2) -> void:
 			continue
 		if not changed.has(cell):
 			changed[cell] = had
+		if erasing:
+			source_surface._remove_nail_at(cell)
 		pixels.set_pixelv(cell, Color.TRANSPARENT if erasing else Palette.YELLOW.color)
 		visual_changed = true
 		var delta := -1 if erasing else 1
@@ -177,6 +179,7 @@ func erase_rect(rect: Rect2i, mask: Dictionary = {}) -> bool:
 				continue
 			if pixels.get_pixel(x, y).a <= 0.5:
 				continue
+			source_surface._remove_nail_at(Vector2i(x, y))
 			pixels.set_pixel(x, y, Color.TRANSPARENT)
 			removed += 1
 	if removed == 0:
@@ -416,9 +419,13 @@ func _rail_spans(rail: Dictionary, shape) -> Array:
 			start = -1
 	return spans
 
-func solidify(world) -> void:
+func solidify(world, nail_state: Dictionary = {}) -> void:
 	var physics = world.world
 	var solid = source_surface.get_parent().solid
+	var fixed_nails: Dictionary = nail_state.get("fixed", {})
+	var background_nails: Dictionary = nail_state.get("background", {})
+	var consumed_fixed := {}
+	var consumed_background := {}
 	for original in Destruction.split(make_shape(), 1):
 		var anchors: Dictionary = {}
 		var connected_bodies: Array = []
@@ -442,7 +449,12 @@ func solidify(world) -> void:
 				obstacles.append(body)
 		solid._remove_overlaps(original, source_surface, obstacles)
 		for part in Destruction.split(original, 1):
-			solid._spawn_component(world, source_surface.global_position, part, {}, false)
+			var part_fixed: Dictionary = solid._anchors_in_shape(part, fixed_nails)
+			var part_background: Dictionary = solid._anchors_in_shape(part, background_nails)
+			consumed_fixed.merge(part_fixed, true)
+			consumed_background.merge(part_background, true)
+			solid._spawn_component(world, source_surface.global_position, part,
+				part_fixed, part_background, false, not part_fixed.is_empty())
 			for rail in rails:
 				for span in _rail_spans(rail, part):
 					var runtime_rail := Rail.new()
@@ -469,4 +481,10 @@ func solidify(world) -> void:
 		runtime_pin.saved_position = world.to_local(source_surface.to_global(Vector2(pin.position)))
 		world.add_child(runtime_pin)
 		runtime_pin.owner = world
+	for point: Vector2i in consumed_fixed:
+		source_surface.nail_layer.remove(point)
+	for point: Vector2i in consumed_background:
+		source_surface.nail_layer.remove(point)
 	clear(false)
+	# 固化消费了黄墨和钉子，但不应退款；重数空画布以清掉只含黄墨时留下的账本。
+	source_surface.recount_ink_px()

@@ -114,7 +114,7 @@ texture_filter = 1
 z_as_relative = false
 
 [node name="NailLayer" type="Node2D" parent="CanvasSurface" unique_id=1721133058]
-z_index = 1
+z_index = 10
 z_as_relative = false
 script = ExtResource("4_nail_script")
 

@@ -1,7 +1,7 @@
 extends RefCounted
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 ## 蓝图仅包含 JSON 数据；不加载场景、脚本或带对象的 Variant。
-const VERSION := 1
+const VERSION := 2
 const MAX_SIDE := 1024
 const MAX_FILE_BYTES := 24 * 1024 * 1024
 const MAX_CELLS := 600000
@@ -33,6 +33,10 @@ func read(id: String) -> Dictionary:
 	if file == null or file.get_length() > MAX_FILE_BYTES:
 		return {}
 	var data = JSON.parse_string(file.get_as_text())
+	if data is Dictionary and data.get("version", 0) == 1:
+		data = migrate_v1(data)
+		if validate(data) and data.id == id:
+			save(data)
 	if not data is Dictionary or not validate(data) or data.id != id:
 		error = "蓝图损坏或版本不受支持"
 		return {}
@@ -96,7 +100,7 @@ static func pair(value, limit := 65536.0) -> bool:
 
 static func validate(data: Dictionary) -> bool:
 	for key in ["version", "id", "name", "description", "tags", "updated", "favorite", "editor_only", "size",
-		"pixels", "rods", "blue", "anchors", "springs", "motors", "bodies", "gears"]:
+		"pixels", "fixed_nails", "background_nails", "rods", "blue", "anchors", "springs", "motors", "bodies", "gears"]:
 		if not data.has(key):
 			return false
 	if data.get("version") != VERSION or not data.get("id", "") is String \
@@ -122,6 +126,10 @@ static func validate(data: Dictionary) -> bool:
 		if not data.get(key) is Array or not cells_valid(data[key], width * height, key == "pixels"):
 			return false
 		total += data[key].size()
+	for key in ["fixed_nails", "background_nails"]:
+		if not cells_valid(data.get(key), width * height, false):
+			return false
+		total += data[key].size() * 10
 	for key in ["anchors", "springs", "motors", "bodies", "gears"]:
 		if not data.get(key) is Array or data[key].size() > 128:
 			return false
@@ -131,6 +139,8 @@ static func validate(data: Dictionary) -> bool:
 	var body_cells: Array = []
 	for body in data.bodies:
 		if not body is Dictionary or not cells_valid(body.get("pixels"), width * height, true) \
+			or not cells_valid(body.get("fixed_nails", []), width * height, false) \
+			or not cells_valid(body.get("background_nails", []), width * height, false) \
 			or body.pixels.is_empty() or not body.has("static") or not body.static is bool:
 			return false
 		total += body.pixels.size()
@@ -184,6 +194,25 @@ static func validate(data: Dictionary) -> bool:
 			return false
 		total += int(motor.area)
 	return total > 0 and total <= MAX_CELLS and (data.gears.is_empty() or data.get("editor_only", false))
+
+
+static func migrate_v1(source: Dictionary) -> Dictionary:
+	var data := source.duplicate(true)
+	data.version = VERSION
+	data["fixed_nails"] = []
+	data["background_nails"] = []
+	for entry in data.get("pixels", []):
+		if int(entry[1]) == Palette.nail_material_id():
+			data.fixed_nails.append(int(entry[0]))
+			entry[1] = Palette.GREY.id
+	for body in data.get("bodies", []):
+		body["fixed_nails"] = []
+		body["background_nails"] = []
+		for entry in body.get("pixels", []):
+			if int(entry[1]) == Palette.nail_material_id():
+				body.fixed_nails.append(int(entry[0]))
+				entry[1] = Palette.GREY.id
+	return data
 
 static func cells_valid(cells, area: int, materials: bool) -> bool:
 	if not cells is Array or cells.size() > MAX_CELLS:

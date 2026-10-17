@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Nail := preload("res://actor/nail/src/nail.gd")
 var failures := 0
 
 func check(label: String, condition: bool) -> void:
@@ -24,17 +25,17 @@ func run() -> void:
 	for y in range(20, 40):
 		for x in range(20, 40):
 			surface.write_pixel(Vector2i(x, y), Color.BLACK)
-	surface.write_pixel(Vector2i(30, 30), Palette.nail_color())
+	surface.nail_layer.add(Vector2i(30, 30), Nail.Kind.FIXED)
 	surface.refresh()
 	canvas.generate()
 	check("creates entity", scene.world.bodies.size() == before + 1)
 	check("undo restores blueprint and removes entity", surface.undo_last_edit() \
 		and scene.world.bodies.size() == before and surface.material_at(20, 20) == Palette.BLACK.id)
-	check("undo restores nail", surface.material_at(30, 30) == Palette.nail_material_id() \
+	check("undo restores nail", surface.material_at(30, 30) == Palette.BLACK.id \
 		and surface.nail_layer.nails.has(Vector2i(30, 30)))
 	canvas.generate()
 	canvas.return_to_canvas()
-	check("inkify preserves nail and visual", surface.material_at(30, 30) == Palette.nail_material_id() \
+	check("inkify preserves nail and visual", surface.material_at(30, 30) == Palette.BLACK.id \
 		and surface.nail_layer.nails.has(Vector2i(30, 30)))
 	canvas.generate()
 	var anchored := false
