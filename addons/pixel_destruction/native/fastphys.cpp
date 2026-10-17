@@ -91,7 +91,8 @@ alignas(16) static unsigned char g_str_empty_hint[64];
 //   2  step(f64 dt)
 //   3  body_new(i32 is_static, f64 x, y, rot)     -> i32 id
 //   4  body_remove(u32 id)
-//   5  body_set_rects(u32 id, i32 count, f32[count*4], f64 friction)
+//   5  body_set_rects(…)  **已删除** —— 载荷与符号都换成了 48（逐矩形系数）：
+//      旧载荷只能给"整个刚体一个摩擦"，而材质是逐像素的（见 op 4 的说明）。
 //   6  body_set_pose(u32 id, f64 x, y, rot)
 //   7  body_set_vel(u32 id, f64 vx, vy, w)
 //   8  body_get_state(u32 id)                     -> f64 x, y, rot, vx, vy, w
@@ -141,6 +142,9 @@ alignas(16) static unsigned char g_str_empty_hint[64];
 //  40  joint_set_softness(u32 jid, f64 freq, f64 damping)  关节求解软度（Hz + 阻尼比）
 //  41  world_set_joint_solver(i32 iters, i32 warmstart, f64 coeff)  世界级关节求解参数
 //  42  body_set_solver_iterations(u32 id, u32 n)       局部约束岛追加迭代
+//  48  body_set_rects6(u32 id, i32 count, f32[count*6] 记录)  记录 = x,y,w,h,摩擦,恢复
+//      逐矩形建 cuboid 碰撞体（**逐矩形系数**）。多边形那条路见 op 43（只用于
+//      "整个刚体只有一种系数"的形状 —— 拟合会把不同材质并进一个多边形）。
 //  43  body_fit_polys(u32 id, i32 n_rects, f32[n*4] rects, f64 friction, f64 mass, f32 dev_tol)
 //                                                  -> i32 n_polys
 //      **凸多边形碰撞体**（Noita 式拟合）：原生侧把精确覆盖的矩形拟合成凸多边形
@@ -154,6 +158,13 @@ alignas(16) static unsigned char g_str_empty_hint[64];
 //  46  body_get_inertia(u32 id)                   -> f64（Rapier 侧角惯量，诊断用）
 //  45  body_get_mass(u32 id)                      -> f64（Rapier 侧质量）
 //      判据用：拟合后的碰撞体面积 >= 像素面积，密度按质量反算 —— 两边质量不许分叉。
+//  47  world_set_combine_rules(i32 friction_rule, i32 restitution_rule)
+//      接触系数的**合成规则**（Rapier CoefficientCombineRule 的判别值：
+//      0 平均 / 1 取小 / 2 相乘 / 3 取大 / 4 截断求和 / 5 几何平均）。
+//      ⚠️ Rapier 的默认是 **0 平均**，它会把一方的材质稀释掉一半：球恢复 0.9 撞地面
+//         0.0 -> 0.45（回弹高度只剩 ~20%）；冰面摩擦 0.0 撞地面 0.5 -> 0.25（并不滑）。
+//         引擎默认推 5 + 3（摩擦几何平均、恢复取大），理由见 lib.rs 的 World::new。
+//      ⚠️ 这条是**世界级**的，原生侧连**已有**的碰撞体一起改 —— 不需要重建刚体。
 //  （35~37 曾用于"鼠标关节"抓取，已删除 —— 见 rapier_bridge/src/lib.rs 的墓碑注释）
 
 typedef void *RPWorld;
@@ -166,7 +177,10 @@ struct RapierApi {
 	void (*world_step)(RPWorld, double) = nullptr;
 	uint32_t (*body_new)(RPWorld, int32_t, double, double, double) = nullptr;
 	void (*body_remove)(RPWorld, uint32_t) = nullptr;
-	void (*body_set_rects)(RPWorld, uint32_t, const float *, int32_t, double) = nullptr;
+	// ⚠️ 曾经是 body_set_rects（4 个 float + 一个整体摩擦，op 5）—— 已删除。
+	//    系数改成逐矩形之后签名也变了，**符号名跟着换**：沿用旧名会让
+	//    "新 fastphys.dll + 旧 rapier_bridge.dll"按旧 ABI 静默调用（参数错位）。
+	void (*body_set_rects6)(RPWorld, uint32_t, const float *, int32_t) = nullptr;
 	// 凸多边形碰撞体（Noita 式的像素拟合结果）。签名与 rapier_bridge 的 rb_body_set_polys 一一对应。
 	// 凸多边形碰撞体（Noita 式拟合）：给矩形集合，原生侧拟合成多边形再建碰撞体。
 	int32_t (*body_fit_polys)(RPWorld, uint32_t, const float *, int32_t, double, double, float) = nullptr;
@@ -211,6 +225,8 @@ struct RapierApi {
 	void (*body_set_solver_iterations)(RPWorld, uint32_t, uint32_t) = nullptr;
 void (*body_set_friction)(RPWorld, uint32_t, double) = nullptr;
 void (*body_set_restitution)(RPWorld, uint32_t, double) = nullptr;
+	// 世界级：接触系数合成规则（Rapier CoefficientCombineRule 判别值，见 op 47 的说明）
+	void (*world_set_combine_rules)(RPWorld, int32_t, int32_t) = nullptr;
 	int32_t (*joint_set_softness)(RPWorld, uint32_t, double, double) = nullptr;
 	void (*world_set_joint_solver)(RPWorld, int32_t, int32_t, double) = nullptr;
 
@@ -254,7 +270,7 @@ static bool load_rapier() {
 	RP_GET(world_step, "rb_world_step")
 	RP_GET(body_new, "rb_body_new")
 	RP_GET(body_remove, "rb_body_remove")
-	RP_GET(body_set_rects, "rb_body_set_rects")
+	RP_GET(body_set_rects6, "rb_body_set_rects6")
 	RP_GET(body_fit_polys, "rb_body_fit_polys")
 	RP_GET(body_get_polys, "rb_body_get_polys")
 	RP_GET(body_get_mass, "rb_body_get_mass")
@@ -292,6 +308,7 @@ static bool load_rapier() {
 	RP_GET(body_set_solver_iterations, "rb_body_set_solver_iterations")
 RP_GET(body_set_friction, "rb_body_set_friction")
 RP_GET(body_set_restitution, "rb_body_set_restitution")
+	RP_GET(world_set_combine_rules, "rb_world_set_combine_rules")
 	RP_GET(joint_set_softness, "rb_joint_set_softness")
 	RP_GET(world_set_joint_solver, "rb_world_set_joint_solver")
 
@@ -373,6 +390,9 @@ static void run_rapier_cmd(RapierInstance *inst, const uint8_t *in, size_t in_n,
 	RPWorld W = inst->world;
 	CmdRd r; r.p = in; r.n = in_n; r.i = 0;
 	static std::vector<float> rect_scratch;
+	// op 48 用：每条矩形 6 个 float（x, y, w, h, 摩擦, 恢复）。与 rect_scratch 分开，
+	// 免得"4 个 float 的旧形状"和"6 个 float 的新形状"共用一个缓冲区时相互踩。
+	static std::vector<float> rect6_scratch;
 	double buf[8];
 	while (r.ok && r.i < r.n) {
 		uint8_t op = r.u8();
@@ -393,12 +413,20 @@ static void run_rapier_cmd(RapierInstance *inst, const uint8_t *in, size_t in_n,
 				break;
 			}
 			case 4: { uint32_t id = r.u32(); g_rap.body_remove(W, id); break; }
-			case 5: {
-				uint32_t id = r.u32(); int32_t cnt = r.i32();
+			// 48  body_set_rects6(u32 id, i32 count, f32[count*6])
+			//     逐矩形建碰撞体：每条记录 = x, y, w, h, **friction, restitution**。
+			//     ⚠️⚠️ 换 op 码 + 换符号名（rb_body_set_rects6），不是为了好看：
+			//       矩形记录从 4 个 float 变成 6 个，**沿用旧 op/旧符号的话**，
+			//       新 GDScript 配旧 DLL 会按旧格式解析 —— 每条矩形错位 8 字节，
+			//       症状是"碰撞体乱飞"，而且不报任何错。现在两种情况都吵闹地失败：
+			//       旧 DLL 在 default 分支停（未知操作码 48），旧桥接缺符号（RP_GET 报错）。
+			//     op 5（4 个 float + 一个整体摩擦）**已删除** —— 系数现在是逐矩形的。
+			case 48: {
+				uint32_t id = r.u32();
+				int32_t cnt = r.i32();
 				if (cnt < 0) cnt = 0;
-				bool got = r.f32s((size_t)cnt * 4, rect_scratch);
-				double fr = r.f64();
-				if (got) g_rap.body_set_rects(W, id, rect_scratch.data(), cnt, fr);
+				bool got = r.f32s((size_t)cnt * 6, rect6_scratch);
+				if (got) g_rap.body_set_rects6(W, id, rect6_scratch.data(), cnt);
 				break;
 			}
 			case 43: {
@@ -590,6 +618,14 @@ static void run_rapier_cmd(RapierInstance *inst, const uint8_t *in, size_t in_n,
 				g_rap.world_set_joint_solver(W, it, ws, coeff);
 				break;
 			}
+			// 47  世界级：接触系数合成规则（Rapier CoefficientCombineRule 判别值）。
+			//     ⚠️ 是**世界级**而不是逐刚体：材质表本来也是世界级的，规则跟着它走，
+			//        调用方只需要在"改了规则"时推一次（PWorld 用镜像值守这条）。
+			case 47: {
+				int32_t fr = r.i32(), rr = r.i32();
+				g_rap.world_set_combine_rules(W, fr, rr);
+				break;
+			}
 			default:
 				// ⚠️ 未知操作码**必须立刻停**：它的载荷长度未知，继续读下去会把
 				//    后面的字节当成操作码，整条流错位 —— 而错位往往表现为"写出了
@@ -656,7 +692,8 @@ static void run_rapier_cmd(RapierInstance *inst, const uint8_t *in, size_t in_n,
 // PixelRaster 自己的一组 StringName。
 // ⚠️ 不复用 RapierPhys 那几个缓冲区：复用会让两个类的方法名/参数名互相覆盖，
 //    注册出来的签名静默错位（而症状是"调用时参数对不上"）。
-static SN g_sn_pxr_class, g_sn_pxr_fill, g_sn_pxr_decomp, g_sn_pxr_comp, g_sn_pxr_a0, g_sn_pxr_a1, g_sn_pxr_ret;
+static SN g_sn_pxr_class, g_sn_pxr_fill, g_sn_pxr_decomp, g_sn_pxr_decomp_mat, g_sn_pxr_comp,
+		g_sn_pxr_a0, g_sn_pxr_a1, g_sn_pxr_ret;
 
 // ---- op 2 的几何内核：块内贪心 + 极大行程融合 ----
 //
@@ -945,6 +982,190 @@ static void run_raster_decompose(CmdRd &r, uint8_t *out, size_t out_cap, size_t 
 			w.i32(px_i32(q.y));
 			w.i32(px_i32(q.w));
 			w.i32(px_i32(q.h));
+		}
+		written = w.i;
+	} else {
+		written = HEAD;
+	}
+}
+
+// ---- op 4：**按材质分解**（每条矩形带自己的材质 id）----
+//
+// ⚠️⚠️ 为什么需要它：材质是**逐像素**存的，而 Rapier 的接触系数是**逐碰撞体**的 ——
+//    一个"下半截冰、上半截橡胶"的刚体如果只建一个碰撞体，就只能给一个平均系数，
+//    "不同材质的表面手感不同"就无从谈起。这里把矩形**按材质切开**，
+//    每条矩形带材质 id，GDScript 侧再按材质查表给系数（逐矩形的摩擦/恢复）。
+//
+// ⚠️⚠️ 顺序也是判据（与参照实现 GreedyRects.decompose_material_gd **逐位相同**，
+//    闸门 tests/validation_greedy_native.gd）：
+//      材质升序 -> 该材质的块按 key 升序 -> 块内贪心（横优先，竖更少则取竖）
+//      -> 该材质的 rects 走一次 px_merge_pass
+//    几何规则与 op 2 **一模一样**，只是把输入位网格换成了"只留该材质像素"的那一份。
+//
+// ⚠️ 单材质形状的结果必须与 op 2 **逐位相同**（掩码 = 原掩码 => 同一份网格）。
+//    否则 8 条逐位基准会动，而那个代价应该由"真的多材质"来付。
+//
+// 载荷：[i32 n_chunks][i32 max_rects] {i32 cx, i32 cy, i64 occ} * n  [u8 mat[64]] * n
+//      （mat 段在**记录段之后**整段跟着 —— GDScript 侧一次 append_array 就能拼出来）
+// 结果：[i32 count][i32 budget_exceeded][i32 aabb_x, aabb_y, aabb_w, aabb_h]
+//      {i32 x, i32 y, i32 w, i32 h, i32 mat} * count   （written = 24 + count*20）
+//      放不下矩形时只写头（调用方按 count 精确重开）—— 与 op 2 同一条规矩。
+static void run_raster_decompose_mat(CmdRd &r, uint8_t *out, size_t out_cap, size_t &written) {
+	const size_t HEAD = 24;
+	const size_t REC = 20;                   // x, y, w, h, mat
+	written = 0;
+	if (out_cap < HEAD) {
+		printf("[PixelRaster] decompose_mat 结果段太小：out_cap=%zu\n", out_cap);
+		return;
+	}
+	int32_t n = r.i32();
+	int32_t max_rects = r.i32();
+	if (n < 0) n = 0;
+	if (!r.ok) return;
+
+	struct InChunk { int32_t cx, cy; uint64_t bits; uint8_t mat[64]; };
+	std::vector<InChunk> ch((size_t)n);
+	for (int32_t i = 0; i < n; ++i) {
+		ch[i].cx = r.i32();
+		ch[i].cy = r.i32();
+		int64_t occ = r.i64();
+		ch[i].bits = (uint64_t)occ;
+		if (!r.ok) return;
+	}
+	for (int32_t i = 0; i < n; ++i) {
+		const uint8_t *mb = r.bytes(64);
+		if (!r.ok) return;
+		std::memcpy(ch[i].mat, mb, 64);
+	}
+
+	// ① AABB —— 与 op 2 **同一条规则**：只看 occ（不分材质），逐行取最低/最高置位，
+	//    哨兵也同款。它是**整个形状**的 AABB（会写回 PixelShape 的缓存），不是某个材质的。
+	const int64_t SENT = 1 << 30;
+	int64_t min_x = SENT, min_y = SENT, max_x = -SENT, max_y = -SENT;
+	for (int32_t i = 0; i < n; ++i) {
+		int64_t bx = (int64_t)ch[i].cx * 8;
+		int64_t by = (int64_t)ch[i].cy * 8;
+		for (int row = 0; row < 8; ++row) {
+			uint32_t rb = (uint32_t)((ch[i].bits >> (row * 8)) & 0xFFu);
+			if (rb == 0) continue;
+			int lo = __builtin_ctz(rb);
+			int hi = 32 - __builtin_clz(rb);
+			if (bx + lo < min_x) min_x = bx + lo;
+			if (bx + hi > max_x) max_x = bx + hi;
+			if (by + row < min_y) min_y = by + row;
+			if (by + row + 1 > max_y) max_y = by + row + 1;
+		}
+	}
+
+	// ② 出现的材质（升序 = 输出顺序）
+	bool present[256] = { false };
+	for (int32_t i = 0; i < n; ++i) {
+		uint64_t bits = ch[i].bits;
+		while (bits != 0) {
+			int k = __builtin_ctzll(bits);
+			bits &= bits - 1;
+			present[ch[i].mat[k]] = true;
+		}
+	}
+
+	// ③ 逐材质：过滤位网格 -> 分块贪心 -> 行程融合。与 op 2 的 ①~③ 逐句对应。
+	struct Blk { int64_t key; int32_t bix, biy; uint64_t words[64]; };
+	std::vector<Blk> blocks;
+	std::unordered_map<uint64_t, size_t> bidx;
+	std::vector<PxRect> all;
+	std::vector<int32_t> tag;
+	for (int m = 0; m < 256; ++m) {
+		if (!present[m]) continue;
+		blocks.clear();
+		bidx.clear();
+		for (int32_t i = 0; i < n; ++i) {
+			if (ch[i].bits == 0) continue;
+			// 只留材质 == m 的像素（逐行做，一次 8 个比较）
+			uint64_t keep = 0;
+			for (int row = 0; row < 8; ++row) {
+				uint32_t rb = (uint32_t)((ch[i].bits >> (row * 8)) & 0xFFu);
+				if (rb == 0) continue;
+				uint32_t kb = 0;
+				for (int x = 0; x < 8; ++x) {
+					if (((rb >> x) & 1u) != 0 && ch[i].mat[(row << 3) | x] == (uint8_t)m) kb |= (1u << x);
+				}
+				keep |= (uint64_t)kb << (row * 8);
+			}
+			if (keep == 0) continue;
+			int32_t bix = ch[i].cx >> 3, biy = ch[i].cy >> 3;
+			int64_t bk = ((int64_t)bix << 32) | (int64_t)(uint32_t)biy;
+			size_t gi;
+			auto it = bidx.find((uint64_t)bk);
+			if (it == bidx.end()) {
+				gi = blocks.size();
+				Blk nb;
+				nb.key = bk;
+				nb.bix = bix;
+				nb.biy = biy;
+				std::memset(nb.words, 0, sizeof(nb.words));
+				blocks.push_back(nb);
+				bidx.emplace((uint64_t)bk, gi);
+			} else {
+				gi = it->second;
+			}
+			uint64_t *words = blocks[gi].words;
+			int shift = (ch[i].cx - (bix << 3)) << 3;
+			int row0 = (ch[i].cy - (biy << 3)) << 3;
+			for (int row = 0; row < 8; ++row) {
+				words[row0 + row] |= (uint64_t)((keep >> (row * 8)) & 0xFFu) << shift;
+			}
+		}
+		std::sort(blocks.begin(), blocks.end(),
+				[](const Blk &p, const Blk &q) { return p.key < q.key; });
+		std::vector<PxRect> rects;
+		std::vector<PxRect> cand;
+		for (Blk &bl : blocks) {
+			uint64_t w1[64];
+			std::memcpy(w1, bl.words, sizeof(w1));
+			cand.clear();
+			px_greedy_block(w1, true, cand);
+			if (cand.size() > 1) {
+				uint64_t w2[64];
+				std::memcpy(w2, bl.words, sizeof(w2));
+				std::vector<PxRect> cand2;
+				px_greedy_block(w2, false, cand2);
+				if (cand2.size() < cand.size()) cand.swap(cand2);
+			}
+			int64_t ox = (int64_t)bl.bix * 64;
+			int64_t oy = (int64_t)bl.biy * 64;
+			for (PxRect &q : cand) {
+				q.x += ox;
+				q.y += oy;
+				rects.push_back(q);
+			}
+		}
+		px_merge_pass(rects);
+		for (const PxRect &q : rects) {
+			all.push_back(q);
+			tag.push_back(m);
+		}
+	}
+
+	// ④ 写结果（头 + 逐矩形记录），放不下时只写头。
+	CmdWr w;
+	w.p = out;
+	w.cap = out_cap;
+	w.i = 0;
+	int32_t count = (int32_t)all.size();
+	bool aabb_empty = max_x <= min_x;
+	w.i32(count);
+	w.i32(max_rects > 0 && count > max_rects ? 1 : 0);
+	w.i32(aabb_empty ? 0 : px_i32(min_x));
+	w.i32(aabb_empty ? 0 : px_i32(min_y));
+	w.i32(aabb_empty ? 0 : px_i32(max_x - min_x));
+	w.i32(aabb_empty ? 0 : px_i32(max_y - min_y));
+	if (HEAD + (size_t)count * REC <= out_cap) {
+		for (int32_t i = 0; i < count; ++i) {
+			w.i32(px_i32(all[i].x));
+			w.i32(px_i32(all[i].y));
+			w.i32(px_i32(all[i].w));
+			w.i32(px_i32(all[i].h));
+			w.i32(tag[i]);
 		}
 		written = w.i;
 	} else {
@@ -1244,6 +1465,14 @@ static void run_raster_cmd(const uint8_t *in, size_t in_n, uint8_t *out, size_t 
 				run_raster_components(r, out, out_cap, written);
 				break;
 			}
+			// 4  按材质分解（每条矩形带材质 id）—— 见 run_raster_decompose_mat。
+			//    ⚠️ 是**新 op + 新方法名**（decompose_mat），不是改 op 2 的载荷：
+			//       老 DLL 遇到它会在 default 分支**吵着停**，而不是把新载荷
+			//       当成旧格式静默解析错（那种错只会表现成"碰撞体乱飞"）。
+			case 4: {
+				run_raster_decompose_mat(r, out, out_cap, written);
+				break;
+			}
 			default:
 				// 与 RapierPhys 同一条规矩：未知操作码**立刻停**（它的载荷长度未知，
 				// 继续读会把后面的字节当操作码，整条流错位）
@@ -1472,6 +1701,17 @@ static void register_pixel_raster() {
 	mi3.call_func = call_raster_components;
 	g_register_method(g_library, (GDExtensionConstStringNamePtr)g_sn_pxr_class.buf, &mi3);
 	printf("[PixelRaster] 已注册方法 components\n");
+
+	// decompose_mat：**按材质分解**（op 4，每条矩形带材质 id）。
+	// ⚠️ 方法名单独一个的理由与 decompose 一样：GDScript 侧要靠
+	//    has_method("decompose_mat") 判断 DLL 是不是太旧（老 DLL 里没有它）。
+	//    分派不靠方法名（raster_dispatch 读的是命令流里的 op 字节），
+	//    所以这里复用 call_raster_decompose —— 同一个胶水，不再抄第二份。
+	GDExtensionClassMethodInfo mi4 = mi;
+	mi4.name = (GDExtensionStringNamePtr)g_sn_pxr_decomp_mat.buf;
+	mi4.call_func = call_raster_decompose;
+	g_register_method(g_library, (GDExtensionConstStringNamePtr)g_sn_pxr_class.buf, &mi4);
+	printf("[PixelRaster] 已注册方法 decompose_mat\n");
 }
 
 
@@ -2186,6 +2426,7 @@ extern "C" __declspec(dllexport) GDExtensionBool gdextension_init(
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pxr_class.buf, "PixelRaster");
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pxr_fill.buf, "fill_region");
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pxr_decomp.buf, "decompose");
+	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pxr_decomp_mat.buf, "decompose_mat");
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pxr_comp.buf, "components");
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pxr_a0.buf, "input");
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pxr_a1.buf, "out_template");

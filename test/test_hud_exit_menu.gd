@@ -10,6 +10,8 @@ func run() -> void:
 	var hud = ui.get_node("Hud")
 	var esc = get_first_node_in_group(&"esc_menu")
 	var ok: bool = esc.get_node("Center/Panel/Buttons/Title").text == "INT FFF"
+	ok = ok and hud.get_node("Root/ExitButton").focus_mode == Control.FOCUS_NONE \
+		and hud.get_node("Root/LogButton").focus_mode == Control.FOCUS_NONE
 	hud.get_node("Root/ExitButton").pressed.emit()
 	ok = ok and paused and esc.visible and ui.is_inside_tree()
 	esc._on_continue_button_pressed()
@@ -17,7 +19,7 @@ func run() -> void:
 	hud.get_node("Root/ExitButton").pressed.emit()
 	ok = ok and paused and esc.visible and get_nodes_in_group(&"esc_menu").size() == 1
 	esc._on_continue_button_pressed()
-	print("[HUDExitMenu] title, exit opens pause menu, continue and reuse: ", "PASS" if ok else "FAIL")
+	print("[HUDExitMenu] mouse-only HUD buttons, exit menu and reuse: ", "PASS" if ok else "FAIL")
 	ui.queue_free()
 	await process_frame
 	quit(0 if ok else 1)

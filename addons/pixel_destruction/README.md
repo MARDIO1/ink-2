@@ -291,6 +291,13 @@ docs/               架构与精度纪律
 | `remove_joint(j)` / `joints_of(body)` / `is_jointed_to_static(body)` | 关节的移除与查询 |
 | `cull_outside(bounds) -> int` | 清掉跑出边界的动态体 |
 | `enforce_body_budget() -> int` | 按预算淘汰（最远的先死） |
+| `apply_config(cfg) -> PackedStringArray` | **一处下发**一份 `PhysicsConfig`（返回没找到的字段名）|
+
+> ⚠️ **这些字段的单一真源是 `PhysicsConfig`（Resource）**：`world.apply_config(cfg)`
+> 一处下发（字段名就是这里的字段名），节点路径是把 `.tres` 拖到 `PixelWorld.physics` 上。
+> **一旦设了它，`PixelWorld` 上那些 `@export` 旋钮就不再参与下发** ——
+> **关卡里别设它们**（两处都设 = 谁最后写谁赢），要改就改 config。
+> `apply()` 对不上的字段名会**吵闹地报**（不是静默跳过），`capture()` / `diff()` 用来做现值快照。
 
 关键字段：`gravity`、`terminal_speed`、`max_angular_velocity`（角速度上限，
 Rapier 没有这个旋钮）、`rp_max_linear_velocity`、`min_fragment_pixels`、

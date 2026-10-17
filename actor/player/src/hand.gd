@@ -321,7 +321,7 @@ func _update_grip(_delta: float) -> void:
 	var anchor := CLIMB_ANCHOR if rotate_grip else FINGERTIP
 	var radius := CLIMB_GRAB_RADIUS if rotate_grip else GRAB_RADIUS
 	var tip: Vector2 = body.com_world() + anchor.rotated(body.rotation)
-	var hit = Query.closest_point(tip, radius, [body, player_body, arm_body], physics_world)
+	var hit = Query.closest_point(tip, radius, [body, player_body, arm_body])
 	if hit.hit and hit.body != null and hit.material != InkPalette.GREY.id:
 		_begin_grab(hit.body, hit.point)
 

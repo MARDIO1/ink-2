@@ -8,6 +8,14 @@ extends RefCounted
 ##   · PolyFit.decompose()     = **碰撞体**：把形状切成若干**凸多边形**，斜边是**直的**
 ##     （锯齿被拉平），块数远少于矩形。
 ##
+## ## 斜边取**中间**，不是把像素整个包住（甲方要求）
+##
+## 轴对齐的边是**真实的像素边界**（像素就贴在上面），原样保留；
+## **斜边是拟合出来的**（像素集不可能有斜边），它被往里挪**半个像素** ——
+## 锯齿的中线才是碰撞面：台阶尖露在碰撞体外面、凹口被碰撞体盖住。
+## 见 `inset_diagonals()`。实测（40 级楼梯）：碰撞体面积 811.7 vs 像素 820，
+## 两个方向的偏离都 ≈ 0.2 像素（不挪的时候是"完全包裹"，偏离 0.49 且全在一侧）。
+##
 ## ## 判据是"偏离多少像素"，不是"幻影多少面积"
 ##
 ## 每一块都是它那部分像素的**凸包**，凹处会被填平 —— 填掉的那块叫幻影面积。
@@ -27,8 +35,10 @@ extends RefCounted
 ## 从第一个未分配的矩形起，反复在**邻接**的未分配矩形里挑第一个"并进来不超标"的，
 ## 直到没有能并的为止 —— 两个方向都能长。
 ##
-## ⚠️ 幻影是**真实的物理差异**：碰撞体比像素大一圈（最多 dev_tol 像素）。
-##    Result 里给出 phantom / max_deviation，调用方自己决定能不能接受。
+## ⚠️ 拟合是**有损**的，而且是**双向**的：斜边挪了半个像素之后，碰撞体在凹口处
+##    比像素大、在台阶尖处比像素小 —— 两个方向都受 dev_tol 约束
+##    （`max_deviation` 取绝对值，所以"削掉了多少"也会被报出来）。
+##    Result 里给出 phantom / poly_area / max_deviation，调用方自己决定能不能接受。
 
 const HullFit := preload("res://addons/pixel_destruction/core/hull_fit.gd")
 # ⚠️ 必须是**模块级 const**：写成函数里的局部 var 再拿它当类型标注（GreedyRects.Result）
@@ -167,10 +177,109 @@ static func decompose_rects(rects: Array, dev_tol := DEFAULT_DEV_TOL) -> Result:
 static func _emit(res: Result, poly: PackedVector2Array, area: float) -> void:
 	if poly.size() < 3:
 		return
+	# **取中间**：斜边往里挪半个像素（见 inset_diagonals 的说明）
+	poly = inset_diagonals(poly)
+	if poly.size() < 3:
+		return
 	res.polys.append(poly)
-	var dev := (HullFit.area(poly) - area) / maxf(1.0, _long_side(poly))
+	# ⚠️ 偏离取**绝对值**：挪进来之后多边形可能比像素**小**（幻影为负），
+	#    只算正值的话"削掉了多少"就没人报了。
+	var dev := absf(HullFit.area(poly) - area) / maxf(1.0, _long_side(poly))
 	if dev > res.max_deviation:
 		res.max_deviation = dev
+
+
+## 凸多边形的**最小宽度**（对每条边取"其它顶点到这条边的最大距离"，再取最小）。
+##
+## 用来给"往里挪"设上限：挪得比它的一半还多就会把薄片削没。
+static func min_width(poly: PackedVector2Array) -> float:
+	var n := poly.size()
+	if n < 3:
+		return 0.0
+	var best := INF
+	for i in n:
+		var a := poly[i]
+		var b := poly[(i + 1) % n]
+		var ex := b.x - a.x
+		var ey := b.y - a.y
+		var ln := sqrt(ex * ex + ey * ey)
+		if ln <= 1e-9:
+			continue
+		var far := 0.0
+		for p: Vector2 in poly:
+			var d := absf((p.x - a.x) * ey - (p.y - a.y) * ex) / ln
+			if d > far:
+				far = d
+		if far < best:
+			best = far
+	return best if best < INF else 0.0
+
+
+## **把拟合出来的斜边往里挪 —— "取中间"**。
+##
+## 甲方要的是：碰撞体**不是**把像素整个包住，而是"一部分在外面、一部分在里面"。
+## 轴对齐的边是**真实的像素边界**（像素就贴在上面），挪它没有任何道理；
+## 而**斜边是拟合出来的**（像素集不可能有斜边）—— 锯齿的中线才该是碰撞面：
+## 台阶尖露在外面、凹口被盖住。
+##
+## 挪多少：半个像素（像素量化下锯齿深度就是 1 像素左右），
+## 但**不许把薄片削没** —— 上限取最小宽度的 1/4（薄片最多掉一半厚度）。
+##
+## ⚠️ 原生侧（rapier_bridge 的 fit_inset_diagonals）是**同一份逻辑**，
+##    浮点纪律也一样（f32 存点、f64 算距离），闸门逐位对拍。
+static func inset_diagonals(poly: PackedVector2Array) -> PackedVector2Array:
+	var n := poly.size()
+	if n < 3:
+		return poly
+	var d := minf(0.25 * min_width(poly), 0.5)
+	if d <= 0.0:
+		return poly
+	# 顶点平均（凸多边形的顶点平均在内部）—— 用它定"哪一侧是里"
+	var c := Vector2.ZERO
+	for p: Vector2 in poly:
+		c += p
+	c /= float(n)
+	var lo := poly[0]
+	var hi := poly[0]
+	for p: Vector2 in poly:
+		lo = Vector2(minf(lo.x, p.x), minf(lo.y, p.y))
+		hi = Vector2(maxf(hi.x, p.x), maxf(hi.y, p.y))
+	var cur := PackedVector2Array([lo - Vector2.ONE, Vector2(hi.x + 1.0, lo.y - 1.0),
+			hi + Vector2.ONE, Vector2(lo.x - 1.0, hi.y + 1.0)])
+	for i in n:
+		var a := poly[i]
+		var b := poly[(i + 1) % n]
+		var e := b - a
+		if e.x == 0.0 and e.y == 0.0:
+			continue
+		# ⚠️⚠️ 法线**必须归一化**：不归一化时 `nrm * off` 挪的是 "off x 边长"，
+		#    实测那条 55 像素长的斜边被挪了 27 像素 —— 多边形直接削没，
+		#    然后被下面的兜底静默退回"不挪"（看起来像"这个函数没生效"）。
+		var inv := 1.0 / sqrt(e.x * e.x + e.y * e.y)
+		var nrm := Vector2(-e.y * inv, e.x * inv)
+		if nrm.dot(c - a) < 0.0:
+			nrm = -nrm
+		# ⚠️ 只有**斜边**往里挪：轴对齐的边是真实边界（见函数头说明）。
+		var off := d if (absf(e.x) > 1e-6 and absf(e.y) > 1e-6) else 0.0
+		var q := a + nrm * off
+		var next := PackedVector2Array()
+		for k in cur.size():
+			var p0 := cur[k]
+			var p1 := cur[(k + 1) % cur.size()]
+			var s0 := (p0 - q).dot(nrm)
+			var s1 := (p1 - q).dot(nrm)
+			if s0 >= 0.0:
+				next.append(p0)
+			if (s0 >= 0.0) != (s1 >= 0.0):
+				var t := s0 / (s0 - s1)
+				next.append(p0 + (p1 - p0) * t)
+		cur = next
+		if cur.size() < 3:
+			return poly
+	# 兜底：削得太狠就退回不挪（宁可"包住"也不要一个不存在的碰撞体）
+	if HullFit.area(cur) < 0.5 * HullFit.area(poly):
+		return poly
+	return cur
 
 
 ## 与 box 相接（相交或相切）的**未分配**矩形下标集合。

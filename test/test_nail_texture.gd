@@ -17,21 +17,28 @@ func check(label: String, okay: bool) -> void:
 		failures += 1
 
 func _run() -> void:
-	var source := Image.new()
-	source.load_png_from_buffer(FileAccess.get_file_as_bytes("res://actor/nail/asset/nail.png"))
-	var imported := Nail.NAIL_TEXTURE.get_image()
-	check("supplied 44px texture imported", source.get_size() == Vector2i(44, 44) and imported.get_size() == source.get_size())
-	check("transparent corners and black cross remain", imported.get_pixel(0, 0).a == 0 and imported.get_pixel(22, 22) == Color.BLACK)
+	var fixed_source := Image.new()
+	fixed_source.load_png_from_buffer(FileAccess.get_file_as_bytes("res://actor/nail/asset/fixed_nail.png"))
+	var background_source := Image.new()
+	background_source.load_png_from_buffer(FileAccess.get_file_as_bytes("res://actor/nail/asset/nail.png"))
+	var imported := Nail.FIXED_TEXTURE.get_image()
+	check("both native 11px textures imported", fixed_source.get_size() == Vector2i(11, 11)
+		and background_source.get_size() == Vector2i(11, 11)
+		and imported.get_size() == fixed_source.get_size())
+	check("fixed nail has transparent corners and gray center", imported.get_pixel(0, 0).a == 0
+		and imported.get_pixel(5, 5).a == 1.0 and imported.get_pixel(5, 5) != Color.BLACK)
+	check("background nail keeps one-pixel black cross", Nail.BACKGROUND_TEXTURE.get_image().get_pixel(5, 5) == Color.BLACK
+		and Nail.BACKGROUND_TEXTURE.get_image().get_pixel(4, 4) == Color.WHITE)
 	var imported_matches := true
-	for y in source.get_height():
-		for x in source.get_width():
-			var pixel := source.get_pixel(x, y)
+	for y in fixed_source.get_height():
+		for x in fixed_source.get_width():
+			var pixel := fixed_source.get_pixel(x, y)
 			var actual := imported.get_pixel(x, y)
 			imported_matches = imported_matches and is_equal_approx(pixel.a, actual.a) and (pixel.a == 0 or pixel.is_equal_approx(actual))
 	check("opaque artwork and alpha preserved exactly", imported_matches)
-	check("canvas and body share texture and center", NailLayer.NAIL_TEXTURE == Nail.NAIL_TEXTURE and NailLayer.ANCHOR_CENTER == Vector2(source.get_size()) * 0.5)
+	check("canvas and body share texture and center", NailLayer.NAIL_TEXTURE == Nail.FIXED_TEXTURE and NailLayer.ANCHOR_CENTER == Vector2(fixed_source.get_size()) * 0.5)
 	var draft_rect := Nail.visual_rect(Vector2i(32, 32))
-	check("draft nail is half size around unchanged pixel center", draft_rect.size == Vector2(22, 22) and draft_rect.get_center() == Vector2(32.5, 32.5))
+	check("draft nail is 11px around unchanged pixel center", draft_rect.size == Vector2(11, 11) and draft_rect.get_center() == Vector2(32.5, 32.5))
 	var icon = load("res://ui/asset/nail.tres")
 	check("toolbar retains supplied independent nail icon", icon.atlas.resource_path == "res://ui/asset/nail.png" and icon.region == Rect2(36, 40, 132, 128))
 	check("toolbar art stays separate from map nail texture", icon.atlas != Nail.NAIL_TEXTURE)
@@ -52,21 +59,25 @@ func _run() -> void:
 	for y in range(16, 48):
 		for x in range(16, 48):
 			canvas.surface.write_pixel(Vector2i(x, y), Palette.BLACK.color)
-	canvas.surface.write_pixel(Vector2i(32, 32), Palette.nail_color())
+	canvas.surface.nail_layer.add(Vector2i(32, 32), Nail.Kind.FIXED)
 	canvas.surface.refresh()
-	check("draft nail remains one material pixel", canvas.surface.nail_layer.nails.size() == 1 and canvas.surface.material_at(32, 32) == Palette.nail_material_id())
+	check("draft nail overlays its base pixel", canvas.surface.nail_layer.nails.size() == 1
+		and canvas.surface.nail_layer.background_nails.is_empty()
+		and canvas.surface.material_at(32, 32) == Palette.BLACK.id)
 	check("draft nail uses nearest filtering", canvas.surface.nail_layer.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST)
 	var data := Codec.capture(canvas, Rect2i(0, 0, 64, 64))
 	var preview := Codec.preview(data)
 	var preview_matches := true
-	var displayed := source.duplicate() as Image
-	displayed.resize(22, 22, Image.INTERPOLATE_NEAREST)
+	var displayed := fixed_source.duplicate() as Image
+	displayed.resize(roundi(displayed.get_width() * Nail.VISUAL_SCALE),
+		roundi(displayed.get_height() * Nail.VISUAL_SCALE), Image.INTERPOLATE_NEAREST)
+	var preview_origin := Vector2i(32, 32) - Vector2i(Nail.ANCHOR_CENTER * Nail.VISUAL_SCALE)
 	for y in displayed.get_height():
 		for x in displayed.get_width():
 			if displayed.get_pixel(x, y).a > 0.5:
-				preview_matches = preview_matches and preview.get_pixel(x + 21, y + 21).is_equal_approx(displayed.get_pixel(x, y))
-	check("blueprint preview uses half-size nail artwork", preview_matches)
-	check("preview no longer draws original full-size nail", preview.get_pixel(17, 22) == Palette.BLACK.color)
+				preview_matches = preview_matches and preview.get_pixelv(preview_origin + Vector2i(x, y)).is_equal_approx(displayed.get_pixel(x, y))
+	check("blueprint preview uses native pixel nail artwork", preview_matches)
+	check("preview keeps pixels outside the smaller nail", preview.get_pixel(25, 32) == Palette.BLACK.color)
 	canvas.generate()
 	var generated: Node
 	for nail in get_nodes_in_group(Nail.VISUAL_GROUP):
@@ -75,7 +86,7 @@ func _run() -> void:
 	check("solidification creates shared nail visual", generated != null and generated.texture == Nail.NAIL_TEXTURE)
 	if generated != null:
 		check("new art stays centered on original anchor", generated.offset == -Nail.ANCHOR_CENTER and generated.global_position.is_equal_approx(generated.body.to_world(Vector2(32.5, 32.5))))
-		check("solidified nail has half-size visual bounds", generated.scale == Vector2(0.5, 0.5) and generated.get_rect().size * generated.scale == Vector2(22, 22))
+		check("solidified nail has native 11px bounds", generated.scale == Vector2.ONE and generated.get_rect().size == Vector2(11, 11))
 		check("physics remains static single-pixel anchor", generated.body.is_static and generated.body.tags["static_anchor_points"].size() == 1)
 	level.queue_free()
 	await process_frame
@@ -100,8 +111,11 @@ func _run() -> void:
 			if nail.get_parent() != saved_level or nail.is_queued_for_deletion():
 				continue
 			restored_count += 1
-			restored_correctly = restored_correctly and nail.texture == Nail.NAIL_TEXTURE and nail.offset == -Nail.ANCHOR_CENTER and nail.scale == Vector2(0.5, 0.5) and nail._anchor_alive()
-		check("existing map uses half-size nails: " + existing_path.get_file(), restored_correctly)
+			var expected_texture: Texture2D = Nail.texture_for(nail.kind)
+			var expected_center: Vector2 = Nail.anchor_center_for(nail.kind)
+			restored_correctly = restored_correctly and nail.texture == expected_texture \
+				and nail.offset == -expected_center and nail.scale == Vector2.ONE and nail._anchor_alive()
+		check("existing map uses native-size nails: " + existing_path.get_file(), restored_correctly)
 		check("existing map was not rewritten: " + existing_path.get_file(), FileAccess.get_sha256(existing_path) == before)
 		saved_level.queue_free()
 		await process_frame

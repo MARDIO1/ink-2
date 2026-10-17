@@ -106,14 +106,13 @@ func _test_gradual_irregular_erosion() -> void:
 	rule.corrosion_pixels_per_second = 120.0
 	rule.corrosion_interval = 0.1
 	rule.corrosion_pixels_per_batch = 12
-	rule.corrosion_seed_spacing = 4.0
 	rule.corrosion_yield = 3.0
 	var white = _add(world, Vector2.ZERO, Vector2i(12, 12), Palette.WHITE.id)
 	var target = _add(world, Vector2(12, -24), Vector2i(96, 64), Palette.BLACK.id, true)
 	var context := _context(world)
 	rule.resolve_contacts(context, [_contact(white, target, Vector2(12, 6), Vector2.RIGHT)])
-	_check("wide white creates several corrosion seeds",
-		rule._attached[white].seeds.size() >= 2)
+	_check("contact face creates one entry per touched target pixel",
+		rule._attached[white].seeds.size() >= 10)
 	var white_before := White._area(white)
 	rule.prepare_fixed(context, 0.1)
 	var result: Dictionary = rule.resolve_fixed(context)
@@ -185,6 +184,8 @@ func _test_perf() -> void:
 	var target = _add(world, Vector2(64, -80), Vector2i(800, 192), Palette.BLACK.id, true)
 	var context := _context(world)
 	rule.resolve_contacts(context, [_contact(white, target, Vector2(64, 32), Vector2.RIGHT)])
+	_check("large contact face is not capped per rigid body",
+		rule._attached[white].seeds.size() > 32)
 	var samples: Array[int] = []
 	var erased := 0
 	for frame in 120:

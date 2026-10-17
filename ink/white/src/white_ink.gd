@@ -6,13 +6,12 @@ const Palette := preload("res://ink/general/src/ink_palette.gd")
 const ContactImpact := preload("res://root/src/contact_impact.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 
 @export_group("附着腐蚀")
 @export var corrosion_pixels_per_second: float = 80.0
 @export var corrosion_interval: float = 0.12
 @export var corrosion_pixels_per_batch: int = 12
-@export var corrosion_seed_spacing: float = 6.0
-@export_range(1, 32, 1) var max_corrosion_seeds: int = 16
 @export var corrosion_yield: float = 3.0
 @export var player_damage_per_second: float = 20.0
 @export var max_travel_from_spawn: float = 4096.0
@@ -152,6 +151,8 @@ func _is_flying_white(body) -> bool:
 func _valid_target(context: Dictionary, target, player_contact: bool) -> bool:
 	if target == null or target.tags.has("white_ink"):
 		return false
+	if Traits.is_unbreakable(target):
+		return false
 	if target.tags.has("living") and not player_contact:
 		return false
 	# 是否可腐蚀由接触点附近的局部采样决定，不扫描整块目标。
@@ -165,19 +166,25 @@ func _attach(world, white, target, point: Vector2, direction: Vector2, width: fl
 		return false
 	var seeds: Array = []
 	var used: Dictionary = {}
-	var count := clampi(ceili(width / maxf(corrosion_seed_spacing, 1.0)),
-		1, max_corrosion_seeds)
+	# 接触跨度内每个实际命中目标的像素都是入口，不再按整块刚体限制种子数。
+	var count := maxi(1, ceili(width) + 1)
 	var tangent := Vector2(-direction.y, direction.x).normalized()
 	for index in count:
 		var offset := 0.0 if count == 1 else remap(float(index), 0.0,
 			float(count - 1), -width * 0.5, width * 0.5)
-		var start: Dictionary = _find_solid(target, target.to_local(point + tangent * offset),
+		var sample_world := point + tangent * offset
+		if not _has_solid_near(white, white.to_local(sample_world - direction * 0.5),
+			-direction, 3):
+			continue
+		var start: Dictionary = _find_solid(target, target.to_local(sample_world),
 			local_direction, 8, player_contact)
 		if start.is_empty() or used.has(start.cell):
 			continue
 		used[start.cell] = true
+		var cell_salt: int = int(start.cell.x) * 73856093 ^ int(start.cell.y) * 19349663
 		seeds.append({"root": Vector2(start.cell) + Vector2.ONE * 0.5,
-			"direction": local_direction, "depth": 0, "step": 0})
+			"direction": local_direction, "depth": 0, "step": 0,
+			"activity": 1 + _noise_index(white.id + target.id, cell_salt, 4)})
 	if seeds.is_empty():
 		return false
 	white.collision_layer = 0
@@ -218,16 +225,16 @@ func _corrode(_context: Dictionary, state: Dictionary, amount: int,
 	var added := 0
 	var stalled := 0
 	while added < amount and stalled < seeds.size() * 3:
-		var index := _shallow_seed_index(seeds, int(state.cursor))
+		var index := _organic_seed_index(seeds, int(state.seed), int(state.cursor))
 		var seed: Dictionary = seeds[index]
-		var bite_limit := mini(2 + _noise_index(int(state.seed), int(seed.step), 3),
+		var bite_limit := mini(1 + _noise_index(int(state.seed), int(seed.step), 4),
 			amount - added)
 		var bite := _bite(target, seed, int(state.seed) + index * 97,
 			bite_limit, plan)
 		state.cursor = (index + 1) % seeds.size()
 		state.seed = int(state.seed) + 193
 		if bite == 0:
-			seed.depth = int(seed.depth) + 1
+			seed.depth = int(seed.depth) + 1 + _noise_index(int(state.seed), index, 2)
 			stalled += 1
 		else:
 			added += bite
@@ -256,20 +263,25 @@ func _bite(target, seed: Dictionary, noise_seed: int, limit: int,
 		added += _add_erodible(target, center + offset, plan)
 		if added >= limit:
 			break
-	seed.depth = int(seed.depth) + 1
+	seed.depth = int(seed.depth) + 1 + _noise_index(noise_seed, int(seed.step) * 73, 3)
 	seed.step = int(seed.step) + 1
 	return added
 
 
-static func _shallow_seed_index(seeds: Array, cursor: int) -> int:
-	var shallowest := 1 << 30
-	for seed: Dictionary in seeds:
-		shallowest = mini(shallowest, int(seed.depth))
-	for offset in seeds.size():
-		var index := (cursor + offset) % seeds.size()
-		if int(seeds[index].depth) == shallowest:
-			return index
-	return 0
+static func _organic_seed_index(seeds: Array, noise_seed: int, cursor: int) -> int:
+	var best := posmod(cursor, seeds.size())
+	var best_score := -(1 << 30)
+	# 在接触面上做小规模随机竞选，让活跃孔洞先向内钻，避免整条边同步推进。
+	var samples := mini(seeds.size(), 7)
+	for turn in samples:
+		var index := _noise_index(noise_seed, cursor * 31 + turn * 101, seeds.size())
+		var seed: Dictionary = seeds[index]
+		var score := int(seed.activity) * 5 - int(seed.depth) \
+			+ _noise_index(noise_seed, int(seed.step) * 67 + turn, 11)
+		if score > best_score:
+			best_score = score
+			best = index
+	return best
 
 
 func _nearby_erodible(body, wanted: Vector2i, inward: Vector2i, side: Vector2i,
@@ -321,6 +333,18 @@ func _find_solid(body, point: Vector2, direction: Vector2, steps: int,
 				return {"shape": shape, "cell": cell}
 		cursor += direction * 0.5
 	return {}
+
+
+static func _has_solid_near(body, point: Vector2, direction: Vector2,
+		steps: int) -> bool:
+	var cursor := point
+	for unused in steps * 2 + 1:
+		var cell := Vector2i(cursor.floor())
+		for shape in body.shapes:
+			if shape.get_pixel(cell.x, cell.y) != 0:
+				return true
+		cursor += direction * 0.5
+	return false
 
 
 static func _mark_corrosion(body, plan: Dictionary) -> void:

@@ -5,6 +5,7 @@ const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Destruction := preload("res://addons/pixel_destruction/core/destruction.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Bits := preload("res://addons/pixel_destruction/core/pixel_bits.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 const BRUSH_SIZE := 16
 const BRUSH_RADIUS := BRUSH_SIZE * 0.7071067811865476
 
@@ -56,6 +57,8 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 		for target in context.world.bodies:
 			if target == white or target.collision_layer == 0 \
 			or context.protected_bodies.has(target):
+				continue
+			if Traits.is_unbreakable(target):
 				continue
 			if target.tags.has("living") and target != context.player_body:
 				continue

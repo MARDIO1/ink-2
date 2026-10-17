@@ -103,8 +103,6 @@ func _build_ink_rows() -> void:
 		["每秒腐蚀像素", "corrosion_pixels_per_second", 0.0, 400.0, 1.0],
 		["腐蚀周期", "corrosion_interval", 0.02, 1.0, 0.01],
 		["单批腐蚀像素", "corrosion_pixels_per_batch", 1.0, 64.0, 1.0],
-		["腐蚀种子间距", "corrosion_seed_spacing", 1.0, 32.0, 1.0],
-		["最大腐蚀种子", "max_corrosion_seeds", 1.0, 64.0, 1.0],
 		["腐蚀产出率", "corrosion_yield", 0.0, 10.0, 0.1],
 		["玩家每秒伤害", "player_damage_per_second", 0.0, 100.0, 1.0],
 		["最大飞行距离", "max_travel_from_spawn", 64.0, 8192.0, 64.0],

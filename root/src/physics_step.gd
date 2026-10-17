@@ -8,7 +8,15 @@ const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const DebrisDust := preload("res://root/src/debris_dust.gd")
 const Query := preload("res://addons/pixel_destruction/physics/query.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 const ANCHOR_TAG: String = "static_anchor_points"
+const BACKGROUND_TAG: String = "background_anchor_points"
+const INFINITE_TAG: String = "infinite_nail_points"
+const BACKGROUND_LAYER_TAG: String = "background_original_layer"
+const BACKGROUND_MASK_TAG: String = "background_original_mask"
+const BACKGROUND_IMMUNE_TAG: String = "background_original_no_impact_damage"
+const BACKGROUND_WHITE_TAG: String = "background_original_white_ink"
+const BACKGROUND_SWEEP_TAG: String = "background_original_white_sweep"
 #endregion
 
 #region 配置
@@ -141,7 +149,7 @@ func prepare_fixed(delta: float) -> int:
 	var fading: Array = cull_dust(physics)
 	if not fading.is_empty():
 		_spawn_culled_dust(fading)
-	var culled: int = physics.cull_fast_debris(keep)
+	var culled: int = physics.cull_fast_debris()
 	physics.last_debris_removed = fading.size() + culled
 	if culled > 0 or not fading.is_empty():
 		_drop_culled_nodes()
@@ -191,7 +199,7 @@ func contacts(world) -> Array:
 ## 同步分片后的节点数组，并回收已经失去 PBody 的节点。
 func sync_after_commit(previous_nodes: Array, changed: Variant = null) -> void:
 	var start: int = Time.get_ticks_usec() if profile_enabled else 0
-	_main.sync_world_bodies(changed)
+	_main.sync_world_bodies()
 	var live: Dictionary = {}
 	for body in _main.world.bodies:
 		live[body] = true
@@ -332,7 +340,12 @@ func commit(physics, removals: Dictionary, bursts: Dictionary = {},
 	var fragments: int = 0
 	var replacements: Dictionary = {}
 	for body in removals:
+		if Traits.is_unbreakable(body):
+			continue
 		var anchor_points: Dictionary = body.tags.get(ANCHOR_TAG, {})
+		var background_points: Dictionary = body.tags.get(BACKGROUND_TAG, {})
+		var background_layer: int = int(body.tags.get(BACKGROUND_LAYER_TAG, body.collision_layer))
+		var background_mask: int = int(body.tags.get(BACKGROUND_MASK_TAG, body.collision_mask))
 		var result: Dictionary = physics.fracture_pixels(body, removals[body], bursts.get(body, 0.0), true,
 			_anchor_map(body, anchor_points))
 		removed += result.removed
@@ -366,6 +379,8 @@ func commit(physics, removals: Dictionary, bursts: Dictionary = {},
 			changed.append_array(result.fragments)
 			for changed_body in [body] + result.fragments:
 				_update_anchors(changed_body, anchor_points)
+				_update_background_anchors(changed_body, background_points,
+					background_layer, background_mask)
 	if profile_enabled:
 		_profile.commit_us = _profile.get("commit_us", 0) + Time.get_ticks_usec() - profile_start
 		_profile.commit_calls = _profile.get("commit_calls", 0) + removals.size()
@@ -382,9 +397,12 @@ func carve(physics, removals: Dictionary) -> Dictionary:
 	var changed: Array = []
 	var removed := 0
 	for body in removals:
-		if not physics.bodies.has(body):
+		if not physics.bodies.has(body) or Traits.is_unbreakable(body):
 			continue
 		var old_com: Vector2 = body.com_world()
+		var background_points: Dictionary = body.tags.get(BACKGROUND_TAG, {})
+		var background_layer: int = int(body.tags.get(BACKGROUND_LAYER_TAG, body.collision_layer))
+		var background_mask: int = int(body.tags.get(BACKGROUND_MASK_TAG, body.collision_mask))
 		var old_velocity: Vector2 = body.linear_velocity
 		var old_angular: float = body.angular_velocity
 		var dirty: Dictionary = {}
@@ -420,6 +438,7 @@ func carve(physics, removals: Dictionary) -> Dictionary:
 		body.awake = true
 		body.sleep_timer = 0.0
 		_update_anchors(body, body.tags.get(ANCHOR_TAG, {}))
+		_update_background_anchors(body, background_points, background_layer, background_mask)
 		body_fractured.emit(physics, body, [body])
 		changed.append(body)
 	if profile_enabled:
@@ -529,6 +548,66 @@ func _update_anchors(body: PBody, points: Dictionary) -> void:
 		body.tags.erase(ANCHOR_TAG)
 	else:
 		body.tags[ANCHOR_TAG] = live
+
+
+func _update_background_anchors(body: PBody, points: Dictionary,
+		original_layer: int, original_mask: int) -> void:
+	if body == null:
+		return
+	var live := {}
+	for shape in body.shapes:
+		for point: Vector2i in points:
+			if shape.get_pixel(point.x, point.y) != 0:
+				live[point] = true
+	if live.is_empty():
+		body.tags.erase(BACKGROUND_TAG)
+		body.tags.erase(BACKGROUND_LAYER_TAG)
+		body.tags.erase(BACKGROUND_MASK_TAG)
+		_restore_background_tag(body, "no_impact_damage", BACKGROUND_IMMUNE_TAG)
+		_restore_background_tag(body, "white_ink", BACKGROUND_WHITE_TAG)
+		_restore_background_tag(body, "white_sweep", BACKGROUND_SWEEP_TAG)
+		body.collision_layer = original_layer
+		body.collision_mask = original_mask
+	else:
+		body.tags[BACKGROUND_TAG] = live
+		body.tags[BACKGROUND_LAYER_TAG] = original_layer
+		body.tags[BACKGROUND_MASK_TAG] = original_mask
+		body.tags["no_impact_damage"] = true
+		body.collision_layer = 0
+		body.collision_mask = 0
+
+
+func _update_infinite_nails(body: PBody, points: Dictionary,
+		unbreakable: bool, infinite_fuel: bool) -> void:
+	if body == null:
+		return
+	if unbreakable:
+		body.tags[Traits.UNBREAKABLE_TAG] = true
+	else:
+		body.tags.erase(Traits.UNBREAKABLE_TAG)
+	if infinite_fuel:
+		body.tags[Traits.INFINITE_FUEL_TAG] = true
+	else:
+		body.tags.erase(Traits.INFINITE_FUEL_TAG)
+	var live := {}
+	for shape in body.shapes:
+		for point: Vector2i in points:
+			if shape.get_pixel(point.x, point.y) != 0:
+				live[point] = true
+	if live.is_empty():
+		body.tags.erase(INFINITE_TAG)
+	else:
+		body.tags[INFINITE_TAG] = live
+
+
+func _restore_background_tag(body: PBody, target: String, saved: String) -> void:
+	if not body.tags.has(saved):
+		return
+	if bool(body.tags.get(saved, false)):
+		body.tags[target] = true
+	else:
+		body.tags.erase(target)
+	body.tags.erase(saved)
 
 ## 在候选刚体中执行精确像素射线，返回距离最近的命中。
 static func _raycast_candidates(candidates: Array, origin: Vector2, direction: Vector2, max_distance: float):

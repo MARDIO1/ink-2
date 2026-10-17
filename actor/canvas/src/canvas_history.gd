@@ -28,6 +28,7 @@ static func capture(canvas, include_bodies := false, selection := Rect2(), body_
 	var data: PackedByteArray = surface.black_image.get_data()
 	var state := {"blue_before": surface.blue_rule().object_ids() if surface.blue_rule() != null else {}, "blue_remove": {}, "blue": blue_state, "blue_cells": surface.blue_layer.cells.duplicate(), "blue_active": include_bodies, "size": surface.canvas_size, "position": canvas.position,
 		"rod_image": surface.rod_layer.pixels.duplicate(), "rod_anchors": surface.rod_layer.anchor_points.duplicate(),
+		"nails": surface.nail_layer.snapshot(),
 		"rod_rails": surface.rod_layer.rails.duplicate(true), "rod_pins": surface.rod_layer.slider_pins.duplicate(true),
 		"image": data.compress(FileAccess.COMPRESSION_FASTLZ), "ledger": surface.ink_px_by_material.duplicate(),
 		"gear_centers": surface.gear_centers.duplicate(),
@@ -239,7 +240,8 @@ static func restore(canvas, state: Dictionary) -> void:
 		surface.blue_rule().restore(surface, state.get("blue", []), state.get("blue_remove", {}))
 	surface.ink_px_by_material = state.ledger.duplicate()
 	surface._pending_ink.clear()
-	surface._rebuild_nails()
+	surface.nail_layer.restore(state.get("nails",
+		{"fixed": {}, "background": {}, "infinite": {}}))
 	var health = surface._health_node()
 	if health != null:
 		for id in state.health_delta:

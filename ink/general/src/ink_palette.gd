@@ -15,7 +15,7 @@ const RED := preload("res://ink/red/asset/red.tres")
 const YELLOW := preload("res://ink/yellow/asset/yellow.tres")
 const BLUE := preload("res://ink/blue/asset/blue.tres")
 const WHITE := preload("res://ink/white/asset/white.tres")
-## 钉子**不是墨水**：它有自己的贴图，只是借像素材质存一个 id。
+## 旧地图的钉子材质，仅用于读取时迁移为“灰色像素 + 固定钉子覆盖层”。
 const NAIL := preload("res://actor/nail/asset/nail.tres")
 const INKS: Array = [
 	{"name": "黑墨", "material": BLACK},
@@ -84,7 +84,7 @@ static func material_id_at_color(color: Color) -> int:
 	return material_id
 
 
-## 该材质是不是墨水（钉子不是）。
+## 该材质是不是可绘制墨水（旧钉子材质不是）。
 static func is_ink(material_id: int) -> bool:
 	for entry in INKS:
 		if material_id_of(entry["material"]) == material_id:
@@ -92,7 +92,7 @@ static func is_ink(material_id: int) -> bool:
 	return false
 
 
-## 墨水材质 id -> 画布颜色；不是墨水返回透明（钉子不回收回画布）。
+## 墨水材质 id -> 画布颜色；不是墨水返回透明。
 static func color_for_material_id(material_id: int) -> Color:
 	for entry in INKS:
 		if material_id_of(entry["material"]) == material_id:
@@ -108,7 +108,7 @@ static func nail_color() -> Color:
 	return color_of(NAIL)
 
 
-## 世界注册要用的全部材质（墨水 + 钉子）。
+## 世界注册要用的全部材质；旧钉子材质为地图迁移保留。
 static func all_materials() -> Array:
 	var out: Array = []
 	for entry in INKS:

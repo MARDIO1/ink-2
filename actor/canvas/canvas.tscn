@@ -20,6 +20,7 @@
 [ext_resource type="Script" path="res://ink/yellow/src/rod_layer.gd" id="18_rod"]
 
 [ext_resource type="Script" path="res://ink/blue/src/wire_layer.gd" id="19_blue"]
+[ext_resource type="Texture2D" path="res://actor/nail/asset/infinite_nail.png" id="20_infinite_nail"]
 
 [sub_resource type="RectangleShape2D" id="CanvasBounds"]
 resource_local_to_scene = true
@@ -114,7 +115,7 @@ texture_filter = 1
 z_as_relative = false
 
 [node name="NailLayer" type="Node2D" parent="CanvasSurface" unique_id=1721133058]
-z_index = 1
+z_index = 10
 z_as_relative = false
 script = ExtResource("4_nail_script")
 
@@ -237,6 +238,22 @@ theme_override_styles/focus = SubResource("IconNormal")
 toggle_mode = true
 button_group = SubResource("ToolButtonGroup")
 icon = ExtResource("9_nail")
+expand_icon = true
+
+[node name="InfiniteNail" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=741209365]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+tooltip_text = "无限钉子（仅创造模式）\n不可破坏；钉在红色上时提供无尽能源"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 52
+theme_override_styles/normal = SubResource("IconNormal")
+theme_override_styles/pressed = SubResource("IconSelected")
+theme_override_styles/hover = SubResource("IconHover")
+theme_override_styles/focus = SubResource("IconNormal")
+toggle_mode = true
+button_group = SubResource("ToolButtonGroup")
+icon = ExtResource("20_infinite_nail")
 expand_icon = true
 
 [node name="Bucket" type="Button" parent="WorkbenchUI/Buttons/Grid" unique_id=1982403456]

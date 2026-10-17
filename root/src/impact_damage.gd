@@ -6,6 +6,7 @@ extends Node
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const LIVING_TAG := "living"
 const ContactImpact := preload("res://root/src/contact_impact.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 
 ## 以抓住 32×32 物块抬起再下砸校准：普通落下不删像素，完整下砸约一层。
 ## 碰撞冲量转为破坏预算的倍率；越大越容易删像素。
@@ -102,6 +103,8 @@ func calculate(world, contacts: Array, player_body: PBody = null, protected_bodi
 				[contact.b, b_origin, b_dir, b_material, a_material, 1.0]]:
 			var body: PBody = side[0]
 			var other: PBody = contact.b if body == contact.a else contact.a
+			if Traits.is_unbreakable(body):
+				continue
 			# 主动攻击和炸弹按独立命中窗口扣血，不能再叠加同一次碰撞伤害。
 			if body == player_body and other.tags.has("scripted_attack"):
 				continue
@@ -381,6 +384,8 @@ func apply_impulse_damage(world, body: PBody, origin: Vector2, direction: Vector
 		impulse: float, player_body: PBody, protected_bodies: Array,
 		result: Dictionary, attacker_material: int = 0) -> void:
 	if body == null or protected_bodies.has(body) or direction.is_zero_approx() or impulse <= 0.0:
+		return
+	if Traits.is_unbreakable(body):
 		return
 	# 爆炸射线沿同一血量入口伤害生物，不把躯干/四肢当墨水打碎。
 	# 盾牌不带 living 标记，继续走原来的可破坏像素逻辑；打盾不扣本体血。

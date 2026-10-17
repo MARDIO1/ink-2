@@ -7,12 +7,15 @@ extends Area2D
 
 signal selection_move_requested(rect: Rect2i, offset: Vector2i, mask: Dictionary)
 signal ink_shortage(required: int, available: int)
+signal notice_requested(message: String)
 
 signal edit_committed
 
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const GearTool := preload("res://actor/canvas/src/gear_tool.gd")
+const Nail := preload("res://actor/nail/src/nail.gd")
+const NAIL_COST := 10
 var gear_tool: Node2D
 ## 黄色圆轴的草稿中心，随墨水移动、旋转、蓝图与快照保存。
 @export var gear_centers := PackedVector2Array()
@@ -80,7 +83,7 @@ func _exit_tree() -> void:
 ## 画布边框线宽，单位 px。
 @export var border_width := 2.0
 ## 地图编辑自动保存使用的快照路径；由 Creative 按需恢复。
-@export_file("*.res", "*.tres") var saved_ink_path := ""
+@export_file("*.snapshot", "*.res", "*.tres") var saved_ink_path := ""
 
 #纸底和边框由表面画，黑色墨水由 BlackTiles 的瓦片盖在上面
 func _draw() -> void:
@@ -125,6 +128,10 @@ func _process(_delta: float) -> void:
 	if blue != null and blue.drawing != null and blue.drawing.source_surface == self:
 		blue.extend(self, _mouse_point())
 		return
+	if blue_layer.line_drawing:
+		blue_layer.extend_line(_mouse_point().clamp(Vector2.ZERO,
+			Vector2(canvas_size) - Vector2.ONE))
+		return
 	if blue_layer.drawing:
 		blue_layer.extend(_mouse_point().clamp(Vector2.ZERO, Vector2(canvas_size) - Vector2.ONE))
 		return
@@ -149,8 +156,8 @@ func _process(_delta: float) -> void:
 		_continue_stroke()
 
 ## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；
-## 直线按拖拽起终点绘制；墨水桶灌满封闭空区。LINE 追加在末尾以保持旧地图工具枚举值兼容。
-enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE, SELECT_CIRCLE, GEAR, GEAR_8 }
+## 直线按拖拽起终点绘制；墨水桶灌满封闭空区。新工具只追加在末尾，保持旧枚举值兼容。
+enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE, SELECT_CIRCLE, GEAR, GEAR_8, INFINITE_NAIL }
 
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
@@ -159,6 +166,7 @@ var _undo_steps: Array[Dictionary] = []
 var _redo_steps: Array[Dictionary] = []
 var _undo_capture := {}
 var _undo_capturing := false
+var _nail_undo := {}
 var _blue_undo := {}
 const MAX_UNDO_STEPS := 64
 ## 框选只负责交互；移动和删除交给 Canvas，以便和固化实体共用撤销事务。
@@ -182,6 +190,8 @@ var _shape_shortage_notified := false
 var _paint_shortage_notified := false
 var _low_ink_announced := false
 const MIN_PAINT_INK := 1000
+## 无限钉子只在创造模式允许放置；普通游玩即使脚本误设工具也会被这里拒绝。
+var map_editor_mode := false
 ## 当前工具；切换时中断正在进行的笔画或形状。
 @export var tool: Tool = Tool.HAND:
 	set(value):
@@ -239,9 +249,19 @@ func ink_material_id() -> int:
 	return InkPalette.material_id_of(InkPalette.ink_at(selected_ink))
 
 
-## 钉子像素颜色。钉子不是墨水，只有这一种。
+## 旧材质 7 的兼容颜色，只用于读取与迁移。
 func nail_color() -> Color:
 	return InkPalette.nail_color()
+
+
+func _circle_nail_kind() -> int:
+	if tool != Tool.CIRCLE:
+		return -1
+	if ink_material_id() == InkPalette.GREY.id:
+		return Nail.Kind.FIXED
+	if ink_material_id() == InkPalette.WHITE.id:
+		return Nail.Kind.BACKGROUND
+	return -1
 
 
 func _is_nail(color: Color) -> bool:
@@ -257,13 +277,27 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 				gear_tool.finish(_mouse_point())
 		return
 	if button.pressed and button.button_index == MOUSE_BUTTON_LEFT \
-	and tool in [Tool.BRUSH, Tool.NAIL, Tool.RECT, Tool.CIRCLE, Tool.LINE, Tool.BUCKET] \
+	and tool in [Tool.BRUSH, Tool.NAIL, Tool.INFINITE_NAIL, Tool.RECT, Tool.CIRCLE, Tool.LINE, Tool.BUCKET] \
 	and _inside(_mouse_point()):
 		_paint_shortage_notified = false
-		if not _can_start_paint():
+		if tool not in [Tool.NAIL, Tool.INFINITE_NAIL] and _circle_nail_kind() < 0 and not _can_start_paint():
 			return
+	if button.pressed and button.button_index == MOUSE_BUTTON_LEFT and tool == Tool.NAIL:
+		_begin_undo_step()
+		_place_nail(_mouse_point(), Nail.Kind.FIXED)
+		_commit_undo_step()
+		return
+	if button.pressed and button.button_index == MOUSE_BUTTON_LEFT and tool == Tool.INFINITE_NAIL:
+		_begin_undo_step()
+		_place_nail(_mouse_point(), Nail.Kind.INFINITE)
+		_commit_undo_step()
+		return
 	var blue = blue_rule()
 	if button.button_index == MOUSE_BUTTON_LEFT and blue != null:
+		if not button.pressed and blue_layer.line_drawing:
+			blue_layer.finish_line(_mouse_point().clamp(Vector2.ZERO,
+				Vector2(canvas_size) - Vector2.ONE))
+			return
 		if not button.pressed and blue_layer.drawing:
 			blue_layer.finish()
 			return
@@ -272,8 +306,10 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 			return
 		if button.pressed and ink_material_id() == InkPalette.BLUE.id and tool in [Tool.BRUSH, Tool.LINE, Tool.RECT, Tool.CIRCLE, Tool.BUCKET, Tool.NAIL]:
 			if _inside(_mouse_point()):
-				if tool == Tool.LINE:
+				if tool == Tool.RECT:
 					blue.begin(self, _mouse_point())
+				elif tool == Tool.LINE:
+					blue_layer.begin_line(_mouse_point())
 				elif tool == Tool.BRUSH:
 					blue_layer.begin(_mouse_point())
 			return
@@ -319,8 +355,6 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	if button.button_index == MOUSE_BUTTON_MIDDLE:
 		if ink_material_id() == InkPalette.YELLOW.id:
 			return
-		if button.pressed and not _can_start_paint():
-			return
 		_painting = false
 		if button.pressed:
 			_begin_undo_step()
@@ -345,6 +379,14 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 		return
 	var point := _mouse_point()
 	if not _inside(point):
+		return
+	var circle_nail_kind := _circle_nail_kind()
+	if tool in [Tool.NAIL, Tool.INFINITE_NAIL] or circle_nail_kind >= 0:
+		_begin_undo_step()
+		var kind := Nail.Kind.INFINITE if tool == Tool.INFINITE_NAIL else (
+			Nail.Kind.FIXED if tool == Tool.NAIL else circle_nail_kind)
+		_place_nail(point, kind)
+		_commit_undo_step()
 		return
 	if tool in [Tool.SELECT_DELETE, Tool.SELECT_CIRCLE]:
 		if has_selection() and _selection_contains(Vector2i(point.floor())):
@@ -400,14 +442,14 @@ func _stroke_color():
 			return ink_color()
 		Tool.ERASER:
 			return Color.TRANSPARENT
-		Tool.NAIL:
-			return nail_color()
 	return null
 
 func blue_rule():
 	return get_node_or_null("../../SimulationRuntime/BlueInk")
 
 func _finish_blue_edit() -> void:
+	if blue_layer != null and blue_layer.line_drawing:
+		blue_layer.cancel_line()
 	if blue_layer != null and blue_layer.drawing:
 		blue_layer.finish()
 	var blue = blue_rule()
@@ -714,7 +756,7 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 	var old_blue: PackedVector2Array = blue_layer.cells.duplicate()
 	var old_image := black_image
 	var old_size := canvas_size
-	var old_nails: Array = nail_layer.nails.keys()
+	var old_nails: Dictionary = nail_layer.snapshot()
 
 	# 属性 setter 仍负责更新碰撞范围，但这一次不能清空像素或退还墨水。
 	_preserve_next_resize = true
@@ -742,10 +784,16 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 		rod_layer.resize(new_size, content_offset)
 
 	nail_layer.clear()
-	for nail in old_nails:
-		var shifted := Vector2i(nail) + content_offset
-		if Rect2i(Vector2i.ZERO, new_size).has_point(shifted):
-			nail_layer.add(shifted)
+	for key in ["fixed", "background", "infinite"]:
+		var kind := Nail.Kind.FIXED
+		if key == "background":
+			kind = Nail.Kind.BACKGROUND
+		elif key == "infinite":
+			kind = Nail.Kind.INFINITE
+		for nail in old_nails.get(key, {}):
+			var shifted := Vector2i(nail) + content_offset
+			if Rect2i(Vector2i.ZERO, new_size).has_point(shifted):
+				nail_layer.add(shifted, kind)
 	queue_redraw()
 	return true
 
@@ -766,7 +814,7 @@ func _reset() -> void:
 #清空画布。
 #refund = true：把画布上剩的墨水还回瓶子（"重绘"按钮）。
 #refund = false：这些墨水已经随固化变成刚体带走了，不能再还。
-func clear(refund := true) -> void:
+func clear(refund := true, preserve_yellow := false) -> void:
 	if refund and blue_rule() != null:
 		blue_rule().clear_drafts(self)
 	blue_layer.clear()
@@ -775,7 +823,8 @@ func clear(refund := true) -> void:
 	var yellow = yellow_rule()
 	if refund and yellow != null:
 		yellow.clear_drafts(self)
-		rod_layer.clear()
+	if not preserve_yellow:
+		rod_layer.clear(refund)
 	if refund:
 		_refund_all_ink()
 	else:
@@ -800,13 +849,14 @@ func write_pixel(pixel: Vector2i, color: Color) -> bool:
 			if health != null:
 				health.add(InkPalette.YELLOW.id, 1)
 		return true
+	var legacy_nail := InkPalette.material_id_at_color(color) == InkPalette.nail_material_id()
+	if legacy_nail:
+		color = InkPalette.GREY.color
 	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
 	_mark_dirty(pixel)
-	if InkPalette.material_id_at_color(color) == InkPalette.nail_material_id():
-		nail_layer.add(pixel)
-	else:
-		nail_layer.remove(pixel)
+	if legacy_nail and nail_layer.kind_at(pixel) < 0:
+		nail_layer.add(pixel, Nail.Kind.FIXED)
 	_bump_ink(before, -1, false)
 	_bump_ink(InkPalette.material_id_at_color(color), 1, false)
 	return true
@@ -887,6 +937,8 @@ func _collect_stamp(out: Dictionary, center: Vector2) -> void:
 #只改像素 + 同步钉子外观层，不碰任何账本。
 func _set_pixel_raw(pixel: Vector2i, color: Color, erase_blue := true, preserve_axes := false) -> void:
 	_track_undo_pixel(pixel)
+	if color.a <= 0.5:
+		_remove_nail_at(pixel)
 	if color.a <= 0.5 and not preserve_axes:
 		for index in range(gear_centers.size() - 1, -1, -1):
 			if Vector2i(gear_centers[index].floor()) == pixel:
@@ -901,10 +953,6 @@ func _set_pixel_raw(pixel: Vector2i, color: Color, erase_blue := true, preserve_
 	var before: int = material_at(pixel.x, pixel.y)
 	black_image.set_pixelv(pixel, color)
 	_mark_dirty(pixel)
-	if _is_nail(color):
-		nail_layer.add(pixel)
-	else:
-		nail_layer.remove(pixel)
 	_bump_ink(before, -1)
 	_bump_ink(InkPalette.material_id_at_color(color), 1)
 
@@ -934,16 +982,51 @@ func _write_pixel(pixel: Vector2i, color: Color, allowance: int) -> int:
 	return 0
 
 
-## 在画布上放一枚钉子：写一个材质 4 的像素，外观由 NailLayer 画。
-func _place_nail(point: Vector2) -> void:
+func _nail_material(kind: int) -> int:
+	return InkPalette.WHITE.id if kind == Nail.Kind.BACKGROUND else InkPalette.GREY.id
+
+
+func _remove_nail_at(pixel: Vector2i, charge := true) -> int:
+	var removed_kind: int = nail_layer.remove(pixel)
+	if removed_kind >= 0 and removed_kind != Nail.Kind.INFINITE:
+		_bump_ink(_nail_material(removed_kind), -NAIL_COST, charge)
+	return removed_kind
+
+
+func _has_nailable_pixel(pixel: Vector2i) -> bool:
+	return material_at(pixel.x, pixel.y) != 0 \
+		or (blue_layer != null and blue_layer.mask.has(pixel)) \
+		or (rod_layer.pixels != null and rod_layer.pixels.get_pixelv(pixel).a > 0.5)
+
+
+## 钉子是独立覆盖层：必须钉在已有墨水上，不替换下方像素。
+func _place_nail(point: Vector2, kind: int = Nail.Kind.FIXED) -> bool:
 	if not _inside(point):
-		return
-	#钉子不是墨水，不花瓶子里的墨。
-	var delta := _write_pixel(Vector2i(point.floor()), nail_color(), 1 << 30)
-	if delta == 0:
-		return
-	_flush_texture()
+		return false
+	if kind == Nail.Kind.INFINITE and not map_editor_mode:
+		notice_requested.emit("无限钉子只能在创造模式使用")
+		return false
+	var pixel := Vector2i(point.floor())
+	if not _has_nailable_pixel(pixel):
+		notice_requested.emit("钉子必须放在实体上")
+		return false
+	if nail_layer.kind_at(pixel) >= 0:
+		notice_requested.emit("这里已经有一枚钉子")
+		return false
+	if kind == Nail.Kind.INFINITE:
+		if not nail_layer.add(pixel, kind):
+			return false
+		_flush_ink()
+		return true
+	var material := _nail_material(kind)
+	if not ink_free and _ink_room(material) < NAIL_COST:
+		notice_requested.emit("墨水不足：放置钉子需要 %d px" % NAIL_COST)
+		return false
+	if not nail_layer.add(pixel, kind):
+		return false
+	_bump_ink(material, NAIL_COST)
 	_flush_ink()
+	return true
 
 
 #该像素是否为黑色墨水，供固化时采样
@@ -1241,24 +1324,35 @@ func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}, preserve_b
 	or rect.end.y + offset.y > canvas_size.y:
 		return false
 	var source := {}
+	var source_nails := {}
 	for y in range(rect.position.y, rect.end.y):
 		for x in range(rect.position.x, rect.end.x):
 			var point := Vector2i(x, y)
 			if not SelectionMask.contains(mask, point):
 				continue
+			var nail_kind: int = nail_layer.kind_at(point)
+			if nail_kind >= 0:
+				source_nails[point] = nail_kind
 			var color := black_image.get_pixelv(point)
 			if color.a > 0.5:
 				source[point] = color
-	if source.is_empty():
+	if source.is_empty() and source_nails.is_empty():
 		return false
 	for index in gear_centers.size():
 		var at := Vector2i(gear_centers[index].floor())
 		if rect.has_point(at) and SelectionMask.contains(mask, at):
 			gear_centers[index] += Vector2(offset)
+	for point: Vector2i in source_nails:
+		_remove_nail_at(point)
 	for point: Vector2i in source:
 		_set_pixel_raw(point, Color.TRANSPARENT, not preserve_blue, true)
 	for point: Vector2i in source:
 		_set_pixel_raw(point + offset, source[point])
+	for point: Vector2i in source_nails:
+		var destination := point + offset
+		if nail_layer.add(destination, source_nails[point]):
+			if source_nails[point] != Nail.Kind.INFINITE:
+				_bump_ink(_nail_material(source_nails[point]), NAIL_COST)
 	_flush_texture()
 	_flush_ink()
 	return true
@@ -1268,6 +1362,7 @@ func _begin_undo_step() -> void:
 	if not _undo_capturing and blue_layer != null:
 		_blue_undo = {"cells": blue_layer.cells.duplicate(), "motors": blue_rule().capture(self) if blue_rule() != null else [], "ledger": ink_px_of(InkPalette.BLUE.id)}
 	_undo_capture = {}
+	_nail_undo = nail_layer.snapshot()
 	_undo_capturing = true
 
 
@@ -1281,6 +1376,9 @@ func _commit_undo_step(rod_step: Dictionary = {}) -> void:
 	if not _undo_capturing:
 		return
 	_undo_capturing = false
+	if nail_layer.snapshot() != _nail_undo:
+		_undo_capture["nails"] = _nail_undo
+	_nail_undo = {}
 	if not _blue_undo.is_empty() and (blue_layer.cells != _blue_undo.cells or ink_px_of(InkPalette.BLUE.id) != _blue_undo.ledger or (blue_rule() != null and blue_rule().draft_data(self).size() != _blue_undo.motors.size())):
 		_undo_capture["blue"] = _blue_undo
 	_blue_undo = {}
@@ -1306,6 +1404,7 @@ func push_undo_step(step: Dictionary) -> void:
 
 func _cancel_undo_step() -> void:
 	_undo_capture = {}
+	_nail_undo = {}
 	_undo_capturing = false
 
 
@@ -1358,6 +1457,8 @@ func undo_last_edit() -> bool:
 			_set_pixel_raw(pixel, step[pixel])
 	if step.has("gear_centers"):
 		gear_centers = step.gear_centers.duplicate()
+	if step.has("nails"):
+		_restore_nail_edit(step.nails)
 	if not blue_saved.is_empty():
 		_restore_blue_edit(blue_saved)
 	_flush_texture()
@@ -1390,6 +1491,8 @@ func redo_last_edit() -> bool:
 				_set_pixel_raw(pixel, after[pixel])
 		if after.has("gear_centers"):
 			gear_centers = after.gear_centers.duplicate()
+		if after.has("nails"):
+			_restore_nail_edit(after.nails)
 		if after.has("blue"):
 			_restore_blue_edit(after.blue)
 		_flush_texture()
@@ -1440,6 +1543,8 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 				current.black_pixels["gear_centers"] = gear_centers.duplicate()
 			if step.black_pixels.has("blue"):
 				current.black_pixels["blue"] = _capture_blue_edit()
+			if step.black_pixels.has("nails"):
+				current.black_pixels["nails"] = nail_layer.snapshot()
 		return current
 	var current := {}
 	for pixel in step:
@@ -1449,7 +1554,18 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 		current["gear_centers"] = gear_centers.duplicate()
 	if step.has("blue"):
 		current["blue"] = _capture_blue_edit()
+	if step.has("nails"):
+		current["nails"] = nail_layer.snapshot()
 	return current
+
+
+func _restore_nail_edit(state: Dictionary) -> void:
+	var before: Dictionary = nail_layer.snapshot()
+	_bump_ink(InkPalette.GREY.id,
+		(state.get("fixed", {}).size() - before.fixed.size()) * NAIL_COST)
+	_bump_ink(InkPalette.WHITE.id,
+		(state.get("background", {}).size() - before.background.size()) * NAIL_COST)
+	nail_layer.restore(state)
 
 
 func _capture_blue_edit() -> Dictionary:
@@ -1481,6 +1597,8 @@ func _restore_black_pixels(pixels: Dictionary) -> void:
 		gear_centers = pixels.gear_centers.duplicate()
 	if pixels.has("blue"):
 		_restore_blue_edit(pixels.blue)
+	if pixels.has("nails"):
+		_restore_nail_edit(pixels.nails)
 	_flush_texture()
 	_flush_ink()
 
@@ -1558,7 +1676,7 @@ func _health_node():
 	return _health
 
 
-#画布自己的账：某墨水的像素数变化。钉子不是墨水，不进账。
+#画布自己的账：普通像素按 1 px 计，固定/背景钉子另按对应墨水的 10 px 计。
 #charge = false 只改画布自己的账、不记到瓶子上（"重新回到画布"那条路）。
 func _bump_ink(material_id: int, delta: int, charge := true) -> void:
 	if delta == 0 or ink_free:
@@ -1703,6 +1821,8 @@ func _save_snapshot(path: String) -> Error:
 	var rule = yellow_rule()
 	file.store_var({"black": black_image.save_png_to_buffer(), "rod": rod_layer.pixels.save_png_to_buffer(), "anchors": rod_layer.anchor_points,
 		"gear_centers": gear_centers, "rails": rod_layer.rails, "slider_pins": rod_layer.slider_pins,
+		"fixed_nails": nail_layer.nails.keys(), "background_nails": nail_layer.background_nails.keys(),
+		"infinite_nails": nail_layer.infinite_nails.keys(),
 		"springs": rule.draft_data(self) if rule != null else [], "blue": blue_layer.cells,
 		"motors": blue_rule().draft_data(self) if blue_rule() != null else []})
 	file.flush()
@@ -1768,6 +1888,16 @@ func load_ink(path: String) -> Error:
 		rod_layer.rails = rod_data.get("rails", []).duplicate(true)
 		rod_layer.slider_pins = rod_data.get("slider_pins", []).duplicate(true)
 		rod_layer.refresh()
+		if rod_data.has("fixed_nails") or rod_data.has("background_nails") or rod_data.has("infinite_nails"):
+			nail_layer.clear()
+			for point in rod_data.get("fixed_nails", []):
+				nail_layer.add(Vector2i(point), Nail.Kind.FIXED)
+			for point in rod_data.get("background_nails", []):
+				nail_layer.add(Vector2i(point), Nail.Kind.BACKGROUND)
+			for point in rod_data.get("infinite_nails", []):
+				nail_layer.add(Vector2i(point), Nail.Kind.INFINITE)
+			_bump_ink(InkPalette.GREY.id, nail_layer.nails.size() * NAIL_COST, false)
+			_bump_ink(InkPalette.WHITE.id, nail_layer.background_nails.size() * NAIL_COST, false)
 		var health = _health_node()
 		if not ink_free and health != null:
 			health.reduce(InkPalette.YELLOW.id, rod_layer.make_shape().pixel_count())
@@ -1803,9 +1933,15 @@ func _rebuild_loaded_metadata() -> void:
 					data[at], data[at + 1], data[at + 2], data[at + 3]
 				))
 				if material_id == nail_id:
-					nail_layer.add(Vector2i(x, y))
+					var point := Vector2i(x, y)
+					black_image.set_pixelv(point, InkPalette.GREY.color)
+					nail_layer.add(point, Nail.Kind.FIXED)
+					ink_px_by_material[InkPalette.GREY.id] = ink_px_of(InkPalette.GREY.id) + 1
 				elif InkPalette.is_ink(material_id):
 					ink_px_by_material[material_id] = ink_px_of(material_id) + 1
+	ink_px_by_material[InkPalette.GREY.id] = ink_px_of(InkPalette.GREY.id) + nail_layer.nails.size() * NAIL_COST
+	ink_px_by_material[InkPalette.WHITE.id] = ink_px_of(InkPalette.WHITE.id) + nail_layer.background_nails.size() * NAIL_COST
+	rebuild_ink_tiles()
 
 
 #按像素重新数一遍画布自己的账 —— 读盘、以及怀疑账本漂了的时候用。
@@ -1828,6 +1964,8 @@ func recount_ink_px() -> void:
 				))
 				if InkPalette.is_ink(material_id):
 					ink_px_by_material[material_id] = ink_px_of(material_id) + 1
+	ink_px_by_material[InkPalette.GREY.id] = ink_px_of(InkPalette.GREY.id) + nail_layer.nails.size() * NAIL_COST
+	ink_px_by_material[InkPalette.WHITE.id] = ink_px_of(InkPalette.WHITE.id) + nail_layer.background_nails.size() * NAIL_COST
 
 
 #按像素颜色重建钉子外观层；只在读盘时走一次。同样只扫各块的内容框。
@@ -1847,5 +1985,8 @@ func _rebuild_nails() -> void:
 					data[at], data[at + 1], data[at + 2], data[at + 3]
 				))
 				if material_id == nail_id:
-					nail_layer.add(Vector2i(x, y))
+					var point := Vector2i(x, y)
+					black_image.set_pixelv(point, InkPalette.GREY.color)
+					nail_layer.add(point, Nail.Kind.FIXED)
+	rebuild_ink_tiles()
 #endregion

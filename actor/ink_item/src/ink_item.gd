@@ -7,12 +7,27 @@ extends "res://addons/pixel_destruction/nodes/pixel_body_2d.gd"
 
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const ANCHOR_TAG := "static_anchor_points"
+const BACKGROUND_TAG := "background_anchor_points"
+const BACKGROUND_LAYER_TAG := "background_original_layer"
+const BACKGROUND_MASK_TAG := "background_original_mask"
+const BACKGROUND_IMMUNE_TAG := "background_original_no_impact_damage"
+const BACKGROUND_WHITE_TAG := "background_original_white_ink"
+const BACKGROUND_SWEEP_TAG := "background_original_white_sweep"
 const Nail := preload("res://actor/nail/src/nail.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 #endregion
 
 ## 关卡文件里的墨水实体默认属于地图编辑器预置内容，其钉子仅供编辑时查看。
 ## 游玩过程中由 CanvasSolid 新建的实体会显式将此值设为 false。
 @export var hide_nails_in_play := true
+@export var fixed_nails := PackedVector2Array()
+@export var background_nails := PackedVector2Array()
+## 无限钉子在同岛分块上由 CanvasSolid 分别写入；局部队列只负责可见外观。
+@export var infinite_nails := PackedVector2Array()
+@export var infinite_nail_body := false
+@export var infinite_fuel_body := false
+@export_flags_2d_physics var background_collision_layer := 1
+@export_flags_2d_physics var background_collision_mask := 0xFFFFFFFF
 ## 强制白墨使用高速扫掠；关闭时仍会自动识别画布生成的圆环。
 @export var violent_white := false
 
@@ -20,6 +35,9 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 #region 装载
 ## 白墨沿用刚体运动和渲染；普通白墨接触后关闭碰撞，圆形扫掠从生成起无碰撞。
 func bake():
+	_migrate_legacy_nails()
+	if not fixed_nails.is_empty():
+		is_static = true
 	var result = super.bake()
 	var white := false
 	var other := false
@@ -47,7 +65,99 @@ func bake():
 				result.tags["white_sweep"] = true
 				result.collision_layer = 0
 				result.collision_mask = 0
+	apply_nails(result, false)
 	return result
+
+
+func _migrate_legacy_nails() -> void:
+	for shape in collect_shapes():
+		var rect: Rect2i = shape.local_aabb()
+		for y in range(rect.position.y, rect.end.y):
+			for x in range(rect.position.x, rect.end.x):
+				if shape.get_pixel(x, y) != InkPalette.nail_material_id():
+					continue
+				var point := Vector2i(x, y)
+				shape.set_pixel(x, y, InkPalette.GREY.id)
+				if not fixed_nails.has(point):
+					fixed_nails.append(point)
+
+
+func apply_nails(target_body, spawn_visuals := true) -> void:
+	if target_body == null:
+		return
+	var fixed := {}
+	for point in fixed_nails:
+		fixed[Vector2i(point)] = true
+	var background := {}
+	for point in background_nails:
+		background[Vector2i(point)] = true
+	var infinite := {}
+	for point in infinite_nails:
+		infinite[Vector2i(point)] = true
+	if fixed.is_empty():
+		target_body.tags.erase(ANCHOR_TAG)
+	else:
+		target_body.tags[ANCHOR_TAG] = fixed
+		target_body.is_static = true
+	if background.is_empty():
+		target_body.tags.erase(BACKGROUND_TAG)
+	else:
+		if not target_body.tags.has(BACKGROUND_IMMUNE_TAG):
+			target_body.tags[BACKGROUND_IMMUNE_TAG] = target_body.tags.has("no_impact_damage")
+			target_body.tags[BACKGROUND_WHITE_TAG] = target_body.tags.has("white_ink")
+			target_body.tags[BACKGROUND_SWEEP_TAG] = target_body.tags.has("white_sweep")
+		target_body.tags[BACKGROUND_TAG] = background
+		target_body.tags[BACKGROUND_LAYER_TAG] = background_collision_layer
+		target_body.tags[BACKGROUND_MASK_TAG] = background_collision_mask
+		target_body.tags["no_impact_damage"] = true
+		target_body.tags.erase("white_ink")
+		target_body.tags.erase("white_sweep")
+		target_body.collision_layer = 0
+		target_body.collision_mask = 0
+	var unbreakable := infinite_nail_body or not infinite.is_empty()
+	if unbreakable:
+		target_body.tags[Traits.UNBREAKABLE_TAG] = true
+		if infinite.is_empty():
+			target_body.tags.erase(Nail.INFINITE_TAG)
+		else:
+			target_body.tags[Nail.INFINITE_TAG] = infinite
+	else:
+		target_body.tags.erase(Traits.UNBREAKABLE_TAG)
+		target_body.tags.erase(Nail.INFINITE_TAG)
+	if infinite_fuel_body or _has_red_at(target_body, infinite):
+		target_body.tags[Traits.INFINITE_FUEL_TAG] = true
+	else:
+		target_body.tags.erase(Traits.INFINITE_FUEL_TAG)
+	if not spawn_visuals or Engine.is_editor_hint() or not is_inside_tree():
+		return
+	var host := get_parent()
+	if host == null:
+		return
+	_spawn_visuals(host, target_body, fixed, Nail.Kind.FIXED)
+	_spawn_visuals(host, target_body, background, Nail.Kind.BACKGROUND)
+	_spawn_visuals(host, target_body, infinite, Nail.Kind.INFINITE)
+
+
+static func _has_red_at(target_body, points: Dictionary) -> bool:
+	for point: Vector2i in points:
+		for shape in target_body.shapes:
+			if shape.get_pixel(point.x, point.y) == InkPalette.RED.id:
+				return true
+	return false
+
+
+func _spawn_visuals(host: Node, target_body, points: Dictionary, kind: Nail.Kind) -> void:
+	for point: Vector2i in points:
+		var exists := false
+		for child in host.get_children():
+			if child is Nail and child.body == target_body and child.pixel == point and child.kind == kind:
+				exists = true
+				break
+		if exists:
+			continue
+		var nail := Nail.new()
+		host.add_child(nail)
+		nail.setup(target_body, point, hide_nails_in_play, kind)
 
 
 ## 圆形工具生成的是空心圆环：近似等宽高、中心和四角为空、四个轴端都有墨水。
@@ -93,26 +203,7 @@ func _restore_nails() -> void:
 	if not is_inside_tree():
 		return
 	var body = self.body          # 读 body 会幂等触发烘焙
-	if body == null or not body.is_static:
+	if body == null:
 		return
-	var points: Dictionary = {}
-	for shape in body.shapes:
-		var rect: Rect2i = shape.local_aabb()
-		for y in range(rect.position.y, rect.end.y):
-			for x in range(rect.position.x, rect.end.x):
-				if shape.get_pixel(x, y) == InkPalette.nail_material_id():
-					points[Vector2i(x, y)] = true
-	if points.is_empty():
-		return
-	body.tags[ANCHOR_TAG] = points
-	#编辑器里只打标签，不生成运行时的钉子外观（否则会写进场景）。
-	if Engine.is_editor_hint():
-		return
-	var host := get_parent()
-	if host == null:
-		return
-	for point: Vector2i in points:
-		var nail := Nail.new()
-		host.add_child(nail)
-		nail.setup(body, point, hide_nails_in_play)
+	apply_nails(body, true)
 #endregion

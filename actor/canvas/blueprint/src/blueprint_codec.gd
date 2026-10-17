@@ -11,6 +11,7 @@ const Wire := preload("res://ink/blue/src/wire_layer.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 
 static func vec(value: Array) -> Vector2:
 	return Vector2(value[0], value[1])
@@ -37,9 +38,10 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	if rect.size.x < 1 or rect.size.y < 1 or rect.size.x > Store.MAX_SIDE or rect.size.y > Store.MAX_SIDE:
 		return {"error": "蓝图尺寸需在 1～1024 像素内"}
 	var surface = canvas.surface
-	var data := {"version": 1, "id": "", "name": "未命名蓝图", "description": "", "tags": [],
+	var data := {"version": Store.VERSION, "id": "", "name": "未命名蓝图", "description": "", "tags": [],
 		"updated": 0, "favorite": false, "editor_only": false, "size": [rect.size.x, rect.size.y],
-		"pixels": [], "rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": [],
+		"pixels": [], "fixed_nails": [], "background_nails": [], "infinite_nails": [],
+		"rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": [],
 		"gear_centers": [], "rails": [], "slider_pins": []}
 	for point in surface.gear_centers:
 		if inside(Vector2i(point.floor()), rect, mask):
@@ -47,6 +49,9 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	var pixels := {}
 	var rods := {}
 	var blues := {}
+	var fixed_nails := {}
+	var background_nails := {}
+	var infinite_nails := {}
 	var required := []
 	var gears := []
 	for child in canvas.world.get_children():
@@ -91,10 +96,19 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 				rods[key] = true
 			if surface.blue_layer.mask.has(at):
 				blues[key] = true
+			if surface.nail_layer.nails.has(at):
+				fixed_nails[key] = true
+			elif surface.nail_layer.background_nails.has(at):
+				background_nails[key] = true
+			elif surface.nail_layer.infinite_nails.has(at):
+				infinite_nails[key] = true
 	for body in canvas.world.world.bodies:
 		if body.tags.has("living"):
 			continue
-		var saved := {"pixels": [], "static": body.is_static}
+		var saved := {"pixels": [], "static": body.is_static,
+			"fixed_nails": [], "background_nails": [], "infinite_nails": [],
+			"infinite_nail_body": Traits.is_unbreakable(body),
+			"infinite_fuel_body": Traits.is_infinite_fuel(body)}
 		var is_required := required.has(body)
 		for shape in body.shapes:
 			var bounds: Rect2i = shape.local_aabb()
@@ -138,6 +152,19 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 				unique[entry[0]] = entry[1]
 			saved.pixels = _entries(unique)
 			data.bodies[required.find(body)] = saved
+		for pair in [["static_anchor_points", saved.fixed_nails, fixed_nails],
+			["background_anchor_points", saved.background_nails, background_nails],
+			[Nail.INFINITE_TAG, saved.infinite_nails, infinite_nails]]:
+			for point: Vector2i in body.tags.get(pair[0], {}):
+				var at := Vector2i(local_point(canvas,
+					body.to_world(Vector2(point) + Vector2.ONE * 0.5)).floor())
+				if not inside(at, rect, mask):
+					continue
+				var key := index(at - rect.position, rect.size.x)
+				if is_required:
+					pair[1].append(key)
+				else:
+					pair[2][key] = true
 	for entry in gears:
 		var gear = entry.node
 		data.gears.append({"point": xy(Vector2(entry.at - rect.position) + Vector2.ONE * 0.5),
@@ -233,6 +260,9 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 				data.springs.append({"path": path, "width": child.brush_width, "worn": worn,
 					"dash": child.dash_length, "gap": child.dash_gap, "dashed": child.dashed})
 	data.pixels = _entries(pixels)
+	data.fixed_nails = fixed_nails.keys()
+	data.background_nails = background_nails.keys()
+	data.infinite_nails = infinite_nails.keys()
 	data.rods = rods.keys()
 	data.blue = blues.keys()
 	if not Store.validate(data):
@@ -329,6 +359,10 @@ static func costs(data: Dictionary) -> Dictionary:
 	for saved in data.bodies:
 		for entry in saved.pixels:
 			_add_cost(amounts, int(entry[1]), 1)
+		_add_cost(amounts, Palette.GREY.id, saved.get("fixed_nails", []).size() * 10)
+		_add_cost(amounts, Palette.WHITE.id, saved.get("background_nails", []).size() * 10)
+	_add_cost(amounts, Palette.GREY.id, data.get("fixed_nails", []).size() * 10)
+	_add_cost(amounts, Palette.WHITE.id, data.get("background_nails", []).size() * 10)
 	_add_cost(amounts, Palette.YELLOW.id, data.rods.size())
 	_add_cost(amounts, Palette.BLUE.id, data.blue.size())
 	for saved in data.motors:
@@ -344,27 +378,6 @@ static func _add_cost(out: Dictionary, material: int, amount: int) -> void:
 	if Palette.is_ink(material) and amount > 0:
 		out[material] = out.get(material, 0) + amount
 
-static func _preview_cells(image: Image, entries: Array, width: int, material := -1) -> void:
-	var colors := {}
-	var start := Vector2i(-1, -1)
-	var length := 0
-	var prior := -1
-	for entry in entries:
-		var id := int(entry[1]) if material < 0 else material
-		var at := cell(entry[0] if material < 0 else entry, width)
-		if not colors.has(id):
-			colors[id] = Palette.nail_color() if id == Palette.nail_material_id() else Palette.color_for_material_id(id)
-		if id == prior and at.y == start.y and at.x == start.x + length:
-			length += 1
-		else:
-			if length > 0:
-				image.fill_rect(Rect2i(start, Vector2i(length, 1)), colors[prior])
-			start = at
-			length = 1
-			prior = id
-	if length > 0:
-		image.fill_rect(Rect2i(start, Vector2i(length, 1)), colors[prior])
-
 static func _preview_segment(image: Image, a: Vector2, b: Vector2, color: Color) -> void:
 	var steps := maxi(1, ceili(a.distance_to(b)))
 	var bounds := Rect2i(Vector2i.ZERO, image.get_size())
@@ -378,25 +391,30 @@ static func preview(data: Dictionary) -> Image:
 	var size := Vector2i(int(data.size[0]), int(data.size[1]))
 	var image := Image.create_empty(size.x, size.y, false, Image.FORMAT_RGBA8)
 	var layers: Array = [data.pixels]
-	var nails := {}
 	for saved in data.bodies:
 		layers.append(saved.pixels)
 	for layer in layers:
-		_preview_cells(image, layer, size.x)
 		for entry in layer:
-			if entry[1] == Palette.nail_material_id():
-				nails[cell(entry[0], size.x)] = true
-	# 蓝图库与放置幽灵也使用同一张钉子图，不将材质 7 显示成棕色单点。
-	if not nails.is_empty():
-		var icon: Image = Nail.NAIL_TEXTURE.get_image()
+			image.set_pixelv(cell(entry[0], size.x), Palette.color_for_material_id(int(entry[1])))
+	var nail_sets := [[data.get("fixed_nails", []), Nail.Kind.FIXED],
+		[data.get("background_nails", []), Nail.Kind.BACKGROUND],
+		[data.get("infinite_nails", []), Nail.Kind.INFINITE]]
+	for saved in data.bodies:
+		nail_sets.append([saved.get("fixed_nails", []), Nail.Kind.FIXED])
+		nail_sets.append([saved.get("background_nails", []), Nail.Kind.BACKGROUND])
+		nail_sets.append([saved.get("infinite_nails", []), Nail.Kind.INFINITE])
+	for nail_set in nail_sets:
+		var icon: Image = Nail.texture_for(nail_set[1]).get_image()
 		icon.resize(roundi(icon.get_width() * Nail.VISUAL_SCALE), roundi(icon.get_height() * Nail.VISUAL_SCALE), Image.INTERPOLATE_NEAREST)
-		for at: Vector2i in nails:
-			var origin := at - Vector2i(Nail.ANCHOR_CENTER * Nail.VISUAL_SCALE)
+		for saved_index in nail_set[0]:
+			var at := cell(saved_index, size.x)
+			var origin := at - Vector2i(Nail.anchor_center_for(nail_set[1]) * Nail.VISUAL_SCALE)
 			var clipped := Rect2i(origin, icon.get_size()).intersection(Rect2i(Vector2i.ZERO, size))
 			if clipped.has_area():
 				image.blend_rect(icon, Rect2i(clipped.position - origin, clipped.size), clipped.position)
 	for key in ["rods", "blue"]:
-		_preview_cells(image, data[key], size.x, Palette.YELLOW.id if key == "rods" else Palette.BLUE.id)
+		for entry in data[key]:
+			image.set_pixelv(cell(entry, size.x), Palette.YELLOW.color if key == "rods" else Palette.BLUE.color)
 	# 导轨与滑块销一起画进缩略图，蓝图库里能看出这是一套完整的滑动机构。
 	var rail_color: Color = Palette.YELLOW.color.darkened(0.48)
 	rail_color.a = 1.0
@@ -502,7 +520,15 @@ static func place(canvas, data: Dictionary, offset: Vector2i) -> String:
 	var width := int(data.size[0])
 	for entry in data.pixels:
 		var material := int(entry[1])
-		surface._set_pixel_raw(cell(entry[0], width) + offset, Palette.nail_color() if material == Palette.nail_material_id() else Palette.color_for_material_id(material))
+		surface._set_pixel_raw(cell(entry[0], width) + offset, Palette.color_for_material_id(material))
+	for saved_index in data.get("fixed_nails", []):
+		surface.nail_layer.add(cell(saved_index, width) + offset, Nail.Kind.FIXED)
+	for saved_index in data.get("background_nails", []):
+		surface.nail_layer.add(cell(saved_index, width) + offset, Nail.Kind.BACKGROUND)
+	for saved_index in data.get("infinite_nails", []):
+		surface.nail_layer.add(cell(saved_index, width) + offset, Nail.Kind.INFINITE)
+	surface._bump_ink(Palette.GREY.id, data.get("fixed_nails", []).size() * surface.NAIL_COST)
+	surface._bump_ink(Palette.WHITE.id, data.get("background_nails", []).size() * surface.NAIL_COST)
 	for entry in data.rods:
 		surface.rod_layer.pixels.set_pixelv(cell(entry, width) + offset, Palette.YELLOW.color)
 	# 独立黄墨层自己在 clear/erase 时退款，不能再计入普通像素账本。
@@ -554,6 +580,14 @@ static func place(canvas, data: Dictionary, offset: Vector2i) -> String:
 		node.name = "BlueprintPart%d" % canvas.world.get_child_count()
 		node.position = world_point(canvas, Vector2(offset))
 		node.is_static = saved.static
+		node.fixed_nails = PackedVector2Array(saved.get("fixed_nails", []).map(
+			func(saved_index): return cell(saved_index, width)))
+		node.background_nails = PackedVector2Array(saved.get("background_nails", []).map(
+			func(saved_index): return cell(saved_index, width)))
+		node.infinite_nails = PackedVector2Array(saved.get("infinite_nails", []).map(
+			func(saved_index): return cell(saved_index, width)))
+		node.infinite_nail_body = bool(saved.get("infinite_nail_body", false))
+		node.infinite_fuel_body = bool(saved.get("infinite_fuel_body", false))
 		node.add_to_group("ink_item", true)
 		var shape := ShapeNode.new()
 		shape.source = ShapeNode.Source.PAINT

@@ -3,6 +3,7 @@ extends RefCounted
 ## 不建全局电网。缓存仅记录局部接触，形状/相对姿态改变时更新。
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 const DIRS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 var speed := 600.0
 var interval := 0.1
@@ -324,6 +325,8 @@ func update(rule, context: Dictionary) -> Dictionary:
 	return {"fuel_removals": result}
 
 func _settle_fuel_account(rule, body, account: Dictionary, result: Dictionary) -> void:
+	if Traits.is_unbreakable(body):
+		return
 	var count := int(account.credit)
 	if count <= 0:
 		return
@@ -450,6 +453,10 @@ func _emit(rule, context: Dictionary, wires: Array) -> void:
 		# 玩家只能通过有效抓握端口供能，身体/手臂/手的擦碰都不发包。
 		if player_bodies.has(body):
 			continue
+		# 不可破坏但未开无尽燃料的 body（例如钉子钉在黑色载体上）
+		# 不参与燃料抽取；避免“不可破坏却仍被蓝墨扣掉红像素”的矛盾。
+		if Traits.is_unbreakable(body) and not Traits.is_infinite_fuel(body):
+			continue
 		if body.tags.has("living") and float(body.tags.get(
 			"supply_power", rule.biological_default_power)) <= 0.0:
 			continue
@@ -466,6 +473,14 @@ func _emit(rule, context: Dictionary, wires: Array) -> void:
 						if wire.mask.has(port[1]):
 							contacts.get_or_add(cell, []).append(port)
 		if contacts.is_empty():
+			continue
+		if Traits.is_infinite_fuel(body):
+			var infinite_energy: float = contacts.size() * rule.source_power_per_pixel * interval
+			var infinite_share: float = infinite_energy / contacts.size()
+			for cell: Vector2i in contacts:
+				var ports: Array = contacts[cell]
+				for port: Array in ports:
+					inject(port[0], port[1], port[2], infinite_share / ports.size(), body.get_instance_id())
 			continue
 		if body.tags.has("living"):
 			var group: Dictionary = groups.get_or_add(body, {"body": body, "ports": []})
