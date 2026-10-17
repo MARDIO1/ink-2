@@ -25,7 +25,7 @@ func _run_shortcuts() -> void:
 	await process_frame
 	var canvas := scene.get_node("SmallCanvas")
 	canvas.dev_save_enabled = false
-	var grid := canvas.get_node("WorkbenchUI/Buttons/Grid")
+	var grid := canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Grid")
 	_press(canvas, KEY_1)
 	_check("1 brush", canvas.surface.tool == SurfaceScript.Tool.BRUSH)
 	_press(canvas, KEY_2)

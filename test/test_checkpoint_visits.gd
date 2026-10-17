@@ -16,7 +16,7 @@ func _move(body, center: Vector2) -> void:
 	body.update_aabb()
 
 func _run() -> void:
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	current_scene = level
@@ -39,17 +39,17 @@ func _run() -> void:
 	future.position = Vector2(12000, -10000)
 	level.add_child(future)
 	recovery._checkpoints_initialized = false
-	var radius: float = recovery.checkpoint_visit_radius
-	_move(body, visited.position + Vector2(radius + 0.1, 0))
+	var half_size: Vector2 = recovery.checkpoint_visit_size.abs() * 0.5
+	_move(body, visited.position + Vector2(half_size.x + 0.1, 0))
 	recovery._update_visited_points()
-	_check("outside horizontal visit radius stays locked", not recovery._visited_points.has(visited))
-	_move(body, visited.position + Vector2(0, radius + 0.1))
+	_check("outside horizontal visit bounds stays locked", not recovery._visited_points.has(visited))
+	_move(body, visited.position + Vector2(0, half_size.y + 0.1))
 	recovery._update_visited_points()
-	_check("outside vertical visit radius stays locked", not recovery._visited_points.has(visited))
-	_move(body, visited.position + Vector2(radius - 1.0, 0))
+	_check("outside vertical visit bounds stays locked", not recovery._visited_points.has(visited))
+	_move(body, visited.position + Vector2(half_size.x - 1.0, 0))
 	recovery._update_visited_points()
-	_check("inside visit radius unlocks checkpoint", recovery._visited_points.has(visited))
-	_move(body, future.position + Vector2(radius + 1.0, 0))
+	_check("inside visit bounds unlocks checkpoint", recovery._visited_points.has(visited))
+	_move(body, future.position + Vector2(half_size.x + 1.0, 0))
 	_check("nearest unvisited checkpoint cannot be respawn target", recovery._find_respawn_target() == visited)
 	creative.active = true
 	_move(body, future.position)
@@ -61,7 +61,7 @@ func _run() -> void:
 	_check("movement while dead does not unlock future checkpoint", not recovery._visited_points.has(future) and body.position.is_equal_approx(visited.position))
 	level.position = Vector2(300, 160)
 	level.rotation = 0.3
-	_move(body, future.position + Vector2(radius - 1.0, 0))
+	_move(body, future.position + Vector2(half_size.x - 1.0, 0))
 	recovery._update_visited_points()
 	_check("visit bounds use level coordinates even when transformed", recovery._visited_points.has(future))
 	recovery._respawn()

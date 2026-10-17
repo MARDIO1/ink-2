@@ -58,6 +58,10 @@ func rebuild() -> void:
 	var shapes := _collect()
 	var sig := _signature(shapes)
 	if sig == _sig and _tex != null:
+		# 形状可能在父刚体按需烘焙时提前重建；_ready 清空了 Sprite 的
+		# texture，但缓存仍有效。恢复缓存，不能只跳过生成留下透明角色。
+		texture = _tex
+		visible = true
 		return
 	_sig = sig
 	if shapes.is_empty():

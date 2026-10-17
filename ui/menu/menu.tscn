@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" path="res://ui/menu/asset/title.png" id="2_title"]
 [ext_resource type="Texture2D" path="res://ui/menu/asset/icon_play.svg" id="3_play"]
 [ext_resource type="Texture2D" path="res://ui/menu/asset/icon_exit.svg" id="4_exit"]
+[ext_resource type="Texture2D" path="res://ui/esc/asset/icon_sound.svg" id="8_sound"]
 [ext_resource type="Theme" path="res://ui/theme/asset/ink_attack_theme.tres" id="5_theme"]
 [ext_resource type="Script" path="res://ui/menu/src/menu.gd" id="6_script"]
 [ext_resource type="Script" path="res://ui/menu/title_fx/src/title_water.gd" id="7_water"]
@@ -80,6 +81,8 @@ theme_type_variation = &"MenuActionButton"
 focus_neighbor_top = NodePath("../StartButton")
 focus_neighbor_bottom = NodePath("../QuitButton")
 text = "声音设置"
+icon = ExtResource("8_sound")
+expand_icon = true
 
 [node name="QuitButton" type="Button" parent="ButtonCenter/Buttons"]
 custom_minimum_size = Vector2(280, 58)

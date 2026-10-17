@@ -53,7 +53,7 @@ func teeth_on_ring(body, radius: float, ink_material: int) -> int:
 	return transitions
 
 func _run() -> void:
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	await process_frame
@@ -87,6 +87,8 @@ func _run() -> void:
 	var tool = canvas.surface.gear_tool
 	tool.begin(Vector2(80, 80), 8)
 	var eight = tool.finish(Vector2(112.5, 80.5))
+	check("new gear leaves no silhouette in the draft", canvas.surface.material_at(80, 80) == 0
+		and canvas.surface.gear_skip_cells.is_empty())
 	check("black eight-tooth tool produces eight actual tooth lobes", eight.teeth == 8
 		and eight.gear_material == Palette.BLACK.id
 		and teeth_on_ring(eight.yellow_anchor.body, 32.0 * 0.9, Palette.BLACK.id) == 8)
@@ -116,8 +118,10 @@ func _run() -> void:
 	check("left press detaches axle and freezes gear", eight.editor_dragging and eight.joint == null
 		and body.frozen and body.tags.get("editor_physics_paused", false) and creative._monster_drag_view_locked)
 	var destination: Vector2 = canvas.surface.to_global(Vector2(220.5, 220.5))
+	check("gear origin remains blank before moving", canvas.surface.material_at(80, 80) == 0)
 	var offset: Vector2 = hit - eight.global_position
 	motion(creative, destination + offset)
+	check("moving gear leaves its old draft position empty", canvas.surface.material_at(80, 80) == 0)
 	eight._process(0.0)
 	check("drag moves wheel and axle together without early reattachment", eight.global_position.is_equal_approx(destination)
 		and eight.yellow_position.is_equal_approx(level.to_local(destination)) and eight.joint == null
@@ -232,6 +236,18 @@ func _run() -> void:
 		and loaded.joint != null and not loaded.fixed_to_world and loaded.gear_material == Palette.BLACK.id)
 	check("reload also preserves gray twelve-tooth gear", axles(restored).any(func(axle): return axle.teeth == 12 and axle.gear_material == Palette.GREY.id))
 	restored.queue_free()
+	# 完整事务会重建轮体；较早的轻量移动历史必须用稳定身份重新找到它。
+	check("undo solidification reconstructs the wheel", creative.undo_last_edit())
+	check("same-frame pose undo survives wheel reconstruction", creative.undo_last_edit()
+		and find_axle(level, level.to_local(destination)) != null)
+	check("earlier pose redo survives wheel reconstruction", creative.redo_last_edit()
+		and find_axle(level, level.to_local(empty)) != null)
+	check("solidification redo still restores the support", creative.redo_last_edit())
+	await process_frame
+	await process_frame
+	eight = find_axle(level, level.to_local(draft_destination))
+	check("mixed undo redo retains bearing support and teeth", eight != null and not eight.fixed_to_world
+		and eight.joint != null and eight.teeth == 8)
 	level.queue_free()
 	await process_frame
 	print("[GearDrag] %d checks, %d failures" % [checks, failures])

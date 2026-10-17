@@ -11,7 +11,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	for kind in ([2] if "--bomb" in OS.get_cmdline_user_args() else ([3] if "--shield" in OS.get_cmdline_user_args() else [1, 3, 2])):
-		var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
+		var level := (load("res://test/fixtures/maps/base_level.tscn") as PackedScene).instantiate()
 		var creative = level.get_node("Creative")
 		creative.auto_save_edits = false
 		creative.auto_save_on_exit = false

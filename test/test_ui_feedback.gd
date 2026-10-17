@@ -107,7 +107,7 @@ func _run() -> void:
 	tool.disabled = true
 	await settle()
 	await create_timer(0.15).timeout
-	check("disabled tool clears pressed state and dims icon", not icon_feedback._held and icon.scale.is_equal_approx(Vector2.ONE) and is_equal_approx(icon.modulate.a, 0.4))
+	check("disabled tool clears pressed state and dims icon", not icon_feedback._held and icon.scale.is_equal_approx(Vector2.ONE) and is_equal_approx(icon.modulate.a, 0.6))
 	tool.disabled = false
 	await settle()
 	check("reenabling tool restores original ink color", icon.modulate == Color.WHITE)

@@ -1,36 +1,30 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://es804dhh0yq2"]
 
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="3_shape"]
-[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="4_material"]
-[ext_resource type="Resource" path="res://ink/black/asset/black.tres" id="5_black"]
-[ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="6_player_mat"]
+[ext_resource type="Script" uid="uid://bxeqry66jsq28" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_world"]
+[ext_resource type="Script" uid="uid://cjoigmrhvvtvx" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="2_body"]
+[ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="3_shape"]
+[ext_resource type="Script" uid="uid://chdh46srdqdtn" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="4_material"]
+[ext_resource type="Resource" uid="uid://5e73rqefu12n" path="res://ink/black/asset/black.tres" id="5_black"]
+[ext_resource type="Resource" uid="uid://dop00w2n0gy4f" path="res://actor/player/asset/player_body.tres" id="6_player_mat"]
 [ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="7_hand_mat"]
-[ext_resource type="Resource" path="res://ink/grey/asset/grey1.tres" id="8_grey"]
+[ext_resource type="Resource" uid="uid://c5na6wvehllwb" path="res://ink/grey/asset/grey1.tres" id="8_grey"]
 [ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="9_highlight"]
-[ext_resource type="Resource" path="res://ink/invisible/asset/invisible.tres" id="10_invisible"]
+[ext_resource type="Resource" uid="uid://b2t1po83jfw4e" path="res://ink/invisible/asset/invisible.tres" id="10_invisible"]
 [ext_resource type="Resource" path="res://actor/nail/asset/nail.tres" id="11_nail"]
-[ext_resource type="Resource" path="res://ink/red/asset/red.tres" id="12_red"]
+[ext_resource type="Resource" uid="uid://b7bwacj10315c" path="res://ink/red/asset/red.tres" id="12_red"]
 [ext_resource type="Resource" path="res://ink/yellow/asset/yellow.tres" id="13_yellow"]
-[ext_resource type="PackedScene" path="res://actor/player/player.tscn" id="14_player"]
-[ext_resource type="Script" path="res://actor/fountain/src/ink_fountain.gd" id="15_01k4q"]
-[ext_resource type="PackedScene" path="res://actor/canvas/canvas.tscn" id="15_canvas"]
-[ext_resource type="Script" path="res://actor/player/src/player_camera.gd" id="16_camera"]
-[ext_resource type="Script" path="res://actor/canvas/src/canvas.gd" id="17_q7lou"]
+[ext_resource type="PackedScene" uid="uid://1n64fxhxd3hf" path="res://actor/player/player.tscn" id="14_player"]
+[ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/canvas.tscn" id="15_canvas"]
+[ext_resource type="Script" uid="uid://dcqnoa67srpgu" path="res://actor/player/src/player_camera.gd" id="16_camera"]
 [ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="17_runtime"]
-[ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="18_creative"]
+[ext_resource type="Script" uid="uid://dvtycwuj0keul" path="res://debug/creative/src/creative.gd" id="18_creative"]
 [ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="19_debug"]
-[ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="21_01k4q"]
-[ext_resource type="Script" path="res://debug/creative/src/map_dialogue_trigger.gd" id="21_dialogue"]
-[ext_resource type="Texture2D" path="res://map/second/asset/house.svg" id="22_house"]
+[ext_resource type="Script" uid="uid://clt3jhbihx276" path="res://debug/creative/src/map_dialogue_trigger.gd" id="21_dialogue"]
+[ext_resource type="Texture2D" uid="uid://775v3eocluh4" path="res://map/second/asset/house.svg" id="22_house"]
 [ext_resource type="PackedScene" path="res://actor/monster/bomb_side.tscn" id="22_q7lou"]
-[ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="23_01k4q"]
 [ext_resource type="PackedScene" path="res://actor/fountain/ink_fountain.tscn" id="23_fountain"]
-[ext_resource type="Script" path="res://actor/portal/src/map_portal.gd" id="25_portal"]
-[ext_resource type="Script" path="res://debug/hud/src/debug_hud.gd" id="28_vc7ke"]
-[ext_resource type="Script" path="res://root/src/simulation_runtime.gd" id="30_6fm3t"]
-[ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="31_vh8lw"]
+[ext_resource type="Script" uid="uid://m2e2dl6rx48" path="res://actor/portal/src/map_portal.gd" id="25_portal"]
+[ext_resource type="Script" uid="uid://msw52rtj66lr" path="res://actor/ink_item/src/ink_item.gd" id="31_vh8lw"]
 
 [sub_resource type="Image" id="Image_1mg4a"]
 data = {
@@ -70,23 +64,17 @@ texture = ExtResource("22_house")
 color = Color(1, 1, 1, 0.78)
 polygon = PackedVector2Array(-62, -188, -39, -208, -16, -195, -28, -163, -56, -159)
 
-[node name="InkFountain" type="Node2D" parent="Scenery" unique_id=742164594 groups=["ink_fountain"] instance=ExtResource("23_fountain")]
+[node name="InkFountain" parent="Scenery" unique_id=742164594 instance=ExtResource("23_fountain")]
 position = Vector2(1760, 335)
-script = ExtResource("15_01k4q")
 
-[node name="SmallCanvas" type="Node2D" parent="." unique_id=2096653667 groups=["play_canvas"] instance=ExtResource("15_canvas")]
+[node name="SmallCanvas" parent="." unique_id=2096653667 groups=["play_canvas"] instance=ExtResource("15_canvas")]
 process_physics_priority = 18
-z_index = -1
 position = Vector2(760, 90)
-script = ExtResource("17_q7lou")
-canvas_size = Vector2i(400, 280)
 
-[node name="MapCanvas" type="Node2D" parent="." unique_id=34613237 instance=ExtResource("15_canvas")]
+[node name="MapCanvas" parent="." unique_id=34613237 instance=ExtResource("15_canvas")]
 process_physics_priority = 18
 visible = false
-z_index = -1
 position = Vector2(-512, -256)
-script = ExtResource("17_q7lou")
 canvas_size = Vector2i(3072, 1024)
 active = false
 
@@ -109,29 +97,22 @@ visible = false
 script = ExtResource("3_shape")
 rect_size = Vector2i(38, 172)
 
-[node name="Player" type="Node2D" parent="." unique_id=892724216 groups=["player"] instance=ExtResource("14_player")]
+[node name="Player" parent="." unique_id=892724216 groups=["player"] instance=ExtResource("14_player")]
 position = Vector2(300, 315)
-script = ExtResource("21_01k4q")
-can_sleep = false
 
 [node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1989801454 groups=["player_spawn"]]
 position = Vector2(300, 315)
 
 [node name="Monsters" type="Node2D" parent="." unique_id=151386181]
 
-[node name="BombSide" type="Node2D" parent="Monsters" unique_id=1785532272 groups=["map_monster"] instance=ExtResource("22_q7lou")]
+[node name="BombSide" parent="Monsters" unique_id=1785532272 instance=ExtResource("22_q7lou")]
 process_priority = 100
-z_index = 1000
 position = Vector2(628.31995, 304.82416)
-script = ExtResource("23_01k4q")
-display_name = "炸弹狂"
-editor_pick_radius = 78.0
+attack_cooldown_scale = null
+attack_windup_scale = null
+attack_range_scale = null
 editor_id = "monster-13344449-1"
-physical_enabled = true
 hit_polygon = PackedVector2Array()
-minimum_hit_speed = 15.0
-material_id = 6
-internal_render = false
 
 [node name="DialogueTriggers" type="Node2D" parent="." unique_id=311883970]
 
@@ -166,13 +147,10 @@ z_as_relative = false
 position = Vector2(2260, 350)
 script = ExtResource("25_portal")
 
-[node name="debugHUD" type="CanvasLayer" parent="." unique_id=1193339687 groups=["debug_hud"] instance=ExtResource("19_debug")]
-visible = false
-script = ExtResource("28_vc7ke")
+[node name="debugHUD" parent="." unique_id=1193339687 instance=ExtResource("19_debug")]
 
-[node name="SimulationRuntime" type="Node" parent="." unique_id=1274197441 instance=ExtResource("17_runtime")]
+[node name="SimulationRuntime" parent="." unique_id=1274197441 instance=ExtResource("17_runtime")]
 process_physics_priority = 1
-script = ExtResource("30_6fm3t")
 
 [node name="Creative" type="Node" parent="." unique_id=1165040463]
 process_physics_priority = 15
@@ -187,6 +165,7 @@ position = Vector2(-512, -256)
 script = ExtResource("31_vh8lw")
 
 [node name="@Node2D@493" type="Node2D" parent="Ink16" unique_id=1953714006]
+visible = false
 position = Vector2(1341, 655)
 script = ExtResource("3_shape")
 source = 3

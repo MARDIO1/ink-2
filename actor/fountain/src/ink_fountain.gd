@@ -10,9 +10,6 @@ const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 @export var refill_per_second := 9000.0
 @export var editor_pick_size := Vector2(270.0, 230.0)
 
-var _announced := false
-
-
 func _enter_tree() -> void:
 	add_to_group(GROUP, true)
 
@@ -41,15 +38,3 @@ func _physics_process(delta: float) -> void:
 	for index in InkPalette.ink_count():
 		var material_id := InkPalette.material_id_of(InkPalette.ink_at(index))
 		health.add(material_id, refill_per_second * delta)
-	if not _announced:
-		_announced = true
-		_show_dialogue(PackedStringArray([
-			"呼——活过来了！原来墨泉真的能把瓶子灌满。",
-			"以后缺墨时，回到泉边歇一会儿就好。"
-		]))
-
-
-func _show_dialogue(lines: PackedStringArray) -> void:
-	var dialogue := get_tree().get_first_node_in_group(&"dialogue_box")
-	if dialogue != null and dialogue.has_method("start_dialogue"):
-		dialogue.start_dialogue(lines)

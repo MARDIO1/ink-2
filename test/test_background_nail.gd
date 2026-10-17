@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
@@ -18,7 +18,7 @@ func _initialize() -> void:
 
 
 func run() -> void:
-	var scene = load("res://map/asset/imported/main.tscn").instantiate()
+	var scene = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame

@@ -1,7 +1,7 @@
 extends SceneTree
 
 const Portal := preload("res://actor/portal/src/map_portal.gd")
-const MAIN := preload("res://map/asset/imported/main.tscn")
+const MAIN := preload("res://test/fixtures/maps/base_level.tscn")
 var failures := 0
 var checks := 0
 
@@ -184,11 +184,11 @@ func _run() -> void:
 	var app = (load("res://root/root.tscn") as PackedScene).instantiate()
 	root.add_child(app)
 	await process_frame
-	var first_loaded: bool = await app.request_level_change("res://map/asset/imported/main.tscn")
+	var first_loaded: bool = await app.request_level_change("res://test/fixtures/maps/base_level.tscn")
 	_check("real async router loads level and UI", first_loaded and app.get_node("Level").get_child_count() == 1 \
 		and app.get_node("UI").get_child_count() == 1)
 	var old_level: WeakRef = weakref(app.get_node("Level").get_child(0))
-	var second_loaded: bool = await app.request_level_change("res://map/asset/imported/main.tscn")
+	var second_loaded: bool = await app.request_level_change("res://test/fixtures/maps/base_level.tscn")
 	await process_frame
 	_check("second transition replaces old level", second_loaded and old_level.get_ref() == null \
 		and app.get_node("Level").get_child_count() == 1)

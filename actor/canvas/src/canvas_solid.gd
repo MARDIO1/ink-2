@@ -6,7 +6,8 @@ extends Node
 
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
-const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
+const YellowAxle := preload("res://ink/yellow/src/axle.gd")
+const AxleScene := preload("res://ink/yellow/axle.tscn")
 const ANCHOR_TAG := "static_anchor_points"
 ## 墨水物品所在的组；存关卡时用它区分"画出来的东西"和地形/生物。
 const INK_GROUP := "ink_item"
@@ -51,7 +52,21 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 
 	var pos: Vector2 = surface.global_position
 	var size: Vector2i = surface.canvas_size
-
+	var centers: PackedVector2Array = surface.gear_centers.duplicate()
+	# 轴心压在黄墨杠杆/导轨上时，轮子是"套在轴杆上"：黄墨一个像素都不能动，
+	# 否则杠杆会在这里被切成两段。空闲轴心才把轴盘并进轮体。
+	for center in centers:
+		var origin := Vector2i(center.floor())
+		if _hub_on_rod(surface, origin):
+			continue
+		for y in range(-3, 4):
+			for x in range(-3, 4):
+				if x * x + y * y > 9:
+					continue
+				var at := origin + Vector2i(x, y)
+				if surface._inside(Vector2(at)) and surface.rod_layer.pixels.get_pixelv(at).a > 0.5:
+					surface._set_pixel_raw(at, InkPalette.YELLOW.color)
+					surface.rod_layer.pixels.set_pixelv(at, Color.TRANSPARENT)
 	# 先按块收集墨水（块级拷贝，见 _scan_block），再只扫描实体与画布相交的局部区域。
 	var shape = PixelShape.new()
 	var white = PixelShape.new()
@@ -79,13 +94,8 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	var blue_pixels: Dictionary = surface.blue_layer.mask.duplicate()
 	if blue != null:
 		blue.merge_shape(surface, shape)
-	var previous: Array = world.world.bodies.duplicate()
 	var ink_pixels: int = shape.pixel_count()
 	var overlap_bodies: Array = world.world.bodies.duplicate()
-	# 齿轮通过轴承与支座分层重叠；墨化后再固化不能把支座的轴心挖掉。
-	for child in world.get_children():
-		if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
-			overlap_bodies.erase(child.yellow_anchor.body)
 	var rejected_pixels: int = _remove_overlaps(shape, surface, overlap_bodies)
 
 	# 连通分量 -> 刚体。静态岛再按 BLOCK_SIZE 切块：破坏代价于是以块封顶。
@@ -128,8 +138,10 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 			total_pixels += white.pixel_count()
 
 	if spawned == 0:
-		if ink_pixels > 0:
-			surface.clear()
+		if blue != null:
+			blue.attach_wires(surface, world.world.bodies, blue_pixels)
+		if ink_pixels > 0 or not blue_pixels.is_empty():
+			surface.clear(false)
 		print("SOLID bodies=0 pixels=0 rejected=%d" % rejected_pixels)
 		return
 
@@ -137,11 +149,11 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	if blue != null:
 		var created: Array = []
 		for body in world.world.bodies:
-			if not previous.has(body):
+			if not overlap_bodies.has(body):
 				created.append(body)
 		blue.attach_wires(surface, created, blue_pixels)
 	surface.clear(false, true) # 黄墨随后由 RodLayer 固化；其余墨水已经被刚体带走
-	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
+	print("SOLID bodies=%d pixels=%d rejected=%d ink=%d" % [spawned, total_pixels, rejected_pixels, ink_pixels])
 
 
 ## 画布按 BLOCK_SIZE 切出来的块（画布坐标，已裁到画布与 black_image 内）。
@@ -369,20 +381,16 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		push_error("CanvasSolid.rasterize: 参数无效")
 		return
 	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
-	var targets: Array = []
-	# 齿轮保持独立部件，避免墨化时与背后的支座焊成一个静态岛。
-	var gears := {}
 	if not keep_bodies:
-		for child in world.get_children():
-			if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
-				gears[child.yellow_anchor.body] = true
+		reclaim_axles(surface, world, Rect2i(Vector2i.ZERO, surface.canvas_size))
+	var targets: Array = []
 	for child in world.get_children():
 		#⚠️ 只认刚体节点本身：Nail 这种外观节点也带 body 属性，
 		#   按 body 过滤会把它当刚体收走 —— remove_body_node 参数类型不符，直接报错/崩溃。
 		if not child is PixelBody2D:
 			continue
 		var body = child.get("body")
-		if body == null or body.tags.has(LIVING_TAG) or gears.has(body):
+		if body == null or body.tags.has(LIVING_TAG):
 			continue
 		if body.aabb.intersects(canvas_rect):
 			targets.append(child)
@@ -428,21 +436,22 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 ## 把框内的固化像素采样回画布并从世界实体中摘除。
 ## 与完整“返回画布”不同，这里保留钉子材质，供框删撤销时精确恢复到画布。
 func rasterize_rect(surface, world, local_rect: Rect2i, moved_pixels: Dictionary = {},
-		mask: Dictionary = {}) -> int:
+		mask: Dictionary = {}, skip_bodies: Dictionary = {}) -> int:
 	if world == null or surface == null or local_rect.size.x <= 0 or local_rect.size.y <= 0:
 		return 0
 	var clipped := local_rect.intersection(Rect2i(Vector2i.ZERO, surface.canvas_size))
 	if clipped.size.x <= 0 or clipped.size.y <= 0:
 		return 0
 	if surface.blue_rule() != null:
-		surface.blue_rule().reclaim(surface, clipped)
+		surface.blue_rule().reclaim(surface, clipped, skip_bodies)
+	reclaim_axles(surface, world, clipped, mask)
 	var world_rect := Rect2(surface.to_global(Vector2(clipped.position)), Vector2(clipped.size))
 	var targets: Array = []
 	for child in world.get_children():
 		if not child is PixelBody2D:
 			continue
 		var body = child.get("body")
-		if body == null or body.tags.has(LIVING_TAG):
+		if body == null or body.tags.has(LIVING_TAG) or skip_bodies.has(body):
 			continue
 		if body.aabb.intersects(world_rect):
 			targets.append(child)
@@ -552,7 +561,7 @@ func sync_serializable_bodies(world) -> void:
 		_write_body_node(body_node, body, world)
 	world.realign_body_nodes()
 	for child in world.get_children():
-		if child is GearBearing and not child.is_queued_for_deletion():
+		if child is YellowAxle and not child.is_queued_for_deletion():
 			child._process(0.0)
 
 
@@ -790,3 +799,79 @@ func _canvas_color(surface, material: int):
 	var color: Color = InkPalette.color_for_material_id(material)
 	return color if color.a > 0.0 else null
 #endregion
+
+## 固化后只创建标准铰链；没有独立齿轮拖动、复制轮廓或蓝墨跟随分支。
+##
+## 齿轮现在是一整块单色墨水，中心没有黄色轴点，所以这里**不能**再按黄墨找轮体：
+## 直接用中心格上的实际墨水，`gear_material` 记成那个材质。
+func create_axles(surface, host, centers: PackedVector2Array) -> void:
+	for center in centers:
+		var point: Vector2 = host.to_local(surface.to_global(center))
+		# 轮子套在黄墨轴杆/杠杆上：铰链直接连到那一节黄墨刚体，
+		# 轮子绕杆转，杆保持完整（不再钉到世界）。
+		var rod: Dictionary = YellowAxle.find_material(host.world, point, InkPalette.YELLOW.id)
+		if not rod.is_empty():
+			var wheel: Dictionary = YellowAxle.find_support(host.world, point, rod.body)
+			if not wheel.is_empty():
+				if _has_manual_gear_bearing(surface, host, wheel.body, center):
+					continue
+				var hub = AxleScene.instantiate()
+				hub.gear_material = int(wheel.material)
+				hub.support_material = InkPalette.YELLOW.id
+				hub.yellow_position = point
+				hub.black_position = point
+				hub.yellow_anchor = wheel
+				hub.black_anchor = rod
+				hub.fixed_to_world = false
+				# 黄墨本身已经是轴心，不再叠一个轴承贴图。
+				hub.hide_bearing = true
+				host.add_child(hub)
+				hub.owner = host
+				hub.connect_joint()
+				hub._process(0.0)
+				continue
+		var anchor: Dictionary = YellowAxle.find_support(host.world, point)
+		if anchor.is_empty():
+			continue
+		if _has_manual_gear_bearing(surface, host, anchor.body, center):
+			continue
+		var axle = AxleScene.instantiate()
+		axle.gear_material = int(anchor.material)
+		axle.yellow_position = point
+		axle.black_position = point
+		axle.yellow_anchor = anchor
+		axle.fixed_to_world = true
+		host.add_child(axle)
+		axle.owner = host
+		axle.connect_joint()
+		axle._process(0.0)
+
+## 手动轴承优先；只认同一轮体上的有效连接，不能借用旁边物件的轴承。
+func _has_manual_gear_bearing(surface, host, wheel, center: Vector2) -> bool:
+	var point: Vector2 = host.to_local(surface.to_global(center))
+	return YellowAxle.manual_bearing_at(host, wheel, point) != null
+
+## 轴心附近有没有黄墨；有就说明轮子套在轴杆/杠杆上，不能把黄墨搬进轮体。
+func _hub_on_rod(surface, origin: Vector2i) -> bool:
+	for y in range(-2, 3):
+		for x in range(-2, 3):
+			var at := origin + Vector2i(x, y)
+			if surface._inside(Vector2(at)) and surface.rod_layer.pixels.get_pixelv(at).a > 0.5:
+				return true
+	return false
+
+
+## 墨化回收轴心为普通草稿元数据，框选移动/旋转也沿用同一路径。
+func reclaim_axles(surface, host, rect: Rect2i, mask: Dictionary = {}) -> void:
+	for child in host.get_children().duplicate():
+		if not child is YellowAxle or child.is_queued_for_deletion() or child.yellow_anchor.is_empty():
+			continue
+		var point: Vector2 = surface.to_local(host.to_global(child.Stroke.anchor_world(child.yellow_anchor)))
+		var at := Vector2i(point.floor())
+		if not rect.has_point(at) or not SelectionMask.contains(mask, at):
+			continue
+		if not surface.gear_centers.has(point):
+			surface.gear_centers.append(point)
+		child.remove_joint()
+		host.remove_child(child)
+		child.queue_free()

@@ -2,17 +2,20 @@ extends CanvasLayer
 ## 软件指针只接管游戏窗口；不拦截 GUI 或改变绘画、选框的鼠标坐标。
 
 const CANVAS_TEXTURE := preload("res://ui/cursor/asset/canvas_cursor.png")
+const LARGE_CANVAS_TEXTURE := preload("res://ui/cursor/asset/canvas_cursor_large.png")
 const WORLD_TEXTURE := preload("res://ui/cursor/asset/world_cursor.png")
-const CANVAS_HOTSPOT := Vector2(30, 30)
+const CANVAS_HOTSPOT := Vector2(20, 20)
 const WORLD_HOTSPOT := Vector2(8, 4)
 const Tool := preload("res://actor/canvas/src/canvas_surface.gd").Tool
-## 素材的可见圆环占 52×52，其余为透明留边。
-const RING_DIAMETER := 52.0
+## 40×40 素材的可见轮廓占 32×32，其余为透明留边。
+const RING_DIAMETER := 32.0
+const LARGE_RING_DIAMETER := 52.0
+const LARGE_CANVAS_HOTSPOT := Vector2(30, 30)
 
 ## 原素材的每个像素块为 4×4；还原为逻辑像素，再随游戏窗口统一缩放。
 @export_range(0.1, 2.0, 0.05) var display_scale := 0.25
 ## 逻辑屏幕像素；极细笔触、镜头缩远时也不让圆环缩成不可见的点。
-@export_range(8.0, 32.0, 1.0) var minimum_ring_diameter := 12.0
+@export_range(8.0, 32.0, 1.0) var minimum_ring_diameter := 10.0
 @onready var pointer: TextureRect = $Pointer
 var _mouse_in_window := true
 var _owns_mouse := false
@@ -20,6 +23,9 @@ var _previous_mouse_mode := Input.MOUSE_MODE_VISIBLE
 
 
 func _ready() -> void:
+	var contrast := ShaderMaterial.new()
+	contrast.shader = preload("res://ui/cursor/src/invert_cursor.gdshader")
+	pointer.material = contrast
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_priority = 100
 	get_window().mouse_entered.connect(_on_mouse_entered)
@@ -64,6 +70,12 @@ func _canvas_at(screen_position: Vector2) -> Node:
 
 
 func _process(_delta: float) -> void:
+	# 切屏期间主线程会被场景实例化/物理烘焙长时间占住，软件指针只能跟着卡。
+	# 这段时间交还给系统指针：它在操作系统层绘制，游戏掉帧时依然能动。
+	var transition := get_node_or_null("/root/SceneTransition")
+	if transition != null and transition.get("busy") == true:
+		_release_mouse()
+		return
 	var screen_position := get_viewport().get_mouse_position()
 	var enabled := _mouse_in_window and get_window().has_focus() and _has_gameplay()
 	_refresh_cursor(screen_position, enabled, get_viewport().gui_get_hovered_control() != null)
@@ -73,8 +85,9 @@ func _ring_scale(canvas: Node) -> Vector2:
 	var surface: Node2D = canvas.get_node("CanvasSurface")
 	var transform := surface.get_global_transform_with_canvas()
 	var diameter := float(maxi(1, surface.brush_size))
+	var image_diameter := LARGE_RING_DIAMETER if surface.brush_size > 10 else RING_DIAMETER
 	return Vector2(maxf(minimum_ring_diameter, diameter * transform.x.length()),
-		maxf(minimum_ring_diameter, diameter * transform.y.length())) / RING_DIAMETER
+		maxf(minimum_ring_diameter, diameter * transform.y.length())) / image_diameter
 
 
 func _uses_ring(canvas: Node) -> bool:
@@ -103,6 +116,9 @@ func _refresh_cursor(screen_position: Vector2, enabled: bool, over_gui: bool) ->
 	var in_canvas := canvas != null and _uses_ring(canvas)
 	var texture: Texture2D = CANVAS_TEXTURE if in_canvas else WORLD_TEXTURE
 	var hotspot := CANVAS_HOTSPOT if in_canvas else WORLD_HOTSPOT
+	if in_canvas and canvas.get_node("CanvasSurface").brush_size > 10:
+		texture = LARGE_CANVAS_TEXTURE
+		hotspot = LARGE_CANVAS_HOTSPOT
 	var texture_scale := _ring_scale(canvas) if in_canvas else Vector2.ONE * display_scale
 	var rotation: float = canvas.get_node("CanvasSurface").get_global_transform_with_canvas().get_rotation() if in_canvas else 0.0
 	pointer.texture = texture

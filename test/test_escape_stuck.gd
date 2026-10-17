@@ -22,7 +22,7 @@ func _run() -> void:
 	root.add_child(app)
 	current_scene = app
 	root.get_node("SceneTransition").duration = 0.01
-	await app.request_level_change("res://map/asset/imported/第一关.tscn")
+	await app.request_level_change("res://map/asset/imported/第一页.tscn")
 	await process_frame
 	var level: Node = app.level_root.get_child(0)
 	var recovery: Node = level.get_node("Player/FallDeath")
@@ -71,7 +71,7 @@ func _run() -> void:
 	_check("deleted checkpoint safely skipped", restored and body.position.is_equal_approx(points[0].global_position))
 	var previous_point_id := points[0].get_instance_id()
 	# 使用带固定支撑的基础关卡，避免编辑中的教程地图影响出生点回退验证。
-	await app.request_level_change("res://map/asset/imported/main.tscn")
+	await app.request_level_change("res://test/fixtures/maps/base_level.tscn")
 	await process_frame
 	var next: Node = app.level_root.get_child(0).get_node("Player/FallDeath")
 	var leaked_visit := false

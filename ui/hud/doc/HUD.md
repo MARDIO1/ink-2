@@ -4,7 +4,15 @@
 `game_ui.tscn` 由 `root/root.tscn` 挂在 `UI` 容器下，所以 HUD 与关卡不在同一棵子树。
 **瓶内液面 = 墨水量**（`Root/BottleFill`，`TextureProgressBar` + `fill_mode=3` 自下而上 +
 `ui/hud/asset/bottle_fill.svg` 当瓶形遮罩），瓶身线稿 `Root/HealthArt`
-（`ui/hud/asset/health_hud.tres`）盖在液面之上；顶部横条 `ColorInkBar` 分为灰、红、黄、白四段，各段按自身剩余量显示，并在相邻已填满段的接缝处渐变混色。`HealthBar` 仍同步黑墨数值供旧逻辑读取，但其旧黑色填充不再显示。
+（`ui/hud/asset/health_hud.tres`）盖在液面之上；顶部横条 `ColorInkBar` 分为灰、红、黄、白、蓝五段，
+顺序跟随 `InkPalette.INKS`（去掉黑墨），各段按自身剩余量显示，并在相邻已填满段的接缝处渐变混色。
+每段满量占横条的等分之一，段数由 `ColorInkBar.MATERIALS` 决定 —— 再加一种墨水只要在那里追加。
+**彩色段从左内沿开始连续堆叠，缺墨留下的空位集中在右端**：某种墨见底时后面的色段会整体左移，
+而不会把整条彩色内容推向右边。
+`HealthBar` 仍同步黑墨数值供旧逻辑读取，但其旧黑色填充不再显示。
+
+`ColorInkBar` 的控件矩形（场景里 164→552）与 `health_hud.png` 里画框的内沿完全重合
+（贴图 656→2208，按 0.25 缩放）。改横条位置前先量这两个数，不要靠平移控件去「修」对齐。
 右上角 `Root/ExitButton`（`ui/esc/asset/exit.tres`）回主菜单；它左侧的 `Root/LogButton`
 使用 `ui/hud/asset/dialogue_log.png`，打开本次游玩中已经实际显示过的对话记录。
 

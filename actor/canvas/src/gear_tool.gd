@@ -1,9 +1,6 @@
 extends Node2D
-## 编辑器齿轮预览与独立像素部件；不把齿轮焊进背后的画布支座。
+## 按当前选色落一整块墨水轮廓；轴心只记进 `gear_centers`，固化时再按中心格找轮体建铰链。
 const Palette := preload("res://ink/general/src/ink_palette.gd")
-const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
-const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
-const Bearing := preload("res://actor/canvas/src/gear_bearing.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const MIN_RADIUS := 12.0
 const DEFAULT_TEETH := 12
@@ -12,7 +9,7 @@ var dragging := false
 var center := Vector2.ZERO
 var radius := 0.0
 var polygon := PackedVector2Array()
-## 落笔时记录选色，预览、像素实体和轴承始终使用同一种材质。
+## 落笔用的墨水材质；整个齿轮都是这一种颜色。
 var ink_material: int = Palette.GREY.id
 
 static func outline(reach: float, tooth_count := DEFAULT_TEETH) -> PackedVector2Array:
@@ -55,7 +52,7 @@ func _draw() -> void:
 	var border := polygon.duplicate()
 	border.append(polygon[0])
 	draw_polyline(border, Color(0.95, 0.72, 0.08), 1.0)
-	draw_circle(Vector2.ZERO, 4.0, Color(0.95, 0.72, 0.08), false, 1.0)
+	# 中心只留一个十字准星；预览里也不画黄点，避免和落笔结果不一致。
 	draw_line(Vector2(-6, 0), Vector2(6, 0), Color.BLACK)
 	draw_line(Vector2(0, -6), Vector2(0, 6), Color.BLACK)
 
@@ -65,52 +62,46 @@ func finish(point: Vector2):
 	update_preview(point)
 	dragging = false
 	queue_redraw()
-	var canvas = get_parent().get_parent()
+	var surface = get_parent()
+	var canvas = surface.get_parent()
 	if not canvas._map_editor_mode or radius < MIN_RADIUS:
 		return null
-	# 固化支座会清空画布并取消预览，先保留本次齿轮轮廓。
-	var gear_polygon := polygon.duplicate()
-	var state: Dictionary = History.capture(canvas, true)
-	# 圆心下有未固化支座时，先按已有固化管线生成它，再安装轴承。
-	var cell := Vector2i(center.floor())
-	if get_parent().material_at(cell.x, cell.y) != 0:
-		canvas.generate(false)
-	var host = canvas.world
-	var axle: Vector2 = host.to_local(get_parent().to_global(center))
-	var support: Dictionary = Bearing.find_support(host.world, axle)
-	var support_mat: int = support.get("material", 0)
-	var extent := ceili(radius)
-	var image := Image.create_empty(extent * 2 + 1, extent * 2 + 1, false, Image.FORMAT_R8)
-	for y in image.get_height():
-		for x in image.get_width():
-			if Geometry2D.is_point_in_polygon(Vector2(x - extent, y - extent), gear_polygon):
-				image.set_pixel(x, y, Color8(ink_material, 0, 0, 255))
-	var node := InkItem.new()
-	node.name = "Gear%d" % host.get_child_count()
-	node.position = axle - Vector2.ONE * 0.5
-	node.add_to_group("ink_item", true)
-	var shape := ShapeNode.new()
-	shape.source = ShapeNode.Source.PAINT
-	shape.paint = image
-	shape.position = Vector2(-extent, -extent)
-	node.add_child(shape)
-	host.add_child(node)
-	node.owner = host
-	shape.owner = host
-	var body = host.add_body_node(node)
-	var bearing := Bearing.new()
-	bearing.teeth = teeth
-	bearing.gear_material = ink_material
-	bearing.support_material = support_mat
-	bearing.fixed_to_world = support.is_empty()
-	bearing.yellow_position = axle
-	bearing.black_position = axle
-	bearing.yellow_anchor = {"body": body, "cell": Vector2i.ZERO, "local": body.to_local(axle)}
-	bearing.black_anchor = support
-	host.add_child(bearing)
-	bearing.owner = host
-	bearing.wheel_path = bearing.get_path_to(node)
-	bearing.connect_joint()
-	bearing._process(0.0)
+	var cells := _outline_cells()
+	if _covers_nail(cells):
+		return null
+	var state: Dictionary = History.capture(canvas)
+	var color: Color = Palette.color_for_material_id(ink_material)
+	for at: Vector2i in cells:
+		surface._set_pixel_raw(at, color)
+	# 齿轮就是一整块普通墨水：中心不再画黄色轴点，轴心只记在 gear_centers 里，
+	# 固化时 create_axles 按中心格的实际墨水找轮体。
+	if not surface.gear_centers.has(center):
+		surface.gear_centers.append(center)
+	surface._flush_texture()
+	surface._flush_ink()
 	History.commit(canvas, state)
-	return bearing
+	polygon.clear()
+	return surface
+
+func _outline_cells() -> Dictionary:
+	var surface = get_parent()
+	var extent := ceili(radius)
+	var origin := Vector2i(center.floor()) - Vector2i(extent, extent)
+	var cells: Dictionary = {}
+	for j in range(-extent, extent + 1):
+		for i in range(-extent, extent + 1):
+			if not Geometry2D.is_point_in_polygon(Vector2(i, j), polygon):
+				continue
+			var at := origin + Vector2i(i + extent, j + extent)
+			if surface._inside(Vector2(at)):
+				cells[at] = true
+	return cells
+
+
+func _covers_nail(cells: Dictionary) -> bool:
+	var surface = get_parent()
+	var nail := Palette.nail_material_id()
+	for at: Vector2i in cells:
+		if surface.material_at(at.x, at.y) == nail:
+			return true
+	return false

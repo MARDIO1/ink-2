@@ -1,8 +1,8 @@
 extends SceneTree
-const Codec := preload("res://actor/blueprint/src/blueprint_codec.gd")
-const Store := preload("res://actor/blueprint/src/blueprint_store.gd")
+const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
+const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
-const Bearing := preload("res://actor/canvas/src/gear_bearing.gd")
+const Bearing := preload("res://ink/yellow/src/axle.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
 const Motor := preload("res://ink/blue/src/motor.gd")
 var failures := 0
@@ -18,7 +18,7 @@ func check(label: String, condition: bool) -> void:
 		failures += 1
 
 func _run() -> void:
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	current_scene = level
@@ -94,7 +94,12 @@ func _run() -> void:
 	invalid = loaded.duplicate(true)
 	invalid.version = 999
 	check("unknown schema version rejected safely", not Store.validate(invalid))
-	check("delete is recoverable trash", store.trash(data.id) and store.list_all().is_empty())
+	check("delete removes the blueprint file", store.trash(data.id) and store.list_all().is_empty())
+	var trash_left := 0
+	for filename in DirAccess.get_files_at(store.directory):
+		if str(filename).ends_with(".trash"):
+			trash_left += 1
+	check("delete leaves no .trash behind", trash_left == 0)
 	# 黄墨杆、蓝线、弹簧和动力箭头各自保留层和语义。
 	surface.write_pixel(Vector2i(36, 20), Palette.BLACK.color)
 	surface.write_pixel(Vector2i(24, 20), Palette.BLACK.color)
@@ -148,66 +153,59 @@ func _run() -> void:
 	surface.undo_last_edit()
 	canvas.set_map_editor_mode(true)
 	surface.ink_free = true
-	# 齿轮通过原工具创建，再保存、复制和验证轴承。
+	# 导轨与滑块销：蓝图必须保存并回填这套元数据。
+	surface.write_pixel(Vector2i(60, 40), Palette.BLACK.color)
+	for x in range(58, 71):
+		surface.rod_layer.pixels.set_pixel(x, 44, Palette.YELLOW.color)
+	surface.rod_layer.rails.append({"a": Vector2(58.5, 44.5), "b": Vector2(70.5, 44.5), "width": 3})
+	surface.rod_layer.slider_pins.append({"source": Vector2(60.5, 40.5), "position": Vector2(60.5, 44.5)})
+	var rails_before: int = surface.rod_layer.rails.size()
+	var pins_before: int = surface.rod_layer.slider_pins.size()
+	var rail_data := Codec.capture(canvas, Rect2i(56, 36, 20, 12))
+	check("rail and slider pin captured", not rail_data.has("error")
+		and rail_data.rails.size() == 1 and rail_data.slider_pins.size() == 1
+		and rail_data.rods.size() == 13)
+	check("half captured rail rejected", Codec.capture(canvas, Rect2i(56, 36, 10, 12)).has("error"))
+	# 两端都在框外但导轨横穿选区：也算半个部件，必须拒绝。
+	surface.rod_layer.rails.append({"a": Vector2(40.5, 44.5), "b": Vector2(80.5, 44.5), "width": 3})
+	check("rail crossing the selection rejected", Codec.capture(canvas, Rect2i(56, 36, 10, 12)).has("error"))
+	surface.rod_layer.rails.remove_at(surface.rod_layer.rails.size() - 1)
+	rail_data.name = "导轨蓝图"
+	check("rail blueprint survives JSON", store.save(rail_data)
+		and store.read(rail_data.id).get("rails", []).size() == 1
+		and store.read(rail_data.id).get("slider_pins", []).size() == 1)
+	var placed := Codec.place(canvas, store.read(rail_data.id), Vector2i(100, 100))
+	check("rail placement restores rail and pin", placed.is_empty()
+		and surface.rod_layer.rails.size() == rails_before + 1
+		and Vector2(surface.rod_layer.rails[-1].a) == Vector2(102.5, 108.5)
+		and Vector2(surface.rod_layer.rails[-1].b) == Vector2(114.5, 108.5)
+		and surface.rod_layer.slider_pins.size() == pins_before + 1
+		and Vector2(surface.rod_layer.slider_pins[-1].source) == Vector2(104.5, 104.5)
+		and Vector2(surface.rod_layer.slider_pins[-1].position) == Vector2(104.5, 108.5))
+	check("rail placement undo restores metadata", surface.undo_last_edit()
+		and surface.rod_layer.rails.size() == rails_before
+		and surface.rod_layer.slider_pins.size() == pins_before)
+	surface.rod_layer.rails.remove_at(surface.rod_layer.rails.size() - 1)
+	surface.rod_layer.slider_pins.remove_at(surface.rod_layer.slider_pins.size() - 1)
+	# 新齿轮是普通墨水草稿，蓝图保存轴心而非立即复制刚体。
 	surface.selected_ink = 1
 	surface.gear_tool.begin(Vector2(70, 80), 8)
-	var bearing = surface.gear_tool.finish(Vector2(90.5, 80.5))
-	check("source gear created", bearing != null)
+	surface.gear_tool.finish(Vector2(90.5, 80.5))
 	var gear_data := Codec.capture(canvas, Rect2i(45, 55, 52, 52))
-	check("gear retains 8 teeth and independent body", not gear_data.has("error") and gear_data.gears.size() == 1 and gear_data.gears[0].teeth == 8 and gear_data.editor_only)
-	check("partial gear cannot silently flatten", Codec.capture(canvas, Rect2i(70, 80, 8, 8)).has("error"))
+	check("ink gear blueprint retains axle without editor-only restriction", not gear_data.has("error") and gear_data.gear_centers.size() == 1 and gear_data.gears.is_empty() and not gear_data.editor_only)
 	var count_before: int = level.world.bodies.size()
-	check("gear paste creates independent pinned wheel", Codec.place(canvas, gear_data, Vector2i(110, 55)).is_empty() and level.world.bodies.size() == count_before + 1)
-	var copied: Node
-	for child in level.get_children():
-		if child is Bearing and child != bearing and not child.is_queued_for_deletion():
-			copied = child
-	check("copied axle uses new body and local position", copied != null and copied.joint != null and copied.yellow_anchor.body != bearing.yellow_anchor.body and copied.yellow_position.is_equal_approx(Codec.world_point(canvas, Vector2(135.5, 80.5))))
-	check("gear undo removes body and axle together", surface.undo_last_edit() and level.world.bodies.size() == count_before)
-	check("gear redo restores joint", surface.redo_last_edit())
+	check("gear paste stays ink until solidified", Codec.place(canvas, gear_data, Vector2i(110, 55)).is_empty() and level.world.bodies.size() == count_before and surface.gear_centers.size() == 2)
+	check("gear paste undo restores draft axle count", surface.undo_last_edit() and surface.gear_centers.size() == 1)
+	check("gear paste redo restores draft axle", surface.redo_last_edit() and surface.gear_centers.size() == 2)
+	gear_data.name = "墨水齿轮"
+	check("gear draft persists as safe JSON", store.save(gear_data) and store.read(gear_data.id).gear_centers == gear_data.gear_centers)
 	canvas.set_map_editor_mode(false)
 	canvas._workbench_nearby = true
-	check("gameplay cannot bypass gear tool restriction", Codec.place(canvas, gear_data, Vector2i(180, 55)) == "含齿轮的蓝图仅编辑器可用")
+	check("ordinary ink gear blueprint works near gameplay canvas", Codec.place(canvas, gear_data, Vector2i(180, 55)).is_empty())
 	canvas.set_map_editor_mode(true)
-	canvas.canvas_size = Vector2i(640, 320)
-	# 同材质轮体与支座仍须保持两个实体，不焊成一块。
-	for y in range(100, 161):
-		for x in range(280, 341):
-			surface.write_pixel(Vector2i(x, y), Palette.BLACK.color)
-	surface.write_pixel(Vector2i(285, 105), Palette.nail_color())
-	surface.selected_ink = 0
-	surface.gear_tool.begin(Vector2(310, 130), 12)
-	var attached = surface.gear_tool.finish(Vector2(330.5, 130.5))
-	check("source 12-tooth gear attaches to object", attached != null and not attached.fixed_to_world)
-	check("omitted support is rejected", Codec.capture(canvas, Rect2i(285, 105, 50, 50)).has("error"))
-	var assembly := Codec.capture(canvas, Rect2i(270, 90, 80, 80))
-	check("complete same-color assembly stores wheel and support separately", not assembly.has("error") and assembly.bodies.size() == 2 and assembly.gears[0].support >= 0 and assembly.gears[0].teeth == 12)
-	assembly.name = "十二齿支座"
-	check("mechanical assembly persists as safe JSON", store.save(assembly))
-	var restored := store.read(assembly.id)
-	var placement_result := Codec.place(canvas, restored, Vector2i(450, 90))
-	check("loaded gear assembly places", placement_result.is_empty())
-	var axle: Node
-	for child in level.get_children():
-		if child is Bearing and not child.is_queued_for_deletion() and child.yellow_position.distance_to(Codec.world_point(canvas, Vector2(490.5, 130.5))) < 1:
-			axle = child
-	check("new assembly binds only its own support", axle != null and not axle.fixed_to_world and axle.yellow_anchor.body != axle.black_anchor.body and axle.black_anchor.body != attached.black_anchor.body and not axle.joint.contacts_enabled)
-	var camera = level.get_node("SimulationRuntime/PhysicsStep")._camera
-	camera.set_process(false)
-	camera.set_physics_process(false)
-	camera.global_position = canvas.global_position + Vector2(320, 160)
-	camera.reset_smoothing()
-	camera.force_update_scroll()
-	await process_frame
-	await process_frame
-	if axle != null:
-		axle.yellow_anchor.body.angular_velocity = 2.0
-		for _step in 90:
-			level.get_node("SimulationRuntime")._step(1.0 / 120.0)
-		print("COPY_GEAR_METRIC angle=", axle.yellow_anchor.body.rotation, " drift=", axle.joint.anchor_error().length(), " frozen=", axle.yellow_anchor.body.frozen, " static=", axle.yellow_anchor.body.is_static, " support_static=", axle.black_anchor.body.is_static)
-		check("copied wheel rotates with stable axle in real physics", absf(axle.yellow_anchor.body.rotation) > 0.5 and axle.joint.anchor_error().length() < 1.0)
-	else:
-		check("copied wheel rotates with stable axle in real physics", false)
+	canvas.generate(false)
+	var axles: Array = level.get_children().filter(func(node): return node is Bearing and not node.is_queued_for_deletion())
+	check("solidifying blueprint gears generates yellow axles", axles.size() == 3)
 	# 只清理本测试随机目录中的文件。
 	var folder := DirAccess.open(store.directory)
 	if folder != null:

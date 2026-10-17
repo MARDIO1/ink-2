@@ -73,6 +73,9 @@ func _ready() -> void:
 		call_deferred("_restore")
 
 func _restore() -> void:
+	var level := get_parent()
+	if level != null and level.get("body_bake_pending") == true:
+		await Signal(level, &"body_bake_completed")
 	if not activated or state != State.ACTIVE:
 		return
 	var world = get_parent().get("world")
@@ -265,16 +268,19 @@ func animate_death(delta: float) -> void:
 
 #region 锚点与物理
 static func find_anchor(world, point: Vector2) -> Dictionary:
-	var result: Dictionary = {}
+	var found: Array = []
 	for body in world.bodies:
 		if body.tags.has("living") or not body.aabb.has_point(point):
 			continue
 		var cell: Vector2i = Vector2i(body.to_local(point).floor())
 		if has_black(body, cell):
-			if not result.is_empty():
-				return {}
-			result = {"body": body, "cell": cell, "local": body.to_local(point)}
-	return result
+			found.append({"body": body, "cell": cell, "local": body.to_local(point)})
+	if found.size() == 1:
+		return found[0]
+	# 齿轮轮体和它的支座分层重叠：同一格两个刚体都有黑色。电机要带动的是会动的那个，
+	# 所以只有一个非静态候选时取它；两个都会动或者都不会动仍然算歧义。
+	var moving := found.filter(func(entry): return not entry.body.is_static)
+	return moving[0] if moving.size() == 1 else {}
 
 static func has_black(body, cell: Vector2i) -> bool:
 	for shape in body.shapes:

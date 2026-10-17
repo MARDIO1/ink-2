@@ -50,7 +50,7 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--fps="):
 			Engine.max_fps = int(arg.trim_prefix("--fps="))
-	world = load("res://map/asset/imported/main.tscn").instantiate()
+	world = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	world.auto_step = false
 	add_child(world)
 	await get_tree().process_frame

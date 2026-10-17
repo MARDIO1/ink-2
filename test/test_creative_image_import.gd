@@ -33,7 +33,7 @@ func _add_legacy_image(creative: Node, data: PackedByteArray, position: Vector2)
 
 
 func _run() -> void:
-	var level: Node = load("res://map/asset/imported/main.tscn").instantiate()
+	var level: Node = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	root.add_child(level)
 	_disable_physics(level)
 	await process_frame

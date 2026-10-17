@@ -1,6 +1,6 @@
 extends SceneTree
-const Codec := preload("res://actor/blueprint/src/blueprint_codec.gd")
-const Store := preload("res://actor/blueprint/src/blueprint_store.gd")
+const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
+const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 var checks := 0
 var failures := 0
@@ -16,9 +16,12 @@ func check(label: String, condition: bool) -> void:
 
 func _run() -> void:
 	var app = load("res://root/root.tscn").instantiate()
+	# 本测试只验证蓝图输入链；音乐由 test_audio_integration 覆盖。
+	app.menu_music = null
+	app.level_music = null
 	root.add_child(app)
 	current_scene = app
-	var level = app.load_level(load("res://map/asset/imported/main.tscn"))
+	var level = await app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
 	level.auto_step = false
 	app._set_screen(app.ui_scene.instantiate())
 	await process_frame
@@ -35,7 +38,10 @@ func _run() -> void:
 	var camera = level.get_node("SimulationRuntime/PhysicsStep")._camera
 	camera.set_process(false)
 	camera.set_physics_process(false)
+	camera.position_smoothing_enabled = false
+	camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	camera.global_position = canvas.global_position + Vector2(128, 128)
+	camera.reset_physics_interpolation()
 	camera.reset_smoothing()
 	camera.force_update_scroll()
 	var system = root.get_node("Blueprints")
@@ -93,6 +99,17 @@ func _run() -> void:
 	await process_frame
 	check("HUD opens unified library", system.modal and paused and system._items.size() == 1)
 	check("saved metadata appears in library", system._name.text == "折叠桥梁" and system._tags.text.contains("桥梁"))
+	# 回车必须和点「保存信息」等价，否则打完名字按回车会被静默丢弃。
+	system._name.text = "回车改名"
+	system._name.text_submitted.emit("回车改名")
+	check("enter commits the typed name", system.store.list_all()[0].name == "回车改名")
+	# 文件名直接就是名字；改名时旧文件跟着搬走。
+	var blueprint_folder: String = system.store.directory
+	check("file is named after the blueprint", FileAccess.file_exists(blueprint_folder.path_join("回车改名.inkbp")))
+	system._name.text = "改名后"
+	system._name.text_submitted.emit("改名后")
+	check("rename moves the file", FileAccess.file_exists(blueprint_folder.path_join("改名后.inkbp"))
+		and not FileAccess.file_exists(blueprint_folder.path_join("回车改名.inkbp")))
 	check("editor enables use without player proximity", not system._use.disabled)
 	system._toggle_favorite()
 	check("favorite persisted", system.store.list_all()[0].favorite)
@@ -118,6 +135,29 @@ func _run() -> void:
 	var live_data := Codec.capture(canvas, Rect2i(24, 24, 104, 80))
 	system.begin_placement(live_data)
 	var cursor: Vector2 = surface.get_global_transform_with_canvas() * Vector2(180, 180)
+	# 滚动容器外的工具按钮虽然仍在场景树内，不能拦截画布中的放置点击。
+	var clipped_scroll := ScrollContainer.new()
+	clipped_scroll.position = Vector2(5, 5)
+	clipped_scroll.size = Vector2(40, 40)
+	var scroll_contents := Control.new()
+	scroll_contents.custom_minimum_size = Vector2(1600, 1000)
+	clipped_scroll.add_child(scroll_contents)
+	var clipped_button := Button.new()
+	clipped_button.size = Vector2(40, 40)
+	scroll_contents.add_child(clipped_button)
+	var clipped_ui := CanvasLayer.new()
+	clipped_ui.add_child(clipped_scroll)
+	root.add_child(clipped_ui)
+	await process_frame
+	clipped_button.global_position = cursor - Vector2(20, 20)
+	check("clipped offscreen button does not block placement", not system._pointer_over_ui(cursor))
+	clipped_button.global_position = Vector2(10, 10)
+	check("visible button still blocks placement", system._pointer_over_ui(Vector2(20, 20)))
+	clipped_button.global_position = cursor - Vector2(20, 20)
+	system._update_placement(1.0, surface.get_global_transform_with_canvas() * Vector2(60, 60))
+	check("red preview explains the exact refusal near the ghost", not system._last_error.is_empty()
+		and system.placement_hint.text.begins_with("无法放置：")
+		and Rect2(Vector2.ZERO, root.get_visible_rect().size).encloses(system.placement_hint.get_global_rect()))
 	var motion := InputEventMouseMotion.new()
 	motion.position = cursor
 	root.push_input(motion, true)
@@ -129,6 +169,7 @@ func _run() -> void:
 	root.push_input(click, true)
 	await process_frame
 	check("real left click places ghost without painting through", not system.placing and surface.material_at(134, 146) == Palette.BLACK.id and not surface._painting)
+	clipped_ui.queue_free()
 	click.pressed = false
 	root.push_input(click, true)
 	surface.undo_last_edit()
@@ -155,7 +196,7 @@ func _run() -> void:
 	var data := Codec.capture(canvas, Rect2i(24, 24, 104, 80))
 	system.begin_placement(data)
 	check("placement preview starts before reload", system.placing)
-	app.load_level(load("res://map/asset/imported/main.tscn"))
+	await app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
 	app.level_root.get_child(0).auto_step = false
 	await process_frame
 	await process_frame

@@ -4,7 +4,7 @@ func _initialize() -> void:
 	run.call_deferred()
 
 func run() -> void:
-	var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
+	var level := (load("res://test/fixtures/maps/base_level.tscn") as PackedScene).instantiate()
 	for name in ["Box", "Gym"]:
 		level.get_node(name).free()
 	level.get_node("Ground").position.x = -2000.0

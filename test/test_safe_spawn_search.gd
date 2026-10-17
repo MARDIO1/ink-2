@@ -28,7 +28,7 @@ func _remove(body) -> void:
 	body.shapes.clear()
 
 func _run() -> void:
-	level = load("res://map/asset/imported/main.tscn").instantiate()
+	level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	root.add_child(level)
 	await process_frame
 	paused = true

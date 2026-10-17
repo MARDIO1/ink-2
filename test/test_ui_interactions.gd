@@ -1,7 +1,7 @@
 extends SceneTree
 ## 真实 Viewport 点击与键盘回归。地图不写盘，声音偏好使用独立测试路径。
-const Store := preload("res://actor/blueprint/src/blueprint_store.gd")
-const Codec := preload("res://actor/blueprint/src/blueprint_codec.gd")
+const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
+const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 var checks := 0
 var failures := 0
@@ -142,12 +142,12 @@ func _run() -> void:
 		if not transition.busy:
 			break
 	check("level selection Esc returns without quitting", app.ui_root.get_child(0).has_node("ButtonCenter") and not paused)
-	var level = app.load_level(load("res://map/asset/imported/main.tscn"))
+	var level = await app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
 	level.auto_step = false
 	var creative = level.get_node("Creative")
 	creative.auto_save_edits = false
 	creative.auto_save_on_exit = false
-	var original_map_hash := FileAccess.get_sha256("res://map/asset/imported/main.tscn")
+	var original_map_hash := FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn")
 	app._set_screen(app.ui_scene.instantiate())
 	await settle()
 	var game = app.ui_root.get_child(0)
@@ -246,21 +246,18 @@ func _run() -> void:
 	check("actual undo button uses mixed editor history", (not is_instance_valid(label) or not label.is_inside_tree()) and not history.redo_button.disabled)
 	await click(history.redo_button)
 	check("actual redo restores editor object", creative._ensure_text_container().get_children().any(func(node): return node.editor_id == label_id))
-	var player_visible: bool = level.get_node("Player").visible
-	await click(column.get_node("ViewActions/PlayerVisibility"))
-	check("visible player toggle controls editor preview", level.get_node("Player").visible != player_visible)
-	await click(column.get_node("ViewActions/PlayerVisibility"))
-	check("player toggle restores prior preview state", level.get_node("Player").visible == player_visible)
+	check("editor no longer offers player preview toggle", not column.has_node("ViewActions/PlayerVisibility"))
+	check("canvas no longer offers player preview toggle", not canvas.resize_panel.has_node("Grid/PlayerVisibility"))
 	var nails_visible: bool = canvas.surface.nail_layer.visible
 	await click(column.get_node("ViewActions/NailVisibility"))
 	check("visible nail toggle changes only visual layer", canvas.surface.nail_layer.visible != nails_visible)
 	await click(column.get_node("ViewActions/NailVisibility"))
 	check("nail toggle restores prior visibility", canvas.surface.nail_layer.visible == nails_visible)
 	await click(column.get_node("EditActions/SaveMapButton"))
-	check("save map button opens confirmation UI only", creative._map_save_window.visible and FileAccess.get_sha256("res://map/asset/imported/main.tscn") == original_map_hash)
+	check("save map button opens confirmation UI only", creative._map_save_window.visible and FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn") == original_map_hash)
 	creative._save_name_input.text = ""
 	await click(creative._map_save_window.get_node("Content/Actions/SaveButton"))
-	check("invalid map name shows actionable error without saving", creative._map_save_window.visible and creative._save_status.visible and FileAccess.get_sha256("res://map/asset/imported/main.tscn") == original_map_hash)
+	check("invalid map name shows actionable error without saving", creative._map_save_window.visible and creative._save_status.visible and FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn") == original_map_hash)
 	creative._save_name_input.text = "UI 临时地图不保存"
 	await click(creative._map_save_window.find_child("BrowseButton", true, false))
 	check("map save browse opens directory chooser", creative._save_directory_dialog.visible)
@@ -271,7 +268,7 @@ func _run() -> void:
 	await settle()
 	await click(creative._save_directory_dialog.get_ok_button())
 	check("directory confirmation fills original save form", not creative._save_directory_dialog.visible and creative._map_save_window.visible and creative._save_directory_input.text.trim_suffix("/") == "res://map/asset")
-	check("directory selection never writes or renames map", creative._save_name_input.text == "UI 临时地图不保存" and FileAccess.get_sha256("res://map/asset/imported/main.tscn") == original_map_hash)
+	check("directory selection never writes or renames map", creative._save_name_input.text == "UI 临时地图不保存" and FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn") == original_map_hash)
 	await click(creative._map_save_window.get_node("Content/Actions/CancelButton"))
 	check("map save cancel works", not creative._map_save_window.visible)
 	audit_buttons(creative._monster_palette)

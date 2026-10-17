@@ -11,10 +11,10 @@ extends Node
 @export_range(0.0, 20000.0, 1.0, "or_greater") var hurt_sound_threshold := 100.0
 ## 连续受伤时避免同一段声音过密重播。
 @export_range(0.0, 2.0, 0.01) var hurt_sound_cooldown := 0.25
+## 玩家中心进入以复活点为中心的此矩形后，死亡复活与“脱离卡死”才可选择该点。
+@export var checkpoint_visit_size := Vector2(200.0, 200.0)
 ## 达到受伤音效阈值后，整套玩家美术保持纯白的时间。
 @export_range(0.01, 0.5, 0.01) var hit_flash_duration := 0.08
-## 玩家进入此范围后，才允许“脱离卡死”返回该点；不会跳到未经过的点。
-@export var checkpoint_visit_radius := 80.0
 const PLAYER_SPAWN_NAME := "PlayerSpawn"
 const PLAYER_SPAWN_GROUP := &"player_spawn"
 const RESPAWN_POINT_PREFIX := "RespawnPoint"
@@ -430,12 +430,13 @@ func _update_visited_points() -> void:
 			if not _visited_points.has(spawn):
 				_visited_points.append(spawn) # 关卡出生点始终是安全回退目标。
 	var position: Vector2 = _body.com_world() if _body != null else level.to_local(_player.global_position)
+	var half_size := checkpoint_visit_size.abs() * 0.5
 	for point in _checkpoints:
 		if not is_instance_valid(point) or point.is_queued_for_deletion() \
 		or not level.is_ancestor_of(point) or _visited_points.has(point):
 			continue
-		if level.to_local(point.global_position).distance_squared_to(position) \
-		<= checkpoint_visit_radius * checkpoint_visit_radius:
+		var distance: Vector2 = (level.to_local(point.global_position) - position).abs()
+		if distance.x <= half_size.x and distance.y <= half_size.y:
 			_visited_points.append(point)
 
 

@@ -9,7 +9,7 @@ const Text := preload("res://ui/map_text/src/map_text_label.gd")
 const Dialogue := preload("res://debug/creative/src/map_dialogue_trigger.gd")
 const Portal := preload("res://actor/portal/src/map_portal.gd")
 const Fountain := preload("res://actor/fountain/ink_fountain.tscn")
-const PATH := "res://map/asset/imported/第一关.tscn"
+const PATH := "res://map/asset/imported/第一页.tscn"
 const OUTPUT := "res://map/asset/workshop/"
 var level: Node2D
 var roofs: Array[Image] = []
@@ -289,7 +289,7 @@ func _build() -> void:
 	portal.set_script(Portal)
 	portal.name = "WorkshopExit"
 	portal.position = Vector2(5760, 270)
-	portal.target_map = "res://map/second/第三关·墨泉边.tscn" if ResourceLoader.exists("res://map/second/第三关·墨泉边.tscn") else "res://map/asset/imported/peak.tscn"
+	portal.target_map = "res://map/asset/imported/第二页.tscn"
 	_own(portal)
 
 	var packed := PackedScene.new()
@@ -297,7 +297,7 @@ func _build() -> void:
 	assert(ResourceSaver.save(packed, PATH) == OK)
 	# 新地形已固化。清空旧编辑笔迹，防止 F2 重新读回原地图的大块墨水。
 	var blank := Image.create(6656, 1408, false, Image.FORMAT_RGBA8)
-	var snapshot := FileAccess.open("res://map/asset/imported/第一关.edit.snapshot", FileAccess.WRITE)
+	var snapshot := FileAccess.open("res://map/asset/imported/第一页.edit.snapshot", FileAccess.WRITE)
 	assert(snapshot != null)
 	snapshot.store_buffer(blank.save_png_to_buffer())
 	snapshot.close()

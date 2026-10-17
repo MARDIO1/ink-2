@@ -38,7 +38,7 @@ func settle(seconds := 0.5) -> void:
 			runtime.commit_fuel(scene.world, result.fuel_removals)
 
 func run() -> void:
-	scene = load("res://map/asset/imported/main.tscn").instantiate()
+	scene = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame
@@ -61,6 +61,26 @@ func run() -> void:
 		quit(0)
 		return
 	check("blue palette and bottle registered", Palette.ink_count() == 6 and blue_before > 0.0)
+	var pose_body := PBody.new()
+	pose_body.position = Vector2(37.0, -19.0)
+	pose_body.rotation = 0.63
+	var pose_parent := Node2D.new()
+	pose_parent.position = Vector2(91.0, 43.0)
+	pose_parent.rotation = -0.21
+	pose_parent.scale = Vector2(1.25, 1.25)
+	scene.add_child(pose_parent)
+	var pose_wire := Wire.new()
+	pose_wire.active = true
+	pose_wire.body = pose_body
+	pose_wire.cells = PackedVector2Array([Vector2(4, 7)])
+	pose_parent.add_child(pose_wire)
+	pose_wire.sync_pose()
+	var pose_cell := Vector2(4.5, 7.5)
+	var expected_cell: Vector2 = pose_parent.to_global(pose_body.to_world(pose_cell))
+	check("active wire texture follows the carrier global pose",
+		pose_wire.to_global(pose_cell).distance_to(expected_cell) < 0.01
+		and is_equal_approx(pose_wire.global_rotation, pose_parent.global_rotation + pose_body.rotation))
+	pose_parent.queue_free()
 	surface.brush_size = 3
 	surface.blue_layer.begin(Vector2(180.5, 120.5))
 	surface.blue_layer.extend(Vector2(190.5, 120.5))
@@ -375,7 +395,7 @@ func test_slip_ring() -> void:
 	check("destroyed bearing removes slip ring", motor.received_power == 0.0)
 
 func profile_blue() -> void:
-	print("Use res://map/test/blue_energy_stress.tscn -- --bench --case=chaos")
+	print("Use res://test/fixtures/maps/blue_energy_stress.tscn -- --bench --case=chaos")
 func test_power_sharing() -> void:
 	paint(Rect2i(20, 20, 160, 30), Color.BLACK)
 	paint(Rect2i(10, 25, 10, 12), Palette.RED.color)
@@ -446,7 +466,7 @@ func test_arrow_surface_and_grip() -> void:
 	settle(0.5)
 	check("gripping wire supplies marked biological energy", motor.received_power > 0.0 and motor.biological_energy > 0.0)
 	var weight: float = (player.body.mass + player.get_node("Arm").body.mass + hand.body.mass) * scene.world.gravity.length()
-	check("biological thrust cannot lift the player", motor.applied_force <= weight * 0.5)
+	check("biological thrust respects configured force ceiling", motor.applied_force <= weight * rule.biological_force_weight_ratio)
 	var bio_motors: Array = [motor]
 	for i in 3:
 		var extra := Motor.new()
@@ -463,7 +483,8 @@ func test_arrow_surface_and_grip() -> void:
 	var total_force := 0.0
 	for engine in bio_motors:
 		total_force += engine.applied_force
-	check("stacking biological motors shares one sub-weight thrust ceiling", total_force > 0.0 and total_force <= weight * 0.5 + 0.01)
+	check("stacking biological motors shares configured force ceiling", total_force > 0.0
+		and total_force <= weight * rule.biological_force_weight_ratio + 0.01)
 	hand._release_grab()
 	settle(0.8)
 	check("release stops biological supply and expires buffer", motor.received_power == 0.0 and motor.biological_energy == 0.0)

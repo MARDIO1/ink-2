@@ -24,6 +24,10 @@ export_presets.cfg
 *.swp
 *.swo
 
+# Windows 替换 DLL 时生成的隐藏备份（编辑器/构建脚本会反复产生）
+~*.dll
+~*.dll~RF*.TMP
+
 # OS metadata
 .DS_Store
 Thumbs.db

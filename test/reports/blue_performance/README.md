@@ -55,7 +55,7 @@
    现在每个“导线—电源”对独立缓存，只测其接触包围区域的边界像素；移动生物不重查同体红色。
    这是精确失效条件的调整，没有通过降频或延后断电换性能。
 
-主要代码位于 `ink/src/blue_ink.gd` 的 `_refresh_sources()`、`_topology_stamp()`、
+主要代码位于 `ink/blue/src/blue_ink.gd` 的 `_refresh_sources()`、`_topology_stamp()`、
 `_source_contact()`、`observe_fracture()`；`blue_wire_layer.gd` 缓存局部边界及边界查询表。
 本轮没有修改 addon、物理步长、红色引爆规则或功率收费语义。
 

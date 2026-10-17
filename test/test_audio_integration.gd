@@ -25,7 +25,7 @@ func _run() -> void:
 		and music.stream is AudioStreamOggVorbis
 		and (music.stream as AudioStreamOggVorbis).loop)
 
-	var level: Node = app.load_level(preload("res://map/asset/imported/main.tscn"))
+	var level: Node = await app.load_level(preload("res://test/fixtures/maps/base_level.tscn"))
 	await process_frame
 	_check("level music switches and loops", music.playing
 		and music.stream.resource_path.ends_with("Cartoon Spy Groove.ogg")

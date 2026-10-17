@@ -86,7 +86,7 @@ func _run() -> void:
 	check("scene still waits two continuous seconds", not first.advance_overlap(1.9, true, false) and first.advance_overlap(0.1, true, false) and not first.advance_overlap(5, true, false))
 	first.advance_overlap(0, false, false)
 	check("editor still disables portal activation", not first.advance_overlap(10, true, true) and first.overlap_time == 0)
-	first.target_map = "res://map/asset/imported/第一关.tscn"
+	first.target_map = "res://map/asset/imported/第一页.tscn"
 	first.position = Vector2(350, 200)
 	var packed := PackedScene.new()
 	check("portal instance can be packed with level", packed.pack(level) == OK)
@@ -102,7 +102,7 @@ func _run() -> void:
 	level.queue_free()
 	await process_frame
 	# 地图编辑器的新增、删除与撤销都通过相同 PackedScene。
-	var map = load("res://map/asset/imported/main.tscn").instantiate()
+	var map = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	map.auto_step = false
 	map.get_node("Creative").auto_save_edits = false
 	map.get_node("Creative").auto_save_on_exit = false
@@ -111,14 +111,14 @@ func _run() -> void:
 	await process_frame
 	var creative = map.get_node("Creative")
 	creative.active = true
-	var placed = creative.place_portal(Vector2(10000, -10000), "res://map/asset/imported/第一关.tscn")
+	var placed = creative.place_portal(Vector2(10000, -10000), "res://map/asset/imported/第一页.tscn")
 	placed.set_physics_process(false)
 	check("editor placement instantiates portal scene", placed.scene_file_path == "res://actor/portal/map_portal.tscn" and placed.owner == map and placed.has_node("PaperFrame"))
 	placed.portal_size = Vector2(210, 120)
 	creative.delete_portal(placed)
 	var undone: bool = creative.undo_last_edit()
 	var portal = creative._portals()[0] if not creative._portals().is_empty() else null
-	check("deletion undo restores scene instance and settings", undone and portal != null and portal.scene_file_path == "res://actor/portal/map_portal.tscn" and portal.portal_size == Vector2(210, 120) and portal.target_map == "res://map/asset/imported/第一关.tscn")
+	check("deletion undo restores scene instance and settings", undone and portal != null and portal.scene_file_path == "res://actor/portal/map_portal.tscn" and portal.portal_size == Vector2(210, 120) and portal.target_map == "res://map/asset/imported/第一页.tscn")
 	if portal != null:
 		portal.set_physics_process(false)
 	check("deletion redo removes portal", creative.redo_last_edit() and creative._portals().is_empty())

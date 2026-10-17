@@ -31,7 +31,7 @@ func _run() -> void:
 		push_error("rebake: 无法加载 %s" % path)
 		quit(3)
 		return
-	var level: Node = app.load_level(packed)
+	var level: Node = await app.load_level(packed)
 	app._set_screen(load("res://ui/game_ui.tscn").instantiate())
 	await process_frame
 	await physics_frame

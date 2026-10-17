@@ -32,7 +32,7 @@ func _button(point: Vector2, pressed: bool) -> void:
 func _run() -> void:
 	var cursor := root.get_node("InkCursor")
 	cursor.set_process(false)
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	var creative = level.get_node("Creative")
 	creative.auto_save_edits = false

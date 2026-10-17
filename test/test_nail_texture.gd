@@ -2,7 +2,7 @@ extends SceneTree
 const Nail := preload("res://actor/nail/src/nail.gd")
 const NailLayer := preload("res://actor/nail/src/nail_layer.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
-const Codec := preload("res://actor/blueprint/src/blueprint_codec.gd")
+const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const LevelList := preload("res://ui/level_select/src/level_select.gd")
 var failures := 0
 var checks := 0
@@ -42,7 +42,7 @@ func _run() -> void:
 	var icon = load("res://ui/asset/nail.tres")
 	check("toolbar retains supplied independent nail icon", icon.atlas.resource_path == "res://ui/asset/nail.png" and icon.region == Rect2(36, 40, 132, 128))
 	check("toolbar art stays separate from map nail texture", icon.atlas != Nail.NAIL_TEXTURE)
-	var level = load("res://map/asset/imported/main.tscn").instantiate()
+	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	level.get_node("Creative").auto_save_edits = false
 	level.get_node("Creative").auto_save_on_exit = false

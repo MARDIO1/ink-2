@@ -10,7 +10,7 @@ func check(label: String, condition: bool) -> void:
 	valid = valid and condition
 
 func run() -> void:
-	var level := (load("res://map/asset/imported/main.tscn") as PackedScene).instantiate()
+	var level := (load("res://test/fixtures/maps/base_level.tscn") as PackedScene).instantiate()
 	var creative = level.get_node("Creative")
 	creative.auto_save_edits = false
 	creative.auto_save_on_exit = false

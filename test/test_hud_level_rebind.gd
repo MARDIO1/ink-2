@@ -26,7 +26,7 @@ func _run() -> void:
 	var app = load("res://root/root.tscn").instantiate()
 	root.add_child(app)
 	current_scene = app
-	var level = app.load_level(load("res://map/asset/imported/main.tscn"))
+	var level = await app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
 	level.auto_step = false
 	app._set_screen(app.ui_scene.instantiate())
 	var hud = app.ui_root.get_child(0).get_node("Hud")

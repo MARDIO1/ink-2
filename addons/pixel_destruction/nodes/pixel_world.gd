@@ -32,6 +32,11 @@ const _PixelJoint2D := preload("res://addons/pixel_destruction/nodes/pixel_joint
 const PixelScale := preload("res://addons/pixel_destruction/core/pixel_scale.gd")
 const _PhysicsConfig := preload("res://addons/pixel_destruction/physics/physics_config.gd")
 
+@export_group("关卡墨水配额")
+## 开局各色墨水量（材质 ID -> 像素数）；未填的颜色沿用玩家 max_ink。
+## 黑 1、灰 4、红 8、黄 9、白 10、蓝 11。
+@export var starting_ink: Dictionary[int, float] = {}
+
 
 ## **每个固定步**走完时发出，参数就是这个世界。
 ##
@@ -45,6 +50,9 @@ const _PhysicsConfig := preload("res://addons/pixel_destruction/physics/physics_
 ## ⚠️ 为什么需要它：接触事件（world.contacts）**每步开头清空**，而一帧可能补多个 step ——
 ##    不挂在"步完成"上就没法保证"每次 step 的接触都被消费一次"。
 signal physics_step_finished(world)
+## Root 分帧挂回刚体期间，依赖物理锚点的节点在此屏障之后恢复。
+signal body_bake_completed
+var body_bake_pending := false
 
 # ⚠️⚠️ 下面每个旋钮的 setter 都会**立刻播到 world**（_push_knob）。这是硬契约：
 #    "改了 @export 就生效"。为什么必须这样 —— 它们以前**只在 rebuild() 里播一次**，

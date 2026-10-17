@@ -50,7 +50,7 @@ func _run() -> void:
 	check("menus keep system cursor", not cursor._has_gameplay())
 	cursor._refresh_cursor(Vector2(20, 20), false, false)
 	check("inactive overlay does not own mouse", not cursor.pointer.visible and not cursor._owns_mouse)
-	check("provided images retain original dimensions", cursor.CANVAS_TEXTURE.get_size() == Vector2(60, 60) and cursor.WORLD_TEXTURE.get_size() == Vector2(60, 76))
+	check("provided images retain original dimensions", cursor.CANVAS_TEXTURE.get_size() == Vector2(40, 40) and cursor.WORLD_TEXTURE.get_size() == Vector2(60, 76))
 	check("overlay ignores GUI input and runs while paused", cursor.pointer.mouse_filter == Control.MOUSE_FILTER_IGNORE and cursor.pointer.focus_mode == Control.FOCUS_NONE and cursor.process_mode == Node.PROCESS_MODE_ALWAYS and cursor.layer > 1000)
 	check("pixel art uses nearest filtering", cursor.pointer.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST)
 	var level := Node2D.new()
@@ -72,10 +72,17 @@ func _run() -> void:
 	if DisplayServer.get_name() != "headless":
 		check("system cursor is hidden while custom cursor is visible", Input.mouse_mode == Input.MOUSE_MODE_HIDDEN)
 	check("ring center is click hotspot", (cursor.pointer.position + cursor.pointer.size / 2).is_equal_approx(inside))
-	check("small brush retains minimum visible ring", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 12.0))
+	check("small brush retains minimum visible ring", is_equal_approx(cursor.pointer.size.x * 32.0 / 40.0, 10.0))
 	surface.brush_size = 1
 	cursor._refresh_cursor(inside, true, false)
-	check("single pixel brush stays visible", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 12.0))
+	check("single pixel brush stays visible", is_equal_approx(cursor.pointer.size.x * 32.0 / 40.0, 10.0))
+	surface.brush_size = 10
+	cursor._refresh_cursor(inside, true, false)
+	check("10px keeps small two-tone cursor", cursor.pointer.texture == cursor.CANVAS_TEXTURE)
+	surface.brush_size = 11
+	cursor._refresh_cursor(inside, true, false)
+	check("above 10px selects provided hollow ring", cursor.pointer.texture == cursor.LARGE_CANVAS_TEXTURE and cursor.LARGE_CANVAS_TEXTURE.get_image().get_pixel(30, 30).a == 0)
+	check("large ring remains centered", (cursor.pointer.position + cursor.pointer.size / 2).is_equal_approx(inside))
 	surface.brush_size = 33
 	cursor._refresh_cursor(inside, true, false)
 	check("ring outer edge follows brush diameter not transparent padding", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 33.0))
@@ -101,7 +108,7 @@ func _run() -> void:
 	check("blueprint placement uses arrow", cursor.pointer.texture == cursor.WORLD_TEXTURE)
 	root.get_node("Blueprints").placing = false
 	cursor._refresh_cursor(inside, true, false)
-	check("returning to drawing restores brush ring", cursor.pointer.texture == cursor.CANVAS_TEXTURE)
+	check("returning to drawing restores brush ring", cursor.pointer.texture == cursor.LARGE_CANVAS_TEXTURE)
 	check("canvas boundaries match drawing half-open bounds", cursor._canvas_at(Vector2(100, 100)) == canvas and cursor._canvas_at(Vector2(200, 140)) == null and cursor._canvas_at(Vector2(150, 180)) == null)
 	var outside := Vector2(400, 250)
 	cursor._refresh_cursor(outside, true, false)
@@ -125,7 +132,7 @@ func _run() -> void:
 	root.canvas_transform = Transform2D(0.0, Vector2(0.1, 0.1), 0.0, Vector2(40, 30))
 	transformed = surface.get_global_transform_with_canvas() * Vector2(50, 40)
 	cursor._refresh_cursor(transformed, true, false)
-	check("zooming far out retains minimum visible ring", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 12.0))
+	check("zooming far out retains minimum visible ring", is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 10.0))
 	root.canvas_transform = Transform2D.IDENTITY
 	canvas.rotation = 0.4
 	canvas.scale = Vector2(1.5, 0.8)

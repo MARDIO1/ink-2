@@ -22,7 +22,7 @@ func _verify(buttons: Array, selected: int) -> bool:
 	return marked == 1
 
 func _run() -> void:
-	var level: Node = load("res://map/asset/imported/main.tscn").instantiate()
+	var level: Node = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	root.add_child(level)
 	await process_frame
 	var play: Node = level.get_node("SmallCanvas")

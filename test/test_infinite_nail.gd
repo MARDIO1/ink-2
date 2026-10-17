@@ -8,7 +8,7 @@ const ImpactDamage := preload("res://root/src/impact_damage.gd")
 const RedInk := preload("res://ink/red/src/red_ink.gd")
 const WhiteInk := preload("res://ink/white/src/white_ink.gd")
 const EnergyFlow := preload("res://ink/blue/src/energy_flow.gd")
-const BlueprintCodec := preload("res://actor/blueprint/src/blueprint_codec.gd")
+const BlueprintCodec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const PWorld := preload("res://addons/pixel_destruction/physics/pworld.gd")
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
@@ -31,7 +31,7 @@ func _initialize() -> void:
 
 
 func run() -> void:
-	var scene = load("res://map/asset/imported/main.tscn").instantiate()
+	var scene = load("res://map/asset/imported/peak.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame
@@ -53,20 +53,27 @@ func run() -> void:
 	var white_before: float = health.ink_of(Palette.WHITE.id)
 
 	canvas.set_map_editor_mode(false)
-	check("infinite nail tool is hidden outside creative mode",
-		not canvas.tool_grid.get_node("InfiniteNail").visible)
+	check("infinite nail no longer lives in the canvas toolbar",
+		canvas.tool_grid.get_node_or_null("InfiniteNail") == null)
 	check("normal gameplay rejects infinite nail placement",
 		not surface._place_nail(Vector2(point) + Vector2.ONE * 0.5, Nail.Kind.INFINITE))
 
 	canvas.set_map_editor_mode(true)
-	check("infinite nail tool appears in creative mode",
-		canvas.tool_grid.get_node("InfiniteNail").visible)
-	var toolbar_icon := canvas.tool_grid.get_node("InfiniteNail/ToolIcon") as TextureRect
-	check("infinite toolbar icon uses pixel art with nearest filtering",
-		toolbar_icon.texture == Nail.INFINITE_TEXTURE
-		and toolbar_icon.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST)
-	canvas.tool_grid.get_node("InfiniteNail").pressed.emit()
-	check("toolbar selects infinite nail", surface.tool == SurfaceScript.Tool.INFINITE_NAIL)
+	var creative = scene.get_node("Creative")
+	creative.active = true
+	creative._ensure_editor_resources()
+	var nail_button: Button = creative._palette._infinite_nail_button
+	check("infinite nail sits in the mechanism column", nail_button != null
+		and nail_button.get_parent().name == "MechanismGrid" and nail_button.is_visible_in_tree())
+	check("mechanism button is the infinite nail", nail_button.text == "无限钉子"
+		and nail_button.tooltip_text.contains("无尽能源"))
+	nail_button.pressed.emit()
+	check("mechanism column selects infinite nail", surface.tool == SurfaceScript.Tool.INFINITE_NAIL)
+	check("mechanism button shows the active tool",
+		nail_button.button_pressed)
+	nail_button.pressed.emit()
+	check("clicking again returns to the hand", surface.tool != SurfaceScript.Tool.INFINITE_NAIL)
+	nail_button.pressed.emit()
 	surface._begin_undo_step()
 	check("infinite nail overlays existing red ink",
 		surface._place_nail(Vector2(point) + Vector2.ONE * 0.5, Nail.Kind.INFINITE)

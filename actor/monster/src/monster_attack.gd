@@ -59,6 +59,7 @@ func update(monster: Node2D, delta: float) -> void:
 				+ shield_bounds.size.x * 0.5 + player.body.aabb.size.x * 0.5 + 25.0 * size)
 		if monster.kind == monster.Kind.BOMB_SIDE:
 			reach = 650.0 * size
+		reach *= monster.attack_range_scale
 		if absf(target.x - center.x) > reach or absf(target.y - center.y) > 180.0 * size:
 			return
 		if not clear_path(level.world, center, target, monster):
@@ -77,6 +78,7 @@ func update(monster: Node2D, delta: float) -> void:
 					striking_arm = str(part.bone.name)
 		aim = target # 抬手时锁定落点，不在飞行中追踪。
 		windup = 0.7 if monster.kind == monster.Kind.BOMB_SIDE else (0.55 if monster.kind == monster.Kind.SHIELD_SOLDIER else 0.3)
+		windup *= monster.attack_windup_scale
 		active = 0.4 if monster.kind == monster.Kind.BOMB_SIDE else (0.35 if monster.kind == monster.Kind.SHIELD_SOLDIER else 0.45)
 		recovery = 0.8 if monster.kind == monster.Kind.BOMB_SIDE else (0.9 if monster.kind == monster.Kind.SHIELD_SOLDIER else 0.45)
 		phase = Phase.WINDUP
@@ -100,7 +102,7 @@ func update(monster: Node2D, delta: float) -> void:
 			elapsed = 0.0
 	elif phase == Phase.RECOVERY and elapsed >= recovery:
 		cancel(monster)
-		cooldown = 1.0 if monster.kind == monster.Kind.BOMB_SIDE else 0.5
+		cooldown = (1.0 if monster.kind == monster.Kind.BOMB_SIDE else 0.5) * monster.attack_cooldown_scale
 
 
 func desired_angle(monster: Node2D, part: Dictionary, baseline: float) -> float:

@@ -10,7 +10,7 @@ func _initialize() -> void:
 
 func _run_ui_test() -> void:
 	var valid := true
-	var scene: Node = load("res://map/asset/imported/main.tscn").instantiate()
+	var scene: Node = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame
@@ -19,8 +19,8 @@ func _run_ui_test() -> void:
 	var player: Node2D = scene.get_node("Player")
 	var play_canvas: Node = scene.get_node("SmallCanvas")
 	var play_size: Vector2i = play_canvas.canvas_size
-	var play_grid := play_canvas.get_node("WorkbenchUI/Buttons/Grid") as GridContainer
-	var play_hand := play_canvas.get_node("WorkbenchUI/Buttons/Hand") as Button
+	var play_grid := play_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Grid") as GridContainer
+	var play_hand := play_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Hand") as Button
 	valid = valid and play_grid.columns == 2
 	valid = valid and play_grid.get_node("Brush").visible
 	valid = valid and play_grid.get_node("Eraser").visible
@@ -28,11 +28,11 @@ func _run_ui_test() -> void:
 	valid = valid and play_hand.size.is_equal_approx(Vector2(52.0, 52.0))
 	valid = valid and (play_grid.get_node("Brush") as Button).size.is_equal_approx(Vector2(32.0, 43.0))
 	valid = valid and (play_grid.get_node("Brush/Caption") as Label).text == "画笔"
-	valid = valid and play_canvas.get_node("WorkbenchUI/Buttons").position == Vector2(-44.0, 184.0)
-	var side_panel := play_canvas.get_node("SidePanel") as VBoxContainer
+	valid = valid and play_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons").position == Vector2(-44.0, 184.0)
+	var side_panel := play_canvas._side_panel as VBoxContainer
 	var side_slider := side_panel.get_node("Controls/BrushSizeSlider") as VSlider
 	var first_ink_button := side_panel.get_node("Controls/Colors/Ink0Button") as Button
-	valid = valid and side_panel.position == Vector2(play_size.x + 16.0, 2.0)
+	valid = valid and root.get_visible_rect().encloses(side_panel.get_global_rect())
 	valid = valid and side_slider.size.y >= 166.0
 	valid = valid and first_ink_button.size.is_equal_approx(Vector2(34.0, 34.0))
 	valid = valid and side_panel.get_node("Controls/Colors").get_child_count() == InkPalette.ink_count()
@@ -65,8 +65,8 @@ func _run_ui_test() -> void:
 	await process_frame
 
 	var map_canvas: Node = scene.get_node("MapCanvas")
-	var editor_grid := map_canvas.get_node("WorkbenchUI/Buttons/Grid") as GridContainer
-	var editor_hand := map_canvas.get_node("WorkbenchUI/Buttons/Hand") as Button
+	var editor_grid := map_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Grid") as GridContainer
+	var editor_hand := map_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Hand") as Button
 	valid = valid and play_canvas.canvas_size == play_size
 	valid = valid and editor_grid.columns == 2
 	valid = valid and editor_grid.get_node("Brush").visible
@@ -79,7 +79,7 @@ func _run_ui_test() -> void:
 		and hand_icon.atlas.resource_path.ends_with("editor_control.png")
 	valid = valid and (editor_grid.get_node("Brush") as Button).size \
 		.is_equal_approx(Vector2(44.0, 60.0))
-	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons").position == Vector2(-186.0, 116.0)
+	valid = valid and map_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons").position == Vector2(-186.0, 116.0)
 	valid = valid and (editor_grid.get_node("Nail") as Button).pressed.get_connections().size() == 1
 	valid = valid and (editor_grid.get_node("ExpandCanvas") as Button).pressed.get_connections().size() == 1
 	var expand_icon := editor_grid.get_node("ExpandCanvas/ToolIcon").texture as AtlasTexture
@@ -92,7 +92,7 @@ func _run_ui_test() -> void:
 	await process_frame
 	valid = valid and expand_window.visible
 	expand_window.hide()
-	valid = valid and not map_canvas.get_node("WorkbenchUI/ResizePanel").visible
+	valid = valid and not map_canvas.get_node("ToolbarLayer/WorkbenchUI/ResizePanel").visible
 	print("[UIPptEditorControls] editor visibility brush=", editor_grid.get_node("Brush").visible,
 		" nail=", editor_grid.get_node("Nail").visible, " hand=", editor_hand.size)
 

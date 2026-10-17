@@ -151,7 +151,7 @@ func extend(point: Vector2) -> void:
 	last_point = point
 	if not erasing and source_surface._ink_room(Palette.YELLOW.id) < source_surface.MIN_PAINT_INK:
 		source_surface._warn_ink_shortage(source_surface.MIN_PAINT_INK)
-	if visual_changed:
+	if visual_changed or erasing:
 		refresh()
 
 func finish(point: Vector2, record_undo := true) -> Dictionary:
@@ -168,8 +168,7 @@ func finish(point: Vector2, record_undo := true) -> Dictionary:
 	refresh()
 	return {}
 
-
-## 框删直接清理独立黄墨像素；事务快照负责统一撤销和墨水账。
+## 框删黄墨草稿；像素、轴系与墨水账由画布事务一起撤销。
 func erase_rect(rect: Rect2i, mask: Dictionary = {}) -> bool:
 	var clipped := rect.intersection(Rect2i(Vector2i.ZERO, pixels.get_size()))
 	var removed := 0
@@ -182,31 +181,43 @@ func erase_rect(rect: Rect2i, mask: Dictionary = {}) -> bool:
 			source_surface._remove_nail_at(Vector2i(x, y))
 			pixels.set_pixel(x, y, Color.TRANSPARENT)
 			removed += 1
-	if removed == 0:
-		return false
+	var old_anchor_count := anchor_points.size()
 	for index in range(anchor_points.size() - 1, -1, -1):
 		var anchor := Vector2i(anchor_points[index].floor())
 		if clipped.has_point(anchor) and SelectionMask.contains(mask, anchor):
 			anchor_points.remove_at(index)
+	var old_pin_count := slider_pins.size()
+	slider_pins = slider_pins.filter(func(pin):
+		for key in ["source", "position"]:
+			var at := Vector2i(Vector2(pin[key]).floor())
+			if clipped.has_point(at) and SelectionMask.contains(mask, at):
+				return false
+		return true)
+	if removed == 0 and old_anchor_count == anchor_points.size() \
+	and old_pin_count == slider_pins.size():
+		return false
 	if not source_surface.ink_free:
 		var health = source_surface._health_node()
 		if health != null:
 			health.add(Palette.YELLOW.id, removed)
 	refresh()
-	return true
+	return removed > 0 or old_anchor_count != anchor_points.size() \
+	or old_pin_count != slider_pins.size()
 
-
+## 选区移动同步移动像素、锚点和轨道元数据，不丢失新轴系。
 func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> bool:
 	if offset == Vector2i.ZERO:
 		return false
 	var source := {}
-	for y in range(rect.position.y, rect.end.y):
-		for x in range(rect.position.x, rect.end.x):
+	var clipped := rect.intersection(Rect2i(Vector2i.ZERO, pixels.get_size()))
+	for y in range(clipped.position.y, clipped.end.y):
+		for x in range(clipped.position.x, clipped.end.x):
 			var point := Vector2i(x, y)
 			if SelectionMask.contains(mask, point) and pixels.get_pixelv(point).a > 0.5:
 				source[point] = pixels.get_pixelv(point)
 	if source.is_empty():
 		return false
+	_move_rail_metadata(source, offset)
 	for point: Vector2i in source:
 		pixels.set_pixelv(point, Color.TRANSPARENT)
 	var overwritten := 0
@@ -217,25 +228,40 @@ func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> bool:
 		pixels.set_pixelv(target, source[point])
 	for index in anchor_points.size():
 		var anchor := Vector2i(anchor_points[index].floor())
-		if rect.has_point(anchor) and SelectionMask.contains(mask, anchor):
+		if clipped.has_point(anchor) and SelectionMask.contains(mask, anchor):
 			anchor_points[index] += Vector2(offset)
-	for rail in rails:
-		var a := Vector2i(Vector2(rail.a).floor())
-		var b := Vector2i(Vector2(rail.b).floor())
-		if rect.has_point(a) and rect.has_point(b) \
-		and SelectionMask.contains(mask, a) and SelectionMask.contains(mask, b):
-			rail["a"] = Vector2(rail.a) + Vector2(offset)
-			rail["b"] = Vector2(rail.b) + Vector2(offset)
 	for pin in slider_pins:
-		var position := Vector2i(Vector2(pin.position).floor())
-		if rect.has_point(position) and SelectionMask.contains(mask, position):
-			pin["position"] = Vector2(pin.position) + Vector2(offset)
+		for key in ["source", "position"]:
+			var at := Vector2i(Vector2(pin[key]).floor())
+			if clipped.has_point(at) and SelectionMask.contains(mask, at):
+				pin[key] = Vector2(pin[key]) + Vector2(offset)
 	if overwritten > 0 and not source_surface.ink_free:
 		var health = source_surface._health_node()
 		if health != null:
 			health.add(Palette.YELLOW.id, overwritten)
 	refresh()
 	return true
+
+## 被选区切开的轨道按中心线拆分，未选中片段留在原位。
+func _move_rail_metadata(selected: Dictionary, offset: Vector2i) -> void:
+	var updated: Array = []
+	for rail in rails:
+		var a := Vector2(rail.a)
+		var b := Vector2(rail.b)
+		var steps := maxi(1, ceili(a.distance_to(b)))
+		var start := 0
+		var moving: bool = selected.has(Vector2i(a.floor()))
+		for index in range(1, steps + 2):
+			var next_moving: bool = index <= steps and selected.has(Vector2i(a.lerp(b, float(index) / steps).floor()))
+			if index <= steps and next_moving == moving:
+				continue
+			if index - 1 > start:
+				var shift := Vector2(offset) if moving else Vector2.ZERO
+				updated.append({"a": a.lerp(b, float(start) / steps) + shift,
+					"b": a.lerp(b, float(index - 1) / steps) + shift, "width": rail.width})
+			start = index
+			moving = next_moving
+	rails = updated
 
 func place_anchor(point: Vector2) -> bool:
 	var candidate := point.floor() + Vector2.ONE * 0.5
@@ -419,7 +445,7 @@ func _rail_spans(rail: Dictionary, shape) -> Array:
 			start = -1
 	return spans
 
-func solidify(world, nail_state: Dictionary = {}) -> void:
+func solidify(world, nail_state: Dictionary = {}, hub_centers: PackedVector2Array = PackedVector2Array()) -> void:
 	var physics = world.world
 	var solid = source_surface.get_parent().solid
 	var fixed_nails: Dictionary = nail_state.get("fixed", {})
@@ -428,6 +454,19 @@ func solidify(world, nail_state: Dictionary = {}) -> void:
 	var consumed_fixed := {}
 	var consumed_background := {}
 	var consumed_infinite := {}
+	# 套在黄墨上的轮子不能被当成障碍物挖洞，否则杠杆会在轴心处被切成两段。
+	# 这里在生成黄墨刚体之前先认出这些轮体（此刻世界里只有墨水刚体）。
+	var hub_bodies: Array = []
+	for center in hub_centers:
+		var hub_at: Vector2 = world.to_local(source_surface.to_global(Vector2(center)))
+		for body in physics.bodies:
+			if body.tags.has("living") or hub_bodies.has(body):
+				continue
+			var hub_cell := Vector2i(body.to_local(hub_at).floor())
+			for shape in body.shapes:
+				if shape.get_pixel(hub_cell.x, hub_cell.y) != 0:
+					hub_bodies.append(body)
+					break
 	for original in Destruction.split(make_shape(), 1):
 		var anchors: Dictionary = {}
 		var connected_bodies: Array = []
@@ -447,7 +486,7 @@ func solidify(world, nail_state: Dictionary = {}) -> void:
 				connected_bodies.append(black.body)
 		var obstacles: Array = []
 		for body in physics.bodies:
-			if not connected_bodies.has(body):
+			if not connected_bodies.has(body) and not hub_bodies.has(body):
 				obstacles.append(body)
 		solid._remove_overlaps(original, source_surface, obstacles)
 		for part in Destruction.split(original, 1):
