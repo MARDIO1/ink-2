@@ -87,7 +87,18 @@ func _pointer_over_ui(point: Vector2) -> bool:
 			continue
 		if control.get_viewport() != get_viewport() or not control.is_visible_in_tree() or control.mouse_filter == Control.MOUSE_FILTER_IGNORE:
 			continue
-		if Rect2(Vector2.ZERO, control.size).has_point(control.get_global_transform_with_canvas().affine_inverse() * point):
+		if not Rect2(Vector2.ZERO, control.size).has_point(control.get_global_transform_with_canvas().affine_inverse() * point):
+			continue
+		# ScrollContainer 外的按钮仍是 visible，但其像素已被祖先裁掉，不能拦截世界输入。
+		var ancestor := control.get_parent()
+		var clipped := false
+		while ancestor != null and not ancestor is Viewport:
+			if ancestor is Control and ancestor.clip_contents \
+			and not Rect2(Vector2.ZERO, ancestor.size).has_point(ancestor.get_global_transform_with_canvas().affine_inverse() * point):
+				clipped = true
+				break
+			ancestor = ancestor.get_parent()
+		if not clipped:
 			return true
 	return false
 
@@ -123,7 +134,7 @@ func _build_ui() -> void:
 	ui.add_child(actions)
 	_button("删除    Backspace", _delete_selection, actions)
 	_button("保存为蓝图    Save", save_selection, actions)
-	hint = _label("Ctrl＋左键拖动：只移动选框", ui)
+	hint = _label("Ctrl＋左键拖动：只移动选框　R：旋转 2°", ui)
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.add_theme_color_override("font_shadow_color", Color(0.97, 0.95, 0.85))
 	hint.add_theme_constant_override("shadow_outline_size", 3)
@@ -648,10 +659,15 @@ func _update_placement(delta: float, screen_point := Vector2.INF) -> void:
 		_check_elapsed = 0
 	_ghost.allowed = _last_error.is_empty()
 	_ghost.queue_redraw()
-	placement_hint.text = "左键放置 · Shift＋左键连续放置 · 右键 / Esc 取消\n" + (_cost_text(_amounts, _canvas) if _last_error.is_empty() else _last_error)
+	var controls := "左键放置 · Shift＋左键连续放置 · 右键 / Esc 取消"
+	placement_hint.text = (controls + "\n" + _cost_text(_amounts, _canvas)) if _last_error.is_empty() \
+		else "无法放置：" + _last_error + "\n" + controls
 	placement_hint.reset_size()
 	var size := get_viewport().get_visible_rect().size
-	placement_hint.position = Vector2(20, maxf(20, size.y - placement_hint.size.y - 20))
+	var preview_corner: Vector2 = _ghost.get_global_transform_with_canvas() * Vector2.ZERO
+	placement_hint.position = Vector2(
+		clampf(preview_corner.x, 12, maxf(12, size.x - placement_hint.size.x - 12)),
+		clampf(preview_corner.y - placement_hint.size.y - 8, 12, maxf(12, size.y - placement_hint.size.y - 12)))
 
 func _input(event: InputEvent) -> void:
 	if modal:

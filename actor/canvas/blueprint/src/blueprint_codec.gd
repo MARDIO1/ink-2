@@ -3,7 +3,7 @@ extends RefCounted
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Mask := preload("res://actor/canvas/src/selection_mask.gd")
 const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
-const Bearing := preload("res://actor/canvas/src/gear_bearing.gd")
+const Bearing := preload("res://ink/yellow/src/axle.gd")
 const Hinge := preload("res://ink/yellow/src/hinge.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
 const Motor := preload("res://ink/blue/src/motor.gd")
@@ -39,7 +39,10 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	var surface = canvas.surface
 	var data := {"version": 1, "id": "", "name": "未命名蓝图", "description": "", "tags": [],
 		"updated": 0, "favorite": false, "editor_only": false, "size": [rect.size.x, rect.size.y],
-		"pixels": [], "rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": []}
+		"pixels": [], "rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": [], "gear_centers": []}
+	for point in surface.gear_centers:
+		if inside(Vector2i(point.floor()), rect, mask):
+			data.gear_centers.append(xy(point - Vector2(rect.position)))
 	var pixels := {}
 	var rods := {}
 	var blues := {}
@@ -443,6 +446,8 @@ static func place(canvas, data: Dictionary, offset: Vector2i) -> String:
 	var bounds := Rect2(surface.to_global(Vector2(offset)), Vector2(vec(data.size)))
 	var state: Dictionary = canvas.History.capture(canvas, true, bounds)
 	state["bounds"] = bounds
+	for point in data.get("gear_centers", []):
+		surface.gear_centers.append(vec(point) + Vector2(offset))
 	var width := int(data.size[0])
 	for entry in data.pixels:
 		var material := int(entry[1])

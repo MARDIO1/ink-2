@@ -73,6 +73,9 @@ func _ready() -> void:
 		call_deferred("_restore")
 
 func _restore() -> void:
+	var level := get_parent()
+	if level != null and level.get("body_bake_pending") == true:
+		await Signal(level, &"body_bake_completed")
 	if not activated or state != State.ACTIVE:
 		return
 	var world = get_parent().get("world")

@@ -41,7 +41,7 @@ func _run() -> void:
 	var app = load("res://root/root.tscn").instantiate()
 	root.add_child(app)
 	current_scene = app
-	var level = app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
+	var level = await app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
 	level.auto_step = false
 	app._set_screen(app.ui_scene.instantiate())
 	await process_frame
@@ -60,7 +60,10 @@ func _run() -> void:
 	var camera = level.get_node("SimulationRuntime/PhysicsStep")._camera
 	camera.set_process(false)
 	camera.set_physics_process(false)
+	camera.position_smoothing_enabled = false
+	camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	camera.global_position = canvas.global_position + Vector2(128, 128)
+	camera.reset_physics_interpolation()
 	camera.reset_smoothing()
 	camera.force_update_scroll()
 	var system = root.get_node("Blueprints")

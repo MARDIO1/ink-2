@@ -14,10 +14,8 @@ const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const GearTool := preload("res://actor/canvas/src/gear_tool.gd")
 var gear_tool: Node2D
-## 齿轮轮廓里原本空白的格子：轮廓写进画布只是为了蓝墨能画到轮体上，
-## 这些格子固化时不能变成刚体，否则会凭空多出一块和齿轮完全重合的刚体。
-## 只记坐标、不记刚体引用 —— 撤销/重做会重建刚体，存引用会立刻失效。
-var gear_skip_cells: Dictionary = {}
+## 黄色圆轴的草稿中心，随墨水移动、旋转、蓝图与快照保存。
+@export var gear_centers := PackedVector2Array()
 #endregion
 
 #region 初始化
@@ -712,6 +710,7 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 		_revert_shape()
 	_painting = false
 	_shaping = false
+	var old_centers := gear_centers.duplicate()
 	var old_blue: PackedVector2Array = blue_layer.cells.duplicate()
 	var old_image := black_image
 	var old_size := canvas_size
@@ -722,6 +721,11 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 	canvas_size = new_size
 	_preserve_next_resize = false
 
+	gear_centers.clear()
+	for point in old_centers:
+		var shifted := point + Vector2(content_offset)
+		if Rect2(Vector2.ZERO, Vector2(new_size)).has_point(shifted):
+			gear_centers.append(shifted)
 	blue_layer.mask.clear()
 	for point in old_blue:
 		var at := Vector2i(point) + content_offset
@@ -780,24 +784,10 @@ func clear(refund := true) -> void:
 	black_image.fill(Color.TRANSPARENT)
 	_free_tiles()                      # 画布空了：贴图一起丢掉，不用再传一遍空白
 	nail_layer.clear()
-	gear_skip_cells.clear()
+	gear_centers.clear()
 	queue_redraw()
 
 
-## 登记齿轮轮廓里的空白格（那些格子只供蓝墨落笔，固化时跳过）。
-func add_gear_skip_cells(cells: Dictionary) -> void:
-	gear_skip_cells.merge(cells, true)
-
-
-func clear_gear_skip_cells() -> void:
-	gear_skip_cells.clear()
-
-
-## 直接写入一个画布像素（"重新回到画布"用）；越界返回 false，批量写入后调 refresh()。
-##
-## ⚠️ 这里**不碰瓶子**：这些墨水在固化那一刻就已经从瓶里扣过了，再扣一次就是重复记账。
-##    但它必须把**画布自己的**账补上 —— 否则这些像素对账本是隐形的，
-##    "重绘"就退不回它们（这正是之前的 bug：抓回来的物品，墨水永远回不来）。
 func write_pixel(pixel: Vector2i, color: Color) -> bool:
 	if pixel.x < 0 or pixel.y < 0 or pixel.x >= canvas_size.x or pixel.y >= canvas_size.y:
 		return false
@@ -895,9 +885,15 @@ func _collect_stamp(out: Dictionary, center: Vector2) -> void:
 
 
 #只改像素 + 同步钉子外观层，不碰任何账本。
-func _set_pixel_raw(pixel: Vector2i, color: Color) -> void:
+func _set_pixel_raw(pixel: Vector2i, color: Color, erase_blue := true, preserve_axes := false) -> void:
 	_track_undo_pixel(pixel)
-	if color.a <= 0.5:
+	if color.a <= 0.5 and not preserve_axes:
+		for index in range(gear_centers.size() - 1, -1, -1):
+			if Vector2i(gear_centers[index].floor()) == pixel:
+				if _undo_capturing and not _undo_capture.has("gear_centers"):
+					_undo_capture["gear_centers"] = gear_centers.duplicate()
+				gear_centers.remove_at(index)
+	if color.a <= 0.5 and erase_blue:
 		blue_layer.erase(pixel)
 		var blue = blue_rule()
 		if blue != null:
@@ -1195,6 +1191,10 @@ func erase_rect(rect: Rect2i, mask: Dictionary = {}) -> bool:
 	#分治：按瓦片走。整块空的直接跳过（一个字节都不扫），有内容的块也只扫自己的
 	#内容框 —— 全选整张地图时，代价只和"真有墨的地方"成正比，跟画布多大无关。
 	_flush_texture()                  # 先落地未上传的写入，瓦片集合才是完整的
+	for index in range(gear_centers.size() - 1, -1, -1):
+		var at := Vector2i(gear_centers[index].floor())
+		if clipped.has_point(at) and SelectionMask.contains(mask, at):
+			gear_centers.remove_at(index)
 	var changed := false
 	for key in _tile_keys(clipped):
 		var box := _tile_content(key).intersection(clipped)
@@ -1232,7 +1232,7 @@ func _erase_box(box: Rect2i, mask: Dictionary = {}) -> bool:
 
 
 ## 剪切并平移选区的普通墨水和钉子；先缓存源像素，重叠拖动不会擦坏内容。
-func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> bool:
+func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}, preserve_blue := false) -> bool:
 	if offset == Vector2i.ZERO or rect.size.x <= 0 or rect.size.y <= 0:
 		return false
 	if rect.position.x < 0 or rect.position.y < 0 or rect.end.x > canvas_size.x \
@@ -1251,8 +1251,12 @@ func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> bool:
 				source[point] = color
 	if source.is_empty():
 		return false
+	for index in gear_centers.size():
+		var at := Vector2i(gear_centers[index].floor())
+		if rect.has_point(at) and SelectionMask.contains(mask, at):
+			gear_centers[index] += Vector2(offset)
 	for point: Vector2i in source:
-		_set_pixel_raw(point, Color.TRANSPARENT)
+		_set_pixel_raw(point, Color.TRANSPARENT, not preserve_blue, true)
 	for point: Vector2i in source:
 		_set_pixel_raw(point + offset, source[point])
 	_flush_texture()
@@ -1352,6 +1356,8 @@ func undo_last_edit() -> bool:
 	for pixel in step:
 		if pixel is Vector2i:
 			_set_pixel_raw(pixel, step[pixel])
+	if step.has("gear_centers"):
+		gear_centers = step.gear_centers.duplicate()
 	if not blue_saved.is_empty():
 		_restore_blue_edit(blue_saved)
 	_flush_texture()
@@ -1382,6 +1388,8 @@ func redo_last_edit() -> bool:
 		for pixel in after:
 			if pixel is Vector2i:
 				_set_pixel_raw(pixel, after[pixel])
+		if after.has("gear_centers"):
+			gear_centers = after.gear_centers.duplicate()
 		if after.has("blue"):
 			_restore_blue_edit(after.blue)
 		_flush_texture()
@@ -1396,12 +1404,21 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 			"bucket_material": step.bucket_material, "bucket_count": step.bucket_count}
 	if step.has("transaction") or step.has("yellow"):
 		var bounds: Rect2 = step.get("transaction", {}).get("bounds", Rect2())
-		var state: Dictionary = get_parent().History.capture(get_parent(), step.has("transaction"), bounds)
+		# 重做还要捕获此次固化新建的支撑，否则撤销后再重做会丢失它。
+		var body_filter: Dictionary = step.get("transaction", {}).get("body_filter", {}).duplicate()
+		if not body_filter.is_empty():
+			body_filter.merge(step.transaction.remove_ids)
+		var state: Dictionary = get_parent().History.capture(get_parent(), step.has("transaction"), bounds, body_filter)
 		if bounds.has_area():
 			state["bounds"] = bounds
 		if step.has("transaction"):
 			for id in step.transaction.remove_ids:
 				state.remove_ids[id] = true
+			# 电路可能原地扩充；重做前先移除撤销恢复的旧版本，避免画出两层线。
+			for entry in state.blue:
+				state.blue_remove[entry.id] = true
+			for id in step.transaction.get("blue_remove", {}):
+				state.blue_remove[id] = true
 		return {"transaction": state}
 	if step.has("rod_pixels"):
 		var current := {"rod_pixels": {}, "rod_anchors": rod_layer.anchor_points.duplicate(),
@@ -1419,6 +1436,8 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 			for cell in step.black_pixels:
 				if cell is Vector2i:
 					current.black_pixels[cell] = black_image.get_pixelv(cell)
+			if step.black_pixels.has("gear_centers"):
+				current.black_pixels["gear_centers"] = gear_centers.duplicate()
 			if step.black_pixels.has("blue"):
 				current.black_pixels["blue"] = _capture_blue_edit()
 		return current
@@ -1426,6 +1445,8 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 	for pixel in step:
 		if pixel is Vector2i:
 			current[pixel] = black_image.get_pixelv(pixel)
+	if step.has("gear_centers"):
+		current["gear_centers"] = gear_centers.duplicate()
 	if step.has("blue"):
 		current["blue"] = _capture_blue_edit()
 	return current
@@ -1456,6 +1477,8 @@ func _restore_black_pixels(pixels: Dictionary) -> void:
 	for cell in pixels:
 		if cell is Vector2i:
 			_set_pixel_raw(cell, pixels[cell])
+	if pixels.has("gear_centers"):
+		gear_centers = pixels.gear_centers.duplicate()
 	if pixels.has("blue"):
 		_restore_blue_edit(pixels.blue)
 	_flush_texture()
@@ -1468,7 +1491,7 @@ func _finish_redo_capture(after: Dictionary) -> void:
 	var state: Dictionary = after.transaction
 	var health = _health_node()
 	if health != null:
-		for id in state.health:
+		for id in state.get("health", {}):
 			state.health_delta[id] = state.health[id] - health.ink_of(id)
 #endregion
 
@@ -1607,7 +1630,7 @@ func _start_snapshot() -> void:
 	var copy := Image.new()
 	copy.copy_from(black_image)
 	_snapshot_task = WorkerThreadPool.add_task(
-		_write_snapshot.bind(copy, _snapshot_path), false, "canvas snapshot")
+		_write_snapshot.bind(copy, _snapshot_path, _snapshot_metadata()), false, "canvas snapshot")
 
 
 func _poll_snapshot() -> void:
@@ -1618,8 +1641,8 @@ func _poll_snapshot() -> void:
 	_start_snapshot()
 
 
-## 线程里跑的写盘：只碰自己那份 Image 和字符串，所以可以是 static。
-static func _write_snapshot(image: Image, path: String) -> void:
+## 线程只操作捕获的图像/元数据副本；后台快照也保留轴心与机关信息。
+static func _write_snapshot(image: Image, path: String, metadata: Dictionary) -> void:
 	var absolute := ProjectSettings.globalize_path(path)
 	var temporary := absolute + ".tmp"
 	DirAccess.make_dir_recursive_absolute(absolute.get_base_dir())
@@ -1627,13 +1650,27 @@ static func _write_snapshot(image: Image, path: String) -> void:
 	if file == null:
 		push_error("Canvas snapshot open failed: %s (%d)" % [path, FileAccess.get_open_error()])
 		return
-	file.store_buffer(image.save_png_to_buffer())
+	metadata["black"] = image.save_png_to_buffer()
+	metadata["rod"] = metadata.rod.save_png_to_buffer()
+	file.store_buffer("INK2".to_ascii_buffer())
+	file.store_var(metadata)
 	file.flush()
 	file.close()
 	if FileAccess.file_exists(path) and DirAccess.remove_absolute(absolute) != OK:
 		DirAccess.remove_absolute(temporary)
 		return
 	DirAccess.rename_absolute(temporary, absolute)
+
+
+## 主线程只捕获副本；PNG 编码交由后台任务完成。
+func _snapshot_metadata() -> Dictionary:
+	var rule = yellow_rule()
+	return {"rod": rod_layer.pixels.duplicate(), "anchors": rod_layer.anchor_points.duplicate(),
+		"gear_centers": gear_centers.duplicate(), "rails": rod_layer.rails.duplicate(true),
+		"slider_pins": rod_layer.slider_pins.duplicate(true),
+		"springs": rule.draft_data(self).duplicate(true) if rule != null else [],
+		"blue": blue_layer.cells.duplicate(),
+		"motors": blue_rule().draft_data(self).duplicate(true) if blue_rule() != null else []}
 
 
 ## 保存 CPU 像素缓冲，包含颜色、透明度和尺寸；不读取 GPU，不触发固化。
@@ -1665,7 +1702,7 @@ func _save_snapshot(path: String) -> Error:
 	file.store_buffer("INK2".to_ascii_buffer())
 	var rule = yellow_rule()
 	file.store_var({"black": black_image.save_png_to_buffer(), "rod": rod_layer.pixels.save_png_to_buffer(), "anchors": rod_layer.anchor_points,
-		"rails": rod_layer.rails, "slider_pins": rod_layer.slider_pins,
+		"gear_centers": gear_centers, "rails": rod_layer.rails, "slider_pins": rod_layer.slider_pins,
 		"springs": rule.draft_data(self) if rule != null else [], "blue": blue_layer.cells,
 		"motors": blue_rule().draft_data(self) if blue_rule() != null else []})
 	file.flush()
@@ -1722,6 +1759,7 @@ func load_ink(path: String) -> Error:
 	black_image.convert(Image.FORMAT_RGBA8)
 	rebuild_ink_tiles()
 	_rebuild_loaded_metadata()
+	gear_centers = rod_data.get("gear_centers", PackedVector2Array())
 	if not rod_data.is_empty():
 		var rods := Image.new()
 		rods.load_png_from_buffer(rod_data.rod)

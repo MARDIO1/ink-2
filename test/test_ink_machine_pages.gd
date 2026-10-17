@@ -36,6 +36,11 @@ func _check_pages() -> void:
 		# 机构测试隔离战斗破坏；攻击规则另由 test_monster_attacks.gd 覆盖。
 		for monster in level.get_node("Monsters").get_children():
 			monster.attacks_enabled=false
+		if title == "第二页":
+			# 第二页不再包含亮灯机构，出口仅按地图顺序前往第三页。
+			if not level.get_node("PageExit").machine_paths.is_empty(): failures+=1
+			if level.has_node("Transmission") or level.has_node("Balance"): failures+=1
+			continue
 		var gate_y: float=level.get_node("GearGate").position.y
 		var exit_node: Node=level.get_node("PageExit")
 		exit_node._activate()
@@ -58,21 +63,13 @@ func _check_pages() -> void:
 		if gear.completed and gate_y-level.get_node("GearGate").body.position.y < 70:
 			print("[Machines] gate failed to rise")
 			failures+=1
-		if title=="第二页":
-			var lever: Node=level.get_node("BalanceLever")
-			level.get_node("Player").teleport_to(lever.position+Vector2(-40,-10),0)
-			_fuel("BalanceWeight",lever.body.position+Vector2(30,-45))
-			await _frames(240)
-			print("[Machines] balance=",level.get_node("Balance").completed," angle=",lever.body.rotation," spring=",level.get_node_or_null("BalanceSpring"))
-			if not level.get_node("Balance").completed: failures+=1
-		else:
-			var platform: Node=level.get_node("LiftPlatform")
-			level.get_node("Player").teleport_to(platform.position+Vector2(100,75),0)
-			await _join_wire(platform,Vector2(40,170),Vector2(141,170))
-			await _frames(360)
-			print("[Machines] lift=",level.get_node("Elevator").completed," height=",level.get_node("Elevator")._origin.y-platform.body.position.y," power=",level.get_node("Elevator")._powered)
-			print("lift mass=",platform.body.mass," motor=",level.get_node_or_null("LiftMotor")," fuel=",level.get_node_or_null("LiftFuel"))
-			if not level.get_node("Elevator").completed: failures+=1
+		var platform: Node=level.get_node("LiftPlatform")
+		level.get_node("Player").teleport_to(platform.position+Vector2(100,75),0)
+		await _join_wire(platform,Vector2(40,170),Vector2(141,170))
+		await _frames(360)
+		print("[Machines] lift=",level.get_node("Elevator").completed," height=",level.get_node("Elevator")._origin.y-platform.body.position.y," power=",level.get_node("Elevator")._powered)
+		print("lift mass=",platform.body.mass," motor=",level.get_node_or_null("LiftMotor")," fuel=",level.get_node_or_null("LiftFuel"))
+		if not level.get_node("Elevator").completed: failures+=1
 	print("[Machines] failures=",failures)
 	app.queue_free()
 	await process_frame

@@ -32,6 +32,16 @@
 
 `PixelWorld.rebuild()` 只遍历**直接子级**，所以摘取范围必须和它一致。
 
+`load_level()` 是异步接口，所有调用方都必须 `await`。F2 恢复使用
+`Root.restore_editor_level()` 持有整条等待链，旧 `Creative` 只用 `call_deferred`
+交接；不能让即将随旧关卡释放的节点等待加载结果。
+
+分帧加载开始时设置 `PixelWorld.body_bake_pending`；全部刚体和普通关节烘焙完成后
+清除标记并发出 `body_bake_completed`。齿轮轴、蓝线、动力箭头、弹簧和关卡机关在此
+信号后恢复锚点，避免把暂时缺少的刚体误判成损坏数据而删除自己。
+`level_changed` 在这道屏障之后发送，HUD 绑定的始终是已就绪的关卡。
+摘下节点前保存并清除整个子树的 `owner`，挂回后恢复，以保留编辑器保存所需的归属。
+
 ⚠️ **只摘纯墨迹刚体**（不属于 `player` / `living` 组的那些）。玩家的根节点**本身就是一个
 `PixelBody2D`**，把它一起摘掉会连带出两个问题：`debugHUD`、`SimulationRuntime` 等在 `_ready` 里
 按 `../Player/...` 找节点，全部报 `Node not found`；玩家还会晚挂一帧，和 `pbody_visual`

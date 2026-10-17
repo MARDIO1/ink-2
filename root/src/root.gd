@@ -149,15 +149,29 @@ func load_level(scene: PackedScene) -> Node:
 		child.queue_free()
 	var level := scene.instantiate()
 	var staged := _detach_unbaked_bodies(level)
+	if not staged.is_empty():
+		level.body_bake_pending = true
 	# 先把空世界建出来：子节点的 _ready 早于关卡根，它们会读 `world`；
 	# 摘掉刚体后这一次 rebuild 只造空世界，是毫秒级的。
 	if level.has_method(&"rebuild") and level.get("world") == null:
 		level.call(&"rebuild")
 	level_root.add_child(level)
 	_play_music(level_music)
-	level_changed.emit(level)
 	await _bake_staged_bodies(level, staged)
+	level_changed.emit(level)
 	return level
+
+
+## 恢复事务由常驻 Root 等待；旧 Creative 会在 load_level 中释放，不能持有续执行点。
+func restore_editor_level(scene: PackedScene, finish_transition: bool) -> void:
+	_loading_level = true
+	var level: Node = await load_level(scene)
+	var replacement := level.get_node_or_null(^"Creative")
+	if replacement != null:
+		replacement._activate_restored_editor()
+	if finish_transition:
+		await _transition.finish()
+	_loading_level = false
 
 
 ## 摘下直接子级的**纯墨迹**刚体。范围必须和 `PixelWorld.rebuild()` 一致（它也只遍历直接子级）。
@@ -175,8 +189,16 @@ func _detach_unbaked_bodies(level: Node) -> Array:
 			continue
 		if child.is_in_group(&"player") or child.is_in_group(&"living"):
 			continue
+		# 未入树的场景 remove_child 不一定清除 owner；显式保留整个子树的归属。
+		var owners: Array = []
+		var subtree: Array = [child]
+		subtree.append_array(child.find_children("*", "", true, false))
+		for node: Node in subtree:
+			if node.owner != null:
+				owners.append({"node": node, "owner": node.owner})
+				node.owner = null
 		level.remove_child(child)
-		staged.append(child)
+		staged.append({"node": child, "owners": owners})
 	return staged
 
 
@@ -184,19 +206,20 @@ func _detach_unbaked_bodies(level: Node) -> Array:
 func _bake_staged_bodies(level: Node, staged: Array) -> void:
 	if staged.is_empty():
 		return
-	if not level.has_method(&"bake_node"):
-		for node in staged:
-			level.add_child(node)
-		return
 	var baked := 0
-	for node in staged:
+	for entry: Dictionary in staged:
+		var node: Node = entry.node
 		level.add_child(node)
+		for ownership: Dictionary in entry.owners:
+			ownership.node.owner = ownership.owner
 		level.bake_node(node)
 		baked += 1
 		if baked % bake_bodies_per_frame == 0:
 			await get_tree().process_frame
 	if level.has_method(&"_bake_joints"):
 		level.call(&"_bake_joints")
+	level.body_bake_pending = false
+	level.body_bake_completed.emit()
 
 
 ## 音乐由全局根持有，换 UI 不会重复创建；进入关卡时只切换一次曲目。

@@ -14,8 +14,8 @@ HUD 日志左侧的“蓝图”打开蓝图手册。支持名称/描述/标签�
 - `blueprint_store.gd`：受限 JSON 格式 v1；单边 1024 px，像素与部件预算限制，文件上限 24 MiB。
 - `ui/hud/blueprint/blueprint_system.tscn`：Blueprints 自动加载场景；手册、预览与输入隔离。
 - `actor/canvas/blueprint/`：画布蓝图采集、放置事务与幽灵场景。
-- 存档位于 `user://blueprints/<id>.inkbp`，独立于地图、编辑快照与备份。不读取任意脚本/PackedScene/对象 Variant。
-- 修改文件先写临时文件、保留旧版备份再重命名提交；删除仅改名为 `.trash`，可从用户数据目录找回。
+- 存档位于项目内 `res://blueprints/<id>.inkbp`，独立于地图、编辑快照与备份，可直接查看和提交。导出后 `res://` 在 pck 内只读，此时自动回退到 `user://blueprints`，并 `push_warning` 提示。不读取任意脚本/PackedScene/对象 Variant。
+- 修改文件先写临时文件、保留旧版备份再重命名提交；删除仅改名为 `.trash`，可在同一个蓝图目录里找回。
 - 切关卡取消预览，不持有已经释放的画布。F2 重载后重新发现当前关卡。
 - 首版原尺寸放置，不提供旋转、缩放、镜像或联网分享。
 

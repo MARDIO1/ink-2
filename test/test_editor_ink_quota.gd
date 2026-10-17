@@ -43,6 +43,15 @@ func _run() -> void:
 		quit(1)
 		return
 	check("quota table has one row per ink", grid.get_child_count() == Palette.ink_count() * 2)
+	for entry in Palette.INKS:
+		var quota: SpinBox = creative._ink_quota_fields[entry.material.id]
+		check("%s displays 20000 initially" % entry.name, quota.get_line_edit().text.contains("20000")
+			and is_equal_approx(quota.value, 20000.0))
+		var line := quota.get_line_edit()
+		var text_width := line.get_theme_font("font").get_string_size(line.text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, line.get_theme_font_size("font_size")).x
+		check("%s quota text fits without clipping" % entry.name,
+			line.size.x - line.get_theme_stylebox("normal").get_minimum_size().x >= text_width)
 
 	var blue: int = Palette.BLUE.id
 	var red: int = Palette.RED.id

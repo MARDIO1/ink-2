@@ -79,6 +79,9 @@ func _run() -> void:
 	surface.blue_layer.begin(Vector2(70.5, 120.5))
 	surface.blue_layer.extend(Vector2(175.5, 120.5))
 	surface.blue_layer.finish()
+	surface.blue_layer.begin(Vector2(120.5, 120.5))
+	surface.blue_layer.extend(Vector2(120.5, 112.5))
+	surface.blue_layer.finish()
 	# 箭头整个足迹都必须落在轮体上，所以贴着轴心放、别碰到轮缘。
 	surface.brush_size = 5
 	rule.begin(surface, Vector2(110, 112))
@@ -106,6 +109,15 @@ func _run() -> void:
 	# 滑环在每固定步重算，跑一步之后再查。
 	level.get_node("SimulationRuntime")._step(1.0 / 120.0)
 	check("slip ring bridges wheel and support", not rule.flow.bridges.is_empty())
+	surface.brush_size = 1
+	surface.blue_layer.begin(Vector2(120.5, 112.5))
+	surface.blue_layer.extend(Vector2(120.5, 102.5))
+	surface.blue_layer.finish()
+	canvas.generate(false)
+	check("adding a gear branch preserves the existing wire", wires_on(rule, wheel).size() == 1
+		and wires_on(rule, wheel)[0] == wheel_wires[0])
+	check("added gear branch becomes active instead of disappearing", wheel_wires[0].mask.has(
+		Vector2i(wheel.to_local(surface.to_global(Vector2(120.5, 102.5))).floor())))
 
 	var motors: Array = rule.objects(Motor)
 	check("exactly one motor survived solidify", motors.size() == 1)
@@ -118,6 +130,40 @@ func _run() -> void:
 		return
 	var motor = motors[0]
 	check("motor is bound to the wheel, not the support", motor.body == wheel)
+	# 模拟旧存档：支架导线首格与齿轮重叠，载体路径缺失。
+	var original_wire = support_wires[0]
+	var legacy := Wire.new()
+	legacy.active = true
+	legacy.position = original_wire.position + Vector2(3, 0)
+	legacy.rotation = original_wire.rotation
+	legacy.cells = PackedVector2Array([Vector2(support.to_local(axle).floor())])
+	legacy.cells.append_array(original_wire.cells)
+	for index in legacy.cells.size():
+		legacy.cells[index] -= Vector2(3, 0)
+	level.add_child(legacy)
+	await process_frame
+	check("legacy support wire restores to support despite overlapping first cell", is_instance_valid(legacy)
+		and not legacy.is_queued_for_deletion() and legacy.body == support)
+	check("restored wire remembers its carrier path", not legacy.carrier_path.is_empty()
+		and legacy.get_node(legacy.carrier_path).body == support)
+	check("restored wire remaps cells without shifting the circuit", legacy.mask.has(Vector2i(support.to_local(axle).floor())))
+	legacy.queue_free()
+	await process_frame
+	var player = level.get_node("Player")
+	var hand = player.get_node("Arm/Hand/HandControl")
+	var grip_point: Vector2 = canvas.surface.to_global(Vector2(75.5, 120.5))
+	player.teleport_to(grip_point + Vector2(-40, 0), 0)
+	hand.body.position += grip_point - hand.body.com_world()
+	check("real hand grips powered support wire", hand._begin_grab(support, grip_point))
+	var start_angle: float = wheel.rotation
+	var peak_power := 0.0
+	for tick in 360:
+		level.get_node("SimulationRuntime")._step(1.0 / 120.0)
+		peak_power = maxf(peak_power, motor.received_power)
+	check("grip power travels through support and axle to motor", peak_power > 0.0)
+	check("real grip power rotates wheel without buffer injection", absf(wheel.rotation - start_angle) > 0.01)
+	print("GEAR_GRIP peak_power=", peak_power, " rotation=", wheel.rotation - start_angle)
+	hand._release_grab()
 
 	# 能源注入走的是 energy_flow 收能量时用的同一个缓冲；这里只验证力矩确实落在轮体上。
 	var before: float = wheel.angular_velocity
@@ -126,6 +172,26 @@ func _run() -> void:
 		motor.buffer_age = 0.0
 		level.get_node("SimulationRuntime")._step(1.0 / 120.0)
 	check("motor applies torque to the wheel", absf(wheel.angular_velocity - before) > 0.5)
+	# 无草稿副本的轮体移到空白处后，蓝墨仍按真实位置采样。
+	bearing.begin_editor_drag()
+	bearing.move_editor_drag(canvas.surface.to_global(Vector2(120.5, 45.5)))
+	bearing.finish_editor_drag()
+	check("moved wheel leaves no old draft silhouette", surface.material_at(120, 120) == 0)
+	rule.begin(surface, Vector2(110, 40))
+	check("blue arrow can be drawn on a moved wheel over blank canvas", rule.finish(surface, Vector2(124, 40)))
+	tool.begin(Vector2(210, 50))
+	var isolated = tool.finish(Vector2(230.5, 50.5))
+	surface.brush_size = 1
+	surface.blue_layer.begin(Vector2(200.5, 50.5))
+	surface.blue_layer.extend(Vector2(220.5, 50.5))
+	surface.blue_layer.finish()
+	rule.begin(surface, Vector2(203, 45))
+	check("arrow draws on an isolated gear with no draft carrier", rule.finish(surface, Vector2(217, 45)))
+	var body_count: int = level.world.bodies.size()
+	canvas.generate(false)
+	await process_frame
+	check("blue line on isolated gear does not create a duplicate body", level.world.bodies.size() == body_count)
+	check("isolated gear gets its wire even when no new support is created", not wires_on(rule, isolated.yellow_anchor.body).is_empty())
 	print("GEAR_BLUE force=", motor.applied_force, " power=", motor.received_power,
 		" av=", wheel.angular_velocity, " bridged=", not rule.flow.bridges.is_empty())
 

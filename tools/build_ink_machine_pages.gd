@@ -14,6 +14,9 @@ func _build() -> void:
 	var backup := "res://.level_backups/ink-machines-"+str(Time.get_unix_time_from_system()).replace(".","-")
 	assert(DirAccess.make_dir_recursive_absolute(backup)==OK)
 	for title in PAGES:
+		# 第二页已取消亮灯机构与出口门槛，此旧构建器只维护第三页。
+		if title == "第二页":
+			continue
 		var path: String = "res://map/asset/imported/"+title+".tscn"
 		assert(DirAccess.copy_absolute(path,backup+"/"+title+".tscn")==OK)
 		var source := path
@@ -28,37 +31,26 @@ func _build() -> void:
 		for child in level.get_node("MapTexts").get_children():
 			child.free()
 		var paths: Array[NodePath] = []
-		if title == "第二页":
-			_gears(Vector2(2300,400),Vector2(2930,530))
-			_lever(Vector2(4750,520),Vector2(5200,300))
-			_canvas("TransmissionCanvas",Rect2(1950,160,1200,650))
-			_canvas("LeverCanvas",Rect2(4510,250,1000,550))
-			paths.assign([NodePath("../Transmission"),NodePath("../Balance")])
-			_text(Vector2(30,400),"第二页 · 传动开路\n补蓝线带动齿轮，再画配重压下黄杆。两盏灯亮后出口解锁。",19)
-			_monster("res://actor/monster/great_shield.tscn","TransmissionGuard",Vector2(2870,666),0.4)
-			_monster("res://actor/monster/great_shield.tscn","BalanceGuard",Vector2(4590,620),0.4)
-			_text(Vector2(2010,625),"守卫挡着正面？画长柄钩、搭高台，或把它引开。",16)
-		else:
-			_clear_terrain(Rect2(710,1410,111,90))
-			_clear_terrain(Rect2(1780,410,101,110))
-			if level.has_node("Terrain_FirstFoothold"):
-				level.get_node("Terrain_FirstFoothold").free()
-			if level.has_node("Terrain_FinalFoothold"):
-				level.get_node("Terrain_FinalFoothold").free()
-			_elevator(Vector2(760,1478))
-			_gears(Vector2(1900,300),Vector2(2320,292))
-			_canvas("LiftCanvas",Rect2(570,850,610,700))
-			_canvas("TransmissionCanvas",Rect2(1540,80,1000,650))
-			paths.assign([NodePath("../Elevator"),NodePath("../Transmission")])
-			_text(Vector2(40,1170),"第三页 · 动力登顶\n先搭乘升降台，再接通山顶齿轮。\n途中绘制空心台阶，绕过灰色崖面。\n两盏灯亮后，山顶纸洞解锁。",19)
-			_text(Vector2(1550,960),"画台阶向左上走；旧画作可回收再用。",17)
-			_text(Vector2(310,660),"折返搭坡向右上走，接近传动站。",17)
-			_monster("res://actor/monster/bomb_side.tscn","LedgeThrower",Vector2(1290,870),0.65)
-			var thrower = level.get_node("Monsters/LedgeThrower")
-			thrower.attack_cooldown_scale=4.0
-			thrower.attack_windup_scale=1.8
-			thrower.attack_range_scale=1.3
-			_text(Vector2(1480,790),"抬手后才投掷：画带顶棚的台阶，挡住再走。\n不必击败它；也可诱导炸弹砸向你画的挡板。",16)
+		_clear_terrain(Rect2(710,1410,111,90))
+		_clear_terrain(Rect2(1780,410,101,110))
+		if level.has_node("Terrain_FirstFoothold"):
+			level.get_node("Terrain_FirstFoothold").free()
+		if level.has_node("Terrain_FinalFoothold"):
+			level.get_node("Terrain_FinalFoothold").free()
+		_elevator(Vector2(760,1478))
+		_gears(Vector2(1900,300),Vector2(2320,292))
+		_canvas("LiftCanvas",Rect2(570,850,610,700))
+		_canvas("TransmissionCanvas",Rect2(1540,80,1000,650))
+		paths.assign([NodePath("../Elevator"),NodePath("../Transmission")])
+		_text(Vector2(40,1170),"第三页 · 动力登顶\n先搭乘升降台，再接通山顶齿轮。\n途中绘制空心台阶，绕过灰色崖面。\n两盏灯亮后，山顶纸洞解锁。",19)
+		_text(Vector2(1550,960),"画台阶向左上走；旧画作可回收再用。",17)
+		_text(Vector2(310,660),"折返搭坡向右上走，接近传动站。",17)
+		_monster("res://actor/monster/bomb_side.tscn","LedgeThrower",Vector2(1290,870),0.65)
+		var thrower = level.get_node("Monsters/LedgeThrower")
+		thrower.attack_cooldown_scale=4.0
+		thrower.attack_windup_scale=1.8
+		thrower.attack_range_scale=1.3
+		_text(Vector2(1480,790),"抬手后才投掷：画带顶棚的台阶，挡住再走。\n不必击败它；也可诱导炸弹砸向你画的挡板。",16)
 		level.get_node("PageExit").machine_paths = paths
 		var packed := PackedScene.new()
 		assert(packed.pack(level)==OK)

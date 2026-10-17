@@ -64,8 +64,8 @@ func _run() -> void:
 	check("placing a gear leaves the canvas draft alone", pinned != null
 		and surface.material_at(70, 70) == Palette.BLACK.id
 		and surface.material_at(135, 70) == Palette.BLACK.id)
-	check("gear outline is mirrored onto the canvas for blue ink", pinned != null
-		and not surface.gear_skip_cells.is_empty()
+	check("gear does not copy pixels into the draft", pinned != null
+		and surface.gear_skip_cells.is_empty() and surface.material_at(150, 120) == 0
 		and surface.material_at(120, 120) == Palette.BLACK.id)
 	check("gear over unsolidified ink is pinned to the world", pinned.fixed_to_world
 		and pinned.joint != null and pinned.black_anchor.is_empty())

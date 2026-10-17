@@ -177,7 +177,6 @@ func _run() -> void:
 	await _check_scene_fonts("res://actor/canvas/canvas.tscn", PackedStringArray([
 		"ToolbarLayer/WorkbenchUI/Toggle",
 		"ToolbarLayer/WorkbenchUI/Buttons/Hand",
-		"ToolbarLayer/WorkbenchUI/ResizePanel/Grid/PlayerVisibility",
 		"ToolbarLayer/WorkbenchUI/ResizePanel/Grid/NailVisibility",
 	]))
 

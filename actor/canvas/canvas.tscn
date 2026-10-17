@@ -398,20 +398,6 @@ grow_vertical = 2
 theme_override_constants/h_separation = 8
 columns = 2
 
-[node name="PlayerVisibility" type="Button" parent="WorkbenchUI/ResizePanel/Grid"]
-custom_minimum_size = Vector2(64, 56)
-layout_mode = 2
-tooltip_text = "显示小人"
-focus_mode = 0
-mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 22
-theme_override_styles/normal = SubResource("IconNormal")
-theme_override_styles/pressed = SubResource("IconSelected")
-theme_override_styles/hover = SubResource("IconHover")
-theme_override_styles/focus = SubResource("IconNormal")
-toggle_mode = true
-text = "人"
-
 [node name="NailVisibility" type="Button" parent="WorkbenchUI/ResizePanel/Grid"]
 custom_minimum_size = Vector2(64, 56)
 layout_mode = 2

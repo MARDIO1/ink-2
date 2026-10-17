@@ -94,11 +94,8 @@ func _run() -> void:
 	valid = valid and not map_canvas.has_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/Right")
 	valid = valid and not map_canvas.has_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/Up")
 	valid = valid and not map_canvas.has_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/Down")
-	var visibility_button: Button = map_canvas.get_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/PlayerVisibility")
-	valid = valid and not visibility_button.button_pressed
-	visibility_button.button_pressed = true
-	valid = valid and player.visible
-	visibility_button.button_pressed = false
+	valid = valid and not map_canvas.has_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/PlayerVisibility")
+	valid = valid and not player.visible and player.body.shapes.is_empty() and player.body.rects.is_empty()
 
 	# 放置栏提供当前支持的小怪。
 	var monster_palette: CanvasLayer = creative.get_node("MonsterPalette")
@@ -350,8 +347,8 @@ func _run() -> void:
 	valid = valid and toolbar_screen.origin.distance_to(map_canvas.screen_toolbar_origin) < 0.01
 
 	# GUI 点击不能穿透到后面的全局输入画布：左键不落墨，中键不落钉。
-	var button_center: Vector2 = visibility_button.get_global_transform_with_canvas() \
-		* visibility_button.get_rect().get_center()
+	var button_center: Vector2 = nail_visibility_button.get_global_transform_with_canvas() \
+		* (nail_visibility_button.size * 0.5)
 	var motion := InputEventMouseMotion.new()
 	motion.position = button_center
 	motion.global_position = button_center
@@ -373,7 +370,7 @@ func _run() -> void:
 		await process_frame
 	valid = valid and surface.black_image.get_data() == pixels_before_gui_click
 	valid = valid and surface.nail_layer.nails.size() == nails_before_gui_click
-	visibility_button.button_pressed = false
+	nail_visibility_button.button_pressed = true
 
 	# 向左扩展：像素与钉子右移，画布节点左移，旧内容的世界坐标保持不变。
 	map_canvas.canvas_expand_step = 16

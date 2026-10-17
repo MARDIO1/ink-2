@@ -6,7 +6,8 @@ extends Node
 
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
-const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
+const YellowAxle := preload("res://ink/yellow/src/axle.gd")
+const AxleScene := preload("res://ink/yellow/axle.tscn")
 const ANCHOR_TAG := "static_anchor_points"
 ## 墨水物品所在的组；存关卡时用它区分"画出来的东西"和地形/生物。
 const INK_GROUP := "ink_item"
@@ -49,15 +50,18 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 
 	var pos: Vector2 = surface.global_position
 	var size: Vector2i = surface.canvas_size
-	# 还没固化的齿轮：轮廓已经在画布上（蓝墨工具只认画布像素），轮体却是独立刚体。
-	# 轮廓压在真实墨迹上的部分照常并进支座（滑环要够到轴心），落在空白画布上的部分跳过。
-	# 轮体本身在固化前就存在，所以「新造的刚体」里没有它，要单独把蓝墨挂上去。
-	var gear_cells: Dictionary = surface.gear_skip_cells
-	var gear_bodies: Array = []
-	for child in world.get_children():
-		if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
-			gear_bodies.append(child.yellow_anchor.body)
-
+	var centers: PackedVector2Array = surface.gear_centers.duplicate()
+	# 墨化会把黄墨放回独立图层；轴盘与轮体仍应一起按普通墨水固化。
+	for center in centers:
+		var origin := Vector2i(center.floor())
+		for y in range(-3, 4):
+			for x in range(-3, 4):
+				if x * x + y * y > 9:
+					continue
+				var at := origin + Vector2i(x, y)
+				if surface._inside(Vector2(at)) and surface.rod_layer.pixels.get_pixelv(at).a > 0.5:
+					surface._set_pixel_raw(at, InkPalette.YELLOW.color)
+					surface.rod_layer.pixels.set_pixelv(at, Color.TRANSPARENT)
 	# 先按块收集墨水（块级拷贝，见 _scan_block），再只扫描实体与画布相交的局部区域。
 	var shape = PixelShape.new()
 	var white = PixelShape.new()
@@ -65,18 +69,13 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	# 颜色 -> 材质缓存；认色本身仍走色表，见 _scan_block。
 	var color_table: Dictionary = {}
 	for block in _block_rects(surface, size):
-		_scan_block(surface, block, shape, white, anchors, color_table, gear_cells)
+		_scan_block(surface, block, shape, white, anchors, color_table)
 	var blue = surface.blue_rule()
 	var blue_pixels: Dictionary = surface.blue_layer.mask.duplicate()
 	if blue != null:
-		blue.merge_shape(surface, shape, gear_cells)
-	var previous: Array = world.world.bodies.duplicate()
+		blue.merge_shape(surface, shape)
 	var ink_pixels: int = shape.pixel_count()
 	var overlap_bodies: Array = world.world.bodies.duplicate()
-	# 齿轮与支座分层重叠；墨化后再固化不能把支座的轴心挖掉。
-	for child in world.get_children():
-		if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
-			overlap_bodies.erase(child.yellow_anchor.body)
 	var rejected_pixels: int = _remove_overlaps(shape, surface, overlap_bodies)
 
 	# 连通分量 -> 刚体。静态岛再按 BLOCK_SIZE 切块：破坏代价于是以块封顶。
@@ -111,20 +110,18 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 			total_pixels += white.pixel_count()
 
 	if spawned == 0:
-		if ink_pixels > 0:
-			surface.clear()
+		if blue != null:
+			blue.attach_wires(surface, world.world.bodies, blue_pixels)
+		if ink_pixels > 0 or not blue_pixels.is_empty():
+			surface.clear(false)
 		print("SOLID bodies=0 pixels=0 rejected=%d" % rejected_pixels)
 		return
 
 	#固化成功后清空画布上的蓝图墨水
 	if blue != null:
-		var created: Array = []
-		for body in world.world.bodies:
-			if not previous.has(body):
-				created.append(body)
-		blue.attach_wires(surface, created + gear_bodies, blue_pixels)
+		blue.attach_wires(surface, world.world.bodies, blue_pixels)
 	surface.clear(false)      # 这些墨水已经变成刚体带走了，不能还回瓶子
-	print("SOLID bodies=%d pixels=%d rejected=%d ink=%d skip=%d" % [spawned, total_pixels, rejected_pixels, ink_pixels, gear_cells.size()])
+	print("SOLID bodies=%d pixels=%d rejected=%d ink=%d" % [spawned, total_pixels, rejected_pixels, ink_pixels])
 
 
 ## 画布按 BLOCK_SIZE 切出来的块（画布坐标，已裁到画布与 black_image 内）。
@@ -180,7 +177,7 @@ func _block_pieces(island) -> Array:
 ## 形状的 chunk 键用画布坐标：固化出的形状局部坐标必须等于画布坐标 ——
 ## _spawn_component 的 local_aabb()、PixelShape2D.position、回收与破坏路径都按这个约定。
 func _scan_block(surface, block: Rect2i, ink, white, anchors: Dictionary,
-		color_table: Dictionary, skip: Dictionary = {}) -> void:
+		color_table: Dictionary) -> void:
 	var data: PackedByteArray = surface.black_image.get_region(block).get_data()
 	var width: int = block.size.x
 	var origin_x: int = block.position.x
@@ -209,8 +206,6 @@ func _scan_block(surface, block: Rect2i, ink, white, anchors: Dictionary,
 			if material == 0:
 				continue
 			var x: int = origin_x + lx
-			if skip.has(Vector2i(x, y)):
-				continue
 			var target = white if material == white_id else ink
 			var key: int = PixelShape.make_key(x >> 3, y >> 3)
 			if key != last_key or target != last_target:
@@ -333,20 +328,16 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		push_error("CanvasSolid.rasterize: 参数无效")
 		return
 	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
-	var targets: Array = []
-	# 齿轮保持独立部件，避免墨化时与背后的支座焊成一个静态岛。
-	var gears := {}
 	if not keep_bodies:
-		for child in world.get_children():
-			if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
-				gears[child.yellow_anchor.body] = true
+		reclaim_axles(surface, world, Rect2i(Vector2i.ZERO, surface.canvas_size))
+	var targets: Array = []
 	for child in world.get_children():
 		#⚠️ 只认刚体节点本身：Nail 这种外观节点也带 body 属性，
 		#   按 body 过滤会把它当刚体收走 —— remove_body_node 参数类型不符，直接报错/崩溃。
 		if not child is PixelBody2D:
 			continue
 		var body = child.get("body")
-		if body == null or body.tags.has(LIVING_TAG) or gears.has(body):
+		if body == null or body.tags.has(LIVING_TAG):
 			continue
 		if body.aabb.intersects(canvas_rect):
 			targets.append(child)
@@ -383,8 +374,6 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 			world.remove_child(node)
 			node.queue_free()
 	surface.refresh()
-	# 墨化把真实实体写回画布：这些格子现在有真正的墨，不能再按「齿轮盖章的空白格」跳过。
-	surface.clear_gear_skip_cells()
 	print("RESTORE bodies=%d pixels=%d fragments=%d kept=%s" % [
 		targets.size(), pixels, fragments, str(keep_bodies)])
 
@@ -392,21 +381,22 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 ## 把框内的固化像素采样回画布并从世界实体中摘除。
 ## 与完整“返回画布”不同，这里保留钉子材质，供框删撤销时精确恢复到画布。
 func rasterize_rect(surface, world, local_rect: Rect2i, moved_pixels: Dictionary = {},
-		mask: Dictionary = {}) -> int:
+		mask: Dictionary = {}, skip_bodies: Dictionary = {}) -> int:
 	if world == null or surface == null or local_rect.size.x <= 0 or local_rect.size.y <= 0:
 		return 0
 	var clipped := local_rect.intersection(Rect2i(Vector2i.ZERO, surface.canvas_size))
 	if clipped.size.x <= 0 or clipped.size.y <= 0:
 		return 0
 	if surface.blue_rule() != null:
-		surface.blue_rule().reclaim(surface, clipped)
+		surface.blue_rule().reclaim(surface, clipped, skip_bodies)
+	reclaim_axles(surface, world, clipped, mask)
 	var world_rect := Rect2(surface.to_global(Vector2(clipped.position)), Vector2(clipped.size))
 	var targets: Array = []
 	for child in world.get_children():
 		if not child is PixelBody2D:
 			continue
 		var body = child.get("body")
-		if body == null or body.tags.has(LIVING_TAG):
+		if body == null or body.tags.has(LIVING_TAG) or skip_bodies.has(body):
 			continue
 		if body.aabb.intersects(world_rect):
 			targets.append(child)
@@ -424,7 +414,6 @@ func rasterize_rect(surface, world, local_rect: Rect2i, moved_pixels: Dictionary
 		if not result.body_alive and is_instance_valid(node):
 			world.remove_child(node)
 			node.queue_free()
-	surface.clear_gear_skip_cells()
 	return removed
 
 
@@ -503,7 +492,7 @@ func sync_serializable_bodies(world) -> void:
 		_write_body_node(body_node, body, world)
 	world.realign_body_nodes()
 	for child in world.get_children():
-		if child is GearBearing and not child.is_queued_for_deletion():
+		if child is YellowAxle and not child.is_queued_for_deletion():
 			child._process(0.0)
 
 
@@ -711,3 +700,36 @@ func _canvas_color(surface, material: int):
 	var color: Color = InkPalette.color_for_material_id(material)
 	return color if color.a > 0.0 else null
 #endregion
+
+## 固化后只创建标准铰链；没有独立齿轮拖动、复制轮廓或蓝墨跟随分支。
+func create_axles(surface, host, centers: PackedVector2Array) -> void:
+	for center in centers:
+		var point: Vector2 = host.to_local(surface.to_global(center))
+		var anchor: Dictionary = YellowAxle.find_material(host.world, point, InkPalette.YELLOW.id)
+		if anchor.is_empty():
+			continue
+		var axle = AxleScene.instantiate()
+		axle.gear_material = InkPalette.YELLOW.id
+		axle.yellow_position = point
+		axle.black_position = point
+		axle.yellow_anchor = anchor
+		axle.fixed_to_world = true
+		host.add_child(axle)
+		axle.owner = host
+		axle.connect_joint()
+		axle._process(0.0)
+
+## 墨化回收轴心为普通草稿元数据，框选移动/旋转也沿用同一路径。
+func reclaim_axles(surface, host, rect: Rect2i, mask: Dictionary = {}) -> void:
+	for child in host.get_children().duplicate():
+		if not child is YellowAxle or child.is_queued_for_deletion() or child.yellow_anchor.is_empty():
+			continue
+		var point: Vector2 = surface.to_local(host.to_global(child.Stroke.anchor_world(child.yellow_anchor)))
+		var at := Vector2i(point.floor())
+		if not rect.has_point(at) or not SelectionMask.contains(mask, at):
+			continue
+		if not surface.gear_centers.has(point):
+			surface.gear_centers.append(point)
+		child.remove_joint()
+		host.remove_child(child)
+		child.queue_free()

@@ -19,6 +19,9 @@ func _ready() -> void:
 	_setup.call_deferred()
 
 func _setup() -> void:
+	var level := get_parent()
+	if level != null and level.get("body_bake_pending") == true:
+		await Signal(level, &"body_bake_completed")
 	_moving = get_node_or_null(moving_path)
 	if _moving == null or _moving.body == null:
 		return

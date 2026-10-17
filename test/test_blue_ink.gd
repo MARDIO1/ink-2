@@ -446,7 +446,7 @@ func test_arrow_surface_and_grip() -> void:
 	settle(0.5)
 	check("gripping wire supplies marked biological energy", motor.received_power > 0.0 and motor.biological_energy > 0.0)
 	var weight: float = (player.body.mass + player.get_node("Arm").body.mass + hand.body.mass) * scene.world.gravity.length()
-	check("biological thrust cannot lift the player", motor.applied_force <= weight * 0.5)
+	check("biological thrust respects configured force ceiling", motor.applied_force <= weight * rule.biological_force_weight_ratio)
 	var bio_motors: Array = [motor]
 	for i in 3:
 		var extra := Motor.new()
@@ -463,14 +463,20 @@ func test_arrow_surface_and_grip() -> void:
 	var total_force := 0.0
 	for engine in bio_motors:
 		total_force += engine.applied_force
-	check("stacking biological motors shares one sub-weight thrust ceiling", total_force > 0.0 and total_force <= weight * 0.5 + 0.01)
+	check("stacking biological motors shares configured force ceiling", total_force > 0.0
+		and total_force <= weight * rule.biological_force_weight_ratio + 0.01)
 	hand._release_grab()
 	settle(0.8)
 	check("release stops biological supply and expires buffer", motor.received_power == 0.0 and motor.biological_energy == 0.0)
 	var tiny := Motor.new()
 	tiny.tip = Vector2(10, 0)
 	tiny.brush_width = 5
-	check("small arrow has reduced force and power ceiling", tiny.power_limit(rule.power_per_width) < 4000000.0)
+	var full := Motor.new()
+	full.tip = Vector2(120, 0)
+	full.brush_width = tiny.brush_width
+	check("small arrow has reduced power ceiling relative to full length", tiny.power_limit(rule.power_per_width)
+		< full.power_limit(rule.power_per_width) * 0.1)
+	full.free()
 	tiny.free()
 	var at := Vector2i(95, 40)
 	runtime._physics.carve(scene.world, {motor.body: {motor.body.shapes[0]: {at: true}}})

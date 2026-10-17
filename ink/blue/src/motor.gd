@@ -152,6 +152,9 @@ func _ready() -> void:
 		call_deferred("restore")
 
 func restore() -> void:
+	var level := get_parent()
+	if level != null and level.get("body_bake_pending") == true:
+		await Signal(level, &"body_bake_completed")
 	if body != null:
 		return
 	var physics = get_parent().get("world")

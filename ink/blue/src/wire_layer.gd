@@ -4,6 +4,7 @@ extends Node2D
 ## 此节点管理导线像素、显示和载体跟随；能源接触由 energy_flow.gd 管理。
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
+const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const DIRS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 
 #region 数据与显示
@@ -21,6 +22,7 @@ var _cells_dirty := false
 		_cells_dirty = false
 @export var active := false
 @export var carrier_material: int = 1
+@export var carrier_path: NodePath
 ## 只调显示，不影响能源量/传播。Inspector 可按每条导线覆盖。
 @export_range(0.0, 8.0, 0.1) var highlight_brightness := 2.5
 @export_range(1.0, 6.0, 0.5) var highlight_core_width := 2.0
@@ -104,6 +106,20 @@ func refresh() -> void:
 	version += 1
 	layout_version += 1
 
+## 编辑器搬动草稿只上传发生变化的瓦片，不在每个鼠标事件重建整层贴图与线宽。
+func replace_editor_mask(next: Dictionary) -> void:
+	for at: Vector2i in mask:
+		if not next.has(at):
+			_set_display_pixel(at, Color.TRANSPARENT)
+	for at: Vector2i in next:
+		if not mask.has(at):
+			_set_display_pixel(at, Palette.BLUE.color)
+	mask = next
+	_cells_dirty = true
+	flush_display(false)
+	version += 1
+	layout_version += 1
+
 func show_energy_points(heads: PackedVector2Array, tails: PackedVector2Array, energies: PackedFloat32Array, reference: float) -> void:
 	energy_lines.resize(heads.size() * 2)
 	energy_colors.resize(heads.size())
@@ -174,19 +190,49 @@ func _process(_delta: float) -> void:
 	sync_pose()
 
 func restore() -> void:
+	var level := get_parent()
+	if level != null and level.get("body_bake_pending") == true:
+		await Signal(level, &"body_bake_completed")
 	if body != null:
 		return
 	var physics = get_parent().get("world")
 	if physics == null or cells.is_empty():
 		return
-	var point: Vector2 = to_global(cells[0] + Vector2.ONE * 0.5)
-	for candidate in physics.bodies:
-		var local := Vector2i(candidate.to_local(point).floor())
-		if material_at(candidate, local) == carrier_material:
-			body = candidate
-			sync_pose()
-			return
-	queue_free()
+	var carrier := get_node_or_null(carrier_path) if not carrier_path.is_empty() else null
+	if carrier is BodyNode and physics.bodies.has(carrier.body):
+		body = carrier.body
+	else:
+		# 旧地图没有载体路径。首格可能同时落在齿轮和支架上，必须比较整条线，
+		# 否则会误绑轮体，再用支架坐标跟随轮体，下一步整条导线就被 prune 掉。
+		var best_score := 0
+		var best_pose := INF
+		var sample_count := mini(cells.size(), 32)
+		for candidate in physics.bodies:
+			var score := 0
+			for sample in sample_count:
+				var index := sample * (cells.size() - 1) / maxi(sample_count - 1, 1)
+				var point: Vector2 = transform * (cells[index] + Vector2.ONE * 0.5)
+				if candidate.aabb.has_point(point) and material_at(candidate, Vector2i(candidate.to_local(point).floor())) == carrier_material:
+					score += 1
+			var pose: float = candidate.position.distance_squared_to(position) + absf(candidate.rotation - rotation)
+			if score > best_score or (score > 0 and score == best_score and pose < best_pose):
+				best_score = score
+				best_pose = pose
+				body = candidate
+	if body == null:
+		queue_free()
+		return
+	# 序列化坐标属于旧载体；绑定到不同局部坐标系时必须同步变换像素。
+	var restored := PackedVector2Array()
+	for at in cells:
+		var local := Vector2i(body.to_local(transform * (at + Vector2.ONE * 0.5)).floor())
+		if material_at(body, local) != 0:
+			restored.append(Vector2(local))
+	if restored != cells:
+		cells = restored
+		rebuild()
+	sync_pose()
+	remember_revision()
 
 ## 蚀除可以不分裂刚体；形状版本变化时才剔除失去载体的导电像素。
 func prune(physics) -> bool:
@@ -260,6 +306,13 @@ func intact_on(target) -> bool:
 	return true
 
 func remember_revision() -> void:
+	var carrier := get_node_or_null(carrier_path) if not carrier_path.is_empty() else null
+	if not (carrier is BodyNode and carrier.body == body):
+		carrier_path = NodePath()
+		for node in get_parent().get_children():
+			if node is BodyNode and node.body == body:
+				carrier_path = get_path_to(node)
+				break
 	_revision.clear()
 	for shape in body.shapes:
 		_revision.append(shape.get_instance_id())

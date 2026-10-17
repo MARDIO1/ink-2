@@ -11,7 +11,9 @@ const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const NailScript := preload("res://actor/nail/src/nail.gd")
 const YellowHinge := preload("res://ink/yellow/src/hinge.gd")
-const GearBearing := preload("res://actor/canvas/src/gear_bearing.gd")
+var _selection_rotation = preload("res://actor/canvas/src/selection_rotation.gd").new()
+const YellowAxle := preload("res://ink/yellow/src/axle.gd")
+const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
@@ -274,21 +276,21 @@ func generate(record_undo := true) -> void:
 	if surface.ink_px_of(preload("res://ink/general/src/ink_palette.gd").WHITE.id) > 0:
 		record_undo = false
 		surface._undo_steps.clear()
-	var state: Dictionary = History.capture(self) if record_undo else {}
+	# 补线会修改已有活动导线，撤销需保存电路；无需逐像素打包已有轮体/地形。
+	var state: Dictionary = History.capture(self, false, Rect2(), {}, true) if record_undo else {}
 	# 只在落笔/抬笔时记录黑色；固化前擦掉的黑色不能重新成为轴。
 	for index in range(surface.rod_layer.anchor_points.size() - 1, -1, -1):
 		if not surface.rod_layer._black(surface.rod_layer.anchor_points[index]):
 			surface.rod_layer.anchor_points.remove_at(index)
+	var centers: PackedVector2Array = surface.gear_centers.duplicate()
 	solid.solidify(surface, world, _map_editor_mode)
 	surface.rod_layer.solidify(world)
+	solid.create_axles(surface, world, centers)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.solidify(surface)
 	if surface.blue_rule() != null:
 		surface.blue_rule().solidify(surface)
-	for child in world.get_children():
-		if child is GearBearing and not child.is_queued_for_deletion():
-			child.relink_after_solidify()
 	if record_undo:
 		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
@@ -300,7 +302,7 @@ func return_to_canvas(record_undo := true, keep_yellow_drafts := false) -> void:
 	if keep_yellow_drafts or _map_editor_mode:
 		# 黄墨连杆转回蓝图时，保存轴点并移除旧关节；下次固化重新创建。
 		for child in world.get_children().duplicate():
-			if not child is YellowHinge or child is GearBearing:
+			if not child is YellowHinge or child is YellowAxle:
 				continue
 			var point: Vector2 = surface.to_local(world.to_global(child.yellow_position))
 			if not surface._inside(point):
@@ -380,26 +382,30 @@ func _delete_selection(rect: Rect2i, mask: Dictionary = {}) -> void:
 func _move_selection(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> void:
 	if offset == Vector2i.ZERO:
 		return
-	var state := History.capture(self, true,
-		Rect2(surface.to_global(Vector2(rect.position)), Vector2(rect.size)))
+	var bounds := Rect2(surface.to_global(Vector2(rect.position)), Vector2(rect.size))
+	var state := History.capture(self, true, bounds)
 	var moved_physical: Dictionary = {}
 	var removed: int = solid.rasterize_rect(surface, world, rect, moved_physical, mask)
-	var moved_black: bool = surface.move_rect(rect, offset, mask)
+	var moved_black: bool = surface.move_rect(rect, offset, mask, true)
+	var blue = surface.blue_rule()
+	var moved_blue: bool = blue.move_selection_drafts(surface, rect, offset, mask) if blue != null else false
 	var moved_yellow: bool = surface.rod_layer.move_rect(rect, offset, mask)
 	var yellow = surface.yellow_rule()
 	var moved_spring: bool = yellow.move_drafts_in_rect(surface, rect, offset, mask) if yellow != null else false
 	if removed > 0:
 		solid.spawn_moved_pixels(surface, world, moved_physical, offset, _map_editor_mode)
+		var moved_centers := PackedVector2Array()
+		for point in surface.gear_centers:
+			if moved_physical.has(Vector2i(point.floor()) - offset):
+				moved_centers.append(point)
+		solid.create_axles(surface, world, moved_centers)
+		for point in moved_centers:
+			surface.gear_centers.remove_at(surface.gear_centers.find(point))
 		solid.sync_serializable_bodies(world)
-	if removed > 0 or moved_black or moved_yellow or moved_spring:
+	if removed > 0 or moved_black or moved_blue or moved_yellow or moved_spring:
 		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
-
-## 保底 PNG：把世界里所有实心像素采样进画布 → 存一张透明 PNG → 把画布还原成空的。
-## 不删刚体（`keep_bodies`）——存图不能顺手把关卡拆了。
-## ⚠️ 固化过的关卡画布是空的，所以图必须从世界采样，直接存画布只会得到一张空图。
-## ⚠️ 采样是临时的、存完就清画布：调用前画布上的墨必须已经固化过（F5 里就是先 generate 再 bake）。
 func bake_png(path: String) -> Error:
 	solid.rasterize(surface, world, true)
 	var error: Error = surface.save_png(path)
@@ -713,9 +719,6 @@ func set_map_editor_mode(on: bool) -> void:
 		_build_expand_canvas_window()
 	if not on and _expand_canvas_window != null:
 		_expand_canvas_window.hide()
-	var player_visibility_button: Button = resize_panel.get_node("Grid/PlayerVisibility")
-	player_visibility_button.set_pressed_no_signal(player != null and player.visible)
-	_update_player_visibility_tooltip(player_visibility_button.button_pressed)
 	var nail_visibility_button: Button = resize_panel.get_node("Grid/NailVisibility")
 	nail_visibility_button.set_pressed_no_signal(_nails_visible)
 	_update_nail_visibility_tooltip(_nails_visible)
@@ -1149,7 +1152,6 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("Generate").pressed.connect(generate)
 	tool_grid.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
 	tool_grid.get_node("ExpandCanvas").pressed.connect(_open_expand_canvas_window)
-	resize_panel.get_node("Grid/PlayerVisibility").toggled.connect(_on_player_visibility_toggled)
 	resize_panel.get_node("Grid/NailVisibility").toggled.connect(_on_nail_visibility_toggled)
 	toggle_button.pressed.connect(_toggle_workbench)
 	brush_panel.get_node("PenSlider").value_changed.connect(_on_pen_slider_changed)
@@ -1279,18 +1281,6 @@ func _toggle_workbench() -> void:
 	_refresh_workbench_visibility()
 
 
-func _on_player_visibility_toggled(show_player: bool) -> void:
-	if not _map_editor_mode or player == null:
-		return
-	player.visible = show_player
-	_update_player_visibility_tooltip(show_player)
-
-
-func _update_player_visibility_tooltip(show_player: bool) -> void:
-	var button: Button = resize_panel.get_node("Grid/PlayerVisibility")
-	button.tooltip_text = "隐藏小人" if show_player else "显示小人"
-
-
 func _on_nail_visibility_toggled(show_nails: bool) -> void:
 	if not _map_editor_mode:
 		return
@@ -1406,7 +1396,7 @@ func _apply_tool(tool: int) -> void:
 	tool_grid.get_node("SelectDelete").set_pressed_no_signal(
 		tool in [SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE])
 	tool_grid.get_node("SelectDelete").tooltip_text = (
-		"%s（6）\n左键拖动选区和内容；Ctrl+左键只移动选框；框内右键删除\n按钮上右键切换矩形 / 圆形选区，Ctrl+Z 撤销" %
+		"%s（6）\n左键拖动选区和内容；Ctrl+左键只移动选框；框内右键删除\nR 每次顺时针旋转 2°；按钮上右键切换矩形 / 圆形选区，Ctrl+Z 撤销" %
 		("圆形框选" if tool == SurfaceScript.Tool.SELECT_CIRCLE else "框选"))
 	_sync_hand_enabled(tool)
 	if tool in [SurfaceScript.Tool.RECT, SurfaceScript.Tool.CIRCLE, SurfaceScript.Tool.LINE]:
@@ -1485,6 +1475,11 @@ func _input(event: InputEvent) -> void:
 		or (_shape_popup != null and _shape_popup.visible) \
 		or (_selection_popup != null and _selection_popup.visible) \
 		or (_expand_canvas_window != null and _expand_canvas_window.visible):
+			return
+		if event.keycode == KEY_R and not event.ctrl_pressed and not event.alt_pressed and not event.meta_pressed \
+		and surface.tool in [SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE] and surface.has_selection():
+			_selection_rotation.apply(self)
+			get_viewport().set_input_as_handled()
 			return
 		if event.keycode == KEY_BACKSPACE and surface.tool in [
 			SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE] \

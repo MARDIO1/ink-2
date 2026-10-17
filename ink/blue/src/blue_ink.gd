@@ -7,6 +7,7 @@ const Motor := preload("res://ink/blue/src/motor.gd")
 const Anchor := preload("res://ink/yellow/src/stroke.gd")
 const Hinge := preload("res://ink/yellow/src/hinge.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
+const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 
 #region 配置与状态
 @export var force_per_length := 100000.0
@@ -58,14 +59,30 @@ func take_profile() -> Dictionary:
 #endregion
 
 #region 绘制、固化与回收
+func _black_carriers(a: Vector2, b: Vector2, padding: float) -> Array:
+	var bounds := Rect2(_world.to_local(a), Vector2.ZERO).expand(_world.to_local(b)).grow(padding)
+	return _world.world.bodies.filter(func(body): return not body.tags.has("living") and body.aabb.intersects(bounds))
+
+func _black_carrier(surface, at: Vector2i, carriers: Array) -> bool:
+	if not surface._inside(at):
+		return false
+	if surface.material_at(at.x, at.y) == Palette.BLACK.id:
+		return true
+	var point: Vector2 = _world.to_local(surface.to_global(Vector2(at) + Vector2.ONE * 0.5))
+	for body in carriers:
+		if body.aabb.has_point(point) and Anchor.has_black(body, Vector2i(body.to_local(point).floor())):
+			return true
+	return false
+
 func begin(surface, point: Vector2) -> void:
 	cancel()
+	var carriers := _black_carriers(surface.to_global(point), surface.to_global(point), 7.0)
 	var nearest := Vector2i(point.floor())
 	var distance := INF
 	for y in range(nearest.y - 6, nearest.y + 7):
 		for x in range(nearest.x - 6, nearest.x + 7):
 			var at := Vector2i(x, y)
-			if surface._inside(at) and surface.material_at(x, y) == Palette.BLACK.id:
+			if _black_carrier(surface, at, carriers):
 				var value := point.distance_squared_to(Vector2(at) + Vector2.ONE * 0.5)
 				if value < distance:
 					distance = value
@@ -83,6 +100,7 @@ func begin(surface, point: Vector2) -> void:
 
 func extend(surface, point: Vector2) -> void:
 	if drawing != null and drawing.source_surface == surface:
+		var carriers := _black_carriers(drawing.global_position, surface.to_global(point), maxf(8.0, drawing.brush_width * 3.0))
 		var requested: Vector2 = surface.to_global(point) - drawing.position
 		var low := 0.0
 		var high := 1.0
@@ -91,7 +109,7 @@ func extend(surface, point: Vector2) -> void:
 			var fits := true
 			for offset in Motor.pixels_for(requested * factor, drawing.brush_width):
 				var at := Vector2i(surface.to_local(drawing.position + offset).floor())
-				if not surface._inside(at) or surface.material_at(at.x, at.y) != Palette.BLACK.id:
+				if not _black_carrier(surface, at, carriers):
 					fits = false
 					break
 			if fits:
@@ -162,26 +180,49 @@ func merge_shape(surface, shape, skip: Dictionary = {}) -> void:
 			shape.set_pixel(at.x, at.y, Palette.BLUE.id)
 
 func attach_wires(surface, bodies: Array, pixels: Dictionary) -> void:
+	if pixels.is_empty():
+		return
+	# 黄墨在稍后的固化阶段才生成载体，此时草稿层已经清空；必须以传入快照建索引。
+	var tiles := {}
+	for at: Vector2i in pixels:
+		var tile := Vector2i(floori(float(at.x) / 64.0), floori(float(at.y) / 64.0))
+		tiles.get_or_add(tile, []).append(at)
 	for body in bodies:
-		# 齿轮轮体跨多次固化一直存在；每次固化都新挂一条线会越堆越多。
-		if _has_wire(body):
+		if body == null or body.tags.has("living"):
 			continue
+		# 已固化载体也可以补线；仅扫描其覆盖的草稿区块。
+		var bounds := Rect2(surface.to_local(_world.to_global(body.aabb.position)), Vector2.ZERO)
+		for point in [Vector2(body.aabb.end.x, body.aabb.position.y), body.aabb.end, Vector2(body.aabb.position.x, body.aabb.end.y)]:
+			bounds = bounds.expand(surface.to_local(_world.to_global(point)))
+		var existing: Array = []
+		var occupied := {}
+		for wire in objects(Wire):
+			if wire.active and wire.body == body:
+				existing.append(wire)
+				occupied.merge(wire.mask)
 		var cells: PackedVector2Array = []
-		for at: Vector2i in pixels:
-			var world_point: Vector2 = surface.to_global(Vector2(at) + Vector2.ONE * 0.5)
+		var candidates: Array = []
+		for tile: Vector2i in tiles:
+			if Rect2(Vector2(tile * 64), Vector2(64, 64)).intersects(bounds.grow(1.0)):
+				candidates.append_array(tiles[tile])
+		for at: Vector2i in candidates:
+			var world_point: Vector2 = _world.to_local(surface.to_global(Vector2(at) + Vector2.ONE * 0.5))
 			var cell := Vector2i(body.to_local(world_point).floor())
 			var material: int = Wire.material_at(body, cell)
-			if material in [Palette.BLACK.id, Palette.BLUE.id, Palette.YELLOW.id]:
+			if material in [Palette.BLACK.id, Palette.BLUE.id, Palette.YELLOW.id] and not occupied.has(cell):
 				cells.append(Vector2(cell))
+				occupied[cell] = true
 		if not cells.is_empty():
-			add_wire(body, cells)
-
-
-func _has_wire(body) -> bool:
-	for wire in objects(Wire):
-		if wire.body == body and wire.active:
-			return true
-	return false
+			if existing.is_empty():
+				add_wire(body, cells)
+			else:
+				# 原来遇到已有导线就跳过，随后 clear(false) 把新线清掉了。
+				var wire = existing[0]
+				for cell in cells:
+					wire.mask[Vector2i(cell)] = true
+				wire.refresh()
+				wire.build_widths()
+				wire.remember_revision()
 
 func add_wire(body, cells: PackedVector2Array):
 	var wire := Wire.new()
@@ -209,10 +250,10 @@ func clear_drafts(surface) -> void:
 		if not motor.active and motor.source_surface == surface:
 			motor.queue_free()
 
-func reclaim(surface, selection := Rect2i()) -> void:
+func reclaim(surface, selection := Rect2i(), skip_bodies: Dictionary = {}) -> void:
 	var bounds: Rect2i = selection if selection.has_area() else Rect2i(Vector2i.ZERO, surface.canvas_size)
 	for motor in objects(Motor):
-		if not motor.active:
+		if not motor.active or skip_bodies.has(motor.body):
 			continue
 		motor.sync_pose()
 		if bounds.has_point(Vector2i(surface.to_local(motor.position).floor())):
@@ -222,7 +263,7 @@ func reclaim(surface, selection := Rect2i()) -> void:
 			motor.source_canvas = _world.get_path_to(surface)
 			surface._bump_ink(Palette.BLUE.id, motor.area, false)
 	for wire in objects(Wire):
-		if not wire.active or wire.body == null:
+		if not wire.active or wire.body == null or skip_bodies.has(wire.body):
 			continue
 		var retained: PackedVector2Array = []
 		for point in wire.cells:
@@ -238,6 +279,31 @@ func reclaim(surface, selection := Rect2i()) -> void:
 		if retained.is_empty():
 			wire.queue_free()
 	surface.blue_layer.refresh()
+
+func move_selection_drafts(surface, rect: Rect2i, offset: Vector2i, mask: Dictionary,
+		skip_cells: Dictionary = {}, skip_motors: Dictionary = {}) -> bool:
+	var layer = surface.blue_layer
+	var moved := {}
+	for at: Vector2i in layer.mask:
+		if not skip_cells.has(at) and rect.has_point(at) and SelectionMask.contains(mask, at):
+			moved[at] = true
+	for at: Vector2i in moved:
+		layer.mask.erase(at)
+	for at: Vector2i in moved:
+		layer.mask[at + offset] = true
+	if not moved.is_empty():
+		layer.cells = PackedVector2Array(layer.mask.keys())
+		layer.rebuild()
+	var changed := not moved.is_empty()
+	var displacement: Vector2 = surface.to_global(Vector2(offset)) - surface.global_position
+	for motor in objects(Motor):
+		if motor.active or motor.preview or motor.source_surface != surface or skip_motors.has(motor):
+			continue
+		var at := Vector2i(surface.to_local(motor.global_position).floor())
+		if rect.has_point(at) and SelectionMask.contains(mask, at):
+			motor.global_position += displacement
+			changed = true
+	return changed
 
 func observe_fracture(physics, body, pieces: Array) -> void:
 	for motor in objects(Motor):

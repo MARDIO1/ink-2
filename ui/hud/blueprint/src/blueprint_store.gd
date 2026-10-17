@@ -5,7 +5,12 @@ const VERSION := 1
 const MAX_SIDE := 1024
 const MAX_FILE_BYTES := 24 * 1024 * 1024
 const MAX_CELLS := 600000
-var directory := "user://blueprints"
+## 蓝图存放在项目内，方便直接查看、备份和提交。
+## 导出版把 res:// 打进 pck 后只读，此时自动回退到用户目录。
+const PROJECT_DIRECTORY := "res://blueprints"
+const FALLBACK_DIRECTORY := "user://blueprints"
+var directory := PROJECT_DIRECTORY
+var used_fallback := false
 var error := ""
 var _cache := {}
 
@@ -56,6 +61,18 @@ func read(id: String) -> Dictionary:
 	_cache[path] = {"signature": signature, "data": data.duplicate(true)}
 	return data
 
+## 确保目标目录存在；项目内目录不可写（导出后 res:// 只读）时回退到用户目录。
+func ensure_directory() -> bool:
+	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory)) == OK:
+		return true
+	if directory == PROJECT_DIRECTORY:
+		directory = FALLBACK_DIRECTORY
+		used_fallback = true
+		push_warning("蓝图目录 res:// 不可写，已改用 %s" % directory)
+		return DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory)) == OK
+	return false
+
+
 func save(data: Dictionary) -> bool:
 	error = ""
 	if data.get("id", "").is_empty():
@@ -69,10 +86,10 @@ func save(data: Dictionary) -> bool:
 	if content.to_utf8_buffer().size() > MAX_FILE_BYTES:
 		error = "蓝图文件过大"
 		return false
-	var absolute := ProjectSettings.globalize_path(directory)
-	if DirAccess.make_dir_recursive_absolute(absolute) != OK:
+	if not ensure_directory():
 		error = "无法创建蓝图目录"
 		return false
+	var absolute := ProjectSettings.globalize_path(directory)
 	var target := absolute.path_join(data.id + ".inkbp")
 	var file := FileAccess.open(target + ".tmp", FileAccess.WRITE)
 	if file == null:
@@ -139,6 +156,12 @@ static func validate(data: Dictionary) -> bool:
 			return false
 	if not data.get("favorite", false) is bool or not data.get("editor_only", false) is bool:
 		return false
+	var centers = data.get("gear_centers", [])
+	if not centers is Array or centers.size() > 128:
+		return false
+	for point in centers:
+		if not pair(point, MAX_SIDE) or not Rect2(Vector2.ZERO, Vector2(width, height)).has_point(Vector2(point[0], point[1])):
+			return false
 	var total := 0
 	for key in ["pixels", "rods", "blue"]:
 		if not data.get(key) is Array or not cells_valid(data[key], width * height, key == "pixels"):

@@ -142,7 +142,7 @@ func _run() -> void:
 		if not transition.busy:
 			break
 	check("level selection Esc returns without quitting", app.ui_root.get_child(0).has_node("ButtonCenter") and not paused)
-	var level = app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
+	var level = await app.load_level(load("res://test/fixtures/maps/base_level.tscn"))
 	level.auto_step = false
 	var creative = level.get_node("Creative")
 	creative.auto_save_edits = false
@@ -246,11 +246,8 @@ func _run() -> void:
 	check("actual undo button uses mixed editor history", (not is_instance_valid(label) or not label.is_inside_tree()) and not history.redo_button.disabled)
 	await click(history.redo_button)
 	check("actual redo restores editor object", creative._ensure_text_container().get_children().any(func(node): return node.editor_id == label_id))
-	var player_visible: bool = level.get_node("Player").visible
-	await click(column.get_node("ViewActions/PlayerVisibility"))
-	check("visible player toggle controls editor preview", level.get_node("Player").visible != player_visible)
-	await click(column.get_node("ViewActions/PlayerVisibility"))
-	check("player toggle restores prior preview state", level.get_node("Player").visible == player_visible)
+	check("editor no longer offers player preview toggle", not column.has_node("ViewActions/PlayerVisibility"))
+	check("canvas no longer offers player preview toggle", not canvas.resize_panel.has_node("Grid/PlayerVisibility"))
 	var nails_visible: bool = canvas.surface.nail_layer.visible
 	await click(column.get_node("ViewActions/NailVisibility"))
 	check("visible nail toggle changes only visual layer", canvas.surface.nail_layer.visible != nails_visible)
