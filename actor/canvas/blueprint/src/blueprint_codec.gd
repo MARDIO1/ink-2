@@ -39,7 +39,8 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	var surface = canvas.surface
 	var data := {"version": 1, "id": "", "name": "未命名蓝图", "description": "", "tags": [],
 		"updated": 0, "favorite": false, "editor_only": false, "size": [rect.size.x, rect.size.y],
-		"pixels": [], "rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": [], "gear_centers": []}
+		"pixels": [], "rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": [],
+		"gear_centers": [], "rails": [], "slider_pins": []}
 	for point in surface.gear_centers:
 		if inside(Vector2i(point.floor()), rect, mask):
 			data.gear_centers.append(xy(point - Vector2(rect.position)))
@@ -146,6 +147,32 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	for at in surface.rod_layer.anchor_points:
 		if inside(Vector2i(at.floor()), rect, mask):
 			data.anchors.append(xy(at - Vector2(rect.position)))
+	# 导轨与滑块销是画布上的独立元数据，不存就会在放置后消失。
+	for rail in surface.rod_layer.rails:
+		var a := Vector2(rail.a)
+		var b := Vector2(rail.b)
+		var a_in := inside(Vector2i(a.floor()), rect, mask)
+		var b_in := inside(Vector2i(b.floor()), rect, mask)
+		# 两端都在框外、但导轨横穿选区时同样算半个部件，不能悄悄丢掉导轨线。
+		var touched := a_in or b_in
+		if not touched:
+			var rail_steps := maxi(1, ceili(a.distance_to(b)))
+			for step in rail_steps + 1:
+				if inside(Vector2i(a.lerp(b, float(step) / rail_steps).floor()), rect, mask):
+					touched = true
+					break
+		if touched and not (a_in and b_in):
+			return {"error": "黄墨导轨未完整框入，请同时包含导轨两端"}
+		if a_in and b_in:
+			data.rails.append({"a": xy(a - Vector2(rect.position)), "b": xy(b - Vector2(rect.position)),
+				"width": int(rail.width)})
+	for pin in surface.rod_layer.slider_pins:
+		var source := Vector2(pin.source)
+		var position := Vector2(pin.position)
+		if not inside(Vector2i(source.floor()), rect, mask) or not inside(Vector2i(position.floor()), rect, mask):
+			return {"error": "滑块销未完整框入，请把滑块销和它所在的导轨一起框住"}
+		data.slider_pins.append({"source": xy(source - Vector2(rect.position)),
+			"position": xy(position - Vector2(rect.position))})
 	for child in canvas.world.get_children():
 		if child.is_queued_for_deletion():
 			continue
@@ -226,6 +253,9 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 		for point in [saved.path[0], saved.path[-1]]:
 			if not black.has(index(Vector2i(vec(point).floor()), rect.size.x)):
 				return {"error": "黄墨弹簧缺少选区内的黑墨连接端"}
+	for saved in data.slider_pins:
+		if not black.has(index(Vector2i(vec(saved.source).floor()), rect.size.x)):
+			return {"error": "滑块销缺少选区内的黑墨锚点"}
 	return data
 
 static func _entries(values: Dictionary) -> Array:
@@ -335,6 +365,15 @@ static func _preview_cells(image: Image, entries: Array, width: int, material :=
 	if length > 0:
 		image.fill_rect(Rect2i(start, Vector2i(length, 1)), colors[prior])
 
+static func _preview_segment(image: Image, a: Vector2, b: Vector2, color: Color) -> void:
+	var steps := maxi(1, ceili(a.distance_to(b)))
+	var bounds := Rect2i(Vector2i.ZERO, image.get_size())
+	for index in steps + 1:
+		var at := Vector2i(a.lerp(b, float(index) / steps).floor())
+		if bounds.has_point(at):
+			image.set_pixelv(at, color)
+
+
 static func preview(data: Dictionary) -> Image:
 	var size := Vector2i(int(data.size[0]), int(data.size[1]))
 	var image := Image.create_empty(size.x, size.y, false, Image.FORMAT_RGBA8)
@@ -358,6 +397,18 @@ static func preview(data: Dictionary) -> Image:
 				image.blend_rect(icon, Rect2i(clipped.position - origin, clipped.size), clipped.position)
 	for key in ["rods", "blue"]:
 		_preview_cells(image, data[key], size.x, Palette.YELLOW.id if key == "rods" else Palette.BLUE.id)
+	# 导轨与滑块销一起画进缩略图，蓝图库里能看出这是一套完整的滑动机构。
+	var rail_color: Color = Palette.YELLOW.color.darkened(0.48)
+	rail_color.a = 1.0
+	for saved in data.get("rails", []):
+		_preview_segment(image, vec(saved.a), vec(saved.b), rail_color)
+	for saved in data.get("slider_pins", []):
+		var pin_at := Vector2i(vec(saved.position).floor())
+		if Rect2i(Vector2i.ZERO, size).has_point(pin_at):
+			image.set_pixelv(pin_at, Color(0.08, 0.07, 0.02, 1.0))
+			var right := pin_at + Vector2i(1, 0)
+			if Rect2i(Vector2i.ZERO, size).has_point(right):
+				image.set_pixelv(right, Palette.YELLOW.color)
 	for saved in data.springs:
 		var stroke = _spring(saved)
 		stroke.build_pixels()
@@ -464,6 +515,13 @@ static func place(canvas, data: Dictionary, offset: Vector2i) -> String:
 	surface._bump_ink(Palette.BLUE.id, data.blue.size())
 	for entry in data.anchors:
 		surface.rod_layer.anchor_points.append(vec(entry) + Vector2(offset))
+	# 导轨与滑块销必须和像素一起回填，否则放置后导轨线、销都会消失。
+	for entry in data.get("rails", []):
+		surface.rod_layer.rails.append({"a": vec(entry.a) + Vector2(offset),
+			"b": vec(entry.b) + Vector2(offset), "width": int(entry.width)})
+	for entry in data.get("slider_pins", []):
+		surface.rod_layer.slider_pins.append({"source": vec(entry.source) + Vector2(offset),
+			"position": vec(entry.position) + Vector2(offset)})
 	for saved in data.springs:
 		var stroke = _spring(saved, canvas, offset)
 		stroke.source_surface = surface

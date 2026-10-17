@@ -121,10 +121,32 @@ func trash(id: String) -> bool:
 	if not valid_id(id):
 		return false
 	var path := ProjectSettings.globalize_path(directory.path_join(id + ".inkbp"))
-	var removed := DirAccess.rename_absolute(path, path + ".%d.trash" % Time.get_ticks_usec()) == OK
+	# 直接删除文件，蓝图手册里删掉的那张就不会再在目录里留下残骸。
+	# 只有删除被拒绝（文件被占用）时才退回改名，避免删不掉又悄悄丢失。
+	var removed := DirAccess.remove_absolute(path) == OK
+	if not removed:
+		removed = DirAccess.rename_absolute(path, path + ".%d.trash" % Time.get_ticks_usec()) == OK
 	if removed:
 		_cache.erase(directory.path_join(id + ".inkbp"))
 	return removed
+
+
+## 清掉旧版本删除时留下的 `.trash` 残骸；返回清掉的个数。
+func purge_trash() -> int:
+	var folder := DirAccess.open(directory)
+	if folder == null:
+		return 0
+	var purged := 0
+	for file in folder.get_files():
+		if file.ends_with(".trash"):
+			if DirAccess.remove_absolute(ProjectSettings.globalize_path(directory.path_join(file))) == OK:
+				purged += 1
+	return purged
+
+
+## 蓝图对应的存档文件名；手册里直接显示，方便与目录里的文件对上号。
+func file_name(id: String) -> String:
+	return id + ".inkbp" if valid_id(id) else ""
 
 static func number(value) -> bool:
 	return (value is float or value is int) and is_finite(float(value))
@@ -172,6 +194,23 @@ static func validate(data: Dictionary) -> bool:
 			return false
 	for point in data.anchors:
 		if not pair(point, MAX_SIDE):
+			return false
+	# 导轨与滑块销是可选字段：旧蓝图没有这两个键时按空处理。
+	for key in ["rails", "slider_pins"]:
+		var list = data.get(key, [])
+		if not list is Array or list.size() > 128:
+			return false
+	var bounds := Rect2(Vector2.ZERO, Vector2(width, height))
+	for rail in data.get("rails", []):
+		if not rail is Dictionary or not pair(rail.get("a"), MAX_SIDE) or not pair(rail.get("b"), MAX_SIDE) \
+			or not number(rail.get("width")) or rail.width < 1 or rail.width > 65:
+			return false
+		if not bounds.has_point(Vector2(rail.a[0], rail.a[1])) or not bounds.has_point(Vector2(rail.b[0], rail.b[1])):
+			return false
+	for pin in data.get("slider_pins", []):
+		if not pin is Dictionary or not pair(pin.get("source"), MAX_SIDE) or not pair(pin.get("position"), MAX_SIDE):
+			return false
+		if not bounds.has_point(Vector2(pin.source[0], pin.source[1])) or not bounds.has_point(Vector2(pin.position[0], pin.position[1])):
 			return false
 	var body_cells: Array = []
 	for body in data.bodies:

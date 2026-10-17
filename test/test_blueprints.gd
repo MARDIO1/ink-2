@@ -94,7 +94,12 @@ func _run() -> void:
 	invalid = loaded.duplicate(true)
 	invalid.version = 999
 	check("unknown schema version rejected safely", not Store.validate(invalid))
-	check("delete is recoverable trash", store.trash(data.id) and store.list_all().is_empty())
+	check("delete removes the blueprint file", store.trash(data.id) and store.list_all().is_empty())
+	var trash_left := 0
+	for filename in DirAccess.get_files_at(store.directory):
+		if str(filename).ends_with(".trash"):
+			trash_left += 1
+	check("delete leaves no .trash behind", trash_left == 0)
 	# 黄墨杆、蓝线、弹簧和动力箭头各自保留层和语义。
 	surface.write_pixel(Vector2i(36, 20), Palette.BLACK.color)
 	surface.write_pixel(Vector2i(24, 20), Palette.BLACK.color)
@@ -148,6 +153,40 @@ func _run() -> void:
 	surface.undo_last_edit()
 	canvas.set_map_editor_mode(true)
 	surface.ink_free = true
+	# 导轨与滑块销：蓝图必须保存并回填这套元数据。
+	surface.write_pixel(Vector2i(60, 40), Palette.BLACK.color)
+	for x in range(58, 71):
+		surface.rod_layer.pixels.set_pixel(x, 44, Palette.YELLOW.color)
+	surface.rod_layer.rails.append({"a": Vector2(58.5, 44.5), "b": Vector2(70.5, 44.5), "width": 3})
+	surface.rod_layer.slider_pins.append({"source": Vector2(60.5, 40.5), "position": Vector2(60.5, 44.5)})
+	var rails_before: int = surface.rod_layer.rails.size()
+	var pins_before: int = surface.rod_layer.slider_pins.size()
+	var rail_data := Codec.capture(canvas, Rect2i(56, 36, 20, 12))
+	check("rail and slider pin captured", not rail_data.has("error")
+		and rail_data.rails.size() == 1 and rail_data.slider_pins.size() == 1
+		and rail_data.rods.size() == 13)
+	check("half captured rail rejected", Codec.capture(canvas, Rect2i(56, 36, 10, 12)).has("error"))
+	# 两端都在框外但导轨横穿选区：也算半个部件，必须拒绝。
+	surface.rod_layer.rails.append({"a": Vector2(40.5, 44.5), "b": Vector2(80.5, 44.5), "width": 3})
+	check("rail crossing the selection rejected", Codec.capture(canvas, Rect2i(56, 36, 10, 12)).has("error"))
+	surface.rod_layer.rails.remove_at(surface.rod_layer.rails.size() - 1)
+	rail_data.name = "导轨蓝图"
+	check("rail blueprint survives JSON", store.save(rail_data)
+		and store.read(rail_data.id).get("rails", []).size() == 1
+		and store.read(rail_data.id).get("slider_pins", []).size() == 1)
+	var placed := Codec.place(canvas, store.read(rail_data.id), Vector2i(100, 100))
+	check("rail placement restores rail and pin", placed.is_empty()
+		and surface.rod_layer.rails.size() == rails_before + 1
+		and Vector2(surface.rod_layer.rails[-1].a) == Vector2(102.5, 108.5)
+		and Vector2(surface.rod_layer.rails[-1].b) == Vector2(114.5, 108.5)
+		and surface.rod_layer.slider_pins.size() == pins_before + 1
+		and Vector2(surface.rod_layer.slider_pins[-1].source) == Vector2(104.5, 104.5)
+		and Vector2(surface.rod_layer.slider_pins[-1].position) == Vector2(104.5, 108.5))
+	check("rail placement undo restores metadata", surface.undo_last_edit()
+		and surface.rod_layer.rails.size() == rails_before
+		and surface.rod_layer.slider_pins.size() == pins_before)
+	surface.rod_layer.rails.remove_at(surface.rod_layer.rails.size() - 1)
+	surface.rod_layer.slider_pins.remove_at(surface.rod_layer.slider_pins.size() - 1)
 	# 新齿轮是普通墨水草稿，蓝图保存轴心而非立即复制刚体。
 	surface.selected_ink = 1
 	surface.gear_tool.begin(Vector2(70, 80), 8)

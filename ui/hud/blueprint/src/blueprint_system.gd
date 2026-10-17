@@ -378,6 +378,8 @@ func open_library() -> void:
 		dialogue.hide_log()
 	cancel_placement()
 	_open("library")
+	# 删蓝图为真删文件；旧版本留下的 .trash 残骸顺手清掉。
+	store.purge_trash()
 	_items = store.list_all()
 	_search.clear()
 	_page = 0
@@ -528,8 +530,15 @@ func _show_detail(data: Dictionary) -> void:
 	_tags.text = "" if empty else ", ".join(data.tags)
 	_set_preview(_preview, data)
 	_set_preview(_save_preview, data)
-	_info.text = "请选择蓝图" if empty else "%d × %d px\n%s\n齿轮 %d · 弹簧 %d · 动力箭头 %d" % [data.size[0], data.size[1],
-		_cost_text(Codec.costs(data), target_canvas()), data.gears.size(), data.springs.size(), data.motors.size()]
+	var detail := "请选择蓝图" if empty else "%d × %d px\n%s\n齿轮 %d · 弹簧 %d · 动力箭头 %d\n导轨 %d · 滑块销 %d" % [
+		data.size[0], data.size[1], _cost_text(Codec.costs(data), target_canvas()),
+		data.gears.size(), data.springs.size(), data.motors.size(),
+		data.get("rails", []).size(), data.get("slider_pins", []).size()]
+	# 显示存档文件名，蓝图手册里的每一张都能和目录里的文件对上号。
+	var file := store.file_name(str(data.get("id", "")))
+	if not empty and not file.is_empty():
+		detail += "\n文件：" + file
+	_info.text = detail
 	_status.text = ""
 	if empty:
 		return

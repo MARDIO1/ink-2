@@ -702,14 +702,17 @@ func _canvas_color(surface, material: int):
 #endregion
 
 ## 固化后只创建标准铰链；没有独立齿轮拖动、复制轮廓或蓝墨跟随分支。
+##
+## 齿轮现在是一整块单色墨水，中心没有黄色轴点，所以这里**不能**再按黄墨找轮体：
+## 直接用中心格上的实际墨水，`gear_material` 记成那个材质。
 func create_axles(surface, host, centers: PackedVector2Array) -> void:
 	for center in centers:
 		var point: Vector2 = host.to_local(surface.to_global(center))
-		var anchor: Dictionary = YellowAxle.find_material(host.world, point, InkPalette.YELLOW.id)
+		var anchor: Dictionary = YellowAxle.find_support(host.world, point)
 		if anchor.is_empty():
 			continue
 		var axle = AxleScene.instantiate()
-		axle.gear_material = InkPalette.YELLOW.id
+		axle.gear_material = int(anchor.material)
 		axle.yellow_position = point
 		axle.black_position = point
 		axle.yellow_anchor = anchor
