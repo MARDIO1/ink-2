@@ -162,6 +162,19 @@ func _run() -> void:
 	var unpinned_ok: bool = not nailed.is_static and not nailed.tags.has("static_anchor_points")
 	print("[Canvas] removing anchor releases body: ", "PASS" if unpinned_ok else "FAIL")
 	valid = valid and unpinned_ok
+	# carve 不会进入连通域分裂，但删掉最后一枚灰色钉子后也必须释放 static。
+	var carve_body = scene.world.bodies[-1]
+	var carve_shape = carve_body.shapes[0]
+	var carve_point: Vector2i = carve_shape.local_aabb().position
+	carve_body.is_static = true
+	carve_body.tags["static_anchor_points"] = {carve_point: true}
+	scene.get_node("SimulationRuntime/PhysicsStep").carve(scene.world,
+		{carve_body: {carve_shape: {carve_point: true}}})
+	var carve_unpinned_ok: bool = not carve_body.is_static \
+		and not carve_body.tags.has("static_anchor_points")
+	print("[Canvas] carving last anchor releases static body: ",
+		"PASS" if carve_unpinned_ok else "FAIL")
+	valid = valid and carve_unpinned_ok
 	print("[Canvas] resize, save/load, nail solidify/break: ", "PASS" if valid else "FAIL")
 	var hand = scene.get_node("Player/Arm/Hand/HandControl")
 	hand.set_physics_process(false)

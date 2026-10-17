@@ -96,6 +96,9 @@ func run() -> void:
 	check("background nail can be placed directly on yellow ink",
 		surface._place_nail(Vector2(20.5, 40.5), Nail.Kind.BACKGROUND)
 		and surface.material_at(20, 40) == 0)
+	check("background nail snaps from a nearby empty cell onto yellow ink",
+		surface._place_nail(Vector2(32.5, 40.5), Nail.Kind.BACKGROUND)
+		and surface.nail_layer.background_nails.has(Vector2i(30, 40)))
 	canvas.generate()
 	var yellow_background = null
 	for body in scene.world.bodies:

@@ -20,7 +20,7 @@ const INFINITE_TAG := "infinite_nail_points"
 
 ## 所有运行时钉子外观都进入这个组，地图编辑器只切显示，不改物理锚点。
 const VISUAL_GROUP := &"nail_visual"
-## 地图编辑器可单独预览预置钉子；切回游玩后只隐藏这类钉子的外观。
+## 地图编辑器可单独切换钉子预览；正常游玩中所有钉子都可见。
 static var visuals_visible := true
 static var map_editor_active := false
 ## 钉子对应的材料 id；真源在 ink/general/src/ink_palette.gd。
@@ -83,13 +83,10 @@ func setup(target_body, target_pixel: Vector2i, editor_placed := false,
 	_follow()
 
 
-## 预置钉子只在地图编辑模式显示；普通游玩钉子始终保留外观。
+## 游戏中始终显示钉子（包括地图编辑器放置的钉子）；
+## 只有处于地图编辑模式时，才服从“显示钉子”开关。
 func refresh_visibility() -> void:
-	if kind == Kind.INFINITE:
-		# 无限钉子是玩法标记，不能在普通游玩里消失；编辑器仍服从钉子显隐开关。
-		visible = visuals_visible if map_editor_active else true
-		return
-	visible = not hide_outside_map_editor or (map_editor_active and visuals_visible)
+	visible = visuals_visible if map_editor_active else true
 #endregion
 
 

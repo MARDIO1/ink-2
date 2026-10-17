@@ -470,8 +470,15 @@ func test_arrow_surface_and_grip() -> void:
 	var tiny := Motor.new()
 	tiny.tip = Vector2(10, 0)
 	tiny.brush_width = 5
-	check("small arrow has reduced force and power ceiling", tiny.power_limit(rule.power_per_width) < 4000000.0)
+	var full_length := Motor.new()
+	full_length.tip = Vector2(120, 0)
+	full_length.brush_width = tiny.brush_width
+	check("small arrow has reduced force and power ceiling",
+		tiny.power_limit(rule.power_per_width, rule.short_falloff_exponent,
+			rule.short_min_scale) < full_length.power_limit(rule.power_per_width,
+			rule.short_falloff_exponent, rule.short_min_scale))
 	tiny.free()
+	full_length.free()
 	var at := Vector2i(95, 40)
 	runtime._physics.carve(scene.world, {motor.body: {motor.body.shapes[0]: {at: true}}})
 	tick()

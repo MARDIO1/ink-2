@@ -2,7 +2,7 @@ extends Resource
 ## 各颜色运行规则的共享默认值；Gym 修改运行节点，保存时写回本资源。
 
 @export_group("蓝墨")
-@export var blue_force_per_length := 100000.0
+@export var blue_force_per_length := 300000.0
 @export var blue_power_per_width := 300000000.0
 @export var blue_source_power_per_pixel := 300000000.0
 @export var blue_idle_power := 10000000.0
@@ -16,7 +16,7 @@ extends Resource
 @export var blue_short_falloff_exponent := 1.0
 @export var blue_short_min_scale := 0.0
 @export var blue_biological_default_power := 1000000000.0
-@export var blue_biological_force_weight_ratio := 1.5
+@export var blue_biological_force_weight_ratio := 0.5
 
 @export_group("黄墨")
 @export var yellow_opacity := 0.75

@@ -9,7 +9,7 @@ const Hinge := preload("res://ink/yellow/src/hinge.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 
 #region 配置与状态
-@export var force_per_length := 100000.0
+@export var force_per_length := 300000.0
 @export var power_per_width := 300000000.0
 @export var source_power_per_pixel := 300000000.0
 @export var idle_power := 10000000.0
@@ -33,7 +33,7 @@ var flow := EnergyFlow.new()
 @export_range(0.25, 3.0, 0.05) var short_falloff_exponent := 1.0
 @export_range(0.0, 1.0, 0.05) var short_min_scale := 0.0
 @export var biological_default_power := 1000000000.0
-@export_range(0.0, 5.0, 0.05) var biological_force_weight_ratio := 1.5
+@export_range(0.0, 5.0, 0.05) var biological_force_weight_ratio := 0.5
 
 func _ready() -> void:
 	_world = get_parent().get_parent()

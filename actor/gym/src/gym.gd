@@ -29,11 +29,24 @@ func _ready() -> void:
 	_setup_scroll()
 	_bind_rows()
 	_build_ink_rows()
+	# Range controls keep keyboard focus after a click by default. The Gym is an
+	# in-world debug panel, so stale focus must not keep swallowing camera keys.
+	for slider in _sliders:
+		slider.focus_mode = Control.FOCUS_NONE
 	toggle.pressed.connect(_toggle_knobs)
 	save_button.pressed.connect(_save)
 	if OS.has_feature("standalone"):
 		save_button.disabled = true
 		save_button.tooltip_text = "导出版本不能覆盖项目配置"
+
+
+func _input(event: InputEvent) -> void:
+	if not event is InputEventMouseButton or not event.pressed:
+		return
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus != null and $Panel.is_ancestor_of(focus) \
+			and not $Panel.get_global_rect().has_point(event.position):
+		focus.release_focus()
 
 
 func _setup_scroll() -> void:
