@@ -16,13 +16,19 @@ func _run() -> void:
 	var start: Button = menu.get_node("ButtonCenter/Buttons/StartButton")
 	var quit_button: Button = menu.get_node("ButtonCenter/Buttons/QuitButton")
 	_check("menu buttons have same base color", start.get_theme_stylebox("normal").bg_color == quit_button.get_theme_stylebox("normal").bg_color)
-	_check("focus and hover do not tint menu", start.get_theme_stylebox("normal") == start.get_theme_stylebox("hover") and start.get_theme_color("font_color") == start.get_theme_color("font_focus_color"))
+	# 只有悬停反色；focus 不铺底色（否则会盖住悬停的米白底，黑字就看不见了）。
+	_check("hover inverts the menu button but focus paints nothing",
+		start.get_theme_stylebox("hover").bg_color == Color(0.968627, 0.952941, 0.854902, 1)
+		and start.get_theme_stylebox("focus") is StyleBoxEmpty
+		and start.get_theme_color("font_focus_color") == Color(0.968627, 0.952941, 0.854902, 1))
 	menu.queue_free()
 	var selector: Control = load("res://ui/level_select/level_select.tscn").instantiate()
 	root.add_child(selector)
 	var first: Button = selector.list.get_child(0)
 	var second: Button = selector.list.get_child(1)
-	_check("level buttons keep identical color", first.get_theme_stylebox("hover").bg_color == second.get_theme_stylebox("normal").bg_color)
+	_check("level buttons invert on hover too",
+		first.get_theme_stylebox("normal").bg_color == second.get_theme_stylebox("normal").bg_color
+		and first.get_theme_stylebox("hover").bg_color == Color(0.968627, 0.952941, 0.854902, 1))
 	selector.queue_free()
 	var scene: Node = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
@@ -42,10 +48,8 @@ func _run() -> void:
 	await create_timer(0.2).timeout
 	_check("no image tint", icon.modulate == Color.WHITE)
 	_check("hand uses original rectangular image", canvas.hand_button.get_node("ToolIcon").texture is AtlasTexture)
-	# 背后是黑墨或深色场景时，靠这块纸色底板保证工具还看得见。
-	var plate: Control = canvas.workbench.get_node_or_null("ToolbarPlate")
-	_check("toolbar has a backing plate covering its buttons", plate != null
-		and plate.is_visible_in_tree() and plate.get_global_rect().encloses(brush.get_global_rect()))
+	# 工具栏外面不再套纸色底板/边框，只有图标和说明文字。
+	_check("toolbar has no outer plate", canvas.workbench.get_node_or_null("ToolbarPlate") == null)
 	# HUD 是 CanvasLayer(1)，工具栏必须在更靠上的层，否则血条会盖住按钮。
 	_check("toolbar draws above HUD content", canvas.workbench.get_parent() is CanvasLayer
 		and (canvas.workbench.get_parent() as CanvasLayer).layer >= 2)

@@ -47,21 +47,17 @@ func _run() -> void:
 	quit(0)
 
 
-## 打印底板与最下面一行说明文字的相对位置，用来确认底板有没有包住整座工具栏。
+## 打印工具栏内容范围与两侧对齐情况（工具栏本身不再有底板）。
 func _report(canvas, label: String) -> void:
-	var plate: Control = canvas._toolbar_plate
 	var hand: Control = canvas.hand_button
 	var caption: Control = hand.get_node("Caption")
 	var content_bottom: float = canvas.buttons.position.y + hand.position.y + caption.position.y + caption.size.y
-	print("%s PLATE bottom=%.1f  CONTENT bottom=%.1f  margin=%.1f" % [label,
-		plate.position.y + plate.size.y, content_bottom,
-		plate.position.y + plate.size.y - content_bottom])
-	print("%s workbench=%s  plate_screen=%s  viewport=%s  origin=%s" % [label,
-		canvas.workbench.transform, plate.get_global_rect(),
-		root.get_visible_rect().size, canvas.screen_toolbar_origin])
+	print("%s CONTENT bottom=%.1f" % [label, content_bottom])
+	print("%s workbench=%s  viewport=%s  origin=%s" % [label,
+		canvas.workbench.transform, root.get_visible_rect().size, canvas.screen_toolbar_origin])
 	if canvas._side_panel != null:
 		var panel_rect: Rect2 = canvas._side_panel.get_global_rect()
 		var toggle_rect: Rect2 = canvas.toggle_button.get_global_rect()
-		print("%s panel_top=%.1f  plate_top=%.1f  toggle_top=%.1f  diff(plate-panel)=%.1f" % [label,
-			panel_rect.position.y, plate.get_global_rect().position.y,
-			toggle_rect.position.y, plate.get_global_rect().position.y - panel_rect.position.y])
+		print("%s panel_top=%.1f  toggle_top=%.1f  diff=%.1f" % [label,
+			panel_rect.position.y, toggle_rect.position.y,
+			toggle_rect.position.y - panel_rect.position.y])

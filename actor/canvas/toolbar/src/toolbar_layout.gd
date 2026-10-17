@@ -78,9 +78,8 @@ func update_layout(delta := 0.0) -> void:
 	var left_rect: Rect2 = canvas.buttons.get_rect().merge(canvas.toggle_button.get_rect())
 	var left_fit := _fit(left_rect.size, viewport_rect.size)
 	var left_size := left_rect.size * left_fit
-	# 左侧底板上沿比「隐藏」按钮高出一块留白，整体下移同样的量，卡片顶边才和右侧色盘平齐。
 	var left_target := Vector2(bounds.position.x - left_size.x - canvas.side_panel_gap,
-		bounds.position.y + 2.0 + canvas.TOOLBAR_PLATE_PAD * left_fit)
+		bounds.position.y + 2.0)
 	var immediate: bool = not _initialized or canvas.toolbar_transition_seconds <= 0.0
 	var weight := 1.0 if immediate else 1.0 - exp(-FOLLOW_SPEED * delta)
 	_mount.position = Vector2(_horizontal_position(right_target.x, _mount.position.x, right_size.x, viewport_rect, weight), right_target.y)

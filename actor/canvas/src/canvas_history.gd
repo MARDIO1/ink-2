@@ -44,7 +44,8 @@ static func capture(canvas, include_bodies := false, selection := Rect2(), body_
 				if not child.is_queued_for_deletion():
 					state.hinges.append([child.yellow_position, child.black_position,
 						{"material": child.gear_material, "support_material": child.support_material,
-						"world": child.fixed_to_world, "wheel_path": child.wheel_path, "teeth": child.teeth}])
+						"world": child.fixed_to_world, "wheel_path": child.wheel_path, "teeth": child.teeth,
+						"hide_bearing": child.hide_bearing}])
 			elif not child.yellow_anchor.is_empty() and not child.black_anchor.is_empty():
 				state.hinges.append([Stroke.anchor_world(child.yellow_anchor), Stroke.anchor_world(child.black_anchor)])
 		elif child is Rail and not child.is_queued_for_deletion() and child.body != null:
@@ -165,6 +166,7 @@ static func restore(canvas, state: Dictionary) -> void:
 			hinge.fixed_to_world = saved[2].world
 			hinge.wheel_path = saved[2].wheel_path
 			hinge.teeth = saved[2].get("teeth", 12)
+			hinge.hide_bearing = saved[2].get("hide_bearing", false)
 		hinge.yellow_position = saved[0]
 		hinge.black_position = saved[1]
 		canvas.world.add_child(hinge)

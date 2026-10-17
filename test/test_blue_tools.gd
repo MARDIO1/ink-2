@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 
@@ -6,7 +6,7 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	var scene = load("res://map/asset/imported/main.tscn").instantiate()
+	var scene = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
 	await process_frame

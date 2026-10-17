@@ -53,9 +53,12 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	var pos: Vector2 = surface.global_position
 	var size: Vector2i = surface.canvas_size
 	var centers: PackedVector2Array = surface.gear_centers.duplicate()
-	# 墨化会把黄墨放回独立图层；轴盘与轮体仍应一起按普通墨水固化。
+	# 轴心压在黄墨杠杆/导轨上时，轮子是"套在轴杆上"：黄墨一个像素都不能动，
+	# 否则杠杆会在这里被切成两段。空闲轴心才把轴盘并进轮体。
 	for center in centers:
 		var origin := Vector2i(center.floor())
+		if _hub_on_rod(surface, origin):
+			continue
 		for y in range(-3, 4):
 			for x in range(-3, 4):
 				if x * x + y * y > 9:
@@ -804,8 +807,33 @@ func _canvas_color(surface, material: int):
 func create_axles(surface, host, centers: PackedVector2Array) -> void:
 	for center in centers:
 		var point: Vector2 = host.to_local(surface.to_global(center))
+		# 轮子套在黄墨轴杆/杠杆上：铰链直接连到那一节黄墨刚体，
+		# 轮子绕杆转，杆保持完整（不再钉到世界）。
+		var rod: Dictionary = YellowAxle.find_material(host.world, point, InkPalette.YELLOW.id)
+		if not rod.is_empty():
+			var wheel: Dictionary = YellowAxle.find_support(host.world, point, rod.body)
+			if not wheel.is_empty():
+				if _has_manual_gear_bearing(surface, host, wheel.body, center):
+					continue
+				var hub = AxleScene.instantiate()
+				hub.gear_material = int(wheel.material)
+				hub.support_material = InkPalette.YELLOW.id
+				hub.yellow_position = point
+				hub.black_position = point
+				hub.yellow_anchor = wheel
+				hub.black_anchor = rod
+				hub.fixed_to_world = false
+				# 黄墨本身已经是轴心，不再叠一个轴承贴图。
+				hub.hide_bearing = true
+				host.add_child(hub)
+				hub.owner = host
+				hub.connect_joint()
+				hub._process(0.0)
+				continue
 		var anchor: Dictionary = YellowAxle.find_support(host.world, point)
 		if anchor.is_empty():
+			continue
+		if _has_manual_gear_bearing(surface, host, anchor.body, center):
 			continue
 		var axle = AxleScene.instantiate()
 		axle.gear_material = int(anchor.material)
@@ -817,6 +845,21 @@ func create_axles(surface, host, centers: PackedVector2Array) -> void:
 		axle.owner = host
 		axle.connect_joint()
 		axle._process(0.0)
+
+## 手动轴承优先；只认同一轮体上的有效连接，不能借用旁边物件的轴承。
+func _has_manual_gear_bearing(surface, host, wheel, center: Vector2) -> bool:
+	var point: Vector2 = host.to_local(surface.to_global(center))
+	return YellowAxle.manual_bearing_at(host, wheel, point) != null
+
+## 轴心附近有没有黄墨；有就说明轮子套在轴杆/杠杆上，不能把黄墨搬进轮体。
+func _hub_on_rod(surface, origin: Vector2i) -> bool:
+	for y in range(-2, 3):
+		for x in range(-2, 3):
+			var at := origin + Vector2i(x, y)
+			if surface._inside(Vector2(at)) and surface.rod_layer.pixels.get_pixelv(at).a > 0.5:
+				return true
+	return false
+
 
 ## 墨化回收轴心为普通草稿元数据，框选移动/旋转也沿用同一路径。
 func reclaim_axles(surface, host, rect: Rect2i, mask: Dictionary = {}) -> void:

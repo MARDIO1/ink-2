@@ -106,21 +106,24 @@ func _run() -> void:
 		"开始按钮必须使用统一深灰菜单样式")
 	_check(quit_button != null and quit_button.theme_type_variation == &"MenuActionButton",
 		"主菜单退出按钮必须使用统一深灰菜单样式")
-	_check(start_button != null and start_button.get_theme_color("font_focus_color")
-		== start_button.get_theme_color("font_color"),
-		"开始按钮聚焦时必须保持米黄色文字，不能在黑底上隐形")
-	_check(quit_button != null and quit_button.get_theme_color("font_focus_color")
-		== quit_button.get_theme_color("font_color"),
-		"退出按钮聚焦时必须保持米黄色文字")
+	var ink := Color(0.0352941, 0.0313726, 0.0235294, 1)
+	var paper := Color(0.968627, 0.952941, 0.854902, 1)
+	# 开局 grab_focus 在「开始」上；focus 不画底色也不反色，悬停时才能露出米白底。
+	_check(start_button != null and start_button.get_theme_color("font_focus_color") == paper
+		and start_button.get_theme_stylebox("focus") is StyleBoxEmpty,
+		"聚焦不铺底色，只是不反色")
+	_check(quit_button != null and quit_button.get_theme_color("font_focus_color") == paper,
+		"退出按钮仅获得焦点时同样不反色")
 	var menu_normal := start_button.get_theme_stylebox("normal") as StyleBoxFlat
 	var menu_hover := start_button.get_theme_stylebox("hover") as StyleBoxFlat
 	_check(menu_normal != null and menu_normal.bg_color == Color(0.231373, 0.219608, 0.192157, 1),
 		"统一菜单按钮底色必须与主菜单退出键一致")
 	_check(menu_normal == quit_button.get_theme_stylebox("normal"),
 		"开始和退出必须复用同一份普通状态样式")
-	_check(menu_hover != null and menu_hover.bg_color == menu_normal.bg_color
+	_check(menu_hover != null and menu_hover.bg_color == paper
+		and start_button.get_theme_color("font_hover_color") == ink
 		and start_button.has_node("ButtonFeedback"),
-		"悬停反馈必须独立绘制，不能改变按钮底色或点击范围")
+		"悬停必须反色成米白底黑字，叠层反馈仍然存在")
 	menu.queue_free()
 	await process_frame
 

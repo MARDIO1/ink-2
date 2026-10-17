@@ -20,7 +20,8 @@ func _install(reference: WeakRef) -> void:
 	if button.has_node("InkSelectionIndicator"):
 		return
 	var image_tool := button.has_node("IconFeedback")
-	if button is Button and not image_tool:
+	# 主菜单/关卡选择的按钮自己实现了悬停反色，抹平会把它覆盖掉。
+	if button is Button and not image_tool and not button.has_meta(&"menu_action"):
 		Appearance.uniform(button)
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var feedback := Feedback.new()

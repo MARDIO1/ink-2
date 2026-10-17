@@ -445,7 +445,7 @@ func _rail_spans(rail: Dictionary, shape) -> Array:
 			start = -1
 	return spans
 
-func solidify(world, nail_state: Dictionary = {}) -> void:
+func solidify(world, nail_state: Dictionary = {}, hub_centers: PackedVector2Array = PackedVector2Array()) -> void:
 	var physics = world.world
 	var solid = source_surface.get_parent().solid
 	var fixed_nails: Dictionary = nail_state.get("fixed", {})
@@ -454,6 +454,19 @@ func solidify(world, nail_state: Dictionary = {}) -> void:
 	var consumed_fixed := {}
 	var consumed_background := {}
 	var consumed_infinite := {}
+	# 套在黄墨上的轮子不能被当成障碍物挖洞，否则杠杆会在轴心处被切成两段。
+	# 这里在生成黄墨刚体之前先认出这些轮体（此刻世界里只有墨水刚体）。
+	var hub_bodies: Array = []
+	for center in hub_centers:
+		var hub_at: Vector2 = world.to_local(source_surface.to_global(Vector2(center)))
+		for body in physics.bodies:
+			if body.tags.has("living") or hub_bodies.has(body):
+				continue
+			var hub_cell := Vector2i(body.to_local(hub_at).floor())
+			for shape in body.shapes:
+				if shape.get_pixel(hub_cell.x, hub_cell.y) != 0:
+					hub_bodies.append(body)
+					break
 	for original in Destruction.split(make_shape(), 1):
 		var anchors: Dictionary = {}
 		var connected_bodies: Array = []
@@ -473,7 +486,7 @@ func solidify(world, nail_state: Dictionary = {}) -> void:
 				connected_bodies.append(black.body)
 		var obstacles: Array = []
 		for body in physics.bodies:
-			if not connected_bodies.has(body):
+			if not connected_bodies.has(body) and not hub_bodies.has(body):
 				obstacles.append(body)
 		solid._remove_overlaps(original, source_surface, obstacles)
 		for part in Destruction.split(original, 1):

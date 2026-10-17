@@ -1810,6 +1810,24 @@ func _sync_gear_button() -> void:
 			and _map_canvas.surface.tool == CanvasSurfaceScript.Tool.GEAR)
 
 
+## 无限钉子是机关部件（钉在红墨上供给无尽能源），入口在右侧「机关部件」栏。
+## 再点一次回到手，和齿轮按钮同一套开关语义。
+func select_infinite_nail_tool() -> void:
+	if not active or _map_canvas == null or not _map_canvas._map_editor_mode:
+		return
+	if _map_canvas.surface.tool == CanvasSurfaceScript.Tool.INFINITE_NAIL:
+		_map_canvas.set_tool(CanvasSurfaceScript.Tool.HAND)
+		return
+	select_monster_tool(MONSTER_MODE_NONE)
+	_map_canvas.set_tool(CanvasSurfaceScript.Tool.INFINITE_NAIL)
+
+
+func _sync_infinite_nail_button() -> void:
+	if is_instance_valid(_palette):
+		_palette.sync_infinite_nail_button(_map_canvas != null \
+			and _map_canvas.surface.tool == CanvasSurfaceScript.Tool.INFINITE_NAIL)
+
+
 func select_control_tool() -> void:
 	if _session.mode == CONTROL_MODE:
 		return
@@ -1841,6 +1859,7 @@ func _update_monster_buttons() -> void:
 
 func _on_canvas_tool_changed(_tool: int) -> void:
 	_sync_gear_button()
+	_sync_infinite_nail_button()
 	if _syncing_canvas_tool or _session.mode == MONSTER_MODE_NONE:
 		return
 	_session.mode = MONSTER_MODE_NONE
@@ -2876,6 +2895,7 @@ func _dispatch_palette_action(action: StringName, arguments: Array) -> void:
 	var actions := {
 		&"select_monster_tool": select_monster_tool,
 		&"select_gear_tool": select_gear_tool,
+		&"select_infinite_nail_tool": select_infinite_nail_tool,
 		&"_open_map_save_window": _open_map_save_window,
 		&"_reset_selected_monster_scale": _reset_selected_monster_scale,
 		&"_sync_gear_button": _sync_gear_button,

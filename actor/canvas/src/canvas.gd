@@ -23,11 +23,6 @@ const EXPAND_CANVAS_ICON_REGION := Rect2(228, 128, 116, 116)
 const EDITOR_CONTROL_ICON_REGION := Rect2(340, 340, 116, 116)
 const PLAY_TOOL_COLUMNS := 2
 const TOOLBAR_TEXT_COLOR := Color("414141")
-## 工具栏底板：纸色 + 深墨描边。墨迹或深色场景压在背后时，工具图标仍要看得见。
-const TOOLBAR_PLATE_COLOR := Color(0.93, 0.91, 0.78, 0.97)
-const TOOLBAR_FRAME_COLOR := Color(0.12, 0.12, 0.12, 1.0)
-## 工具栏底板四周留白（局部像素）。
-const TOOLBAR_PLATE_PAD := 10.0
 ## 工具栏所在的 CanvasLayer：高于 HUD(1) 与右侧色盘(2)，低于 ESC(20)。
 const TOOLBAR_LAYER := 3
 const EDITOR_TOOL_COLUMNS := 2
@@ -43,10 +38,11 @@ const EDITOR_TOOL_BUTTON_HEIGHT := 60.0
 const EDITOR_TOOL_BUTTON_H_GAP := 16.0
 const EDITOR_TOOL_BUTTON_V_GAP := 10.0
 const EDITOR_HAND_BUTTON_SIZE := 72.0
-## 工具栏按行排列；前十个按钮使用数字键 1～0，无限钉子只走工具栏。
+## 工具栏按行排列；前十个按钮使用数字键 1～0。无限钉子不在工具栏，入口在创造模式
+## 右侧「机关部件」栏（它参与机关，和齿轮放一起）。
 const TOOL_SHORTCUT_ORDER := [
 	"Brush", "Eraser", "Shape", "Bucket", "Redraw", "SelectDelete",
-	"Generate", "ReturnToCanvas", "Nail", "ExpandCanvas", "InfiniteNail",
+	"Generate", "ReturnToCanvas", "Nail", "ExpandCanvas",
 ]
 
 @onready var surface = $CanvasSurface
@@ -65,7 +61,6 @@ const TOOL_SHORTCUT_ORDER := [
 var _expand_canvas_window: Window
 var _expand_inputs: Dictionary = {}
 var _expand_size_preview: Label
-var _toolbar_plate: Panel = null
 var _ink_warning_panel: PanelContainer
 var _ink_warning_label: Label
 var _ink_warning_token := 0
@@ -117,9 +112,7 @@ func _ready() -> void:
 	_prepare_workbench_structure()
 	tool_grid.get_node("Nail").visible = false
 	tool_grid.get_node("ExpandCanvas").visible = false
-	tool_grid.get_node("InfiniteNail").visible = false
 	_apply_workbench_column_layout()
-	_build_toolbar_plate()
 	set_brush_size(int(brush_panel.get_node("PenSlider").value))
 	surface.set_process_input(active)
 	set_process_input(active)
@@ -152,57 +145,6 @@ func _apply_toolbar_text_color(node: Node) -> void:
 	for child in node.get_children():
 		_apply_toolbar_text_color(child)
 
-
-## 工具栏底板：把「隐藏」按钮和按钮阵列盖在一块纸色圆角板上，
-## 这样背后是黑墨或深色场景时图标依然看得清。
-func _build_toolbar_plate() -> void:
-	if _toolbar_plate != null:
-		return
-	_toolbar_plate = Panel.new()
-	_toolbar_plate.name = "ToolbarPlate"
-	_toolbar_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = TOOLBAR_PLATE_COLOR
-	style.border_color = TOOLBAR_FRAME_COLOR
-	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
-		style.set_border_width(side, 2)
-	style.corner_radius_top_left = 12
-	style.corner_radius_top_right = 12
-	style.corner_radius_bottom_left = 12
-	style.corner_radius_bottom_right = 12
-	_toolbar_plate.add_theme_stylebox_override("panel", style)
-	workbench.add_child(_toolbar_plate)
-	# 按钮阵列在场景里是 z_index 100，底板留 0 就够压在最下面。
-	workbench.move_child(_toolbar_plate, 0)
-	_layout_toolbar_plate()
-	# 建出来时就跟按钮阵列当前状态对齐，避免开局闪一下底板。
-	_animate_toolbar_plate(buttons.visible)
-
-
-func _layout_toolbar_plate() -> void:
-	if _toolbar_plate == null:
-		return
-	var rect: Rect2 = buttons.get_rect().merge(toggle_button.get_rect())
-	# 按钮的 offset 高度是算出来的，真实内容（尤其是按钮自带的底部说明文字）可能超出它。
-	# 这里按实际子控件矩形取并集，底板才不会漏掉最下面一行说明。
-	rect = _merge_toolbar_rects(rect, buttons, buttons.position)
-	if resize_panel.visible:
-		rect = rect.merge(resize_panel.get_rect())
-		rect = _merge_toolbar_rects(rect, resize_panel, resize_panel.position)
-	rect = rect.grow(TOOLBAR_PLATE_PAD)
-	_toolbar_plate.position = rect.position
-	_toolbar_plate.size = rect.size
-
-
-func _merge_toolbar_rects(rect: Rect2, node: Node, origin: Vector2) -> Rect2:
-	for child in node.get_children():
-		if not (child is Control) or not child.visible:
-			continue
-		var control := child as Control
-		var offset: Vector2 = origin + control.position
-		rect = rect.merge(Rect2(offset, control.size))
-		rect = _merge_toolbar_rects(rect, control, offset)
-	return rect
 #endregion
 
 
@@ -293,7 +235,7 @@ func generate(record_undo := true) -> void:
 			surface.rod_layer.anchor_points.remove_at(index)
 	var centers: PackedVector2Array = surface.gear_centers.duplicate()
 	solid.solidify(surface, world, _map_editor_mode)
-	surface.rod_layer.solidify(world, nail_state)
+	surface.rod_layer.solidify(world, nail_state, centers)
 	solid.create_axles(surface, world, centers)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
@@ -719,7 +661,6 @@ func set_map_editor_mode(on: bool) -> void:
 	tool_grid.get_node("Bucket").visible = true
 	tool_grid.get_node("Nail").visible = on
 	tool_grid.get_node("ExpandCanvas").visible = on
-	tool_grid.get_node("InfiniteNail").visible = on
 	hand_button.visible = true
 	hand_button.tooltip_text = (
 		"操纵（F）\n左键选中并拖动；右键删除怪物、文本、对话、图片、传送门或墨泉；滚轮缩放怪物、文本或图片"
@@ -744,15 +685,12 @@ func _prepare_workbench_structure() -> void:
 		"Brush": "画笔", "Eraser": "橡皮", "Shape": "形状", "Bucket": "填充",
 		"Redraw": "清空", "SelectDelete": "框选", "Generate": "固化",
 		"ReturnToCanvas": "墨化", "Nail": "钉子", "ExpandCanvas": "扩展",
-		"InfiniteNail": "无限",
 	}
 	for index in order.size():
 		var button := tool_grid.get_node_or_null(NodePath(order[index])) as Button
 		if button != null:
 			if button.name == &"ExpandCanvas":
 				button.icon = _atlas_icon(ExpandCanvasIconSource, EXPAND_CANVAS_ICON_REGION)
-			if button.name == &"InfiniteNail":
-				button.icon = NailScript.INFINITE_TEXTURE
 			_add_tool_button_contents(button, str(captions[order[index]]))
 			if button.name == &"InfiniteNail":
 				var icon_view := button.get_node("ToolIcon") as TextureRect
@@ -887,7 +825,6 @@ func _apply_workbench_column_layout() -> void:
 	buttons.offset_right = buttons.offset_left + width
 	buttons.offset_bottom = buttons.offset_top + grid_height + hand_size + hand_gap + caption_height + 2.0
 	toggle_button.offset_right = toggle_button.offset_left + (width if _map_editor_mode else 36.0)
-	_layout_toolbar_plate()
 
 
 func _update_screen_fixed_position() -> void:
@@ -915,7 +852,7 @@ func _refresh_workbench_visibility() -> void:
 		return # 动态色盘装配完成后再参与归属交接。
 	var creative := get_parent().get_node_or_null("Creative")
 	if not _map_editor_mode and creative != null and creative.active:
-		_set_workbench_visible(false)
+		_set_workbench_visible(false, false)
 		return
 	# 单独预览或编辑地图时，工具栏保持可见。
 	if _screen_fixed or Engine.is_editor_hint():
@@ -925,7 +862,8 @@ func _refresh_workbench_visibility() -> void:
 		return
 	if player == null:
 		var owner_canvas := _choose_play_toolbar_owner()
-		_set_workbench_visible(owner_canvas == self)
+		var taken := owner_canvas != null and owner_canvas != self
+		_set_workbench_visible(owner_canvas == self, not taken)
 		surface.set_process_input(active and owner_canvas == self)
 		return
 	var distance := _distance_from_player_to_canvas()
@@ -935,7 +873,10 @@ func _refresh_workbench_visibility() -> void:
 	else:
 		_workbench_nearby = distance <= minf(toolbar_show_distance, toolbar_hide_distance)
 	var owner_canvas := _choose_play_toolbar_owner()
-	_set_workbench_visible(_workbench_nearby and owner_canvas == self)
+	# 只有"被别的画布抢走"时才立刻收起（否则两块工具栏会同时在场）；
+	# 玩家单纯走远、没人接手时必须走淡出，离开是渐隐的。
+	var taken := owner_canvas != null and owner_canvas != self
+	_set_workbench_visible(_workbench_nearby and not taken, not taken)
 	surface.set_process_input(active and owner_canvas == self)
 	if was_nearby and not _workbench_nearby and not _map_editor_mode:
 		_restore_hand_on_departure()
@@ -1097,42 +1038,17 @@ func _animate_toolbar(control: Control, show: bool) -> void:
 		tween.chain().tween_callback(func(): control.visible = bool(control.get_meta(&"toolbar_wanted", false)))
 
 
-func _set_workbench_visible(nearby: bool) -> void:
+func _set_workbench_visible(nearby: bool, owned := true) -> void:
 	#⚠️ 隐藏按钮自己不受"手动隐藏"控制 —— 不然藏起来就再也点不回来了。
 	_animate_toolbar(toggle_button, active and nearby)
 	var show_buttons: bool = active and nearby and not _workbench_hidden
-	_animate_toolbar(buttons, show_buttons)
-	# 底板只是按钮阵列的背景：必须跟着一起淡出/隐藏，否则会留下一张空卡片
-	# 跟着画布走，看起来就是"边框没跟着收起来"。
-	_animate_toolbar_plate(show_buttons)
 	brush_panel.visible = false
 	resize_panel.visible = false
-	#右侧面板是另一套布局，不跟着左边那个"隐藏"按钮走。
+	_animate_toolbar(buttons, show_buttons)
+	# 右侧色盘也要看归属：旁边更近的画布接手时，这块的色盘必须跟着走，
+	# 否则两块画布的色盘会同时在场，看起来就是"右边多了一块一直在动的工具栏"。
 	if _side_panel != null:
-		_animate_toolbar(_side_panel, active and nearby and not _map_editor_mode)
-
-
-## 底板只跟随按钮阵列的显隐与透明度，不参与缩放 —— 缩放会把它和图标错开。
-func _animate_toolbar_plate(show: bool) -> void:
-	if _toolbar_plate == null:
-		return
-	if _toolbar_plate.has_meta(&"toolbar_wanted") and bool(_toolbar_plate.get_meta(&"toolbar_wanted")) == show:
-		return
-	var first := not _toolbar_plate.has_meta(&"toolbar_wanted")
-	_toolbar_plate.set_meta(&"toolbar_wanted", show)
-	var old_tween: Tween = _toolbar_plate.get_meta(&"toolbar_tween") if _toolbar_plate.has_meta(&"toolbar_tween") else null
-	if old_tween != null:
-		old_tween.kill()
-	if first or not active or _map_editor_mode or toolbar_transition_seconds <= 0.0:
-		_toolbar_plate.visible = show
-		_toolbar_plate.modulate.a = 1.0 if show else 0.0
-		return
-	_toolbar_plate.visible = true
-	var tween := create_tween()
-	_toolbar_plate.set_meta(&"toolbar_tween", tween)
-	tween.tween_property(_toolbar_plate, "modulate:a", 1.0 if show else 0.0, toolbar_transition_seconds)
-	if not show:
-		tween.tween_callback(func(): _toolbar_plate.visible = bool(_toolbar_plate.get_meta(&"toolbar_wanted", false)))
+		_animate_toolbar(_side_panel, active and nearby and owned and not _map_editor_mode)
 
 
 func _distance_from_player_to_canvas() -> float:
@@ -1163,7 +1079,6 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("Eraser").pressed.connect(set_tool.bind(SurfaceScript.Tool.ERASER))
 	tool_grid.get_node("Shape").pressed.connect(_open_shape_popup)
 	tool_grid.get_node("Nail").pressed.connect(set_tool.bind(SurfaceScript.Tool.NAIL))
-	tool_grid.get_node("InfiniteNail").pressed.connect(set_tool.bind(SurfaceScript.Tool.INFINITE_NAIL))
 	tool_grid.get_node("Bucket").pressed.connect(set_tool.bind(SurfaceScript.Tool.BUCKET))
 	tool_grid.get_node("SelectDelete").pressed.connect(set_tool.bind(SurfaceScript.Tool.SELECT_DELETE))
 	tool_grid.get_node("SelectDelete").gui_input.connect(_on_selection_button_input)
@@ -1412,7 +1327,6 @@ func _apply_tool(tool: int) -> void:
 		or tool == SurfaceScript.Tool.LINE
 	)
 	tool_grid.get_node("Nail").set_pressed_no_signal(tool == SurfaceScript.Tool.NAIL)
-	tool_grid.get_node("InfiniteNail").set_pressed_no_signal(tool == SurfaceScript.Tool.INFINITE_NAIL)
 	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
 	tool_grid.get_node("SelectDelete").set_pressed_no_signal(
 		tool in [SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE])

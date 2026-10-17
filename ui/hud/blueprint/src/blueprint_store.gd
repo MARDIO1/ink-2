@@ -58,7 +58,7 @@ func read(id: String) -> Dictionary:
 	if data is Dictionary and data.get("version", 0) == 1:
 		data = migrate_v1(data)
 		if validate(data) and data.id == id:
-			save(data)
+			save(data, true)
 	if not data is Dictionary or not validate(data) or data.id != id:
 		error = "蓝图损坏或版本不受支持"
 		return {}
@@ -77,10 +77,16 @@ func ensure_directory() -> bool:
 	return false
 
 
-func save(data: Dictionary) -> bool:
+func save(data: Dictionary, keep_id := false) -> bool:
 	error = ""
-	if data.get("id", "").is_empty():
-		data.id = "%d_%d" % [Time.get_unix_time_from_system() * 1000, randi()]
+	var previous := str(data.get("id", ""))
+	# 文件名直接用蓝图名字（重名自动加 _2、_3）。改名时旧文件随后删掉。
+	# `keep_id` 只给 v1 迁移用：那种老文件按旧 id 修复格式，不该被顺手改名。
+	var stem := previous if keep_id else unique_stem(str(data.get("name", "")), previous)
+	if stem.is_empty():
+		error = "蓝图名称不能用作文件名"
+		return false
+	data.id = stem
 	data.version = VERSION
 	data.updated = int(Time.get_unix_time_from_system())
 	if not valid_id(data.id) or not validate(data):
@@ -118,8 +124,38 @@ func save(data: Dictionary) -> bool:
 		return false
 	if had_old:
 		DirAccess.remove_absolute(target + ".bak")
+	# 改名：新文件已经写好了，再把旧名字的文件删掉。
+	if not previous.is_empty() and previous != data.id:
+		var stale := absolute.path_join(previous + ".inkbp")
+		if FileAccess.file_exists(stale):
+			DirAccess.remove_absolute(stale)
+		_cache.erase(directory.path_join(previous + ".inkbp"))
 	_cache.erase(directory.path_join(data.id + ".inkbp"))
 	return true
+
+
+## 名字直接当文件名：清掉路径分隔符与 Windows 保留字符，再按 id 长度上限截断。
+static func file_stem(name: String) -> String:
+	var stem := name.strip_edges()
+	for bad in ["/", "\\", ":", "*", "?", "\"", "<", ">", "|", ".", "\t", "\n"]:
+		stem = stem.replace(bad, "_")
+	stem = stem.strip_edges().lstrip(".").rstrip(". ")
+	if stem.to_upper().begins_with("CON") or stem.to_upper() in ["PRN", "AUX", "NUL"]:
+		stem = "_" + stem
+	return stem.left(64)
+
+
+## 同名蓝图不互相覆盖：第二个叫「桥」的落成 `桥_2.inkbp`。
+func unique_stem(name: String, previous := "") -> String:
+	var base := file_stem(name)
+	if base.is_empty():
+		return ""
+	var candidate := base
+	var suffix := 2
+	while candidate != previous and FileAccess.file_exists(directory.path_join(candidate + ".inkbp")):
+		candidate = "%s_%d" % [base, suffix]
+		suffix += 1
+	return candidate
 
 func trash(id: String) -> bool:
 	if not valid_id(id):

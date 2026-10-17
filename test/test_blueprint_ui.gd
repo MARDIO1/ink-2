@@ -99,6 +99,17 @@ func _run() -> void:
 	await process_frame
 	check("HUD opens unified library", system.modal and paused and system._items.size() == 1)
 	check("saved metadata appears in library", system._name.text == "折叠桥梁" and system._tags.text.contains("桥梁"))
+	# 回车必须和点「保存信息」等价，否则打完名字按回车会被静默丢弃。
+	system._name.text = "回车改名"
+	system._name.text_submitted.emit("回车改名")
+	check("enter commits the typed name", system.store.list_all()[0].name == "回车改名")
+	# 文件名直接就是名字；改名时旧文件跟着搬走。
+	var blueprint_folder: String = system.store.directory
+	check("file is named after the blueprint", FileAccess.file_exists(blueprint_folder.path_join("回车改名.inkbp")))
+	system._name.text = "改名后"
+	system._name.text_submitted.emit("改名后")
+	check("rename moves the file", FileAccess.file_exists(blueprint_folder.path_join("改名后.inkbp"))
+		and not FileAccess.file_exists(blueprint_folder.path_join("回车改名.inkbp")))
 	check("editor enables use without player proximity", not system._use.disabled)
 	system._toggle_favorite()
 	check("favorite persisted", system.store.list_all()[0].favorite)

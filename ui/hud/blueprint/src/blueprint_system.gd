@@ -213,6 +213,9 @@ func _build_ui() -> void:
 	_name = LineEdit.new()
 	_name.max_length = 64
 	_name.placeholder_text = "蓝图名称"
+	# 回车即提交。以前只有点按钮才写盘，打完名字直接按回车会被静默丢掉，
+	# 切到另一张蓝图时再被磁盘上的旧名字覆盖。
+	_name.text_submitted.connect(func(_text): _save_pressed())
 	_detail.add_child(_name)
 	_description = TextEdit.new()
 	_description.custom_minimum_size.y = 48

@@ -523,6 +523,7 @@ func _emit(rule, context: Dictionary, wires: Array) -> void:
 		inject(port[0], port[1], -1, power * interval / ports.size(), biological_producer)
 
 func _rebuild_local_contacts(rule, wires: Array, motors: Array) -> void:
+	var phase_start := Time.get_ticks_usec()
 	neighbours.clear()
 	var stamp: Array = []
 	for wire in wires:
@@ -534,8 +535,10 @@ func _rebuild_local_contacts(rule, wires: Array, motors: Array) -> void:
 				neighbours.get_or_add(wire, []).append(other)
 		for motor in motors:
 			stamp.append(motor.get_instance_id())
-			stamp.append(wire.body.to_local(motor.position))
-			stamp.append(motor.rotation - wire.body.rotation)
+			# 位置量化到 4px、角度量化到约 6°：电机覆盖面只有几个像素，
+			# 亚格级的挪动不可能改变它压住哪些导线像素，没必要每帧重建接触。
+			stamp.append(Vector2i((wire.body.to_local(motor.position) / 4.0).round()))
+			stamp.append(roundi((motor.rotation - wire.body.rotation) * 10.0))
 			stamp.append(motor.tip)
 			stamp.append(motor.brush_width)
 	for hinge in rule.objects(rule.Hinge):
@@ -544,12 +547,14 @@ func _rebuild_local_contacts(rule, wires: Array, motors: Array) -> void:
 		stamp.append(hinge.get_instance_id())
 		stamp.append(hinge.joint != null and hinge.joint.is_active())
 		if not hinge.yellow_anchor.is_empty() and not hinge.black_anchor.is_empty():
-			stamp.append(hinge.yellow_anchor.body.rotation)
-			stamp.append(hinge.black_anchor.body.rotation)
-			stamp.append(rule.Anchor.anchor_world(hinge.yellow_anchor))
+			# 桥接只用到轴心的世界坐标和轴承贴图尺寸，都是轴对齐的；
+			# 轮子自转不改变盖住哪些导线像素，所以不要把 rotation 放进 stamp。
+			stamp.append(Vector2i((rule.Anchor.anchor_world(hinge.yellow_anchor) / 2.0).round()))
+	stats["stamp_us"] = stats.get("stamp_us", 0) + Time.get_ticks_usec() - phase_start
 	if stamp == _local_stamp:
 		return
 	_local_stamp = stamp
+	phase_start = Time.get_ticks_usec()
 	var live_keys := {}
 	for wire in wires:
 		for motor in motors:
@@ -577,7 +582,10 @@ func _rebuild_local_contacts(rule, wires: Array, motors: Array) -> void:
 			for at: Vector2i in cached.cells:
 				targets.get_or_add(at, []).append(motor)
 		consumers[wire] = targets
+	stats["consumers_us"] = stats.get("consumers_us", 0) + Time.get_ticks_usec() - phase_start
+	phase_start = Time.get_ticks_usec()
 	_rebuild_bridges(rule, wires)
+	stats["bridges_us"] = stats.get("bridges_us", 0) + Time.get_ticks_usec() - phase_start
 
 func _rebuild_bridges(rule, wires: Array) -> void:
 	bridges.clear()
@@ -585,27 +593,61 @@ func _rebuild_bridges(rule, wires: Array) -> void:
 		if hinge.joint == null or not hinge.joint.is_active() or hinge.yellow_anchor.is_empty() or hinge.black_anchor.is_empty():
 			continue
 		var point: Vector2 = rule.Anchor.anchor_world(hinge.yellow_anchor)
-		var half: Vector2 = Vector2(hinge.texture.get_size()) * 0.5
+		# 齿轮轴可以把贴图隐藏（`axle.hide_bearing`），此时 texture 为 null，
+		# 直接 get_size() 会在固化重建桥接时崩掉；退回一个保守的半尺寸。
+		var texture: Texture2D = hinge.texture
+		var half: Vector2 = Vector2(texture.get_size()) * 0.5 if texture != null else Vector2(8.0, 8.0)
+		var reach := maxf(half.length(), 8.0)
+		var area := Rect2(point - half, half * 2.0)
 		var sides: Array = [[], []]
 		for side in 2:
 			var body = hinge.yellow_anchor.body if side == 0 else hinge.black_anchor.body
 			for wire in wires:
 				if wire.body != body:
 					continue
-				for at: Vector2i in wire.pixels_in_rect(Rect2(body.to_local(point), Vector2.ZERO).grow(half.length())):
-					if Rect2(point - half, half * 2.0).has_point(body.to_world(Vector2(at) + Vector2.ONE * 0.5)):
+				for at: Vector2i in wire.pixels_in_rect(Rect2(body.to_local(point), Vector2.ZERO).grow(reach)):
+					if area.has_point(body.to_world(Vector2(at) + Vector2.ONE * 0.5)):
 						sides[side].append([wire, at])
 		if sides[0].is_empty() or sides[1].is_empty():
 			continue
+		# 每侧先按 8px 网格建桶，取最近对端时只扫附近格子。
+		# 原先每个像素都要和对侧全部像素算一次距离：大导线上一次重建就是几十万次，
+		# 齿轮一转 stamp 每帧都变，整段蓝色规则因此吃掉上百毫秒。
+		stats["bridge_cells"] = stats.get("bridge_cells", 0) + sides[0].size() + sides[1].size()
 		for side in 2:
+			var grid := {}
+			for candidate: Array in sides[side ^ 1]:
+				var candidate_point: Vector2 = candidate[0].body.to_world(Vector2(candidate[1]) + Vector2.ONE * 0.5)
+				grid.get_or_add(bridge_bucket(candidate_point), []).append([candidate_point, candidate])
 			for entry: Array in sides[side]:
 				var world_point: Vector2 = entry[0].body.to_world(Vector2(entry[1]) + Vector2.ONE * 0.5)
-				var best: Array = sides[side ^ 1][0]
-				var distance := INF
-				for candidate: Array in sides[side ^ 1]:
-					var d: float = world_point.distance_squared_to(candidate[0].body.to_world(Vector2(candidate[1]) + Vector2.ONE * 0.5))
-					if d < distance:
-						distance = d
-						best = candidate
-				bridges.get_or_add(entry[0], {})[entry[1]] = best
+				var best := _nearest_bridged(grid, world_point, reach)
+				if not best.is_empty():
+					bridges.get_or_add(entry[0], {})[entry[1]] = best
 
+
+## 桥接用的 8px 空间桶键；查询时只看附近桶，避免 n×m 全配对。
+func bridge_bucket(point: Vector2) -> Vector2i:
+	return Vector2i(floori(point.x / 8.0), floori(point.y / 8.0))
+
+
+func _nearest_bridged(grid: Dictionary, point: Vector2, reach: float) -> Array:
+	var start := bridge_bucket(point)
+	var best: Array = []
+	var best_distance := INF
+	var max_ring := ceili(reach / 8.0) + 1
+	for ring in range(0, max_ring + 1):
+		for gy in range(start.y - ring, start.y + ring + 1):
+			for gx in range(start.x - ring, start.x + ring + 1):
+				if maxi(absi(gx - start.x), absi(gy - start.y)) != ring:
+					continue
+				for item: Array in grid.get(Vector2i(gx, gy), []):
+					var d: float = point.distance_squared_to(item[0])
+					if d < best_distance:
+						best_distance = d
+						best = item[1]
+		# ring 圈已经覆盖了切比雪夫距离 ring*8 内的所有桶；比当前最优更近的点
+		# 只可能更靠近，不可能落在还没扫的外圈，可以提前收工。
+		if not best.is_empty() and best_distance <= float(ring * 8) * float(ring * 8):
+			break
+	return best

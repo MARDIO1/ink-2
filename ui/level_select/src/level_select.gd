@@ -60,7 +60,8 @@ func _new_button(text: String) -> Button:
 	button.theme_type_variation = &"PrimaryButton"
 	button.custom_minimum_size = BUTTON_SIZE
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	preload("res://ui/theme/src/button_appearance.gd").uniform(button)
+	# 和主菜单一致：悬停/选中反色。颜色显式给出，不读进入树之前还没解析的主题。
+	preload("res://ui/theme/src/button_appearance.gd").menu_action(button)
 	return button
 
 

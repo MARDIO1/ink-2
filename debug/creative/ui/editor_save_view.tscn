@@ -1,0 +1,4 @@
+[gd_scene load_steps=2 format=3]
+[ext_resource type="Script" path="res://debug/creative/ui/src/editor_save_view.gd" id="1"]
+[node name="EditorSaveView" type="Node"]
+script = ExtResource("1")

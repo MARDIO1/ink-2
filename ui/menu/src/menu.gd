@@ -9,9 +9,10 @@ var _sound_menu: CanvasLayer
 
 
 func _ready() -> void:
+	# 平时深灰底米白字，悬停/选中反色成米白底黑字。
 	for button in $ButtonCenter/Buttons.get_children():
 		if button is Button:
-			preload("res://ui/theme/src/button_appearance.gd").uniform(button)
+			preload("res://ui/theme/src/button_appearance.gd").menu_action(button)
 	start_button.grab_focus()
 
 
