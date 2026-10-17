@@ -30,6 +30,7 @@ const _PixelMaterial := preload("res://addons/pixel_destruction/nodes/pixel_mate
 const _PixelSprite2D := preload("res://addons/pixel_destruction/nodes/pixel_sprite_2d.gd")
 const _PixelJoint2D := preload("res://addons/pixel_destruction/nodes/pixel_joint_2d.gd")
 const PixelScale := preload("res://addons/pixel_destruction/core/pixel_scale.gd")
+const _PhysicsConfig := preload("res://addons/pixel_destruction/physics/physics_config.gd")
 
 
 ## **每个固定步**走完时发出，参数就是这个世界。
@@ -51,6 +52,18 @@ signal physics_step_finished(world)
 #    于是"设了阈值却一个碎片都没清"，查了半天。静默不生效是最坏的失败方式。
 #    世界还没建时（场景反序列化、_ready 之前）setter 只记值，rebuild() 会播。
 @export_group("物理")
+## **物理旋钮的唯一真源**（可选，推荐）：拖一份 PhysicsConfig.tres 进来，
+## rebuild / push_physics_settings 时它会被**一处下发**（见 push_physics_settings）。
+##
+## ⚠️⚠️ 一旦设了它，下面那些 @export 旋钮就**不再参与下发** —— 它们只是"还没用 config 的
+##    老场景"的接收端（老关卡因此不炸）。两处都设时：config 在 rebuild/push 时下发，
+##    而 @export 的 setter 是"改了立刻播"，于是**谁最后写谁赢** —— 那种
+##    "看起来生效了、其实被覆盖"最难查，所以：**关卡里别设下面这些**，要改就改 config。
+@export var physics: _PhysicsConfig:
+	set(v):
+		physics = v
+		# 与其它旋钮同一条契约：**改了立刻生效**（世界还没建时 push 会安全早返回，rebuild 再播）
+		push_physics_settings()
 @export var gravity := Vector2(0, 600):
 	set(v):
 		gravity = v
@@ -127,6 +140,22 @@ signal physics_step_finished(world)
 ]
 ## 兜底密度表（下标即 id，缺省 1.0）
 @export var densities_fallback: Array[float] = [0.0, 2.5, 0.6, 7.8, 2.0]
+
+## **两个材质的系数怎么合成**（Rapier CoefficientCombineRule）。默认"摩擦取几何平均、
+## 恢复取大"—— 见 PWorld.friction_combine_rule / restitution_combine_rule 里的实测理由
+## （Rapier 默认的"取平均"会把一方的材质稀释一半：冰面不滑、球只弹一半）。
+##
+## ⚠️ 下拉项的**顺序就是 Rapier 的判别值**（0..5），别随手调换 —— 换一次就是静默换规则。
+@export_enum("取平均", "取小(滑的一方赢)", "相乘", "取大(涩/弹的一方赢)", "截断求和",
+	"几何平均") var friction_combine_rule: int = PWorld.COMBINE_GEOMETRIC_MEAN:
+	set(v):
+		friction_combine_rule = v
+		_push_knob("friction_combine_rule", v)
+@export_enum("取平均", "取小", "相乘", "取大(更弹的一方赢)", "截断求和",
+	"几何平均") var restitution_combine_rule: int = PWorld.COMBINE_MAX:
+	set(v):
+		restitution_combine_rule = v
+		_push_knob("restitution_combine_rule", v)
 
 @export_group("观感")
 ## 体素在屏幕上的大小：1 = 细腻，3 = 大块像素（默认），8+ = Teardown 那种粗块。
@@ -280,9 +309,15 @@ func _ready() -> void:
 
 
 ## 物理旋钮清单（导出属性名）。_push_knob 的映射表 + 这里的清单必须覆盖同一批属性。
+##
+## ⚠️ 它们是**接收端**：新场景请用上面的 `physics`（PhysicsConfig）一处下发；
+##    关卡里别单独设这些 @export（理由见 physics 的说明）。
+## ⚠️ 这份清单只覆盖"节点上真的导出过"的那批 —— 完整的旋钮表在 PhysicsConfig
+##    （它按 PWorld 的字段名逐个下发，见 tests/validation_physics_config.gd）。
 const KNOBS: Array[String] = ["gravity", "fixed_dt", "max_substeps", "sleeping", "terminal_speed",
 	"max_linear_velocity", "max_angular_velocity", "ccd_ignore_mass",
-	"min_fragment_pixels", "debris_max_mass", "debris_min_speed"]
+	"min_fragment_pixels", "debris_max_mass", "debris_min_speed",
+	"friction_combine_rule", "restitution_combine_rule"]
 
 
 ## 把**一个**旋钮播到 world。**唯一的映射表** —— 每个 @export 的 setter 与
@@ -306,6 +341,8 @@ func _push_knob(prop: String, v: Variant) -> bool:
 		"min_fragment_pixels": world.min_fragment_pixels = int(v)
 		"debris_max_mass": world.debris_max_mass = v
 		"debris_min_speed": world.debris_min_speed = v
+		"friction_combine_rule": world.friction_combine_rule = int(v)
+		"restitution_combine_rule": world.restitution_combine_rule = int(v)
 		_:
 			push_error("PixelWorld: _push_knob 的映射表漏了 %s" % prop)
 			return false
@@ -319,6 +356,12 @@ func _push_knob(prop: String, v: Variant) -> bool:
 ##    **别为改一个阈值去调 rebuild()**（那会重建世界、把破坏状态全丢掉）。
 func push_physics_settings() -> void:
 	if world == null:
+		return
+	if physics != null:
+		# ⚠️⚠️ 配置是**唯一真源**：下发之后**不再**按节点上的 @export 覆盖它 ——
+		#    否则"关卡里残留的一行旧值"会静默压掉配置，而配置存在的意义正是收口。
+		#    缺字段由 PhysicsConfig.apply() 自己吵闹地报（返回值 + push_error）。
+		physics.apply(world)
 		return
 	for k in KNOBS:
 		_push_knob(k, get(k))
@@ -447,8 +490,7 @@ func bake_node(node: _PixelBody2D) -> PBody:
 	var shapes := node.collect_shapes()
 	if shapes.is_empty():
 		return null
-	var b: PBody = node.bake()
-	b = world.add_body(b, shapes, Callable(self, "_density_of"), b.tags.get("keep_disconnected", false))
+	var b: PBody = world.add_body(node.bake(), shapes, Callable(self, "_density_of"))
 	# ⚠️ _body_nodes 与 world.bodies **按下标一一对应**（rebuild 末尾和
 	#    has_own_sprite 的过滤都依赖这个不变量）。两边必须同时 append/remove_at。
 	#
@@ -817,7 +859,7 @@ func realign_body_nodes() -> void:
 	_body_nodes = out
 
 
-func sync_world_bodies(changed: Variant = null) -> void:
+func sync_world_bodies() -> void:
 	# ① 节点数组按下标重建：能对上的节点保留，对不上的（碎片/未节点化）用 null 占位
 	realign_body_nodes()
 
@@ -829,8 +871,6 @@ func sync_world_bodies(changed: Variant = null) -> void:
 	#    ⚠️ 必须在 ① 之后做：① 刚把 _body_nodes 按身份重建好，下标才是对的。
 	for i in world.bodies.size():
 		var b = world.bodies[i]
-		if changed != null and not changed.has(b):
-			continue
 		if i < _body_nodes.size() and not uses_internal_render(_body_nodes[i]):
 			renderer.forget(b.id)
 			continue

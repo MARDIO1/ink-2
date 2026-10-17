@@ -2,6 +2,8 @@ extends Node
 ## 游戏模拟协调层：把物理帧交给规则接口，再把规则产生的通用效果交回 PhysicsStep。
 ## 本脚本只依赖能力接口，不判断红、黄、蓝等具体颜色。
 
+const Traits := preload("res://ink/general/src/ink_traits.gd")
+
 @export var tuning_config: Resource
 
 #region 状态与依赖
@@ -172,6 +174,8 @@ func _merge_result(target: Dictionary, source: Dictionary) -> void:
 	for body in source.get("bursts", {}):
 		target.bursts[body] = maxf(target.bursts.get(body, 0.0), source.bursts[body])
 	for body in source.get("removals", {}):
+		if Traits.is_unbreakable(body):
+			continue
 		if not target.removals.has(body):
 			target.removals[body] = source.removals[body]
 			continue
@@ -181,8 +185,12 @@ func _merge_result(target: Dictionary, source: Dictionary) -> void:
 			else:
 				target.removals[body][shape].merge(source.removals[body][shape], true)
 	for body in source.get("fuel_removals", {}):
+		if Traits.is_unbreakable(body):
+			continue
 		target.fuel_removals.get_or_add(body, {}).merge(source.fuel_removals[body], true)
 	for body in source.get("carves", {}):
+		if Traits.is_unbreakable(body):
+			continue
 		var plan: Dictionary = target.carves.get_or_add(body, {})
 		for shape in source.carves[body]:
 			plan.get_or_add(shape, {}).merge(source.carves[body][shape], true)
@@ -232,6 +240,7 @@ func _resolve_contacts(world, contacts: Array, player_body = null,
 ## 提交删除前通知所有观察规则，再由 PhysicsStep 一次性分片。
 func commit(world, removals: Dictionary, bursts: Dictionary = {},
 		defer_dust: bool = false) -> Dictionary:
+	removals = Traits.filter_unbreakable(removals)
 	for body in removals:
 		for extension in _extensions:
 			if extension.has_method("observe_removals"):
@@ -242,6 +251,7 @@ func commit(world, removals: Dictionary, bursts: Dictionary = {},
 ## 正常燃料消耗：不触发伤害观察，仍更新质量、碰撞与结构分离。
 func commit_fuel(world, removals: Dictionary) -> Dictionary:
 	# 燃料消耗绕过爆炸观察，只复用底层结构更新与锚点迁移。
+	removals = Traits.filter_unbreakable(removals)
 	var valid := {}
 	for body in removals:
 		if not world.bodies.has(body):
@@ -267,6 +277,7 @@ func _observe_damage(hits: Array) -> void:
 
 ## 提交只改变面积、不产生独立碎片的像素蚀除。
 func carve(world, removals: Dictionary) -> Dictionary:
+	removals = Traits.filter_unbreakable(removals)
 	for body in removals:
 		for extension in _extensions:
 			if extension.has_method("observe_removals"):

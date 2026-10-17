@@ -21,6 +21,7 @@ const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_
 const PixelBody2D := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 const BACKGROUND_TAG := "background_anchor_points"
 #endregion
 
@@ -61,6 +62,7 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 		_scan_block(surface, block, shape, white, legacy_anchors, color_table)
 	var fixed_anchors: Dictionary = surface.nail_layer.nails.duplicate()
 	var background_anchors: Dictionary = surface.nail_layer.background_nails.duplicate()
+	var infinite_anchors: Dictionary = surface.nail_layer.infinite_nails.duplicate()
 	# 黄墨在独立层中固化；落在黄墨上的钉子交给 RodLayer，避免同时钉住下方实体。
 	for point: Vector2i in fixed_anchors.keys():
 		if surface.rod_layer.pixels.get_pixelv(point).a > 0.5:
@@ -68,6 +70,9 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	for point: Vector2i in background_anchors.keys():
 		if surface.rod_layer.pixels.get_pixelv(point).a > 0.5:
 			background_anchors.erase(point)
+	for point: Vector2i in infinite_anchors.keys():
+		if surface.rod_layer.pixels.get_pixelv(point).a > 0.5:
+			infinite_anchors.erase(point)
 	for point in legacy_anchors:
 		fixed_anchors[point] = true
 	var blue = surface.blue_rule()
@@ -91,11 +96,14 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	for island in Destruction.split(shape, 1, true):
 		var island_fixed := _anchors_in_shape(island, fixed_anchors)
 		var island_background := _anchors_in_shape(island, background_anchors)
+		var island_infinite := _anchors_in_shape(island, infinite_anchors)
+		var island_infinite_fuel := _infinite_fuel_for(surface, island_infinite)
 		var is_static := not island_fixed.is_empty()
 		if not is_static:
 			# 没有钉子的墨是"会掉下来的一整张网"：按块切会让它自己散架，保持整块。
 			if _spawn_component(world, pos, island, island_fixed, island_background,
-					editor_placed_nails, false):
+					editor_placed_nails, false, island_infinite, not island_infinite.is_empty(),
+					island_infinite_fuel):
 				spawned += 1
 				total_pixels += island.pixel_count()
 			continue
@@ -106,13 +114,16 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 			# piece 用完即丢，允许 adopt 直接搬 chunk 对象。
 			for part in Destruction.split(piece, 1, true):
 				if _spawn_component(world, pos, part, island_fixed, island_background,
-						editor_placed_nails, true):
+						editor_placed_nails, true, island_infinite, not island_infinite.is_empty(),
+						island_infinite_fuel):
 					spawned += 1
 					total_pixels += part.pixel_count()
 	# 白墨独立载体允许覆盖现有实体；断开的笔迹也共用一个速度。
 	if not white.is_empty():
+		var white_infinite := _anchors_in_shape(white, infinite_anchors)
 		if _spawn_component(world, pos, white, _anchors_in_shape(white, fixed_anchors),
-				_anchors_in_shape(white, background_anchors), editor_placed_nails, false):
+				_anchors_in_shape(white, background_anchors), editor_placed_nails, false,
+				white_infinite, not white_infinite.is_empty(), false):
 			spawned += 1
 			total_pixels += white.pixel_count()
 
@@ -159,6 +170,13 @@ func _anchors_in_shape(shape, anchors: Dictionary) -> Dictionary:
 		if shape.get_pixel(point.x, point.y) != 0:
 			result[point] = true
 	return result
+
+
+func _infinite_fuel_for(surface, anchors: Dictionary) -> bool:
+	for point: Vector2i in anchors:
+		if surface.material_at(point.x, point.y) == InkPalette.RED.id:
+			return true
+	return false
 
 
 ## 把一个岛按 BLOCK_SIZE 切成块形状。
@@ -284,15 +302,20 @@ func _remove_overlaps(shape, surface, bodies: Array) -> int:
 ## 一块远离钉子的地形也必须钉住，否则分块会把它切成会掉下来的碎块。
 func _spawn_component(world, pos, part, fixed_anchors: Dictionary,
 		background_anchors: Dictionary = {}, editor_placed_nails := false,
-		is_static := false) -> bool:
+		is_static := false, infinite_anchors: Dictionary = {},
+		infinite_body := false, infinite_fuel := false) -> bool:
 	var local_fixed := _anchors_in_shape(part, fixed_anchors)
 	var local_background := _anchors_in_shape(part, background_anchors)
+	var local_infinite := _anchors_in_shape(part, infinite_anchors)
 	var body_node := InkItem.new()
 	body_node.name = "Ink%d" % world.get_child_count()
 	body_node.is_static = is_static
 	body_node.hide_nails_in_play = editor_placed_nails
 	body_node.fixed_nails = PackedVector2Array(local_fixed.keys())
 	body_node.background_nails = PackedVector2Array(local_background.keys())
+	body_node.infinite_nails = PackedVector2Array(local_infinite.keys())
+	body_node.infinite_nail_body = infinite_body or not local_infinite.is_empty()
+	body_node.infinite_fuel_body = infinite_fuel
 	body_node.add_to_group(INK_GROUP, true)
 	var rect: Rect2i = part.local_aabb()
 	var shape_node := PixelShape2D.new()
@@ -450,6 +473,8 @@ func spawn_moved_pixels(surface, world, moved_pixels: Dictionary, offset: Vector
 	var white := PixelShape.new()
 	var anchors: Dictionary = {}
 	var background_anchors: Dictionary = {}
+	var infinite_anchors: Dictionary = {}
+	var infinite_fuel := false
 	var yellow_refund := 0
 	for point: Vector2i in moved_pixels:
 		var destination: Vector2i = point + offset
@@ -459,6 +484,9 @@ func spawn_moved_pixels(surface, world, moved_pixels: Dictionary, offset: Vector
 			anchors[destination] = true
 		elif nail_kind == Nail.Kind.BACKGROUND:
 			background_anchors[destination] = true
+		elif nail_kind == Nail.Kind.INFINITE:
+			infinite_anchors[destination] = true
+			infinite_fuel = infinite_fuel or material == InkPalette.RED.id
 		if material == InkPalette.WHITE.id:
 			white.set_pixel(destination.x, destination.y, material)
 		else:
@@ -477,7 +505,8 @@ func spawn_moved_pixels(surface, world, moved_pixels: Dictionary, offset: Vector
 		parts.append(white)
 	for part in parts:
 		_spawn_component(world, surface.global_position, part, anchors,
-			background_anchors, editor_placed_nails)
+			background_anchors, editor_placed_nails, false, infinite_anchors,
+			not infinite_anchors.is_empty(), infinite_fuel)
 	if yellow_refund > 0:
 		var health = surface._health_node()
 		if health != null:
@@ -535,6 +564,9 @@ func _fracture_preserving_remainders(world, body, plan: Dictionary,
 		anchors: Dictionary) -> Dictionary:
 	var physics = world.get("world")
 	var background_points: Dictionary = body.tags.get(BACKGROUND_TAG, {}).duplicate()
+	var infinite_points: Dictionary = body.tags.get(Nail.INFINITE_TAG, {}).duplicate()
+	var infinite_body: bool = Traits.is_unbreakable(body)
+	var infinite_fuel: bool = Traits.is_infinite_fuel(body)
 	var background_layer: int = int(body.tags.get("background_original_layer", body.collision_layer))
 	var background_mask: int = int(body.tags.get("background_original_mask", body.collision_mask))
 	if physics == null:
@@ -552,6 +584,7 @@ func _fracture_preserving_remainders(world, body, plan: Dictionary,
 		for piece in pieces:
 			runtime._update_background_anchors(piece, background_points,
 				background_layer, background_mask)
+			runtime._update_infinite_nails(piece, infinite_points, infinite_body, infinite_fuel)
 		runtime.body_fractured.emit(physics, body, pieces)
 	if not result.body_alive:
 		for shape in body.shapes:
@@ -576,6 +609,9 @@ func _write_body_node(body_node, body, owner: Node) -> void:
 	if body_node is InkItem:
 		body_node.fixed_nails = PackedVector2Array(body.tags.get(ANCHOR_TAG, {}).keys())
 		body_node.background_nails = PackedVector2Array(body.tags.get(BACKGROUND_TAG, {}).keys())
+		body_node.infinite_nails = PackedVector2Array(body.tags.get(Nail.INFINITE_TAG, {}).keys())
+		body_node.infinite_nail_body = Traits.is_unbreakable(body)
+		body_node.infinite_fuel_body = Traits.is_infinite_fuel(body)
 		body_node.background_collision_layer = body_node.collision_layer
 		body_node.background_collision_mask = body_node.collision_mask
 	for child in body_node.get_children().duplicate():
@@ -675,7 +711,8 @@ func _collect_nail_anchors(world, body, anchors: Dictionary) -> void:
 
 
 func _restore_body_nails_to_surface(surface, body, rect := Rect2i(), mask: Dictionary = {}) -> void:
-	for entry in [[ANCHOR_TAG, Nail.Kind.FIXED], [BACKGROUND_TAG, Nail.Kind.BACKGROUND]]:
+	for entry in [[ANCHOR_TAG, Nail.Kind.FIXED], [BACKGROUND_TAG, Nail.Kind.BACKGROUND],
+			[Nail.INFINITE_TAG, Nail.Kind.INFINITE]]:
 		for point: Vector2i in body.tags.get(entry[0], {}):
 			var alive := false
 			for shape in body.shapes:
@@ -690,7 +727,8 @@ func _restore_body_nails_to_surface(surface, body, rect := Rect2i(), mask: Dicti
 			or not SelectionMask.contains(mask, target):
 				continue
 			if surface.nail_layer.add(target, entry[1]):
-				surface._bump_ink(surface._nail_material(entry[1]), surface.NAIL_COST, false)
+				if entry[1] != Nail.Kind.INFINITE:
+					surface._bump_ink(surface._nail_material(entry[1]), surface.NAIL_COST, false)
 
 
 ## 把一个刚体**落在画布里的**像素按材质颜色写回画布，返回写进画布的像素数。

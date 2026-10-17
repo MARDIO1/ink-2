@@ -40,8 +40,6 @@ extends Resource
 @export var white_corrosion_pixels_per_second := 80.0
 @export var white_corrosion_interval := 0.12
 @export var white_corrosion_pixels_per_batch := 12
-@export var white_corrosion_seed_spacing := 6.0
-@export var white_max_corrosion_seeds := 16
 @export var white_corrosion_yield := 3.0
 @export var white_player_damage_per_second := 20.0
 @export var white_max_travel_from_spawn := 4096.0

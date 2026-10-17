@@ -25,9 +25,12 @@ var mass := 0.0
 var density := 1.0
 ## 推给 Rapier 的镜像（-1 = 未推送）
 var _rp_density := -1.0
-## 摩擦系数 / 碰撞恢复系数（由材质逐像素平均而来，见 rebuild()）。
-## ⚠️ Rapier 的接触系数是**两个碰撞体合成**的（默认 Average），所以这是"这个刚体
-##    对外表现出的系数"，不是"两个材质碰在一起会怎样"。
+## 摩擦系数 / 碰撞恢复系数（由材质逐像素**加权平均**而来，见 rebuild()）。
+##
+## ⚠️ Rapier 的接触系数是**两个碰撞体合成**的（引擎默认：摩擦几何平均、恢复取大），
+##    所以这是"这个刚体对外表现出的系数"，不是"两个材质碰在一起会怎样"。
+## ⚠️ 刚体上真的出现了**多种不同系数的材质**时，碰撞体走的是下面那两个**逐矩形**数组
+##    （这时本值退化成"整体平均"，只当兜底/镜像用）。
 var friction := 0.5
 var restitution := 0.0
 var _rp_friction := -1.0
@@ -38,6 +41,18 @@ var inv_inertia := 0.0
 var local_com := Vector2.ZERO     # 质心（Body 局部坐标，像素单位）
 
 var rects: Array = []             # Array[Rect2]，局部空间碰撞矩形（贪心分解结果，**精确覆盖**）
+## 与 rects **等长**的逐矩形摩擦/恢复系数 —— **空数组 = 整刚体同值**（用 friction/restitution）。
+##
+## ⚠️⚠️ 为什么必须逐矩形：材质是逐像素存的，而 Rapier 的接触系数是**逐碰撞体**的。
+##    一个"下半截冰、上半截橡胶"的刚体如果只建一个碰撞体，就只能给一个平均系数 ——
+##    那正是"不同材质的表面手感不同"做不到的原因。
+##    矩形按材质切开由 GreedyRects.decompose_material 负责（它才看得见像素）。
+##
+## ⚠️ 只有"形状里真的出现了多种**不同系数**的材质"时才填：
+##    · 单材质（或多种材质系数恰好相同）-> 留空 -> 用整刚体值 —— **与从前逐位相同**；
+##    · 填了就是硬约束：两个数组都必须与 rects 等长（PWorld 推 op 48 时按下标取）。
+var rect_friction := PackedFloat32Array()
+var rect_restitution := PackedFloat32Array()
 ## 碰撞体**真的在用**的凸多边形（局部空间，Array[PackedVector2Array]）—— **惰性**读回。
 ##
 ## ⚠️ 它不是"另算一份"：由 PWorld.fetch_polys() 走 op 44 从 Rapier 读回来，
@@ -460,6 +475,72 @@ static func _first_material(shape_list: Array) -> int:
 	return -1
 
 
+## 碰撞体矩形（**按材质切开**）+ 逐矩形系数 —— 见 rect_friction 的说明。
+##
+## ⚠️ 静态体与动态体**都**走这里：静态地形以前只取"第一个非空像素的材质"
+##    （_first_material），于是一整片画了多种材质的地形只有一个系数 ——
+##    冰面铺在石头地上，冰那一段照样很涩。现在按区域各自生效。
+## ⚠️ 系数用调用方给的 Callable 解析；不给 = "我不知道"，整刚体保持原值（**不是 0**）——
+##    与 rebuild() 里那条墓碑注释同一个判据。
+func _build_collider_rects(shape_list: Array, max_rects: int,
+		friction_of: Callable, restitution_of: Callable) -> void:
+	rects.clear()
+	rect_friction = PackedFloat32Array()
+	rect_restitution = PackedFloat32Array()
+	var mats := PackedInt32Array()
+	for s in shape_list:
+		if s == null:
+			continue
+		var r: GreedyRects.ResultMat = GreedyRects.decompose_material(s, max_rects)
+		for i in r.rects.size():
+			rects.append(r.rects[i])
+			mats.append(r.material_of(i))
+	if rects.is_empty():
+		return
+	var has_fric := friction_of.is_valid()
+	var has_rest := restitution_of.is_valid()
+	if not has_fric and not has_rest:
+		return
+	# 逐材质记忆化（材质种类通常一两种）：逐矩形查表是白烧，而矩形可能有上百个。
+	var fc := {}
+	var rc := {}
+	var fv := PackedFloat32Array()
+	var rv := PackedFloat32Array()
+	fv.resize(rects.size())
+	rv.resize(rects.size())
+	var uniform := true
+	var f0 := 0.0
+	var r0 := 0.0
+	for i in rects.size():
+		var m: int = mats[i]
+		var f := friction
+		if has_fric and m >= 0:
+			var cf = fc.get(m)
+			if cf == null:
+				cf = friction_of.call(m)
+				fc[m] = cf
+			f = cf
+		var rr := restitution
+		if has_rest and m >= 0:
+			var cr = rc.get(m)
+			if cr == null:
+				cr = restitution_of.call(m)
+				rc[m] = cr
+			rr = cr
+		fv[i] = f
+		rv[i] = rr
+		if i == 0:
+			f0 = f
+			r0 = rr
+		elif uniform and (f != f0 or rr != r0):
+			uniform = false
+	if uniform:
+		# 整刚体同值 -> 留空 = 用 friction / restitution（单材质刚体因此**逐位不变**）
+		return
+	rect_friction = fv
+	rect_restitution = rv
+
+
 ## dirty_rects：**按 shape** 的脏范围（shape -> Rect2i）。给了它就用它，没给的 shape
 ## 回落 `dirty_rect`（再没有就 touch() = 全量）。
 ##
@@ -505,10 +586,7 @@ func rebuild(shape_list: Array, density_of: Callable = Callable(),
 	# 静态体不需要质量属性（逆质量恒为 0，质心也不参与求解）。
 	# 擦地形时每帧都会 rebuild，跳过逐像素扫描是实打实的收益。
 	if is_static:
-		for s0 in shape_list:
-			var r0: GreedyRects.Result = GreedyRects.decompose(s0, max_rects)
-			for rect0: Rect2 in r0.rects:
-				rects.append(rect0)
+		_build_collider_rects(shape_list, max_rects, friction_of, restitution_of)
 		mass = 0.0
 		inertia = 0.0
 		inv_mass = 0.0
@@ -555,13 +633,14 @@ func rebuild(shape_list: Array, density_of: Callable = Callable(),
 	var had_mass := m_total > 0.0
 	if had_mass:
 		com /= m_total
+	# 碰撞体矩形（按材质切开）+ 逐矩形系数。与质量属性同一个"形状变了就重算"的时机。
+	# ⚠️ 它以前散在下面的惯性循环里（每个 shape 调一次 decompose），搬出来是为了让
+	#    "矩形"和"矩形的系数"永远一起产生 —— 分开算必然有一天会分叉。
+	_build_collider_rects(shape_list, max_rects, friction_of, restitution_of)
 	for i in shape_list.size():
 		var p2: MassProps.Props = props[i]
 		# 平行轴定理：把每块的惯性搬到自己质心之外
 		inertia_c += p2.inertia + p2.mass * p2.com.distance_squared_to(com)
-		var r: GreedyRects.Result = GreedyRects.decompose(shape_list[i], max_rects)
-		for rect: Rect2 in r.rects:
-			rects.append(rect)
 	mass = m_total
 	inertia = inertia_c
 	# 平均密度 = 质量 / 像素数（材质逐像素不同时取平均值：Rapier 的碰撞体密度是

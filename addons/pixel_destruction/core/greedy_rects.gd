@@ -73,6 +73,146 @@ static func decompose(shape: PixelShape, max_rects: int = 0) -> Result:
 	return decompose_gd(shape, max_rects)
 
 
+## **按材质分解**的结果：矩形与它的材质 id **一一平行**。
+##
+## ⚠️ 为什么需要它（而不是让调用方去猜每条矩形是什么材质）：材质逐像素存、
+##    物理系数逐碰撞体 —— 想让"同一刚体上不同材质的表面各自生效"，
+##    就必须把矩形**按材质切开**，而"切开"只能由分解器做（它才看得见像素）。
+class ResultMat:
+	var rects: Array = []                    # Array[Rect2]，Shape 局部像素空间
+	var mats := PackedInt32Array()           # 与 rects 等长：每条矩形的材质 id
+	var origin: Vector2 = Vector2.ZERO
+	var budget_exceeded := false
+
+	func rect_count() -> int:
+		return rects.size()
+
+	func material_of(i: int) -> int:
+		return mats[i] if i >= 0 and i < mats.size() else -1
+
+
+## **按材质分解**入口：矩形按材质切开，每条带材质 id。
+##
+## ⚠️ 顺序（原生与参照实现**逐位相同**的判据）：材质升序 -> 同一材质内与
+##    decompose() 完全相同的几何（块 key 升序 -> 块内贪心 -> 行程融合）。
+##    ⚠️ 单材质形状必须与 decompose() **逐位相同** —— 闸门钉这一条，
+##       否则"只是加了个材质信息"也会让 8 条逐位基准移动。
+##
+## ⚠️ 老 DLL（没有 decompose_mat 方法）时**吵闹地**回退参照实现（慢一个量级）：
+##    这条路的产物直接进碰撞体，静默降级会让"材质手感不同"时有时无。
+static func decompose_material(shape: PixelShape, max_rects: int = 0) -> ResultMat:
+	var rast := _ensure_raster()
+	if rast != null and rast.has_method("decompose_mat"):
+		var r := _decompose_material_native(shape, max_rects)
+		if r != null:
+			return r
+	return decompose_material_gd(shape, max_rects)
+
+
+## **参照实现**：按材质分解（原生拿不到 / DLL 太旧时用它）。
+##
+## ⚠️ 判据同样是"与原生逐位相同"（tests/validation_greedy_native.gd）。
+##    与 decompose_gd 的唯一区别：按材质各跑一遍**同一套**几何
+##    （_decompose_block 的过滤版 + _merge_pass）。
+## ⚠️ 这里**不做块缓存**（decompose_gd 有 _rect_blocks 那套）：按材质缓存要让
+##    指纹带上材质，而这条是回退路径 —— 慢一点可以接受，**算错不行**。
+static func decompose_material_gd(shape: PixelShape, max_rects: int = 0) -> ResultMat:
+	var res := ResultMat.new()
+	var aabb := shape.local_aabb()
+	if aabb.size.x <= 0 or aabb.size.y <= 0:
+		return res
+	res.origin = Vector2(aabb.position)
+	var out: Array = []
+	var tags := PackedInt32Array()
+	for m in material_ids(shape):
+		var rects := _merge_pass(_block_rects_mat(shape, m))
+		for r: Rect2 in rects:
+			out.append(r)
+			tags.append(m)
+	res.rects = out
+	res.mats = tags
+	if max_rects > 0 and out.size() > max_rects:
+		res.budget_exceeded = true
+	return res
+
+
+## 形状里出现过的材质 id，**升序**（也是分解输出的材质顺序）。
+static func material_ids(shape: PixelShape) -> PackedInt32Array:
+	var seen := {}
+	for k: int in shape.chunks:
+		var c: PixelChunk = shape.chunks[k]
+		if c.occ == 0:
+			continue
+		for i in 64:
+			# ⚠️ 只看**占用**的像素：空像素的 mat 恒为 0（PixelChunk 的约定），
+			#    跟着它走会把"材质 0"算成一种材质。
+			if (c.occ >> i) & 1 and not seen.has(c.mat[i]):
+				seen[c.mat[i]] = true
+	var out := PackedInt32Array()
+	for m: int in seen:
+		out.append(m)
+	out.sort()
+	return out
+
+
+## 某个块里**只留材质 m** 的矩形（与 _decompose_block 逐句对应，只多一层过滤）。
+static func _decompose_block_mat(shape: PixelShape, bk: int, mat: int) -> Array:
+	var bix := PixelShape.key_x(bk)
+	var biy := PixelShape.key_y(bk)
+	var cx0 := bix << 3
+	var cy0 := biy << 3
+	var words := PackedInt64Array()
+	words.resize(BLOCK_SIZE)
+	for oy in BLOCK_CHUNKS:
+		var row0 := oy << 3
+		for ox in BLOCK_CHUNKS:
+			var c: PixelChunk = shape.chunks.get(((cx0 + ox) << 32) | ((cy0 + oy) & 0xFFFFFFFF))
+			if c == null or c.occ == 0:
+				continue
+			var shift := ox << 3
+			for y in 8:
+				var bits := Bits.row_bits(c.occ, y)
+				if bits == 0:
+					continue
+				var keep := 0
+				for x in 8:
+					if (bits >> x) & 1 and c.mat[(y << 3) | x] == mat:
+						keep |= 1 << x
+				words[row0 + y] |= keep << shift
+	var a := _greedy(words.duplicate(), 1, BLOCK_SIZE, BLOCK_SIZE, true)
+	var rects: Array = a
+	if a.size() > 1:
+		var b := _greedy(words.duplicate(), 1, BLOCK_SIZE, BLOCK_SIZE, false)
+		if b.size() < a.size():
+			rects = b
+	var off := Vector2(bix << BLOCK_SHIFT, biy << BLOCK_SHIFT)
+	for i in rects.size():
+		var r: Rect2 = rects[i]
+		rects[i] = Rect2(r.position + off, r.size)
+	return rects
+
+
+## 形状里出现过的块 key，**有符号升序**（与原生 std::sort 的 int64 比较同义）。
+static func _block_keys(shape: PixelShape) -> Array:
+	var keys: Array = []
+	var seen := {}
+	for k: int in shape.chunks:
+		var bk := ((k >> 35) << 32) | (((k << 32) >> 35) & 0xFFFFFFFF)
+		if seen.has(bk):
+			continue
+		seen[bk] = true
+		_sorted_insert(keys, bk)
+	return keys
+
+
+static func _block_rects_mat(shape: PixelShape, mat: int) -> Array:
+	var out: Array = []
+	for bk: int in _block_keys(shape):
+		for r: Rect2 in _decompose_block_mat(shape, bk, mat):
+			out.append(r)
+	return out
+
+
 ## **参照实现**：GDScript 版 decompose（原样保留，一字不改）。
 ##
 ## ⚠️ 它的每一处行为都是原生的判据，改它等于改判据：
@@ -227,6 +367,99 @@ static func _decompose_native(shape: PixelShape, max_rects: int) -> Result:
 	out.rects = rects
 	return out
 
+
+
+## ---- 原生"按材质分解"（PixelRaster op 4）----
+##
+## 协议见 gdext/fastphys.cpp 的 run_raster_decompose_mat：
+##   载荷 [op=4][i32 n][i32 max_rects] {i32 cx, i32 cy, i64 occ} * n  [u8 mat[64]] * n
+##   结果 [written][count][budget][aabb x,y,w,h] {i32 x, y, w, h, mat} * count
+##        （每条矩形 5 个 i32 —— 比 op 2 多一个材质 id）
+##
+## ⚠️ 材质段为什么**整段跟在记录段之后**：GDScript 里把 64 字节塞进缓冲区的中间
+##    没有便宜的办法（逐字节 encode 是 64 次调用），而"每块一次 append_array"
+##    是原生 memcpy。于是记录段与材质段各拼各的，最后两次 append_array 合并。
+static func _decompose_material_native(shape: PixelShape, max_rects: int) -> ResultMat:
+	var n := shape.chunks.size()
+	if n <= 0:
+		# 空形状：与 op 2 同一条规矩 —— 交给参照实现（它会把 AABB 缓存写好）
+		return null
+	var recs := PackedByteArray()
+	recs.resize(n * 16)
+	var blob := PackedByteArray()
+	var off := 0
+	for k: int in shape.chunks:
+		var c: PixelChunk = shape.chunks[k]
+		recs.encode_s32(off, k >> 32)
+		recs.encode_s32(off + 4, (k << 32) >> 32)
+		recs.encode_s64(off + 8, c.occ)
+		off += 16
+		blob.append_array(c.mat)
+	var cmds := PackedByteArray()
+	cmds.resize(9)
+	cmds.encode_u8(0, 4)                 # op 4 = decompose_mat
+	cmds.encode_s32(1, n)
+	cmds.encode_s32(5, max_rects)
+	cmds.append_array(recs)
+	cmds.append_array(blob)
+	# 结果段：先给 NATIVE_CAP0 条矩形的位置（每条 20 字节）
+	const REC := 20
+	var cap := 24 + REC * NATIVE_CAP0
+	var inp := PackedByteArray()
+	inp.resize(8)
+	inp.encode_s32(0, cap)
+	inp.encode_s32(4, cmds.size())
+	inp.append_array(cmds)
+	var tmpl := PackedByteArray()
+	tmpl.resize(4 + cap)
+	var res: PackedByteArray = _raster.decompose_mat(inp, tmpl)
+	native_calls += 1
+	var w32 := res.to_int32_array()
+	if w32.size() < 7:
+		native_fallbacks += 1
+		push_error("PixelRaster.decompose_mat 返回太短（size=%d）—— 退回 GDScript 参照实现" % res.size())
+		return null
+	if w32[0] < 24:
+		native_fallbacks += 1
+		push_error("PixelRaster.decompose_mat 没写头（written=%d）—— 退回 GDScript 参照实现" % w32[0])
+		return null
+	var count: int = w32[1]
+	if count > 0 and w32[0] < 24 + count * REC:
+		cap = 24 + count * REC
+		inp.encode_s32(0, cap)
+		tmpl.resize(4 + cap)
+		res = _raster.decompose_mat(inp, tmpl)
+		native_calls += 1
+		w32 = res.to_int32_array()
+		if w32.size() < 7 or w32[0] < 24 + count * REC or w32[1] != count:
+			native_fallbacks += 1
+			push_error("PixelRaster.decompose_mat 重开后仍然对不上（size=%d written=%d count=%d/%d）—— 退回 GDScript" % [
+				res.size(), w32[0] if w32.size() > 0 else -1, w32[1] if w32.size() > 1 else -1, count])
+			return null
+	if w32.size() < 7 + count * 5:
+		native_fallbacks += 1
+		push_error("PixelRaster.decompose_mat 结果段缺矩形（size=%d count=%d）—— 退回 GDScript" % [w32.size(), count])
+		return null
+	# AABB 写回缓存：与 op 2 同一条规矩（不写回就等于白优化），它算的是**整个形状**的
+	# 包围盒（不分材质）—— 所以逐材质分解不会把它算小。
+	shape._aabb_cache = Rect2i(w32[3], w32[4], w32[5], w32[6])
+	shape._aabb_rev = shape._bounds_rev
+	var out := ResultMat.new()
+	out.budget_exceeded = w32[2] != 0
+	if w32[5] <= 0 or w32[6] <= 0:
+		return out                       # 与参照实现同一条早返回：origin 保持 Vector2.ZERO
+	out.origin = Vector2(w32[3], w32[4])
+	var rects: Array = []
+	rects.resize(count)
+	var tags := PackedInt32Array()
+	tags.resize(count)
+	for i in count:
+		var q := 7 + i * 5
+		rects[i] = Rect2(w32[q], w32[q + 1], w32[q + 2], w32[q + 3])
+		tags[i] = w32[q + 4]
+	out.rects = rects
+	out.mats = tags
+	return out
 
 ## 按块（64x64）分解 + 缓存：只重算**指纹变了的块**。
 ##

@@ -531,17 +531,15 @@ var material_density := PackedFloat32Array()
 
 ## 材质 id -> 摩擦系数 / 碰撞恢复系数（与 material_density 同构）。
 ##
-## ⚠️ Rapier 的接触系数由**两个碰撞体合成**（CoefficientCombineRule，默认 Average）：
-##    地面 0.8 + 箱子 0.2 -> 接触处 0.5。所以"让某个材质说了算"要两边设同一个值。
+## ⚠️ 这两个系数**只在接触对上有意义**，而 Rapier 会把两个碰撞体的值按
+##    CoefficientCombineRule **合成**一把 —— 合成规则由下面两个 `*_combine_rule` 定，
+##    默认是"摩擦取几何平均、恢复取大"，所以**不再需要"两边设同一个值"**。
+##    想让某个材质在整个世界里说了算（例如冰面到哪都滑），改的是那条**规则**，不是这里的值。
 var material_friction := PackedFloat32Array()
 
-## op 5（重建碰撞体）给**新**碰撞体设的初始摩擦系数。
-##
-## ⚠️ 它原来叫 `solver.global_friction` —— 求解内核整体删除后，它是 Solver 里
-##    **唯一**还有读者的参数（op 5 的命令流尾巴带着它），所以搬到这里。
-##    默认 0.5 = Rapier 自己的默认值；重建之后每体的 b.friction 会紧跟着重推一次
-##    （见「新碰撞体的摩擦/恢复回到 Rapier 默认」那一段）。
-var global_friction := 0.5
+# ⚠️ 这里曾经有个 `global_friction`（op 5 给新碰撞体的初始摩擦系数）。**已删除** ——
+#    碰撞体现在**建的时候就带上**摩擦/恢复（op 48 逐矩形给，op 43 给整刚体），
+#    于是"先塞一个临时值、随后再整刚体重推"那条路连同它的读者一起没了。
 
 ## 允许的穿透深度（像素）——**判据用的容差，不是求解参数**。
 ##
@@ -555,22 +553,73 @@ var material_restitution := PackedFloat32Array()
 # ⚠️ 这里曾经有个 _restitution_fn 缓存字段，**已删除** —— 见 restitution_callable()。
 
 
+## 接触系数的**合成规则**（Rapier `CoefficientCombineRule` 的判别值）。
+##
+## ⚠️ 这六个常量必须与 Rapier 的枚举**逐值对应**（改顺序 = 静默换规则，不报错）：
+##    0 平均 / 1 取小 / 2 相乘 / 3 取大 / 4 截断求和 / 5 几何平均。
+##    原生侧（rb_world_set_combine_rules）认这几个值；不认识的值会被**忽略**。
+const COMBINE_AVERAGE := 0
+const COMBINE_MIN := 1
+const COMBINE_MULTIPLY := 2
+const COMBINE_MAX := 3
+const COMBINE_CLAMPED_SUM := 4
+const COMBINE_GEOMETRIC_MEAN := 5
+
+## 摩擦系数怎么合成（默认**几何平均**：sqrt(mu1 * mu2)）。
+##
+## ⚠️⚠️ 为什么**不用 Rapier 的默认 Average**：Average 是两边的**算术平均**，
+##    等于让一方的材质被稀释掉一半 —— 冰面 0.0 碰地面 0.5 -> 0.25，**冰面根本不滑**。
+##    几何平均是 Box2D/Bullet 的惯例：任一边为 0 接触就无摩擦（"滑的一方赢"），
+##    而且它是**幂等**的（combine(a, a) == a），两边同值时结果与 Average 逐位相同。
+var friction_combine_rule := COMBINE_GEOMETRIC_MEAN
+
+## 恢复系数怎么合成（默认**取大**：max(e1, e2)）。
+##
+## ⚠️ Average 的症状：球 0.9 砸在没配恢复系数的地面（0.0）上只弹 0.45 ——
+##    回弹高度约 20%，看着完全像"恢复系数没接上"（日志里真这么记过），
+##    于是美术被迫给地面也配 0.9。取大 = **更弹的那一方说了算**（Box2D 也是如此），
+##    于是"只给球配 0.9"就够了；同样是幂等的，两边同值时结果不变。
+var restitution_combine_rule := COMBINE_MAX
+
+# ⚠️⚠️ 镜像初值必须是 (-1, -1)：0（AVERAGE）是**合法且有意义的设置**，
+#    而这两个变量的默认值恰好不是 0 —— 镜像若取 0，"世界建好后的第一次推"
+#    会被守卫吃掉，Rapier 那边停在默认的 Average，而且**不报任何错**。
+#    （同一个坑在 rp_ccd_substeps 上踩过一次：默认 0 被守卫吃掉了。）
+var _rp_combine_pushed := Vector2i(-1, -1)
+
+
+## 把一份 PhysicsConfig **一处下发**到本世界（引擎侧的收口点）。
+##
+## ⚠️ 它就是 physics_config.gd 的 `apply()` —— 放这里只是让调用方少 preload 一次：
+##    `world.apply_config(cfg)` 与 `cfg.apply(world)` 是**同一件事**，
+##    别在第三个地方再写一遍"旋钮名 -> 字段名"的映射（本仓库在"同一规则写两处"上栽过太多次）。
+## ⚠️ 参数按 Resource 收（不 preload 配置类）：pworld 是被配置类描述的对象，
+##    让它反过来依赖配置类会绕成依赖环，而本仓库有一条 preload 环闸门
+##    （编辑器遇到环会无声段错误，见 check_addon.py 的 2c）。
+## ⚠️ 对不上的字段由 apply() **吵闹地**报出来（返回值 + push_error）——
+##    `Object.set()` 对不存在的属性是静默失败，那正是这条链路最怕的失败方式。
+func apply_config(cfg: Resource) -> PackedStringArray:
+	if cfg == null:
+		return PackedStringArray()
+	if not cfg.has_method("apply"):
+		push_error("PWorld.apply_config: 传进来的不是 PhysicsConfig（没有 apply()）：%s" % str(cfg))
+		return PackedStringArray()
+	return cfg.apply(self)
+
+
 ## 世界自己登记到查询模块，销毁时自己注销。
 ##
 ## ⚠️ 为什么不让调用方手动 attach：Query 的注册表是**静态变量**，
 ## 忘了注销就会一直持有刚体引用，Godot 退出时报
 ## "resources still in use at exit" / "Orphan StringName: RefCounted (static: 1)"。
 ## 让拥有者负责生命周期，调用方就没有"记得注销"这件事。
-var _query_owner_id: int = 0
-
 func _init() -> void:
-	_query_owner_id = get_instance_id()
 	Query.attach(self)
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
-		Query.detach_id(_query_owner_id)
+		Query.detach(self)
 
 
 ## 设置某材质的密度（会自动扩容表，中间没设过的按 1.0 算）。
@@ -1158,8 +1207,8 @@ func _rp_create_missing() -> void:
 		off += 4
 		_rp_u8(props, 16)
 		_rp_u32(props, b.rapier_id)
-		_rp_f64(props, b.tags.get("linear_damping", rp_linear_damping))
-		_rp_f64(props, b.tags.get("angular_damping", rp_angular_damping))
+		_rp_f64(props, rp_linear_damping)
+		_rp_f64(props, rp_angular_damping)
 		_rp_u8(props, 17)
 		_rp_u32(props, b.rapier_id)
 		_rp_f64(props, b.gravity_scale)
@@ -1287,6 +1336,14 @@ func _substep_rapier(dt: float) -> void:
 		_rp_f64(cmds, rp_max_corrective_velocity)
 		_rp_f64(cmds, rp_allowed_linear_error)
 		_rp_pixel_params_pushed = true
+	# 接触系数的合成规则（世界级）：**变了才推**。原生侧连**已有**的碰撞体一起改。
+	# ⚠️ 不推的后果是静默的：Rapier 停在默认的 Average —— 冰面半滑、球只弹一半，
+	#    而画面不会报任何错（见 friction_combine_rule 的说明）。
+	if Vector2i(friction_combine_rule, restitution_combine_rule) != _rp_combine_pushed:
+		_rp_u8(cmds, 47)
+		_rp_i32(cmds, friction_combine_rule)
+		_rp_i32(cmds, restitution_combine_rule)
+		_rp_combine_pushed = Vector2i(friction_combine_rule, restitution_combine_rule)
 	# 重力变了才推
 	if gravity != _rp_gravity_pushed:
 		_rp_u8(cmds, 1)
@@ -1361,35 +1418,47 @@ func _substep_rapier(dt: float) -> void:
 			_rp_f64(cmds, b.gravity_scale)
 			b._rp_gravity_scale = b.gravity_scale
 		if b._rp_rects_rev != b.rects_rev:
-			# ⚠️ 两条路**互斥**（都会先清空旧碰撞体），二选一由 poly_colliders / poly_max_rects 决定：
-			#   · op 43：矩形 -> **凸多边形**（原生侧拟合，Noita 式）
-			#   · op 5 ：矩形 -> Rapier cuboid（精确，逐像素不差）
-			var as_polys: bool = poly_colliders and b.rects.size() <= poly_max_rects
+			# ⚠️ 两条路**互斥**（都会先清空旧碰撞体）：
+			#   · op 43：矩形 -> **凸多边形**（原生侧拟合，Noita 式）—— 整个刚体一个系数
+			#   · op 48：矩形 -> Rapier cuboid（精确，逐像素不差）—— **逐矩形系数**
+			# ⚠️⚠️ 逐矩形系数的刚体**不能**走多边形：拟合会把不同材质的矩形并进一个
+			#    多边形，系数就没法逐表面了（见 PBody.rect_friction 的说明）。
+			var as_polys: bool = poly_colliders and b.rects.size() <= poly_max_rects 					and b.rect_friction.is_empty()
 			if as_polys:
 				_rp_u8(cmds, 43)
-				_rp_u32(cmds, b.rapier_id)
-				_rp_i32(cmds, b.rects.size())
 			else:
-				_rp_u8(cmds, 5)
-				_rp_u32(cmds, b.rapier_id)
-				_rp_i32(cmds, b.rects.size())
+				_rp_u8(cmds, 48)
+			_rp_u32(cmds, b.rapier_id)
+			_rp_i32(cmds, b.rects.size())
 			# ⚠️ 整段**先 resize 一次**，再逐字段 encode_float —— 不要每个字段都走 _rp_f32。
 			#    _rp_f32 每次都 `resize(size+4)` + `encode_float`：1200 个矩形 = 4800 次
 			#    resize（每次都动整个缓冲区）+ 4800 次编码。实测（1200 / 4000 个矩形）：
 			#    0.215 / 0.725 ms -> **0.107 / 0.365 ms（2x）**，而且**逐字节完全一致**
 			#    （同样的 encode_float、同样的偏移、同样的值 —— 探针里比过 A=B:true）。
 			#    位置/速度那些只有几个字段的推送不值得改，就这条循环是 N 个矩形。
+			#    op 43 每条矩形 16 字节（只有几何）；op 48 是 24 字节（多两个 f32 系数）。
 			var n0 := cmds.size()
-			cmds.resize(n0 + b.rects.size() * 16)
+			var per := 16 if as_polys else 24
+			cmds.resize(n0 + b.rects.size() * per)
 			var off := n0
-			for r: Rect2 in b.rects:
+			for i in b.rects.size():
+				var r: Rect2 = b.rects[i]
 				cmds.encode_float(off, r.position.x)
 				cmds.encode_float(off + 4, r.position.y)
 				cmds.encode_float(off + 8, r.size.x)
 				cmds.encode_float(off + 12, r.size.y)
-				off += 16
-			_rp_f64(cmds, global_friction)
+				if not as_polys:
+					# 逐矩形系数（op 48）。空数组 = 整刚体同值（见 PBody.rect_friction）。
+					var f := b.friction
+					var rr := b.restitution
+					if i < b.rect_friction.size():
+						f = b.rect_friction[i]
+						rr = b.rect_restitution[i]
+					cmds.encode_float(off + 16, f)
+					cmds.encode_float(off + 20, rr)
+				off += per
 			if as_polys:
+				_rp_f64(cmds, b.friction)
 				_rp_f64(cmds, b.mass)
 				_rp_f32(cmds, poly_dev_tol)
 			b._rp_rects_rev = b.rects_rev
@@ -1408,9 +1477,16 @@ func _substep_rapier(dt: float) -> void:
 			else:
 				# ⚠️ 矩形那条路：新碰撞体的密度回到 Rapier 默认的 1.0，必须重推。
 				b._rp_density = -1.0
-			# ⚠️ 同理：新碰撞体的摩擦/恢复系数也回到 Rapier 默认（0.5 / 0.0），必须重推。
-			b._rp_friction = -1.0
-			b._rp_restitution = -1.0
+			# 摩擦/恢复系数在**建碰撞体时就写好了**（不像密度那样"先默认后重推"）：
+			#   · op 48 逐矩形带两个系数 -> 全部已生效，镜像写成刚体值，让下面 op 38/39
+			#     **不再推** —— 否则会把逐矩形的系数统一覆盖成刚体平均，正是要避免的那件事；
+			#   · op 43 只带摩擦（恢复没带）-> 恢复的镜像打回未推送，让 op 39 推一次整刚体值
+			#     （那条路只用于"整个刚体一个系数"的形状，推整刚体值是对的）。
+			b._rp_friction = b.friction
+			if as_polys:
+				b._rp_restitution = -1.0
+			else:
+				b._rp_restitution = b.restitution
 		if b._rp_layer != b.collision_layer or b._rp_mask != b.collision_mask:
 			_rp_u8(cmds, 32)
 			_rp_u32(cmds, b.rapier_id)
@@ -3260,7 +3336,7 @@ func _break_joints_over_threshold(cands: Array) -> void:
 ##    放到外面调就变成"先卡一帧、下一帧才清掉"（实测那一帧 346 ms）。
 ##
 ## ⚠️ 两个阈值都必须 > 0 才生效（默认 0 = 关 -> 8 条逐位基准不动）。
-func cull_fast_debris(excluded: Array = []) -> int:
+func cull_fast_debris() -> int:
 	# ⚠️ 只有**质量**阈值是总开关；debris_min_speed <= 0 = **不限速度**（只按质量清）。
 	#
 	#    为什么这样定（甲方实测踩到）：他把 speed 设成 1 期望"清掉小碎片"，结果一个都没清 ——
@@ -3274,7 +3350,7 @@ func cull_fast_debris(excluded: Array = []) -> int:
 	var removed := 0
 	for i in range(bodies.size() - 1, -1, -1):
 		var b: PBody = bodies[i]
-		if b.is_static or b.frozen or b.mass > debris_max_mass or excluded.has(b):
+		if b.is_static or b.frozen or b.mass > debris_max_mass:
 			continue
 		# ⚠️ 判据用 **_motion_of**（线速度 + |角速度| x 外接半径），与子步估计**同一个度量**。
 		#    只看线速度会漏掉质量放大的那个通道：Δω = J·r/I，而 **I ∝ m** ——
@@ -3465,7 +3541,6 @@ func detach(body: PBody, damage) -> Array:
 ## 返回 {removed: int, body_alive: bool, fragments: Array}。
 func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0,
 		dynamic_fragments: bool = false, static_anchors: Dictionary = {}) -> Dictionary:
-	var stage_start := Time.get_ticks_usec() if profile_enabled else 0
 	# ① 删除**前**的速度场与质心（下面要用它给存活块和碎片定速度）
 	var old_com := body.com_world()
 	var v_old := body.linear_velocity
@@ -3492,38 +3567,21 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 		var y0 := 1 << 30
 		var x1 := -(1 << 30)
 		var y1 := -(1 << 30)
-		var chunk_masks := {}
 		for px in mask:
 			var p: Vector2i = px
-			var key := PixelShape.make_key(p.x >> 3, p.y >> 3)
-			chunk_masks[key] = int(chunk_masks.get(key, 0)) | (1 << ((p.y & 7) * 8 + (p.x & 7)))
+			if s.get_pixel(p.x, p.y) != 0:
+				s.clear_pixel(p.x, p.y)
+				removed += 1
+			changed_chunks[PixelShape.make_key(p.x >> 3, p.y >> 3)] = true
 			x0 = mini(x0, p.x)
 			y0 = mini(y0, p.y)
 			x1 = maxi(x1, p.x)
 			y1 = maxi(y1, p.y)
-		# 同一块只记脏一次；整块删除不再逐像素清理材质。
-		for key: int in chunk_masks:
-			var chunk = s.chunks.get(key)
-			if chunk == null:
-				continue
-			var before: int = chunk.count()
-			var keep: int = ~int(chunk_masks[key])
-			if (chunk.occ & keep) == 0:
-				s.chunks.erase(key)
-				removed += before
-			else:
-				chunk.apply_keep_mask(keep)
-				removed += before - chunk.count()
-			s.mark_dirty_key(key)
-			changed_chunks[key] = true
 		if x1 >= x0:
 			dirty[s] = Rect2i(x0, y0, x1 - x0 + 2, y1 - y0 + 2)
 
 	if removed == 0:
 		return {"removed": 0, "body_alive": true, "fragments": [], "downgraded": []}
-	if profile_enabled:
-		profile_counts.erase_us = Time.get_ticks_usec() - stage_start
-		stage_start = Time.get_ticks_usec()
 
 	# ③ 分裂：默认最大块留在原 body；有钉子时优先保留最大的含钉子块。
 	var kept: Array = []
@@ -3533,7 +3591,7 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 		# ⚠️⚠️ 被删光的 shape **不能留下**：split() 对空 shape 会返回 1 个空块，
 		#    于是 kept 非空 -> 原体永远不会消失。实测：全删 1600 像素后
 		#    body_alive 仍然是 true（闸门 ② 抓到的）。
-		if not Destruction._has_min_pixels(s, 1):
+		if s.pixel_count() <= 0:
 			continue
 		# 未改的形状不扫描；已证明局部仍连通时保留原对象。
 		if not dirty.has(s):
@@ -3564,9 +3622,6 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 				loose.append({"shape": parts[i2], "anchored": anchored[i2]})
 
 	# ④ 全删光 -> 原体消失
-	if profile_enabled:
-		profile_counts.connectivity_us = Time.get_ticks_usec() - stage_start
-		stage_start = Time.get_ticks_usec()
 	if kept.is_empty():
 		remove_body(body)
 		return {"removed": removed, "body_alive": false, "fragments": [], "downgraded": []}
@@ -3579,12 +3634,12 @@ func fracture_pixels(body: PBody, removals: Dictionary, burst_speed: float = 0.0
 	# ⚠️ 三个 Callable 都要传：不传 -> 母体质量按"像素数"算错、摩擦/恢复被清成 0。
 	if anchor_mode:
 		body.is_static = kept_anchored
-	# 分片仅继承整块未变的质量缓存；切口块仍重算。
-	var hint: Variant = changed_chunks
+	# ⚠️⚠️ 断出碎片时**不能**传 changed_chunks：split(adopt=true) 会把 PixelChunk **对象**
+	#    搬到新 shape 上 —— 块键还是那些键，但内容已经不是缓存里记的那份了 ✗
+	#    （闸门"甜甜圈：质量属性仍然逐位正确"当场抓到）。这时退回全量重算。
+	var hint: Variant = changed_chunks if loose.is_empty() else null
 	body.rebuild(kept, density_callable(), max_rects_per_shape, Rect2i(),
 		friction_callable(), restitution_callable(), dirty, hint)
-	if profile_enabled:
-		profile_counts.rebuild_us = Time.get_ticks_usec() - stage_start
 	var r_keep := body.com_world() - old_com
 	body.linear_velocity = v_old + w_old * Vector2(-r_keep.y, r_keep.x)
 	body.angular_velocity = w_old

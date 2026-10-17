@@ -1,6 +1,7 @@
 extends SceneTree
 const Tool := preload("res://actor/canvas/src/canvas_surface.gd").Tool
 const Bearing := preload("res://actor/canvas/src/gear_bearing.gd")
+const Palette := preload("res://ink/general/src/ink_palette.gd")
 var checks := 0
 var failures := 0
 
@@ -61,6 +62,8 @@ func _run() -> void:
 	camera.force_update_scroll()
 	canvas.tool_grid.get_node("Nail").pressed.emit()
 	var nail_cell := Vector2i(128, 180)
+	canvas.surface.write_pixel(nail_cell, Palette.BLACK.color)
+	canvas.surface.refresh()
 	var screen: Vector2 = canvas.surface.get_global_transform_with_canvas() * (Vector2(nail_cell) + Vector2.ONE * 0.5)
 	await _move(screen)
 	cursor._refresh_cursor(screen, true, false)

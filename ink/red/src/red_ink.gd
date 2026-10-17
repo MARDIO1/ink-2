@@ -4,6 +4,7 @@ extends Node
 #region 依赖
 const PBody := preload("res://addons/pixel_destruction/physics/pbody.gd")
 const Query := preload("res://addons/pixel_destruction/physics/query.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 const RED_ID: int = 8
 #endregion
 
@@ -66,6 +67,8 @@ func take_profile() -> Dictionary:
 ## 必须在 fracture 前调用，事件能量按本次实际消耗的全部红像素计算。
 func observe_removals(_context: Dictionary, body: PBody, removals: Dictionary,
 		retention: float = 1.0) -> void:
+	if Traits.is_unbreakable(body):
+		return
 	var start: int = Time.get_ticks_usec() if _profile_enabled else 0
 	var groups: Dictionary = {}
 	var white_corrosion: Dictionary = body.tags.get("white_corrosion", {})
@@ -188,6 +191,8 @@ func _blast(world, damage, center: Vector2, energy: float,
 			_profile.rays = _profile.get("rays", 0) + 1
 			_profile.raycast_us = _profile.get("raycast_us", 0) + Time.get_ticks_usec() - ray_start
 		if not hit.hit:
+			continue
+		if Traits.is_unbreakable(hit.body):
 			continue
 		var point: Vector2 = hit.point + direction * 0.001
 		var damage_start: int = Time.get_ticks_usec() if _profile_enabled else 0

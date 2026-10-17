@@ -79,6 +79,7 @@ static func compute(shape: PixelShape, density_of: Callable = Callable(),
 		var occ := c.occ
 		if occ == 0:
 			continue
+		var n_c := Bits.popcount(occ)
 		# ---- 复用：本块没被改过，直接拿缓存的几何量（只可能是"整块同材质"那一路）----
 		if hinted and not changed.has(k):
 			var e: Variant = cache.get(k)
@@ -133,7 +134,6 @@ static func compute(shape: PixelShape, density_of: Callable = Callable(),
 		#    所以 mat.count(v) == popcount(occ) 等价于"所有占用像素的材质都是 v"。
 		#    这是一次**原生**扫描（PackedByteArray.count），比逐像素便宜得多。
 		#    不满足就走下面的逐像素慢路径 —— 累加顺序与旧实现完全相同。
-		var n_c := Bits.popcount(occ)
 		var v: int = c.mat[Bits.first_bit_index(occ)]
 		if v != 0 and c.mat.count(v) == n_c:
 			var d0 := 1.0

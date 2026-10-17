@@ -154,8 +154,8 @@ func _process(_delta: float) -> void:
 		_continue_stroke()
 
 ## 工具：普通手不落笔；画笔/橡皮擦/钉子按笔刷落笔；矩形与圆形画**外框**；
-## 直线按拖拽起终点绘制；墨水桶灌满封闭空区。LINE 追加在末尾以保持旧地图工具枚举值兼容。
-enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE, SELECT_CIRCLE, GEAR, GEAR_8 }
+## 直线按拖拽起终点绘制；墨水桶灌满封闭空区。新工具只追加在末尾，保持旧枚举值兼容。
+enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE, SELECT_CIRCLE, GEAR, GEAR_8, INFINITE_NAIL }
 
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
@@ -187,6 +187,8 @@ var _shape_shortage_notified := false
 var _paint_shortage_notified := false
 var _low_ink_announced := false
 const MIN_PAINT_INK := 1000
+## 无限钉子只在创造模式允许放置；普通游玩即使脚本误设工具也会被这里拒绝。
+var map_editor_mode := false
 ## 当前工具；切换时中断正在进行的笔画或形状。
 @export var tool: Tool = Tool.HAND:
 	set(value):
@@ -272,14 +274,19 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 				gear_tool.finish(_mouse_point())
 		return
 	if button.pressed and button.button_index == MOUSE_BUTTON_LEFT \
-	and tool in [Tool.BRUSH, Tool.NAIL, Tool.RECT, Tool.CIRCLE, Tool.LINE, Tool.BUCKET] \
+	and tool in [Tool.BRUSH, Tool.NAIL, Tool.INFINITE_NAIL, Tool.RECT, Tool.CIRCLE, Tool.LINE, Tool.BUCKET] \
 	and _inside(_mouse_point()):
 		_paint_shortage_notified = false
-		if tool != Tool.NAIL and _circle_nail_kind() < 0 and not _can_start_paint():
+		if tool not in [Tool.NAIL, Tool.INFINITE_NAIL] and _circle_nail_kind() < 0 and not _can_start_paint():
 			return
 	if button.pressed and button.button_index == MOUSE_BUTTON_LEFT and tool == Tool.NAIL:
 		_begin_undo_step()
 		_place_nail(_mouse_point(), Nail.Kind.FIXED)
+		_commit_undo_step()
+		return
+	if button.pressed and button.button_index == MOUSE_BUTTON_LEFT and tool == Tool.INFINITE_NAIL:
+		_begin_undo_step()
+		_place_nail(_mouse_point(), Nail.Kind.INFINITE)
 		_commit_undo_step()
 		return
 	var blue = blue_rule()
@@ -371,9 +378,11 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 	if not _inside(point):
 		return
 	var circle_nail_kind := _circle_nail_kind()
-	if tool == Tool.NAIL or circle_nail_kind >= 0:
+	if tool in [Tool.NAIL, Tool.INFINITE_NAIL] or circle_nail_kind >= 0:
 		_begin_undo_step()
-		_place_nail(point, Nail.Kind.FIXED if tool == Tool.NAIL else circle_nail_kind)
+		var kind := Nail.Kind.INFINITE if tool == Tool.INFINITE_NAIL else (
+			Nail.Kind.FIXED if tool == Tool.NAIL else circle_nail_kind)
+		_place_nail(point, kind)
 		_commit_undo_step()
 		return
 	if tool in [Tool.SELECT_DELETE, Tool.SELECT_CIRCLE]:
@@ -766,9 +775,13 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 		rod_layer.resize(new_size, content_offset)
 
 	nail_layer.clear()
-	for key in ["fixed", "background"]:
-		var kind := Nail.Kind.BACKGROUND if key == "background" else Nail.Kind.FIXED
-		for nail in old_nails[key]:
+	for key in ["fixed", "background", "infinite"]:
+		var kind := Nail.Kind.FIXED
+		if key == "background":
+			kind = Nail.Kind.BACKGROUND
+		elif key == "infinite":
+			kind = Nail.Kind.INFINITE
+		for nail in old_nails.get(key, {}):
 			var shifted := Vector2i(nail) + content_offset
 			if Rect2i(Vector2i.ZERO, new_size).has_point(shifted):
 				nail_layer.add(shifted, kind)
@@ -963,19 +976,23 @@ func _nail_material(kind: int) -> int:
 
 func _remove_nail_at(pixel: Vector2i, charge := true) -> int:
 	var removed_kind: int = nail_layer.remove(pixel)
-	if removed_kind >= 0:
+	if removed_kind >= 0 and removed_kind != Nail.Kind.INFINITE:
 		_bump_ink(_nail_material(removed_kind), -NAIL_COST, charge)
 	return removed_kind
 
 
 func _has_nailable_pixel(pixel: Vector2i) -> bool:
 	return material_at(pixel.x, pixel.y) != 0 \
+		or (blue_layer != null and blue_layer.mask.has(pixel)) \
 		or (rod_layer.pixels != null and rod_layer.pixels.get_pixelv(pixel).a > 0.5)
 
 
 ## 钉子是独立覆盖层：必须钉在已有墨水上，不替换下方像素。
 func _place_nail(point: Vector2, kind: int = Nail.Kind.FIXED) -> bool:
 	if not _inside(point):
+		return false
+	if kind == Nail.Kind.INFINITE and not map_editor_mode:
+		notice_requested.emit("无限钉子只能在创造模式使用")
 		return false
 	var pixel := Vector2i(point.floor())
 	if not _has_nailable_pixel(pixel):
@@ -984,6 +1001,11 @@ func _place_nail(point: Vector2, kind: int = Nail.Kind.FIXED) -> bool:
 	if nail_layer.kind_at(pixel) >= 0:
 		notice_requested.emit("这里已经有一枚钉子")
 		return false
+	if kind == Nail.Kind.INFINITE:
+		if not nail_layer.add(pixel, kind):
+			return false
+		_flush_ink()
+		return true
 	var material := _nail_material(kind)
 	if not ink_free and _ink_room(material) < NAIL_COST:
 		notice_requested.emit("墨水不足：放置钉子需要 %d px" % NAIL_COST)
@@ -1284,7 +1306,8 @@ func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> bool:
 	for point: Vector2i in source_nails:
 		var destination := point + offset
 		if nail_layer.add(destination, source_nails[point]):
-			_bump_ink(_nail_material(source_nails[point]), NAIL_COST)
+			if source_nails[point] != Nail.Kind.INFINITE:
+				_bump_ink(_nail_material(source_nails[point]), NAIL_COST)
 	_flush_texture()
 	_flush_ink()
 	return true
@@ -1717,6 +1740,7 @@ func _save_snapshot(path: String) -> Error:
 	file.store_var({"black": black_image.save_png_to_buffer(), "rod": rod_layer.pixels.save_png_to_buffer(), "anchors": rod_layer.anchor_points,
 		"rails": rod_layer.rails, "slider_pins": rod_layer.slider_pins,
 		"fixed_nails": nail_layer.nails.keys(), "background_nails": nail_layer.background_nails.keys(),
+		"infinite_nails": nail_layer.infinite_nails.keys(),
 		"springs": rule.draft_data(self) if rule != null else [], "blue": blue_layer.cells,
 		"motors": blue_rule().draft_data(self) if blue_rule() != null else []})
 	file.flush()
@@ -1781,12 +1805,14 @@ func load_ink(path: String) -> Error:
 		rod_layer.rails = rod_data.get("rails", []).duplicate(true)
 		rod_layer.slider_pins = rod_data.get("slider_pins", []).duplicate(true)
 		rod_layer.refresh()
-		if rod_data.has("fixed_nails") or rod_data.has("background_nails"):
+		if rod_data.has("fixed_nails") or rod_data.has("background_nails") or rod_data.has("infinite_nails"):
 			nail_layer.clear()
 			for point in rod_data.get("fixed_nails", []):
 				nail_layer.add(Vector2i(point), Nail.Kind.FIXED)
 			for point in rod_data.get("background_nails", []):
 				nail_layer.add(Vector2i(point), Nail.Kind.BACKGROUND)
+			for point in rod_data.get("infinite_nails", []):
+				nail_layer.add(Vector2i(point), Nail.Kind.INFINITE)
 			_bump_ink(InkPalette.GREY.id, nail_layer.nails.size() * NAIL_COST, false)
 			_bump_ink(InkPalette.WHITE.id, nail_layer.background_nails.size() * NAIL_COST, false)
 		var health = _health_node()

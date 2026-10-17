@@ -282,7 +282,8 @@ static func split(shape: PixelShape, min_pixels: int = 1, adopt := false) -> Arr
 	var keys: Array = shape.chunks.keys()
 	if keys.is_empty():
 		return []
-	return _assemble_groups(shape, components(shape), min_pixels, adopt)
+	var parts := _components_cpu(shape, keys)
+	return _assemble(shape, keys, parts, min_pixels, adopt)
 
 
 
@@ -323,50 +324,14 @@ const LOCAL_CONNECTED := 1
 ##    于是**长笔画全部退回全量**（实测贴边界拖一笔 15.7 ms，而单点小洞只要 7.3 ms，
 ##    差的正是这一趟）。取 4096 让长笔画也走快路径，同时保证最坏情况仍比全量便宜。
 const LOCAL_MAX_PROBE := 4096
-const NATIVE_MAX_PROBE := 65536
 
 static func local_connectivity(shape: PixelShape, box: Rect2i, min_pixels: int) -> int:
 	var grow := Rect2i(box.position - Vector2i(1, 1), box.size + Vector2i(2, 2))
 	var probe := Rect2i(box.position - Vector2i(3, 3), box.size + Vector2i(6, 6))
 	var w: int = probe.size.x
 	var h: int = probe.size.y
-	var native_available := _ensure_raster() != null
-	if w <= 0 or h <= 0 or w * h > (NATIVE_MAX_PROBE if native_available else LOCAL_MAX_PROBE):
+	if w <= 0 or h <= 0 or w * h > LOCAL_MAX_PROBE:
 		return LOCAL_UNKNOWN
-	if native_available:
-		# 同一局部连通判据，改用块位图和现有原生四邻域标注。
-		var cropped := PixelShape.new()
-		var neighbors := {}
-		for cy in range(probe.position.y >> 3, ((probe.end.y - 1) >> 3) + 1):
-			for cx in range(probe.position.x >> 3, ((probe.end.x - 1) >> 3) + 1):
-				var key := PixelShape.make_key(cx, cy)
-				var source: PixelChunk = shape.chunks.get(key)
-				if source == null:
-					continue
-				var occupancy := source.occ & _chunk_rect_mask(cx, cy, probe)
-				if occupancy == 0:
-					continue
-				var chunk := PixelChunk.new()
-				chunk.occ = occupancy
-				cropped.chunks[key] = chunk
-				var near_mask := occupancy & _chunk_rect_mask(cx, cy, grow)
-				if near_mask != 0:
-					neighbors[key] = near_mask
-		if neighbors.is_empty():
-			return LOCAL_UNKNOWN
-		var groups = _components_native(cropped, cropped.chunks.keys())
-		if groups != null:
-			var hits := 0
-			for group: Dictionary in groups.values():
-				for key: int in neighbors:
-					if (int(group.get(key, 0)) & int(neighbors[key])) != 0:
-						hits += 1
-						break
-			if hits != 1:
-				return LOCAL_UNKNOWN
-			return LOCAL_CONNECTED if _has_min_pixels(shape, min_pixels) else LOCAL_DROPPED
-		if w * h > LOCAL_MAX_PROBE:
-			return LOCAL_UNKNOWN
 	var occ := PackedByteArray()
 	occ.resize(w * h)
 	var n_idx := PackedInt32Array()
@@ -418,32 +383,9 @@ static func local_connectivity(shape: PixelShape, box: Rect2i, min_pixels: int) 
 		if seen[j] == 0:
 			return LOCAL_UNKNOWN    # N' 没全连通 -> 判不出来，走全量
 	# 定理成立 => 破坏后仍然连通。剩下只是 min_pixels 的语义，与 _assemble 的单分量路径一致。
-	if _has_min_pixels(shape, min_pixels):
+	if shape.pixel_count() >= min_pixels:
 		return LOCAL_CONNECTED
 	return LOCAL_DROPPED
-
-
-static func _chunk_rect_mask(cx: int, cy: int, rect: Rect2i) -> int:
-	var x0 := maxi(0, rect.position.x - cx * 8)
-	var x1 := mini(8, rect.end.x - cx * 8)
-	var y0 := maxi(0, rect.position.y - cy * 8)
-	var y1 := mini(8, rect.end.y - cy * 8)
-	if x1 <= x0 or y1 <= y0:
-		return 0
-	var row := ((1 << (x1 - x0)) - 1) << x0
-	var mask := 0
-	for y in range(y0, y1):
-		mask |= row << (y * 8)
-	return mask
-
-
-static func _has_min_pixels(shape: PixelShape, minimum: int) -> bool:
-	var count := 0
-	for chunk: PixelChunk in shape.chunks.values():
-		count += chunk.count()
-		if count >= minimum:
-			return true
-	return count >= minimum
 
 
 ## ---------- CPU 分量提取 ----------
@@ -763,17 +705,12 @@ static func components(shape: PixelShape) -> Dictionary:
 static func _assemble(shape: PixelShape, keys: Array, parts: Dictionary, min_pixels: int,
 		adopt := false) -> Array:
 	var groups := _group(shape, keys, parts)
-	return _assemble_groups(shape, groups, min_pixels, adopt)
-
-
-static func _assemble_groups(shape: PixelShape, groups: Dictionary, min_pixels: int,
-		adopt := false) -> Array:
 
 
 	# 快路径：只有一个连通分量 => 破坏没有把东西切开。
 	# 直接返回原 Shape，省掉整趟逐像素拷贝（实测是最贵的一步）。
 	if groups.size() == 1:
-		return [shape] if _has_min_pixels(shape, min_pixels) else []
+		return [shape] if shape.pixel_count() >= min_pixels else []
 
 	var out: Array = []
 	for root: int in groups:
@@ -819,8 +756,6 @@ static func _assemble_groups(shape: PixelShape, groups: Dictionary, min_pixels: 
 			#    "本分片拿走了它的全部像素"，搬对象同样是精确的。
 			if adopt and mask == src_chunk.occ:
 				s.chunks[k3] = src_chunk
-				if shape._mp_cache.has(k3):
-					s._mp_cache[k3] = shape._mp_cache[k3]
 				s.mark_dirty_key(k3)
 				continue
 			s.blit_mask_from(src_chunk, k3, mask)

@@ -14,6 +14,7 @@ const BACKGROUND_IMMUNE_TAG := "background_original_no_impact_damage"
 const BACKGROUND_WHITE_TAG := "background_original_white_ink"
 const BACKGROUND_SWEEP_TAG := "background_original_white_sweep"
 const Nail := preload("res://actor/nail/src/nail.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 #endregion
 
 ## 关卡文件里的墨水实体默认属于地图编辑器预置内容，其钉子仅供编辑时查看。
@@ -21,6 +22,10 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 @export var hide_nails_in_play := true
 @export var fixed_nails := PackedVector2Array()
 @export var background_nails := PackedVector2Array()
+## 无限钉子在同岛分块上由 CanvasSolid 分别写入；局部队列只负责可见外观。
+@export var infinite_nails := PackedVector2Array()
+@export var infinite_nail_body := false
+@export var infinite_fuel_body := false
 @export_flags_2d_physics var background_collision_layer := 1
 @export_flags_2d_physics var background_collision_mask := 0xFFFFFFFF
 ## 强制白墨使用高速扫掠；关闭时仍会自动识别画布生成的圆环。
@@ -86,6 +91,9 @@ func apply_nails(target_body, spawn_visuals := true) -> void:
 	var background := {}
 	for point in background_nails:
 		background[Vector2i(point)] = true
+	var infinite := {}
+	for point in infinite_nails:
+		infinite[Vector2i(point)] = true
 	if fixed.is_empty():
 		target_body.tags.erase(ANCHOR_TAG)
 	else:
@@ -106,6 +114,20 @@ func apply_nails(target_body, spawn_visuals := true) -> void:
 		target_body.tags.erase("white_sweep")
 		target_body.collision_layer = 0
 		target_body.collision_mask = 0
+	var unbreakable := infinite_nail_body or not infinite.is_empty()
+	if unbreakable:
+		target_body.tags[Traits.UNBREAKABLE_TAG] = true
+		if infinite.is_empty():
+			target_body.tags.erase(Nail.INFINITE_TAG)
+		else:
+			target_body.tags[Nail.INFINITE_TAG] = infinite
+	else:
+		target_body.tags.erase(Traits.UNBREAKABLE_TAG)
+		target_body.tags.erase(Nail.INFINITE_TAG)
+	if infinite_fuel_body or _has_red_at(target_body, infinite):
+		target_body.tags[Traits.INFINITE_FUEL_TAG] = true
+	else:
+		target_body.tags.erase(Traits.INFINITE_FUEL_TAG)
 	if not spawn_visuals or Engine.is_editor_hint() or not is_inside_tree():
 		return
 	var host := get_parent()
@@ -113,6 +135,15 @@ func apply_nails(target_body, spawn_visuals := true) -> void:
 		return
 	_spawn_visuals(host, target_body, fixed, Nail.Kind.FIXED)
 	_spawn_visuals(host, target_body, background, Nail.Kind.BACKGROUND)
+	_spawn_visuals(host, target_body, infinite, Nail.Kind.INFINITE)
+
+
+static func _has_red_at(target_body, points: Dictionary) -> bool:
+	for point: Vector2i in points:
+		for shape in target_body.shapes:
+			if shape.get_pixel(point.x, point.y) == InkPalette.RED.id:
+				return true
+	return false
 
 
 func _spawn_visuals(host: Node, target_body, points: Dictionary, kind: Nail.Kind) -> void:

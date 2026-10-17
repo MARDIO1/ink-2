@@ -183,6 +183,11 @@ func _physics_process(delta: float) -> void:
 ##   debris_max_mass / debris_min_speed: 灰尘清理阈值（前者 > 0 才生效；后者 0 = 不限速度），默认关
 ##   native: bool          是否启用扩展加速（没有扩展会自动回退），默认 true
 ##   auto_render: bool     默认 true
+##
+## ⚠️ 这里只覆盖**一小部分**旋钮（历史上只有这几个），而且默认值写在注释里、没有单一真源 ——
+##    完整的旋钮表（57 个）见 PhysicsConfig：`world.apply_config(cfg)` **一处下发**，
+##    字段名就是 PWorld 的字段名，名字对不上会**吵闹地报**（不是静默跳过）。
+##    **新代码优先用它**，这个 opts 入口只为老调用方保留。
 func configure(opts: Dictionary) -> void:
 	if opts.has("gravity"):
 		world.gravity = opts["gravity"]

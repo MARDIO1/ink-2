@@ -11,6 +11,7 @@ const Wire := preload("res://ink/blue/src/wire_layer.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
+const Traits := preload("res://ink/general/src/ink_traits.gd")
 
 static func vec(value: Array) -> Vector2:
 	return Vector2(value[0], value[1])
@@ -39,12 +40,14 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	var surface = canvas.surface
 	var data := {"version": Store.VERSION, "id": "", "name": "未命名蓝图", "description": "", "tags": [],
 		"updated": 0, "favorite": false, "editor_only": false, "size": [rect.size.x, rect.size.y],
-		"pixels": [], "fixed_nails": [], "background_nails": [], "rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": []}
+		"pixels": [], "fixed_nails": [], "background_nails": [], "infinite_nails": [],
+		"rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": []}
 	var pixels := {}
 	var rods := {}
 	var blues := {}
 	var fixed_nails := {}
 	var background_nails := {}
+	var infinite_nails := {}
 	var required := []
 	var gears := []
 	for child in canvas.world.get_children():
@@ -93,11 +96,15 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 				fixed_nails[key] = true
 			elif surface.nail_layer.background_nails.has(at):
 				background_nails[key] = true
+			elif surface.nail_layer.infinite_nails.has(at):
+				infinite_nails[key] = true
 	for body in canvas.world.world.bodies:
 		if body.tags.has("living"):
 			continue
 		var saved := {"pixels": [], "static": body.is_static,
-			"fixed_nails": [], "background_nails": []}
+			"fixed_nails": [], "background_nails": [], "infinite_nails": [],
+			"infinite_nail_body": Traits.is_unbreakable(body),
+			"infinite_fuel_body": Traits.is_infinite_fuel(body)}
 		var is_required := required.has(body)
 		for shape in body.shapes:
 			var bounds: Rect2i = shape.local_aabb()
@@ -142,7 +149,8 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 			saved.pixels = _entries(unique)
 			data.bodies[required.find(body)] = saved
 		for pair in [["static_anchor_points", saved.fixed_nails, fixed_nails],
-			["background_anchor_points", saved.background_nails, background_nails]]:
+			["background_anchor_points", saved.background_nails, background_nails],
+			[Nail.INFINITE_TAG, saved.infinite_nails, infinite_nails]]:
 			for point: Vector2i in body.tags.get(pair[0], {}):
 				var at := Vector2i(local_point(canvas,
 					body.to_world(Vector2(point) + Vector2.ONE * 0.5)).floor())
@@ -224,6 +232,7 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	data.pixels = _entries(pixels)
 	data.fixed_nails = fixed_nails.keys()
 	data.background_nails = background_nails.keys()
+	data.infinite_nails = infinite_nails.keys()
 	data.rods = rods.keys()
 	data.blue = blues.keys()
 	if not Store.validate(data):
@@ -346,16 +355,18 @@ static func preview(data: Dictionary) -> Image:
 		for entry in layer:
 			image.set_pixelv(cell(entry[0], size.x), Palette.color_for_material_id(int(entry[1])))
 	var nail_sets := [[data.get("fixed_nails", []), Nail.Kind.FIXED],
-		[data.get("background_nails", []), Nail.Kind.BACKGROUND]]
+		[data.get("background_nails", []), Nail.Kind.BACKGROUND],
+		[data.get("infinite_nails", []), Nail.Kind.INFINITE]]
 	for saved in data.bodies:
 		nail_sets.append([saved.get("fixed_nails", []), Nail.Kind.FIXED])
 		nail_sets.append([saved.get("background_nails", []), Nail.Kind.BACKGROUND])
+		nail_sets.append([saved.get("infinite_nails", []), Nail.Kind.INFINITE])
 	for nail_set in nail_sets:
 		var icon: Image = Nail.texture_for(nail_set[1]).get_image()
 		icon.resize(roundi(icon.get_width() * Nail.VISUAL_SCALE), roundi(icon.get_height() * Nail.VISUAL_SCALE), Image.INTERPOLATE_NEAREST)
 		for saved_index in nail_set[0]:
 			var at := cell(saved_index, size.x)
-			var origin := at - Vector2i(Nail.ANCHOR_CENTER * Nail.VISUAL_SCALE)
+			var origin := at - Vector2i(Nail.anchor_center_for(nail_set[1]) * Nail.VISUAL_SCALE)
 			var clipped := Rect2i(origin, icon.get_size()).intersection(Rect2i(Vector2i.ZERO, size))
 			if clipped.has_area():
 				image.blend_rect(icon, Rect2i(clipped.position - origin, clipped.size), clipped.position)
@@ -458,6 +469,8 @@ static func place(canvas, data: Dictionary, offset: Vector2i) -> String:
 		surface.nail_layer.add(cell(saved_index, width) + offset, Nail.Kind.FIXED)
 	for saved_index in data.get("background_nails", []):
 		surface.nail_layer.add(cell(saved_index, width) + offset, Nail.Kind.BACKGROUND)
+	for saved_index in data.get("infinite_nails", []):
+		surface.nail_layer.add(cell(saved_index, width) + offset, Nail.Kind.INFINITE)
 	surface._bump_ink(Palette.GREY.id, data.get("fixed_nails", []).size() * surface.NAIL_COST)
 	surface._bump_ink(Palette.WHITE.id, data.get("background_nails", []).size() * surface.NAIL_COST)
 	for entry in data.rods:
@@ -508,6 +521,10 @@ static func place(canvas, data: Dictionary, offset: Vector2i) -> String:
 			func(saved_index): return cell(saved_index, width)))
 		node.background_nails = PackedVector2Array(saved.get("background_nails", []).map(
 			func(saved_index): return cell(saved_index, width)))
+		node.infinite_nails = PackedVector2Array(saved.get("infinite_nails", []).map(
+			func(saved_index): return cell(saved_index, width)))
+		node.infinite_nail_body = bool(saved.get("infinite_nail_body", false))
+		node.infinite_fuel_body = bool(saved.get("infinite_fuel_body", false))
 		node.add_to_group("ink_item", true)
 		var shape := ShapeNode.new()
 		shape.source = ShapeNode.Source.PAINT

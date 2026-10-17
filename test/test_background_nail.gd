@@ -105,6 +105,22 @@ func run() -> void:
 	check("yellow carrier keeps its background nail after solidify", yellow_background != null
 		and yellow_background.collision_layer == 0 and yellow_background.collision_mask == 0)
 
+	surface.clear()
+	for x in range(10, 31):
+		surface.blue_layer.mask[Vector2i(x, 50)] = true
+	surface.blue_layer.refresh()
+	check("background nail can be placed directly on blue wire",
+		surface._place_nail(Vector2(20.5, 50.5), Nail.Kind.BACKGROUND)
+		and surface.material_at(20, 50) == 0)
+	canvas.generate()
+	var blue_background = null
+	for body in scene.world.bodies:
+		if body.tags.get("background_anchor_points", {}).has(Vector2i(20, 50)):
+			blue_background = body
+			break
+	check("blue wire keeps its background nail after solidify", blue_background != null
+		and blue_background.collision_layer == 0 and blue_background.collision_mask == 0)
+
 	scene.queue_free()
 	await process_frame
 	print("[BackgroundNail] failures=", failures)

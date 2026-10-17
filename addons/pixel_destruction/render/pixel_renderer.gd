@@ -111,7 +111,6 @@ func mark_all_dirty() -> void:
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
-
 ## 一次同步全部刚体（含回收已消失的）。
 ##
 ## ⚠️ 与逐帧路径的区别：逐帧路径靠 prune(_live_ids()) 回收，
@@ -167,10 +166,6 @@ func material_color(material: int) -> Color:
 
 
 func sync(body) -> void:
-	# 无场景节点的关节肢体也有自己的渲染开关；不能默认当墨水碎块画出来。
-	if not body.internal_render:
-		forget(body.id)
-		return
 	if body.shapes.is_empty():
 		forget(body.id)
 		return
@@ -500,9 +495,9 @@ func _build_texture(body, aabb: Rect2i):
 ##    （tests/validation_raster_native.gd）；shading 打开时也只能走它。
 var _raster: Object = null
 var _raster_checked := false
-## 256 项 RGBA 表（u32，小端 = r,g,b,a）—— 交给原生直接拷贝。
+## 256 项 RGBA 表（u32，小端 = r,g,b,255）—— 交给原生直接拷贝。
 ##
-## ⚠️ 三条规则（int(c*255) 截断 / 保留材质 alpha / 材质 id 越界 clamp 到最后一格）
+## ⚠️ 三条规则（int(c*255) 截断 / alpha 强制 255 / 材质 id 越界 clamp 到最后一格）
 ##    只在这里写一次；原生只做拷贝，浮点语义**不复制第二份**。
 var _palette_table := PackedByteArray()
 ## 自校验指纹：这张表是**按这份 palette** 建的。
@@ -550,7 +545,7 @@ func _palette_table_bytes() -> PackedByteArray:
 		var col: Color = palette[mi]
 		t.encode_u32(i << 2,
 			(int(col.r * 255.0)) | (int(col.g * 255.0) << 8)
-			| (int(col.b * 255.0) << 16) | (int(clampf(col.a, 0.0, 1.0) * 255.0) << 24))
+			| (int(col.b * 255.0) << 16) | (255 << 24))
 	_palette_table = t
 	return t
 
@@ -642,7 +637,7 @@ func _build_region_image(shapes: Array, aabb: Rect2i, region: Rect2i) -> Image:
 ## **参照实现**：逐像素在 GDScript 里填 RGBA8。
 ##
 ## ⚠️ 原生化之后它仍然是真源之一：原生那条路的每一条规则（块范围推导、
-##    越界跳过、调色板 clamp、保留材质 alpha）都以它为准，逐位对拍。
+##    越界跳过、调色板 clamp、alpha 强制 255）都以它为准，逐位对拍。
 func _build_region_image_gd(shapes: Array, aabb: Rect2i, region: Rect2i) -> Image:
 	var w: int = region.size.x
 	var h: int = region.size.y
@@ -692,7 +687,7 @@ func _build_region_image_gd(shapes: Array, aabb: Rect2i, region: Rect2i) -> Imag
 					var o := (ly * w + lx) << 2
 					data.encode_u32(o,
 						(int(col.r * 255.0)) | (int(col.g * 255.0) << 8)
-						| (int(col.b * 255.0) << 16) | (int(clampf(col.a, 0.0, 1.0) * 255.0) << 24))
+						| (int(col.b * 255.0) << 16) | (255 << 24))
 	return Image.create_from_data(w, h, false, Image.FORMAT_RGBA8, data)
 
 
@@ -794,7 +789,7 @@ func _build_texture_impl(shapes: Array, aabb: Rect2i, cache_key: int):
 				var o := (gy * w + gx) << 2
 				data.encode_u32(o,
 					(int(col.r * 255.0)) | (int(col.g * 255.0) << 8)
-					| (int(col.b * 255.0) << 16) | (int(clampf(col.a, 0.0, 1.0) * 255.0) << 24))
+					| (int(col.b * 255.0) << 16) | (255 << 24))
 	var img := Image.create_from_data(w, h, false, Image.FORMAT_RGBA8, data)
 	_images[cache_key] = img
 	var tex: ImageTexture = _textures.get(cache_key)

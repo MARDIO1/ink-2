@@ -227,7 +227,8 @@ static func restore(canvas, state: Dictionary) -> void:
 		surface.blue_rule().restore(surface, state.get("blue", []), state.get("blue_remove", {}))
 	surface.ink_px_by_material = state.ledger.duplicate()
 	surface._pending_ink.clear()
-	surface.nail_layer.restore(state.get("nails", {"fixed": {}, "background": {}}))
+	surface.nail_layer.restore(state.get("nails",
+		{"fixed": {}, "background": {}, "infinite": {}}))
 	var health = surface._health_node()
 	if health != null:
 		for id in state.health_delta:

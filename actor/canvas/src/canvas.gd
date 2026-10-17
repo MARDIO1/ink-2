@@ -33,10 +33,10 @@ const EDITOR_TOOL_BUTTON_HEIGHT := 60.0
 const EDITOR_TOOL_BUTTON_H_GAP := 16.0
 const EDITOR_TOOL_BUTTON_V_GAP := 10.0
 const EDITOR_HAND_BUTTON_SIZE := 72.0
-## 工具栏按行排列；第十个按钮使用数字键 0。
+## 工具栏按行排列；前十个按钮使用数字键 1～0，无限钉子只走工具栏。
 const TOOL_SHORTCUT_ORDER := [
 	"Brush", "Eraser", "Shape", "Bucket", "Redraw", "SelectDelete",
-	"Generate", "ReturnToCanvas", "Nail", "ExpandCanvas",
+	"Generate", "ReturnToCanvas", "Nail", "ExpandCanvas", "InfiniteNail",
 ]
 
 @onready var surface = $CanvasSurface
@@ -105,6 +105,7 @@ func _ready() -> void:
 	_prepare_workbench_structure()
 	tool_grid.get_node("Nail").visible = false
 	tool_grid.get_node("ExpandCanvas").visible = false
+	tool_grid.get_node("InfiniteNail").visible = false
 	_apply_workbench_column_layout()
 	set_brush_size(int(brush_panel.get_node("PenSlider").value))
 	surface.set_process_input(active)
@@ -604,7 +605,9 @@ func set_screen_fixed(on: bool) -> void:
 ## 两种模式都显示完整工具栏；地图编辑模式额外显示钉子与扩展画布。
 func set_map_editor_mode(on: bool) -> void:
 	_map_editor_mode = on
-	if not on and surface.tool in [SurfaceScript.Tool.GEAR, SurfaceScript.Tool.GEAR_8]:
+	surface.map_editor_mode = on
+	if not on and surface.tool in [SurfaceScript.Tool.GEAR, SurfaceScript.Tool.GEAR_8,
+			SurfaceScript.Tool.INFINITE_NAIL]:
 		_apply_tool(SurfaceScript.Tool.HAND)
 	tool_grid.get_node("Brush").visible = true
 	tool_grid.get_node("Eraser").visible = true
@@ -612,6 +615,7 @@ func set_map_editor_mode(on: bool) -> void:
 	tool_grid.get_node("Bucket").visible = true
 	tool_grid.get_node("Nail").visible = on
 	tool_grid.get_node("ExpandCanvas").visible = on
+	tool_grid.get_node("InfiniteNail").visible = on
 	hand_button.visible = true
 	hand_button.tooltip_text = (
 		"操纵（F）\n左键选中并拖动；右键删除怪物、文本、对话、图片、传送门或墨泉；滚轮缩放怪物、文本或图片"
@@ -639,13 +643,19 @@ func _prepare_workbench_structure() -> void:
 		"Brush": "画笔", "Eraser": "橡皮", "Shape": "形状", "Bucket": "填充",
 		"Redraw": "清空", "SelectDelete": "框选", "Generate": "固化",
 		"ReturnToCanvas": "墨化", "Nail": "钉子", "ExpandCanvas": "扩展",
+		"InfiniteNail": "无限",
 	}
 	for index in order.size():
 		var button := tool_grid.get_node_or_null(NodePath(order[index])) as Button
 		if button != null:
 			if button.name == &"ExpandCanvas":
 				button.icon = _atlas_icon(ExpandCanvasIconSource, EXPAND_CANVAS_ICON_REGION)
+			if button.name == &"InfiniteNail":
+				button.icon = NailScript.INFINITE_TEXTURE
 			_add_tool_button_contents(button, str(captions[order[index]]))
+			if button.name == &"InfiniteNail":
+				var icon_view := button.get_node("ToolIcon") as TextureRect
+				icon_view.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			tool_grid.move_child(button, index)
 	hand_button.reparent(buttons)
 	hand_button.icon = _atlas_icon(EditorControlIconSource, EDITOR_CONTROL_ICON_REGION)
@@ -918,6 +928,7 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("Eraser").pressed.connect(set_tool.bind(SurfaceScript.Tool.ERASER))
 	tool_grid.get_node("Shape").pressed.connect(_open_shape_popup)
 	tool_grid.get_node("Nail").pressed.connect(set_tool.bind(SurfaceScript.Tool.NAIL))
+	tool_grid.get_node("InfiniteNail").pressed.connect(set_tool.bind(SurfaceScript.Tool.INFINITE_NAIL))
 	tool_grid.get_node("Bucket").pressed.connect(set_tool.bind(SurfaceScript.Tool.BUCKET))
 	tool_grid.get_node("SelectDelete").pressed.connect(set_tool.bind(SurfaceScript.Tool.SELECT_DELETE))
 	tool_grid.get_node("SelectDelete").gui_input.connect(_on_selection_button_input)
@@ -1167,7 +1178,8 @@ func _update_shape_tooltip(tool: int) -> void:
 
 
 func _apply_tool(tool: int) -> void:
-	if tool in [SurfaceScript.Tool.GEAR, SurfaceScript.Tool.GEAR_8] and not _map_editor_mode:
+	if tool in [SurfaceScript.Tool.GEAR, SurfaceScript.Tool.GEAR_8, SurfaceScript.Tool.INFINITE_NAIL] \
+			and not _map_editor_mode:
 		return
 	surface.tool = tool
 	hand_button.set_pressed_no_signal(tool == SurfaceScript.Tool.HAND)
@@ -1178,6 +1190,7 @@ func _apply_tool(tool: int) -> void:
 		or tool == SurfaceScript.Tool.LINE
 	)
 	tool_grid.get_node("Nail").set_pressed_no_signal(tool == SurfaceScript.Tool.NAIL)
+	tool_grid.get_node("InfiniteNail").set_pressed_no_signal(tool == SurfaceScript.Tool.INFINITE_NAIL)
 	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
 	tool_grid.get_node("SelectDelete").set_pressed_no_signal(
 		tool in [SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE])

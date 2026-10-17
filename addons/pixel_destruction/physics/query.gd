@@ -88,11 +88,11 @@ static func raycast(origin: Vector2, dir: Vector2, max_dist: float,
 
 ## Teardown 的 `QueryClosestPoint(origin, maxDist)`：找最近的**实心像素**。
 static func closest_point(origin: Vector2, max_dist: float,
-		reject: Array = _reject, source_world = null) -> Hit:
+		reject: Array = _reject) -> Hit:
 	var best := _hit_none()
 	var best_d2 := max_dist * max_dist
 	for b: PBody in _candidates(Rect2(origin - Vector2(max_dist, max_dist),
-			Vector2(max_dist, max_dist) * 2.0), reject, source_world):
+			Vector2(max_dist, max_dist) * 2.0), reject):
 		var h := _closest_vs_body(b, origin, max_dist)
 		if h.hit:
 			var d2 := origin.distance_squared_to(h.point)
@@ -118,17 +118,14 @@ static func aabb_bodies(bounds: Rect2) -> Array:
 	return _candidates(bounds, [])
 
 
-static func _candidates(bounds: Rect2, reject: Array, source_world = null) -> Array:
+static func _candidates(bounds: Rect2, reject: Array) -> Array:
 	var out: Array = []
-	var candidates: Array = _bodies if source_world == null else source_world.bodies
-	for b: PBody in candidates:
+	for b: PBody in _bodies:
 		if b.rects.is_empty():
 			continue
 		if reject.has(b):
 			continue
-		# 显式世界查询不继承其他调用方留下的全局过滤器。
-		var passes_layers: bool = _passes_layers(b) if source_world == null else b.collision_layer != 0
-		if not passes_layers:
+		if not _passes_layers(b):
 			continue
 		if not bounds.intersects(b.aabb):
 			continue
@@ -148,7 +145,6 @@ static func _passes_layers(b: PBody) -> bool:
 ## 当前世界（由 Query.attach 设置）。Teardown 的查询是全局的，
 ## 这里显式挂一个世界，避免用全局单例。
 static var _bodies: Array = []
-static var _world_id: int = 0
 
 static var _reject: Array = []
 
@@ -157,7 +153,6 @@ static var _reject: Array = []
 static var _require_mask := 0xFFFFFFFF
 
 static func attach(world) -> void:
-	_world_id = world.get_instance_id()
 	_bodies = world.bodies
 	_reject.clear()
 	_require_mask = 0xFFFFFFFF
@@ -166,17 +161,9 @@ static func attach(world) -> void:
 ## 注销。**必须在世界销毁时调用** —— 否则这个静态数组会一直持有刚体引用，
 ## Godot 退出时会报 "resources still in use at exit" / "Orphan StringName"。
 static func detach(world = null) -> void:
-	detach_id(_world_id if world == null else world.get_instance_id())
-
-
-## RefCounted 的 PREDELETE 阶段 self 作为参数传递可能已是 null。
-## 以实例 ID 判断归属，旧世界销毁绝不能清掉刚注册的新世界或它的过滤器。
-static func detach_id(world_id: int) -> void:
-	if world_id != _world_id:
-		return
-	_world_id = 0
-	_bodies = []
-	clear_filters()
+	if world == null or _bodies == world.bodies:
+		_bodies = []
+	_reject.clear()
 
 
 ## 查询时排除某些刚体（一直生效到 clear_filters）。

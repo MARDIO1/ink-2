@@ -130,6 +130,8 @@ static func validate(data: Dictionary) -> bool:
 		if not cells_valid(data.get(key), width * height, false):
 			return false
 		total += data[key].size() * 10
+	if not cells_valid(data.get("infinite_nails", []), width * height, false):
+		return false
 	for key in ["anchors", "springs", "motors", "bodies", "gears"]:
 		if not data.get(key) is Array or data[key].size() > 128:
 			return false
@@ -141,6 +143,7 @@ static func validate(data: Dictionary) -> bool:
 		if not body is Dictionary or not cells_valid(body.get("pixels"), width * height, true) \
 			or not cells_valid(body.get("fixed_nails", []), width * height, false) \
 			or not cells_valid(body.get("background_nails", []), width * height, false) \
+			or not cells_valid(body.get("infinite_nails", []), width * height, false) \
 			or body.pixels.is_empty() or not body.has("static") or not body.static is bool:
 			return false
 		total += body.pixels.size()

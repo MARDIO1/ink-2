@@ -79,7 +79,7 @@ func _ring_scale(canvas: Node) -> Vector2:
 
 func _uses_ring(canvas: Node) -> bool:
 	var surface: Node = canvas.get_node("CanvasSurface")
-	if surface.tool in [Tool.NAIL, Tool.GEAR, Tool.GEAR_8]:
+	if surface.tool in [Tool.NAIL, Tool.INFINITE_NAIL, Tool.GEAR, Tool.GEAR_8]:
 		return false
 	var creative := canvas.get_parent().get_node_or_null("Creative")
 	if creative != null and creative.get("active") == true:
