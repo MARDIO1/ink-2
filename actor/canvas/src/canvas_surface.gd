@@ -999,6 +999,27 @@ func _has_nailable_pixel(pixel: Vector2i) -> bool:
 		or (rod_layer.pixels != null and rod_layer.pixels.get_pixelv(pixel).a > 0.5)
 
 
+## 黄色导轨画在半像素中心线上，鼠标 floor 后可能落到相邻空格。
+## 白色钉子允许吸附到附近真实存在的黄色像素，保证固化时也能找到载体。
+func _background_nail_pixel(point: Vector2, fallback: Vector2i) -> Vector2i:
+	if rod_layer == null or rod_layer.pixels == null:
+		return fallback
+	var best := fallback
+	var best_distance := INF
+	var center := Vector2i(point.floor())
+	for y in range(center.y - 2, center.y + 3):
+		for x in range(center.x - 2, center.x + 3):
+			var candidate := Vector2i(x, y)
+			if not _inside(Vector2(candidate)) \
+			or rod_layer.pixels.get_pixelv(candidate).a <= 0.5:
+				continue
+			var distance := (Vector2(candidate) + Vector2.ONE * 0.5).distance_squared_to(point)
+			if distance < best_distance:
+				best = candidate
+				best_distance = distance
+	return best
+
+
 ## 钉子是独立覆盖层：必须钉在已有墨水上，不替换下方像素。
 func _place_nail(point: Vector2, kind: int = Nail.Kind.FIXED) -> bool:
 	if not _inside(point):
@@ -1007,6 +1028,8 @@ func _place_nail(point: Vector2, kind: int = Nail.Kind.FIXED) -> bool:
 		notice_requested.emit("无限钉子只能在创造模式使用")
 		return false
 	var pixel := Vector2i(point.floor())
+	if kind == Nail.Kind.BACKGROUND and not _has_nailable_pixel(pixel):
+		pixel = _background_nail_pixel(point, pixel)
 	if not _has_nailable_pixel(pixel):
 		notice_requested.emit("钉子必须放在实体上")
 		return false

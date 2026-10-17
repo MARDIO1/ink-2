@@ -61,6 +61,26 @@ func run() -> void:
 		quit(0)
 		return
 	check("blue palette and bottle registered", Palette.ink_count() == 6 and blue_before > 0.0)
+	var pose_body := PBody.new()
+	pose_body.position = Vector2(37.0, -19.0)
+	pose_body.rotation = 0.63
+	var pose_parent := Node2D.new()
+	pose_parent.position = Vector2(91.0, 43.0)
+	pose_parent.rotation = -0.21
+	pose_parent.scale = Vector2(1.25, 1.25)
+	scene.add_child(pose_parent)
+	var pose_wire := Wire.new()
+	pose_wire.active = true
+	pose_wire.body = pose_body
+	pose_wire.cells = PackedVector2Array([Vector2(4, 7)])
+	pose_parent.add_child(pose_wire)
+	pose_wire.sync_pose()
+	var pose_cell := Vector2(4.5, 7.5)
+	var expected_cell: Vector2 = pose_parent.to_global(pose_body.to_world(pose_cell))
+	check("active wire texture follows the carrier global pose",
+		pose_wire.to_global(pose_cell).distance_to(expected_cell) < 0.01
+		and is_equal_approx(pose_wire.global_rotation, pose_parent.global_rotation + pose_body.rotation))
+	pose_parent.queue_free()
 	surface.brush_size = 3
 	surface.blue_layer.begin(Vector2(180.5, 120.5))
 	surface.blue_layer.extend(Vector2(190.5, 120.5))
@@ -471,13 +491,15 @@ func test_arrow_surface_and_grip() -> void:
 	var tiny := Motor.new()
 	tiny.tip = Vector2(10, 0)
 	tiny.brush_width = 5
-	var full := Motor.new()
-	full.tip = Vector2(120, 0)
-	full.brush_width = tiny.brush_width
-	check("small arrow has reduced power ceiling relative to full length", tiny.power_limit(rule.power_per_width)
-		< full.power_limit(rule.power_per_width) * 0.1)
-	full.free()
+	var full_length := Motor.new()
+	full_length.tip = Vector2(120, 0)
+	full_length.brush_width = tiny.brush_width
+	check("small arrow has reduced force and power ceiling",
+		tiny.power_limit(rule.power_per_width, rule.short_falloff_exponent,
+			rule.short_min_scale) < full_length.power_limit(rule.power_per_width,
+			rule.short_falloff_exponent, rule.short_min_scale))
 	tiny.free()
+	full_length.free()
 	var at := Vector2i(95, 40)
 	runtime._physics.carve(scene.world, {motor.body: {motor.body.shapes[0]: {at: true}}})
 	tick()

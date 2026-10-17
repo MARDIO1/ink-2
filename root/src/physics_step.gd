@@ -548,6 +548,11 @@ func _update_anchors(body: PBody, points: Dictionary) -> void:
 		body.tags.erase(ANCHOR_TAG)
 	else:
 		body.tags[ANCHOR_TAG] = live
+	# 只要这个物体原本是由灰色钉子固定的，它的静态性就必须
+	# 跟随当前存活的锚点。这也覆盖不会触发连通域分裂的 carve 路径。
+	# points 为空时不动 is_static，避免把天生的静态地形释放。
+	if not points.is_empty():
+		body.is_static = not live.is_empty()
 
 
 func _update_background_anchors(body: PBody, points: Dictionary,

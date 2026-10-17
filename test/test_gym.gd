@@ -21,6 +21,16 @@ func _run() -> void:
 	_check("gym keeps all 12 controller values and adds ink tuning", gym._targets.size() > 12)
 	_check("every gym row has numeric input", gym._numbers.size() == gym._targets.size()
 		and gym._numbers.all(func(number): return number is SpinBox))
+	_check("gym sliders never retain keyboard focus", gym._sliders.all(
+		func(slider): return slider.focus_mode == Control.FOCUS_NONE))
+	var gym_input: LineEdit = gym._numbers[0].get_line_edit()
+	gym_input.grab_focus()
+	var outside_click := InputEventMouseButton.new()
+	outside_click.button_index = MOUSE_BUTTON_LEFT
+	outside_click.pressed = true
+	outside_click.position = gym.get_node("Panel").get_global_rect().end + Vector2.ONE * 20.0
+	gym._input(outside_click)
+	_check("clicking outside gym releases numeric keyboard focus", not gym_input.has_focus())
 	_check("gym includes yellow stiffness", gym._props.count("stiffness_per_width") == 1)
 	_check("gym includes six ink material property groups",
 		gym._props.count("density") == 6 and gym._props.count("friction") == 6

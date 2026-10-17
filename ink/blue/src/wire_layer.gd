@@ -82,6 +82,10 @@ func _ready() -> void:
 	_energy_display.draw.connect(_draw_energy)
 	z_index = 7
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# 运行态覆盖层使用显式全局姿态，不依赖父节点的局部变换继承。
+	# 这与黄墨端子/轴承的坐标规则一致，可避免刚体运动或父级有变换时贴图漂离。
+	if active:
+		top_level = true
 	rebuild()
 	if active:
 		call_deferred("restore")
@@ -187,10 +191,12 @@ func _draw_energy() -> void:
 
 func sync_pose() -> void:
 	if active and body != null:
-		if position != body.position:
-			position = body.position
-		if rotation != body.rotation:
-			rotation = body.rotation
+		if not top_level:
+			top_level = true
+		var world_node := get_parent() as Node2D
+		var body_transform := Transform2D(body.rotation, body.position)
+		global_transform = world_node.global_transform * body_transform \
+			if world_node != null else body_transform
 
 ## 和刚体本体（pbody_visual）一样在物理帧末尾更新变换：项目开着物理插值，
 ## 在 _process 里再写一次位置会盖掉插值结果，快速旋转时蓝色覆盖层会错开一帧。
@@ -198,6 +204,10 @@ func _physics_process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	sync_pose()
+
+func _display_to_physics(point: Vector2) -> Vector2:
+	var world_node := get_parent() as Node2D
+	return world_node.to_local(to_global(point)) if world_node != null else to_global(point)
 
 func restore() -> void:
 	var level := get_parent()
@@ -217,14 +227,18 @@ func restore() -> void:
 		var best_score := 0
 		var best_pose := INF
 		var sample_count := mini(cells.size(), 32)
+		var saved_position := _display_to_physics(Vector2.ZERO)
+		var saved_rotation: float = global_rotation \
+			- (level.global_rotation if level is Node2D else 0.0)
 		for candidate in physics.bodies:
 			var score := 0
 			for sample in sample_count:
 				var index := sample * (cells.size() - 1) / maxi(sample_count - 1, 1)
-				var point: Vector2 = transform * (cells[index] + Vector2.ONE * 0.5)
+				var point := _display_to_physics(cells[index] + Vector2.ONE * 0.5)
 				if candidate.aabb.has_point(point) and material_at(candidate, Vector2i(candidate.to_local(point).floor())) == carrier_material:
 					score += 1
-			var pose: float = candidate.position.distance_squared_to(position) + absf(candidate.rotation - rotation)
+			var pose: float = candidate.position.distance_squared_to(saved_position) \
+				+ absf(candidate.rotation - saved_rotation)
 			if score > best_score or (score > 0 and score == best_score and pose < best_pose):
 				best_score = score
 				best_pose = pose
@@ -235,7 +249,7 @@ func restore() -> void:
 	# 序列化坐标属于旧载体；绑定到不同局部坐标系时必须同步变换像素。
 	var restored := PackedVector2Array()
 	for at in cells:
-		var local := Vector2i(body.to_local(transform * (at + Vector2.ONE * 0.5)).floor())
+		var local := Vector2i(body.to_local(_display_to_physics(at + Vector2.ONE * 0.5)).floor())
 		if material_at(body, local) != 0:
 			restored.append(Vector2(local))
 	if restored != cells:
