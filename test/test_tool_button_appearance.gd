@@ -34,6 +34,7 @@ func _run() -> void:
 	var caption: Label = brush.get_node("Caption")
 	var hit_rect := brush.get_global_rect()
 	var caption_position := caption.position
+	# 工具栏不画外框：选中只靠图标本身的轻微缩放表示，不要整块高亮。
 	for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
 		_check("toolbar no outer frame: " + state, brush.get_theme_stylebox(state) is StyleBoxEmpty)
 	brush.get_node("IconFeedback").pulse()
@@ -41,6 +42,13 @@ func _run() -> void:
 	await create_timer(0.2).timeout
 	_check("no image tint", icon.modulate == Color.WHITE)
 	_check("hand uses original rectangular image", canvas.hand_button.get_node("ToolIcon").texture is AtlasTexture)
+	# 背后是黑墨或深色场景时，靠这块纸色底板保证工具还看得见。
+	var plate: Control = canvas.workbench.get_node_or_null("ToolbarPlate")
+	_check("toolbar has a backing plate covering its buttons", plate != null
+		and plate.is_visible_in_tree() and plate.get_global_rect().encloses(brush.get_global_rect()))
+	# HUD 是 CanvasLayer(1)，工具栏必须在更靠上的层，否则血条会盖住按钮。
+	_check("toolbar draws above HUD content", canvas.workbench.get_parent() is CanvasLayer
+		and (canvas.workbench.get_parent() as CanvasLayer).layer >= 2)
 	if OS.get_cmdline_user_args().has("--preview"):
 		root.mode = Window.MODE_WINDOWED
 		root.size = Vector2i(960, 720)

@@ -24,34 +24,40 @@ func _run() -> void:
 	root.add_child(hud)
 	await process_frame
 	var bar = hud.color_ink_bar
-	_check("all four colors begin at 20000 px independently",
-		bar.remaining == PackedInt32Array([20000, 20000, 20000, 20000]))
+	_check("all five colors begin at 20000 px independently",
+		bar.remaining == PackedInt32Array([20000, 20000, 20000, 20000, 20000]))
 	var segments: Array[Rect2] = bar.segment_rects()
 	_check("full ink starts at left edge and fills entire bar",
-		is_zero_approx(segments[0].position.x) and is_equal_approx(segments[3].end.x, bar.size.x))
+		is_zero_approx(segments[0].position.x) and is_equal_approx(segments[4].end.x, bar.size.x))
 	health.reduce(Palette.GREY.id, 10000)
 	health.reduce(Palette.RED.id, 15000)
 	health.reduce(Palette.YELLOW.id, 5000)
 	health.reduce(Palette.WHITE.id, 20000)
 	_check("bar segments follow each color's own remaining ratio",
-		bar.remaining == PackedInt32Array([10000, 5000, 15000, 0])
+		bar.remaining == PackedInt32Array([10000, 5000, 15000, 0, 20000])
 		and is_equal_approx(bar.ratios[0], 0.5)
 		and is_equal_approx(bar.ratios[1], 0.25)
 		and is_equal_approx(bar.ratios[2], 0.75)
-		and is_equal_approx(bar.ratios[3], 0.0))
+		and is_equal_approx(bar.ratios[3], 0.0)
+		and is_equal_approx(bar.ratios[4], 1.0))
 	_check("black ink remains on bottle only",
 		hud.bottle_fill.value == 100.0 and hud.ink_meter.text == "黑墨 20000 px")
 	segments = bar.segment_rects()
-	_check("remaining ink packs right with all empty space on left",
-		is_equal_approx(segments[0].position.x, bar.size.x * 0.625)
+	_check("colored ink packs left with all empty space on the right",
+		is_zero_approx(segments[0].position.x)
+		and is_equal_approx(segments[4].end.x, bar.size.x * 0.5)
 		and is_equal_approx(segments[0].end.x, segments[1].position.x)
 		and is_equal_approx(segments[1].end.x, segments[2].position.x)
-		and is_equal_approx(segments[2].end.x, bar.size.x))
+		and is_equal_approx(segments[2].end.x, segments[3].position.x)
+		and is_equal_approx(segments[3].end.x, segments[4].position.x))
 	_check("segment widths still reflect independent balances",
-		is_equal_approx(segments[0].size.x, bar.size.x * 0.125)
-		and is_equal_approx(segments[1].size.x, bar.size.x * 0.0625)
-		and is_equal_approx(segments[2].size.x, bar.size.x * 0.1875)
-		and is_zero_approx(segments[3].size.x))
+		is_equal_approx(segments[0].size.x, bar.size.x * 0.1)
+		and is_equal_approx(segments[1].size.x, bar.size.x * 0.05)
+		and is_equal_approx(segments[2].size.x, bar.size.x * 0.15)
+		and is_zero_approx(segments[3].size.x)
+		and is_equal_approx(segments[4].size.x, bar.size.x * 0.2))
+	_check("blue ink gets its own segment at the end", is_equal_approx(
+		segments[4].size.x, bar.size.x / float(bar.MATERIALS.size())))
 	_check("colored bar contains no remaining-amount labels", bar.find_children("*", "Label", true, false).is_empty())
 	health.reduce(Palette.RED.id, 5000)
 	segments = bar.segment_rects()
@@ -59,9 +65,12 @@ func _run() -> void:
 		is_zero_approx(segments[1].size.x) and is_equal_approx(segments[0].end.x, segments[2].position.x))
 	bar.size.x *= 2.0
 	segments = bar.segment_rects()
-	_check("resizing keeps colors right aligned", is_equal_approx(segments[2].end.x, bar.size.x))
+	# 此时比例是 0.5 + 0 + 0.75 + 0 + 1.0，合计 2.25 段。
+	_check("resizing keeps colors left aligned", is_zero_approx(segments[0].position.x)
+		and is_equal_approx(segments[4].end.x, bar.size.x * 0.45))
 	health.reduce(Palette.GREY.id, 10000)
 	health.reduce(Palette.YELLOW.id, 15000)
+	health.reduce(Palette.BLUE.id, 20000)
 	segments = bar.segment_rects()
 	_check("empty bar has no visible color segments", segments.all(func(rect): return is_zero_approx(rect.size.x)))
 	_check("colored bar hides with the rest of the health UI",

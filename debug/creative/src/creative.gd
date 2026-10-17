@@ -32,10 +32,12 @@ const LAYOUT_MODE_PLACE_PORTAL := -14
 const LAYOUT_MODE_DELETE_PORTAL := -16
 const LAYOUT_MODE_FOUNTAIN := -17
 const LAYOUT_MODE_DELETE_CANVAS := -18
+const LAYOUT_MODE_DELETE_RESPAWN := -19
 const LAYOUT_MODES := [
 	LAYOUT_MODE_MOVE_SPAWN,
 	LAYOUT_MODE_PLACE_RESPAWN,
 	LAYOUT_MODE_MOVE_RESPAWN,
+	LAYOUT_MODE_DELETE_RESPAWN,
 	LAYOUT_MODE_PLACE_CANVAS,
 	LAYOUT_MODE_MOVE_CANVAS,
 	LAYOUT_MODE_DELETE_CANVAS,
@@ -125,6 +127,8 @@ var _spawn_point: Marker2D = null
 var _layout_overlay = null
 var _layout_buttons: Dictionary = {}
 var _layout_status_label: Label = null
+## 「关卡墨水配额」表格：材质 id -> SpinBox。配额写进关卡根节点的 starting_ink，只对当前地图生效。
+var _ink_quota_fields: Dictionary = {}
 var _portal_destination: PopupMenu = null
 var _portal_target_path := ""
 var _portal_menu_target: Node2D = null
@@ -601,6 +605,8 @@ func _enter() -> void:
 		_monster_palette.visible = true
 	_refresh_layout_overlay()
 	_refresh_dialogue_trigger_visuals()
+	# 换过地图之后表格要重新读一遍本关的 starting_ink。
+	_sync_ink_quota_fields()
 	if _player != null:
 		var health = _player.get_node_or_null("InkHealth")
 		if health != null:
@@ -866,6 +872,16 @@ func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
 		if not event.pressed:
 			return false
 		return delete_ink_fountain(_pick_ink_fountain(_event_world_position(event)))
+	# 放置类工具统一右键删除：光标下是什么就删什么，不用先切到删除工具。
+	if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		var delete_at := _event_world_position(event)
+		match _monster_mode:
+			LAYOUT_MODE_PLACE_RESPAWN, LAYOUT_MODE_MOVE_RESPAWN:
+				return delete_respawn_point(_pick_respawn_point(delete_at))
+			LAYOUT_MODE_PLACE_CANVAS:
+				return delete_play_canvas(_pick_play_canvas(delete_at))
+			LAYOUT_MODE_PLACE_PORTAL:
+				return delete_portal(_pick_portal(delete_at))
 	if _monster_mode == CONTROL_MODE and event.button_index == MOUSE_BUTTON_RIGHT:
 		if not event.pressed:
 			return false
@@ -899,12 +915,28 @@ func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
 					and _selected_control_target.is_in_group(MapImportedImageScript.GROUP) \
 					and _selected_control_target.resize_handle_hit(world_position)
 			LAYOUT_MODE_PLACE_RESPAWN:
-				place_respawn_point(world_position)
+				# 放置类工具统一：按在已有对象上是移动它，按在空地上才是新增。
+				var picked_respawn := _pick_respawn_point(world_position)
+				if picked_respawn != null:
+					_begin_layout_drag(picked_respawn, world_position)
+				else:
+					place_respawn_point(world_position)
+				return true
+			LAYOUT_MODE_DELETE_RESPAWN:
+				delete_respawn_point(_pick_respawn_point(world_position))
 				return true
 			LAYOUT_MODE_PLACE_CANVAS:
-				place_play_canvas(world_position)
+				var picked_canvas := _pick_play_canvas(world_position)
+				if picked_canvas != null:
+					_begin_layout_drag(picked_canvas, world_position)
+				else:
+					place_play_canvas(world_position)
 				return true
 			LAYOUT_MODE_PLACE_PORTAL:
+				var picked_portal := _pick_portal(world_position)
+				if picked_portal != null:
+					_begin_layout_drag(picked_portal, world_position)
+					return true
 				var placed_portal := place_portal(world_position, _portal_choice())
 				if is_instance_valid(placed_portal):
 					select_control_tool()
@@ -913,7 +945,11 @@ func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
 					_update_layout_status()
 				return true
 			LAYOUT_MODE_FOUNTAIN:
-				place_ink_fountain(world_position)
+				var picked_fountain := _pick_ink_fountain(world_position)
+				if picked_fountain != null:
+					_begin_layout_drag(picked_fountain, world_position)
+				else:
+					place_ink_fountain(world_position)
 				return true
 			LAYOUT_MODE_DELETE_PORTAL:
 				delete_portal(_pick_portal(world_position))
@@ -1237,6 +1273,18 @@ func place_respawn_point(world_position: Vector2, record_undo := true) -> Marker
 		_record_edit({"type": &"respawn_place", "target": point})
 	_refresh_layout_overlay(point)
 	return point
+
+
+func delete_respawn_point(point: Marker2D) -> bool:
+	if not is_instance_valid(point) or not point.is_in_group(RESPAWN_POINT_GROUP):
+		return false
+	if _layout_drag_target == point:
+		_finish_layout_drag()
+	_record_edit({"type": &"respawn_delete", "position": point.global_position, "target": point})
+	point.get_parent().remove_child(point)
+	point.queue_free()
+	_refresh_layout_overlay()
+	return true
 
 
 func _portals() -> Array:
@@ -1881,22 +1929,17 @@ func _build_monster_palette() -> void:
 	layout_grid.add_theme_constant_override("v_separation", 6)
 	column.add_child(layout_grid)
 	var layout_tools := [
-		[LAYOUT_MODE_PLACE_RESPAWN, "PlaceRespawnButton", "新增复活点", "单击地图新增橙色复活点"],
-		[LAYOUT_MODE_MOVE_RESPAWN, "MoveRespawnButton", "移动复活点", "拖动橙色标记调整复活位置"],
-		null,
-		[LAYOUT_MODE_PLACE_CANVAS, "PlacePlayCanvasButton", "新增画布", "先设置宽高，再单击地图放置画布"],
+		[LAYOUT_MODE_PLACE_RESPAWN, "PlaceRespawnButton", "新增复活点", "单击空地新增橙色复活点；按在已有复活点上拖动即可移动；右键删除"],
+		[LAYOUT_MODE_MOVE_RESPAWN, "MoveRespawnButton", "移动复活点", "拖动橙色标记调整复活位置；右键删除"],
+		[LAYOUT_MODE_DELETE_RESPAWN, "DeleteRespawnButton", "删除复活点", "单击橙色复活点删除；Ctrl+Z 撤销"],
+		[LAYOUT_MODE_PLACE_CANVAS, "PlacePlayCanvasButton", "新增画布", "先设置宽高，再单击地图放置画布；按在已有画布上拖动即可移动；右键删除"],
 		[LAYOUT_MODE_MOVE_CANVAS, "MovePlayCanvasButton", "移动画布", "左键拖动画布；右键删除画布；Ctrl+Z 撤销"],
 		[LAYOUT_MODE_DELETE_CANVAS, "DeletePlayCanvasButton", "删除画布", "单击画布删除；Ctrl+Z 撤销"],
-		[LAYOUT_MODE_PLACE_PORTAL, "PlacePortalButton", "新增传送门", "打开子菜单选择目标地图，然后单击地图放置"],
+		[LAYOUT_MODE_PLACE_PORTAL, "PlacePortalButton", "新增传送门", "选择目标地图后单击地图放置；按在已有传送门上拖动即可移动；右键删除"],
 		[LAYOUT_MODE_DELETE_PORTAL, "DeletePortalButton", "删除传送门", "单击传送门删除；Ctrl+Z 撤销"],
-		[LAYOUT_MODE_FOUNTAIN, "InkFountainButton", "墨泉", "左键放置固定尺寸墨泉，右键删除；不可缩放"],
+		[LAYOUT_MODE_FOUNTAIN, "InkFountainButton", "墨泉", "左键放置固定尺寸墨泉，按在已有墨泉上拖动即可移动；右键删除；Ctrl+Z 撤销"],
 	]
 	for tool in layout_tools:
-		if tool == null:
-			var spacer := Control.new()
-			spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			layout_grid.add_child(spacer)
-			continue
 		var layout_button := Button.new()
 		layout_button.name = str(tool[1])
 		layout_button.text = str(tool[2])
@@ -1937,7 +1980,115 @@ func _build_monster_palette() -> void:
 	hint.text = "放置：左键单击　对话：Enter 下一句　Ctrl+Z 撤销"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(hint)
+	_build_ink_quota_table(column)
 	panel.visible = false
+
+
+## 「关卡墨水配额」：每种墨水的满瓶量，保存进关卡根节点的 starting_ink，
+## 所以只对当前地图生效。没填的颜色沿用玩家自己的 max_ink。
+func _build_ink_quota_table(column: VBoxContainer) -> void:
+	column.add_child(HSeparator.new())
+	var title := Label.new()
+	title.name = "InkQuotaTitle"
+	title.text = "关卡墨水配额（本图生效）"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.theme_type_variation = &"TitleLabel"
+	column.add_child(title)
+	var grid := GridContainer.new()
+	grid.name = "InkQuotaGrid"
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 4)
+	column.add_child(grid)
+	for index in InkPalette.ink_count():
+		var material: Resource = InkPalette.ink_at(index)
+		var id: int = InkPalette.material_id_of(material)
+		var label := Label.new()
+		label.text = InkPalette.ink_name(index)
+		label.custom_minimum_size.x = 64.0
+		grid.add_child(label)
+		var field := SpinBox.new()
+		field.name = "InkQuota%d" % id
+		field.min_value = 0.0
+		field.max_value = 200000.0
+		field.step = 100.0
+		field.value = ink_quota_of(id)
+		field.suffix = " px"
+		field.tooltip_text = "%s在本关的满瓶量；只写进当前地图，不填就沿用玩家默认值" % InkPalette.ink_name(index)
+		field.value_changed.connect(_on_ink_quota_changed.bind(id))
+		grid.add_child(field)
+		_ink_quota_fields[id] = field
+	var reset := Button.new()
+	reset.name = "ResetInkQuotaButton"
+	reset.text = "恢复默认配额"
+	reset.tooltip_text = "清空本图的自定义配额，所有颜色回到玩家默认满瓶量"
+	reset.focus_mode = Control.FOCUS_NONE
+	reset.pressed.connect(reset_ink_quota)
+	column.add_child(reset)
+
+
+## 本关该墨水的满瓶量：地图根节点 starting_ink 里有就用自己的，没有就用玩家默认值。
+func ink_quota_of(material_id: int) -> float:
+	var override := _ink_quota_overrides()
+	if override.has(material_id):
+		return float(override[material_id])
+	var health = _ink_health()
+	return health.max_ink if health != null else 20000.0
+
+
+func _ink_quota_overrides() -> Dictionary:
+	var level := _level_root()
+	return level.starting_ink if level != null and level.get("starting_ink") != null else {}
+
+
+func _ink_health():
+	return _player.get_node_or_null("InkHealth") if is_instance_valid(_player) else null
+
+
+func _on_ink_quota_changed(value: float, material_id: int) -> void:
+	var level := _level_root()
+	if level == null:
+		return
+	var before := _ink_quota_overrides().duplicate()
+	level.starting_ink[material_id] = maxf(0.0, value)
+	_apply_ink_quota()
+	_record_edit({"type": &"ink_quota", "before": before, "after": _ink_quota_overrides().duplicate()})
+
+
+## 清空本图配额，全部回到玩家默认满瓶量。
+func reset_ink_quota() -> void:
+	var level := _level_root()
+	if level == null or _ink_quota_overrides().is_empty():
+		return
+	var before := _ink_quota_overrides().duplicate()
+	level.starting_ink.clear()
+	_apply_ink_quota()
+	_record_edit({"type": &"ink_quota", "before": before, "after": {}})
+
+
+## 配额改了要立刻作用到这一局：容量重新读取，现存量夹到新容量。
+func _apply_ink_quota() -> void:
+	var health = _ink_health()
+	if health != null:
+		health.reload_caps()
+	_sync_ink_quota_fields()
+
+
+func _sync_ink_quota_fields() -> void:
+	for id in _ink_quota_fields:
+		(_ink_quota_fields[id] as SpinBox).set_value_no_signal(ink_quota_of(id))
+
+
+func _restore_ink_quota(values: Dictionary) -> bool:
+	var level := _level_root()
+	if level == null:
+		return false
+	var override: Dictionary = level.starting_ink
+	override.clear()
+	for id in values:
+		override[int(id)] = float(values[id])
+	_apply_ink_quota()
+	return true
 
 
 func _refresh_editor_visibility() -> void:
@@ -2835,6 +2986,14 @@ func undo_last_edit() -> bool:
 				_rebind_history_target(edit.get("target"), fountain)
 				edit["target"] = fountain
 				changed = true
+		&"respawn_delete":
+			var respawn = place_respawn_point(edit.get("position", Vector2.ZERO), false)
+			if respawn != null:
+				_rebind_history_target(edit.get("target"), respawn)
+				edit["target"] = respawn
+				changed = true
+		&"ink_quota":
+			changed = _restore_ink_quota(edit.get("before", {}))
 		&"portal_destination":
 			var portal = edit.get("target")
 			if is_instance_valid(portal):
@@ -2980,13 +3139,15 @@ func redo_last_edit() -> bool:
 			if data.has("position"):
 				restored = place_ink_fountain(data.position, false)
 				changed = restored != null
-		&"fountain_delete", &"portal_delete", &"image_delete":
+		&"fountain_delete", &"portal_delete", &"image_delete", &"respawn_delete":
 			changed = _undo_placed_layout_node(edit.get("target"))
 		&"portal_destination":
 			var portal = edit.get("target")
 			if is_instance_valid(portal) and data.has("destination"):
 				portal.target_map = data.destination
 				changed = true
+		&"ink_quota":
+			changed = _restore_ink_quota(edit.get("after", {}))
 	if not changed:
 		_redo_history.append(item)
 		return false

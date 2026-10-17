@@ -26,13 +26,13 @@ func _run() -> void:
 	var small_canvas: Node2D = scene.get_node("SmallCanvas")
 	var map_canvas: Node2D = scene.get_node("MapCanvas")
 	var surface: Area2D = map_canvas.get_node("CanvasSurface")
-	var play_tool_grid := small_canvas.get_node("WorkbenchUI/Buttons/Grid") as GridContainer
-	var play_tool_buttons := small_canvas.get_node("WorkbenchUI/Buttons") as Control
+	var play_tool_grid := small_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Grid") as GridContainer
+	var play_tool_buttons := small_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons") as Control
 	var play_toolbar_valid: bool = play_tool_grid.columns == 2 \
 		and play_tool_buttons.position == Vector2(-44.0, 184.0) \
 		and play_tool_grid.get_node("Brush").position.y == 0.0 \
 		and not play_tool_grid.get_node("Nail").visible \
-		and (small_canvas.get_node("WorkbenchUI/Buttons/Hand") as Button).size \
+		and (small_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Hand") as Button).size \
 			.is_equal_approx(Vector2(52.0, 52.0))
 	valid = valid and play_toolbar_valid
 	print("[CreativeEditor] PPT play toolbar proportions/top preserved: ",
@@ -61,10 +61,10 @@ func _run() -> void:
 	valid = valid and not small_canvas.visible and not small_canvas.active
 	valid = valid and map_canvas.visible and map_canvas.active
 	valid = valid and map_canvas.get("_screen_fixed")
-	valid = valid and (map_canvas.get_node("WorkbenchUI/Buttons/Grid") as GridContainer).columns == 2
-	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons/Hand").visible
-	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons/Grid/Brush").visible
-	valid = valid and map_canvas.get_node("WorkbenchUI/Buttons/Grid/ExpandCanvas").visible
+	valid = valid and (map_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Grid") as GridContainer).columns == 2
+	valid = valid and map_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Hand").visible
+	valid = valid and map_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Grid/Brush").visible
+	valid = valid and map_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Grid/ExpandCanvas").visible
 	var expand_window := map_canvas.get_node_or_null("ExpandCanvasWindow") as Window
 	valid = valid and expand_window != null
 	valid = valid and not expand_window.visible
@@ -72,7 +72,7 @@ func _run() -> void:
 	valid = valid and expand_window.get_node_or_null("Content/Column/Inputs/RightAmount") is SpinBox
 	valid = valid and expand_window.get_node_or_null("Content/Column/Inputs/TopAmount") is SpinBox
 	valid = valid and expand_window.get_node_or_null("Content/Column/Inputs/BottomAmount") is SpinBox
-	var expand_button := map_canvas.get_node("WorkbenchUI/Buttons/Grid/ExpandCanvas") as Button
+	var expand_button := map_canvas.get_node("ToolbarLayer/WorkbenchUI/Buttons/Grid/ExpandCanvas") as Button
 	var expand_window_started_hidden := not expand_window.visible
 	expand_button.pressed.emit()
 	await process_frame
@@ -89,12 +89,12 @@ func _run() -> void:
 		and expand_window.get_node_or_null("Content/Column/Inputs/TopAmount") is SpinBox
 		and expand_window.get_node_or_null("Content/Column/Inputs/BottomAmount") is SpinBox
 	) else "FAIL")
-	valid = valid and not map_canvas.get_node("WorkbenchUI/ResizePanel").visible
-	valid = valid and not map_canvas.has_node("WorkbenchUI/ResizePanel/Grid/Left")
-	valid = valid and not map_canvas.has_node("WorkbenchUI/ResizePanel/Grid/Right")
-	valid = valid and not map_canvas.has_node("WorkbenchUI/ResizePanel/Grid/Up")
-	valid = valid and not map_canvas.has_node("WorkbenchUI/ResizePanel/Grid/Down")
-	var visibility_button: Button = map_canvas.get_node("WorkbenchUI/ResizePanel/Grid/PlayerVisibility")
+	valid = valid and not map_canvas.get_node("ToolbarLayer/WorkbenchUI/ResizePanel").visible
+	valid = valid and not map_canvas.has_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/Left")
+	valid = valid and not map_canvas.has_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/Right")
+	valid = valid and not map_canvas.has_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/Up")
+	valid = valid and not map_canvas.has_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/Down")
+	var visibility_button: Button = map_canvas.get_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/PlayerVisibility")
 	valid = valid and not visibility_button.button_pressed
 	visibility_button.button_pressed = true
 	valid = valid and player.visible
@@ -221,7 +221,7 @@ func _run() -> void:
 	# 框选删除是一个原子撤销步骤：未固化画布像素与已固化实体像素一起删除，
 	# Ctrl+Z 后蓝图恢复到画布，已固化像素恢复为实体。
 	var select_delete_icon := map_canvas.get_node(
-		"WorkbenchUI/Buttons/Grid/SelectDelete/ToolIcon"
+		"ToolbarLayer/WorkbenchUI/Buttons/Grid/SelectDelete/ToolIcon"
 	) as TextureRect
 	valid = valid and select_delete_icon != null and select_delete_icon.texture != null
 	var loose_pixel := Vector2i(1400, 700)
@@ -323,7 +323,7 @@ func _run() -> void:
 	valid = valid and restored_side.global_position.distance_to(monster_positions[0]) < 0.01
 
 	# “钉”开关只隐藏外观：画布数据、实体锚点与之后新生成的钉子都不受影响。
-	var nail_visibility_button: Button = map_canvas.get_node("WorkbenchUI/ResizePanel/Grid/NailVisibility")
+	var nail_visibility_button: Button = map_canvas.get_node("ToolbarLayer/WorkbenchUI/ResizePanel/Grid/NailVisibility")
 	var runtime_nail := NailVisual.new()
 	runtime_nail.set_physics_process(false)
 	scene.add_child(runtime_nail)
@@ -344,9 +344,9 @@ func _run() -> void:
 	later_nail.queue_free()
 
 	# 固定工具栏的最终屏幕变换应等于配置的屏幕原点，镜头移动/缩放不会改变它。
+	# workbench 已经在 CanvasLayer 里，global_transform 本身就是屏幕坐标。
 	map_canvas._update_screen_fixed_position()
-	var toolbar_screen: Transform2D = map_canvas.get_viewport().get_canvas_transform() \
-		* map_canvas.get_node("WorkbenchUI").global_transform
+	var toolbar_screen: Transform2D = map_canvas.get_node("ToolbarLayer/WorkbenchUI").global_transform
 	valid = valid and toolbar_screen.origin.distance_to(map_canvas.screen_toolbar_origin) < 0.01
 
 	# GUI 点击不能穿透到后面的全局输入画布：左键不落墨，中键不落钉。

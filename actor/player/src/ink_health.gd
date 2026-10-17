@@ -39,20 +39,38 @@ var _level_caps := {}
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
-	var level := get_parent().get_parent()
-	if level != null:
-		for property in level.get_property_list():
-			if property.name == "starting_ink":
-				for id in level.starting_ink:
-					var amount := float(level.starting_ink[id])
-					if InkPalette.is_ink(id) and is_finite(amount):
-						_level_caps[id] = maxf(0.0, amount)
-				break
+	_read_level_caps()
 	for i in InkPalette.ink_count():
 		var id := InkPalette.material_id_of(InkPalette.ink_at(i))
 		_ink[id] = max_of(id)
 	_sync_total()
 	changed.emit()
+
+
+## 重新读取关卡根节点的 starting_ink，并把现存量夹到新容量。
+## 地图编辑器改完「关卡墨水配额」后调用它，不必退出重进；不会凭空把墨补满。
+func reload_caps() -> void:
+	_read_level_caps()
+	for id in _ink:
+		_ink[id] = clampf(_ink[id], 0.0, maxf(max_of(id), 0.0))
+	_sync_total()
+	changed.emit()
+
+
+## 关卡根节点上的 starting_ink 是本关唯一配额来源；没填的颜色沿用玩家的 max_ink。
+func _read_level_caps() -> void:
+	_level_caps.clear()
+	var level := get_parent().get_parent()
+	if level == null:
+		return
+	for property in level.get_property_list():
+		if property.name != "starting_ink":
+			continue
+		for id in level.starting_ink:
+			var amount := float(level.starting_ink[id])
+			if InkPalette.is_ink(id) and is_finite(amount):
+				_level_caps[id] = maxf(0.0, amount)
+		return
 
 
 #region 接口

@@ -70,6 +70,12 @@ func _canvas_at(screen_position: Vector2) -> Node:
 
 
 func _process(_delta: float) -> void:
+	# 切屏期间主线程会被场景实例化/物理烘焙长时间占住，软件指针只能跟着卡。
+	# 这段时间交还给系统指针：它在操作系统层绘制，游戏掉帧时依然能动。
+	var transition := get_node_or_null("/root/SceneTransition")
+	if transition != null and transition.get("busy") == true:
+		_release_mouse()
+		return
 	var screen_position := get_viewport().get_mouse_position()
 	var enabled := _mouse_in_window and get_window().has_focus() and _has_gameplay()
 	_refresh_cursor(screen_position, enabled, get_viewport().gui_get_hovered_control() != null)

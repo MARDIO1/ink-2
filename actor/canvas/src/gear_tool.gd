@@ -87,6 +87,10 @@ func finish(point: Vector2):
 	var wheels := gear_wheels(host)
 	if _overlaps_wheels(wheels, axle):
 		return null
+	# 钉子像素是轴点，被齿轮轮廓盖掉等于悄悄删掉玩家的锚。
+	var cells := _outline_cells()
+	if _covers_nail(cells):
+		return null
 	var extent := ceili(radius)
 	var state: Dictionary = History.capture(canvas, true)
 	# 只有已经存在的实体才算支座。放置齿轮不再顺带固化草稿：那样会把整张画布提交，
@@ -126,8 +130,46 @@ func finish(point: Vector2):
 	bearing.wheel_path = bearing.get_path_to(node)
 	bearing.connect_joint()
 	bearing._process(0.0)
+	# 轮体是独立刚体，本来不在画布上；蓝墨工具只认画布像素，所以把轮廓同步写一份上去。
+	# 不记账（齿轮不花瓶子里的墨），撤销由这次 History 快照覆盖。
+	# 轮廓里原本空白的格子要记下来：固化时跳过它们，否则会多出一块和齿轮完全重合的刚体。
+	var surface = get_parent()
+	var empty_cells: Dictionary = {}
+	for at: Vector2i in cells:
+		if surface.material_at(at.x, at.y) == 0:
+			empty_cells[at] = true
+	for at: Vector2i in cells:
+		surface.black_image.set_pixelv(at, Palette.color_for_material_id(ink_material))
+		surface._mark_dirty(at)
+	surface._flush_texture()
+	surface.add_gear_skip_cells(empty_cells)
 	History.commit(canvas, state)
 	return bearing
+
+
+## 齿轮轮廓对应的画布像素；与 Image 栅格用同一套判定，保证刚体和画布轮廓一致。
+func _outline_cells() -> Dictionary:
+	var surface = get_parent()
+	var extent := ceili(radius)
+	var origin := Vector2i(center.floor()) - Vector2i(extent, extent)
+	var cells: Dictionary = {}
+	for j in range(-extent, extent + 1):
+		for i in range(-extent, extent + 1):
+			if not Geometry2D.is_point_in_polygon(Vector2(i, j), polygon):
+				continue
+			var at := origin + Vector2i(i + extent, j + extent)
+			if surface._inside(Vector2(at)):
+				cells[at] = true
+	return cells
+
+
+func _covers_nail(cells: Dictionary) -> bool:
+	var surface = get_parent()
+	var nail := Palette.nail_material_id()
+	for at: Vector2i in cells:
+		if surface.material_at(at.x, at.y) == nail:
+			return true
+	return false
 
 
 ## 新齿轮的像素落在已有齿轮轮体上时拒绝落笔；齿只能啮合，不能重叠。

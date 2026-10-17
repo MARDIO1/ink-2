@@ -15,6 +15,9 @@ const LEVEL_PATHS: Array[String] = [
 ]
 ## 列表按钮宽度，避免被 CenterContainer 挤成一条。
 const BUTTON_SIZE := Vector2(340, 46)
+## 「新建空白地图」复制这个模板；它自己不是关卡，不进程列表。
+const BLANK_TEMPLATE := "res://map/asset/blank_level.tscn"
+const NEW_MAP_DIR := "res://map/asset/imported"
 
 signal level_chosen(path: String)
 signal back_pressed
@@ -36,20 +39,48 @@ func _ready() -> void:
 	var paths := find_levels()
 	print("LEVELS: %s" % str(paths))
 	for path in paths:
-		var button := Button.new()
-		button.text = path.get_file().get_basename()
-		button.tooltip_text = path
-		button.theme_type_variation = &"PrimaryButton"
-		button.custom_minimum_size = BUTTON_SIZE
-		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		button.pressed.connect(_on_level_button_pressed.bind(path, button))
-		list.add_child(button)
-		preload("res://ui/theme/src/button_appearance.gd").uniform(button)
+		_add_list_button(path)
+	# 「新建空白地图」固定在最上方；选关时它跟其他按钮一起被禁用。
+	var new_map := _new_button("新建空白地图")
+	new_map.name = "NewBlankMapButton"
+	new_map.tooltip_text = "在 %s 生成一张空白地图并立即进入" % NEW_MAP_DIR
+	new_map.pressed.connect(_on_new_blank_map_pressed.bind(new_map))
+	list.add_child(new_map)
+	list.move_child(new_map, 0)
 	_update_list_layout()
-	if list.get_child_count() == 0:
+	if paths.is_empty():
 		push_error("关卡选择：%s 下没找到关卡（根级有 %s 的 .tscn）" % [LEVEL_DIR, PLAYER_NODE])
 		return
 	(list.get_child(0) as Button).grab_focus()
+
+
+func _new_button(text: String) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.theme_type_variation = &"PrimaryButton"
+	button.custom_minimum_size = BUTTON_SIZE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	preload("res://ui/theme/src/button_appearance.gd").uniform(button)
+	return button
+
+
+func _add_list_button(path: String) -> Button:
+	var button := _new_button(path.get_file().get_basename())
+	button.tooltip_text = path
+	button.pressed.connect(_on_level_button_pressed.bind(path, button))
+	list.add_child(button)
+	return button
+
+
+## 新建空白地图：复制模板成一张新关卡，然后直接进入它。
+func _on_new_blank_map_pressed(button: Button) -> void:
+	if _choosing:
+		return
+	var path := create_blank_map()
+	if path.is_empty():
+		button.text = "新建空白地图（失败）"
+		return
+	_on_level_button_pressed(path, button)
 
 
 ## 两关时面板随内容收紧；关卡增多后限高滚动，标题和底部始终留白。
@@ -86,6 +117,9 @@ func show_load_failed(path: String) -> void:
 		if child is Button:
 			var button := child as Button
 			button.disabled = false
+			# 「新建空白地图」的提示语不是路径，不能拿它回填按钮文字。
+			if not button.tooltip_text.begins_with("res://"):
+				continue
 			button.text = button.tooltip_text.get_file().get_basename()
 			if button.tooltip_text == path:
 				button.text += "（加载失败，请重试）"
@@ -104,12 +138,82 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## 返回正式地图；开发测试夹具不进入玩家目录。
+## 正式页按阅读顺序在前，其余自己加进 res://map 的关卡按路径排在后面。
 static func find_levels() -> PackedStringArray:
 	var found := PackedStringArray()
 	for path in LEVEL_PATHS:
 		if ResourceLoader.exists(path, "PackedScene") and _has_player(path):
 			found.append(path)
+	for path in _scan_map_levels():
+		if not found.has(path):
+			found.append(path)
 	return found
+
+
+## 递归扫 res://map，收所有带 Player 的 .tscn；空白模板自己不算关卡。
+static func _scan_map_levels() -> PackedStringArray:
+	var result := PackedStringArray()
+	var pending: Array[String] = [LEVEL_DIR]
+	while not pending.is_empty():
+		var directory: String = pending.pop_back()
+		var dir := DirAccess.open(directory)
+		if dir == null:
+			continue
+		for name in dir.get_directories():
+			pending.append(directory.path_join(name))
+		for name in dir.get_files():
+			if not name.ends_with(".tscn"):
+				continue
+			var path := directory.path_join(name)
+			if path == BLANK_TEMPLATE or not _has_player(path):
+				continue
+			result.append(path)
+	result.sort()
+	return result
+
+
+## 复制空白模板成一张新关卡，返回新路径；失败返回空串。
+static func create_blank_map() -> String:
+	var source := FileAccess.get_file_as_string(BLANK_TEMPLATE)
+	if source.is_empty():
+		push_error("关卡选择：读不到空白地图模板 %s" % BLANK_TEMPLATE)
+		return ""
+	# 复制出来的场景必须换一个资源身份，否则两张场景共用一个 uid。
+	source = _strip_scene_uid(source)
+	if not DirAccess.dir_exists_absolute(NEW_MAP_DIR):
+		var err := DirAccess.make_dir_recursive_absolute(NEW_MAP_DIR)
+		if err != OK:
+			push_error("关卡选择：建不了目录 %s（%d）" % [NEW_MAP_DIR, err])
+			return ""
+	for index in range(1, 1000):
+		var path := "%s/新地图%d.tscn" % [NEW_MAP_DIR, index]
+		if FileAccess.file_exists(path):
+			continue
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		if file == null:
+			push_error("关卡选择：写不了 %s（%d）" % [path, FileAccess.get_open_error()])
+			return ""
+		file.store_string(source)
+		file.close()
+		return path
+	push_error("关卡选择：新地图编号用完了")
+	return ""
+
+
+static func _strip_scene_uid(source: String) -> String:
+	var newline := source.find("\n")
+	if newline < 0:
+		return source
+	var header := source.substr(0, newline)
+	if not header.begins_with("[gd_scene"):
+		return source
+	var start := header.find(" uid=\"")
+	if start < 0:
+		return source
+	var end := header.find("\"", start + 6)
+	if end < 0:
+		return source
+	return header.substr(0, start) + header.substr(end + 1) + source.substr(newline)
 
 
 static func next_level(current: String) -> String:

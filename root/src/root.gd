@@ -15,6 +15,12 @@ signal level_changed(level: Node)
 @export var menu_music: AudioStream
 @export var level_music: AudioStream
 @export_range(-40.0, 0.0, 0.5) var music_volume_db: float = -22.0
+## 每帧烘焙多少个像素刚体。关卡 `_ready` 里那一次全量烘焙实测 3.1~3.7 秒（第二页，69 个刚体），
+## 卡住的是整帧：加载动画停住、鼠标不动。拆成每帧一个：单个刚体 12~135 ms，
+## 帧率不漂亮但动画一直在走，指针也交还给系统绘制。
+@export_range(1, 32, 1) var bake_bodies_per_frame := 1
+
+const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 
 @onready var level_root: Node = $Level
 @onready var ui_root: Node = $UI
@@ -105,7 +111,10 @@ func request_level_change(path: String) -> bool:
 		await _transition.finish()
 		_loading_level = false
 		return false
-	load_level(scene)
+	# 关卡是逐帧烘焙的，必须 await 到底再揭幕，否则会露出半成品。
+	await load_level(scene)
+	# 让加载层先出一帧，再挂成品 UI：不然实例化关卡 + 实例化 UI 会挤在同一帧里。
+	await get_tree().process_frame
 	_set_screen(ui_scene.instantiate())
 	await _transition.finish()
 	_loading_level = false
@@ -129,15 +138,65 @@ func _set_screen(screen: Node) -> void:
 
 
 ## 换关卡：旧的整棵释放，新的挂在 `Level` 下。返回新关卡根节点。
+##
+## 关卡 `_ready` 会调用 `PixelWorld.rebuild()`，一次性烘焙**全部**像素刚体 ——
+## 实测第二页 69 个刚体要 3.1 秒，这一帧里加载动画和鼠标都是死的。
+## 做法：先把直接子级的刚体节点摘下来，让 `rebuild()` 只造一个空世界（毫秒级），
+## 再逐帧放回并 `bake_node()`。关卡此刻在遮罩后面，玩家看不到中间状态。
 func load_level(scene: PackedScene) -> Node:
 	for child in level_root.get_children():
 		level_root.remove_child(child)
 		child.queue_free()
 	var level := scene.instantiate()
+	var staged := _detach_unbaked_bodies(level)
+	# 先把空世界建出来：子节点的 _ready 早于关卡根，它们会读 `world`；
+	# 摘掉刚体后这一次 rebuild 只造空世界，是毫秒级的。
+	if level.has_method(&"rebuild") and level.get("world") == null:
+		level.call(&"rebuild")
 	level_root.add_child(level)
 	_play_music(level_music)
 	level_changed.emit(level)
+	await _bake_staged_bodies(level, staged)
 	return level
+
+
+## 摘下直接子级的**纯墨迹**刚体。范围必须和 `PixelWorld.rebuild()` 一致（它也只遍历直接子级）。
+##
+## ⚠️ 玩家的根节点本身就是一个 `PixelBody2D`。不能连它一起摘 —— 关卡里的 `debugHUD`、
+## `SimulationRuntime` 等在 `_ready` 里按 `../Player/...` 找节点，摘掉就全部找不到，
+## 表现为一堆 `Node not found`，玩家还会被晚挂一帧导致视觉错位。
+## 所以只摘不属于 `player` / `living` 这两个组的刚体（即画布烘出来的墨迹）。
+func _detach_unbaked_bodies(level: Node) -> Array:
+	var staged: Array = []
+	if not level.has_method(&"bake_node"):
+		return staged
+	for child in level.get_children():
+		if not (child is BodyNode):
+			continue
+		if child.is_in_group(&"player") or child.is_in_group(&"living"):
+			continue
+		level.remove_child(child)
+		staged.append(child)
+	return staged
+
+
+## 逐帧放回并烘焙。全部放完再补关节 —— 关节必须晚于它两端的刚体。
+func _bake_staged_bodies(level: Node, staged: Array) -> void:
+	if staged.is_empty():
+		return
+	if not level.has_method(&"bake_node"):
+		for node in staged:
+			level.add_child(node)
+		return
+	var baked := 0
+	for node in staged:
+		level.add_child(node)
+		level.bake_node(node)
+		baked += 1
+		if baked % bake_bodies_per_frame == 0:
+			await get_tree().process_frame
+	if level.has_method(&"_bake_joints"):
+		level.call(&"_bake_joints")
 
 
 ## 音乐由全局根持有，换 UI 不会重复创建；进入关卡时只切换一次曲目。

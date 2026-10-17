@@ -127,6 +127,25 @@ func _process(_delta: float) -> void:
 				wheel_path = get_path_to(node)
 				break
 
+## 固化后重新绑定支座。
+## 世界钉住的齿轮被新固化出来的实体包住时必须改成真实 HINGE：两个重叠刚体之间
+## 既没有 Joint 也没有碰撞豁免，求解器只能互相对顶，齿轮就转不动了。
+## 拖动中的齿轮跳过，那条路径由 finish_editor_drag 自己重新找支座。
+func relink_after_solidify() -> void:
+	_process(0.0)
+	if editor_dragging or is_queued_for_deletion() or yellow_anchor.is_empty() or not fixed_to_world:
+		return
+	var support := find_support(world, yellow_position, yellow_anchor.body, _other_wheels())
+	if support.is_empty():
+		return
+	black_anchor = support
+	support_material = support.get("material", 0)
+	black_position = yellow_position
+	fixed_to_world = false
+	remove_joint()
+	connect_joint()
+
+
 func editor_hit_test(point: Vector2) -> bool:
 	if not _valid(yellow_anchor, gear_material):
 		return false

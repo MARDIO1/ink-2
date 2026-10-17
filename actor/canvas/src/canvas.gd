@@ -21,6 +21,13 @@ const EXPAND_CANVAS_ICON_REGION := Rect2(228, 128, 116, 116)
 const EDITOR_CONTROL_ICON_REGION := Rect2(340, 340, 116, 116)
 const PLAY_TOOL_COLUMNS := 2
 const TOOLBAR_TEXT_COLOR := Color("414141")
+## 工具栏底板：纸色 + 深墨描边。墨迹或深色场景压在背后时，工具图标仍要看得见。
+const TOOLBAR_PLATE_COLOR := Color(0.93, 0.91, 0.78, 0.97)
+const TOOLBAR_FRAME_COLOR := Color(0.12, 0.12, 0.12, 1.0)
+## 工具栏底板四周留白（局部像素）。
+const TOOLBAR_PLATE_PAD := 10.0
+## 工具栏所在的 CanvasLayer：高于 HUD(1) 与右侧色盘(2)，低于 ESC(20)。
+const TOOLBAR_LAYER := 3
 const EDITOR_TOOL_COLUMNS := 2
 const PLAY_TOOL_BUTTON_WIDTH := 32.0
 const PLAY_TOOL_BUTTON_HEIGHT := 43.0
@@ -56,6 +63,7 @@ const TOOL_SHORTCUT_ORDER := [
 var _expand_canvas_window: Window
 var _expand_inputs: Dictionary = {}
 var _expand_size_preview: Label
+var _toolbar_plate: Panel = null
 var _ink_warning_panel: PanelContainer
 var _ink_warning_label: Label
 var _ink_warning_token := 0
@@ -87,6 +95,7 @@ func _ready() -> void:
 		add_to_group(&"canvas_workbench")
 	process_physics_priority = 18 # 世界步进后更新玩家与工作台的距离。
 	_workbench_home_transform = workbench.transform
+	_lift_workbench_to_screen_layer()
 	var rod_pixels: Image = surface.rod_layer.pixels.duplicate() if surface.rod_layer.pixels != null else null
 	var rod_anchors: PackedVector2Array = surface.rod_layer.anchor_points.duplicate()
 	var rod_rails: Array = surface.rod_layer.rails.duplicate(true)
@@ -107,6 +116,7 @@ func _ready() -> void:
 	tool_grid.get_node("Nail").visible = false
 	tool_grid.get_node("ExpandCanvas").visible = false
 	_apply_workbench_column_layout()
+	_build_toolbar_plate()
 	set_brush_size(int(brush_panel.get_node("PenSlider").value))
 	surface.set_process_input(active)
 	set_process_input(active)
@@ -127,7 +137,8 @@ func _ready() -> void:
 		_apply_toolbar_text_color(_side_panel)
 
 
-## 左右画布工具栏统一深灰文字；不改变图标原图和墨水色块。
+## 左右画布工具栏统一深灰文字。图标是 ToolIcon 子节点（原图不染色），
+## 禁用态只在 tool_icon_feedback 里降透明度，所以这里不碰 icon 颜色。
 func _apply_toolbar_text_color(node: Node) -> void:
 	if node is Label:
 		node.add_theme_color_override("font_color", TOOLBAR_TEXT_COLOR)
@@ -136,6 +147,58 @@ func _apply_toolbar_text_color(node: Node) -> void:
 			node.add_theme_color_override(state, TOOLBAR_TEXT_COLOR)
 	for child in node.get_children():
 		_apply_toolbar_text_color(child)
+
+
+## 工具栏底板：把「隐藏」按钮和按钮阵列盖在一块纸色圆角板上，
+## 这样背后是黑墨或深色场景时图标依然看得清。
+func _build_toolbar_plate() -> void:
+	if _toolbar_plate != null:
+		return
+	_toolbar_plate = Panel.new()
+	_toolbar_plate.name = "ToolbarPlate"
+	_toolbar_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = TOOLBAR_PLATE_COLOR
+	style.border_color = TOOLBAR_FRAME_COLOR
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		style.set_border_width(side, 2)
+	style.corner_radius_top_left = 12
+	style.corner_radius_top_right = 12
+	style.corner_radius_bottom_left = 12
+	style.corner_radius_bottom_right = 12
+	_toolbar_plate.add_theme_stylebox_override("panel", style)
+	workbench.add_child(_toolbar_plate)
+	# 按钮阵列在场景里是 z_index 100，底板留 0 就够压在最下面。
+	workbench.move_child(_toolbar_plate, 0)
+	_layout_toolbar_plate()
+	# 建出来时就跟按钮阵列当前状态对齐，避免开局闪一下底板。
+	_animate_toolbar_plate(buttons.visible)
+
+
+func _layout_toolbar_plate() -> void:
+	if _toolbar_plate == null:
+		return
+	var rect: Rect2 = buttons.get_rect().merge(toggle_button.get_rect())
+	# 按钮的 offset 高度是算出来的，真实内容（尤其是按钮自带的底部说明文字）可能超出它。
+	# 这里按实际子控件矩形取并集，底板才不会漏掉最下面一行说明。
+	rect = _merge_toolbar_rects(rect, buttons, buttons.position)
+	if resize_panel.visible:
+		rect = rect.merge(resize_panel.get_rect())
+		rect = _merge_toolbar_rects(rect, resize_panel, resize_panel.position)
+	rect = rect.grow(TOOLBAR_PLATE_PAD)
+	_toolbar_plate.position = rect.position
+	_toolbar_plate.size = rect.size
+
+
+func _merge_toolbar_rects(rect: Rect2, node: Node, origin: Vector2) -> Rect2:
+	for child in node.get_children():
+		if not (child is Control) or not child.visible:
+			continue
+		var control := child as Control
+		var offset: Vector2 = origin + control.position
+		rect = rect.merge(Rect2(offset, control.size))
+		rect = _merge_toolbar_rects(rect, control, offset)
+	return rect
 #endregion
 
 
@@ -225,7 +288,7 @@ func generate(record_undo := true) -> void:
 		surface.blue_rule().solidify(surface)
 	for child in world.get_children():
 		if child is GearBearing and not child.is_queued_for_deletion():
-			child._process(0.0)
+			child.relink_after_solidify()
 	if record_undo:
 		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
@@ -463,6 +526,19 @@ var _syncing_preserved_resize := false
 var _nails_visible := true
 
 
+## 工具栏原本是世界物件，会被 HUD 的 CanvasLayer 压住（血条正好在上方）。
+## 把它搬进一个高于 HUD(1) 和右侧色盘(2) 的 CanvasLayer，坐标也随之变成屏幕坐标：
+## 所有写 workbench 变换的地方都用 `screen_transform`，不再乘逆视口矩阵。
+func _lift_workbench_to_screen_layer() -> void:
+	if Engine.is_editor_hint():
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "ToolbarLayer"
+	layer.layer = TOOLBAR_LAYER
+	add_child(layer)
+	workbench.reparent(layer, false)
+
+
 func _place_controls() -> void:
 	canvas_frame.position = Vector2(-14, -14)
 	canvas_frame.size = Vector2(canvas_size) + Vector2(28, 28)
@@ -609,7 +685,8 @@ func set_screen_fixed(on: bool) -> void:
 	if on:
 		_update_screen_fixed_position()
 	else:
-		workbench.transform = _workbench_home_transform
+		# _workbench_home_transform 是世界坐标；搬进 CanvasLayer 后要换成屏幕坐标才等价。
+		workbench.transform = get_viewport().get_canvas_transform() * _workbench_home_transform
 	set_process(on and active and not Engine.is_editor_hint())
 	_refresh_workbench_visibility()
 
@@ -789,6 +866,7 @@ func _apply_workbench_column_layout() -> void:
 	buttons.offset_right = buttons.offset_left + width
 	buttons.offset_bottom = buttons.offset_top + grid_height + hand_size + hand_gap + caption_height + 2.0
 	toggle_button.offset_right = toggle_button.offset_left + (width if _map_editor_mode else 36.0)
+	_layout_toolbar_plate()
 
 
 func _update_screen_fixed_position() -> void:
@@ -796,7 +874,7 @@ func _update_screen_fixed_position() -> void:
 		return
 	var screen_transform := Transform2D.IDENTITY
 	screen_transform.origin = screen_toolbar_origin
-	workbench.global_transform = get_viewport().get_canvas_transform().affine_inverse() * screen_transform
+	workbench.transform = screen_transform
 
 
 func _process(_delta: float) -> void:
@@ -1001,12 +1079,39 @@ func _animate_toolbar(control: Control, show: bool) -> void:
 func _set_workbench_visible(nearby: bool) -> void:
 	#⚠️ 隐藏按钮自己不受"手动隐藏"控制 —— 不然藏起来就再也点不回来了。
 	_animate_toolbar(toggle_button, active and nearby)
-	_animate_toolbar(buttons, active and nearby and not _workbench_hidden)
+	var show_buttons: bool = active and nearby and not _workbench_hidden
+	_animate_toolbar(buttons, show_buttons)
+	# 底板只是按钮阵列的背景：必须跟着一起淡出/隐藏，否则会留下一张空卡片
+	# 跟着画布走，看起来就是"边框没跟着收起来"。
+	_animate_toolbar_plate(show_buttons)
 	brush_panel.visible = false
 	resize_panel.visible = false
 	#右侧面板是另一套布局，不跟着左边那个"隐藏"按钮走。
 	if _side_panel != null:
 		_animate_toolbar(_side_panel, active and nearby and not _map_editor_mode)
+
+
+## 底板只跟随按钮阵列的显隐与透明度，不参与缩放 —— 缩放会把它和图标错开。
+func _animate_toolbar_plate(show: bool) -> void:
+	if _toolbar_plate == null:
+		return
+	if _toolbar_plate.has_meta(&"toolbar_wanted") and bool(_toolbar_plate.get_meta(&"toolbar_wanted")) == show:
+		return
+	var first := not _toolbar_plate.has_meta(&"toolbar_wanted")
+	_toolbar_plate.set_meta(&"toolbar_wanted", show)
+	var old_tween: Tween = _toolbar_plate.get_meta(&"toolbar_tween") if _toolbar_plate.has_meta(&"toolbar_tween") else null
+	if old_tween != null:
+		old_tween.kill()
+	if first or not active or _map_editor_mode or toolbar_transition_seconds <= 0.0:
+		_toolbar_plate.visible = show
+		_toolbar_plate.modulate.a = 1.0 if show else 0.0
+		return
+	_toolbar_plate.visible = true
+	var tween := create_tween()
+	_toolbar_plate.set_meta(&"toolbar_tween", tween)
+	tween.tween_property(_toolbar_plate, "modulate:a", 1.0 if show else 0.0, toolbar_transition_seconds)
+	if not show:
+		tween.tween_callback(func(): _toolbar_plate.visible = bool(_toolbar_plate.get_meta(&"toolbar_wanted", false)))
 
 
 func _distance_from_player_to_canvas() -> float:

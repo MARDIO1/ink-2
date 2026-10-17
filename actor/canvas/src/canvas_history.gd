@@ -25,6 +25,7 @@ static func capture(canvas, include_bodies := false, selection := Rect2()) -> Di
 		"rod_image": surface.rod_layer.pixels.duplicate(), "rod_anchors": surface.rod_layer.anchor_points.duplicate(),
 		"rod_rails": surface.rod_layer.rails.duplicate(true), "rod_pins": surface.rod_layer.slider_pins.duplicate(true),
 		"image": data.compress(FileAccess.COMPRESSION_FASTLZ), "ledger": surface.ink_px_by_material.duplicate(),
+		"gear_skip": surface.gear_skip_cells.duplicate(),
 		"bodies": [], "before_ids": {}, "remove_ids": {}, "yellow": [], "hinges": [],
 		"rails_runtime": [], "pins_runtime": [], "health": {}, "health_delta": {}}
 	for child in canvas.world.get_children():
@@ -213,6 +214,8 @@ static func restore(canvas, state: Dictionary) -> void:
 	var size: Vector2i = state.size
 	var bytes: PackedByteArray = state.image.decompress(size.x * size.y * 4, FileAccess.COMPRESSION_FASTLZ)
 	surface.black_image = Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGBA8, bytes)
+	# 盖章空白格属于画布编辑状态，必须跟着图像一起回滚。
+	surface.gear_skip_cells = state.get("gear_skip", {}).duplicate()
 	surface.rebuild_ink_tiles()
 	if state.has("rod_image"):
 		surface.rod_layer.pixels = state.rod_image.duplicate()

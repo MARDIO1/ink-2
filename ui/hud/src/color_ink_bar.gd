@@ -1,12 +1,13 @@
 extends Control
-## 黑墨保留在瓶身；灰、红、黄、白墨使用纯色色段，连续堆叠在横条右侧。
+## 黑墨保留在瓶身；灰、红、黄、白、蓝墨使用纯色色段，连续堆叠在横条右侧。
+## 顺序跟随 `InkPalette.INKS`（去掉黑墨），改色表不需要同步这里。
 
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
-const MATERIALS := [InkPalette.GREY, InkPalette.RED, InkPalette.YELLOW, InkPalette.WHITE]
+const MATERIALS := [InkPalette.GREY, InkPalette.RED, InkPalette.YELLOW, InkPalette.WHITE, InkPalette.BLUE]
 const EMPTY_COLOR := Color(0.76, 0.75, 0.70, 0.62)
 
-var ratios := PackedFloat32Array([1.0, 1.0, 1.0, 1.0])
-var remaining := PackedInt32Array([20000, 20000, 20000, 20000])
+var ratios := PackedFloat32Array([1.0, 1.0, 1.0, 1.0, 1.0])
+var remaining := PackedInt32Array([20000, 20000, 20000, 20000, 20000])
 
 
 func _ready() -> void:
@@ -26,14 +27,12 @@ func set_health(health: Node) -> void:
 	queue_redraw()
 
 
-## 每种墨水的满量仍占总宽的四分之一；消耗只在最左侧留白，色段间不留空隙。
+## 每种墨水的满量仍占总宽的等分之一；从左往右连续堆叠，缺墨留下的空位集中在右端 ——
+## 这样彩色段始终贴着画框左内沿，墨水变少时不会整体被推向右边。
 func segment_rects() -> Array[Rect2]:
 	var result: Array[Rect2] = []
 	var width: float = size.x / float(MATERIALS.size())
-	var filled := 0.0
-	for ratio in ratios:
-		filled += width * ratio
-	var x := size.x - filled
+	var x := 0.0
 	for ratio in ratios:
 		var amount_width: float = width * ratio
 		result.append(Rect2(Vector2(x, 0.0), Vector2(amount_width, size.y)))

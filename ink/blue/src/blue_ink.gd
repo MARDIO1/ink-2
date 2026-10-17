@@ -152,14 +152,20 @@ func solidify(surface) -> void:
 			motor.bind(anchor)
 
 ## 固化前把裸导线加入联合实体；覆盖黑色仅保留导电标记。
-func merge_shape(surface, shape) -> void:
+## skip 是没有载体、也不归主形状管的格子（齿轮轮廓里的空白格），它们不进这张形状。
+func merge_shape(surface, shape, skip: Dictionary = {}) -> void:
 	_pending_wires[surface] = surface.blue_layer.mask.duplicate()
 	for at: Vector2i in surface.blue_layer.mask:
+		if skip.has(at):
+			continue
 		if shape.get_pixel(at.x, at.y) == 0 and surface.rod_layer.pixels.get_pixelv(at).a <= 0.0:
 			shape.set_pixel(at.x, at.y, Palette.BLUE.id)
 
 func attach_wires(surface, bodies: Array, pixels: Dictionary) -> void:
 	for body in bodies:
+		# 齿轮轮体跨多次固化一直存在；每次固化都新挂一条线会越堆越多。
+		if _has_wire(body):
+			continue
 		var cells: PackedVector2Array = []
 		for at: Vector2i in pixels:
 			var world_point: Vector2 = surface.to_global(Vector2(at) + Vector2.ONE * 0.5)
@@ -169,6 +175,13 @@ func attach_wires(surface, bodies: Array, pixels: Dictionary) -> void:
 				cells.append(Vector2(cell))
 		if not cells.is_empty():
 			add_wire(body, cells)
+
+
+func _has_wire(body) -> bool:
+	for wire in objects(Wire):
+		if wire.body == body and wire.active:
+			return true
+	return false
 
 func add_wire(body, cells: PackedVector2Array):
 	var wire := Wire.new()

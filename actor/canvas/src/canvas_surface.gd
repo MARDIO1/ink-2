@@ -14,6 +14,10 @@ const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const GearTool := preload("res://actor/canvas/src/gear_tool.gd")
 var gear_tool: Node2D
+## 齿轮轮廓里原本空白的格子：轮廓写进画布只是为了蓝墨能画到轮体上，
+## 这些格子固化时不能变成刚体，否则会凭空多出一块和齿轮完全重合的刚体。
+## 只记坐标、不记刚体引用 —— 撤销/重做会重建刚体，存引用会立刻失效。
+var gear_skip_cells: Dictionary = {}
 #endregion
 
 #region 初始化
@@ -776,7 +780,17 @@ func clear(refund := true) -> void:
 	black_image.fill(Color.TRANSPARENT)
 	_free_tiles()                      # 画布空了：贴图一起丢掉，不用再传一遍空白
 	nail_layer.clear()
+	gear_skip_cells.clear()
 	queue_redraw()
+
+
+## 登记齿轮轮廓里的空白格（那些格子只供蓝墨落笔，固化时跳过）。
+func add_gear_skip_cells(cells: Dictionary) -> void:
+	gear_skip_cells.merge(cells, true)
+
+
+func clear_gear_skip_cells() -> void:
+	gear_skip_cells.clear()
 
 
 ## 直接写入一个画布像素（"重新回到画布"用）；越界返回 false，批量写入后调 refresh()。

@@ -117,16 +117,22 @@ func _run() -> void:
 	await process_frame
 	check("redo restores usable world axle", bearings(level).size() == 1 and bearings(level)[0].joint != null)
 	# 支座与齿轮同为黑墨：仍须为独立刚体，只排除配对碰撞。
+	# 放置齿轮不再顺带固化草稿，所以支座要按要求先固化，齿轮才能找到它。
 	surface.selected_ink = 0
 	for y in range(120, 221):
 		for x in range(120, 221):
 			surface.write_pixel(Vector2i(x, y), Palette.BLACK.color)
 	surface.write_pixel(Vector2i(125, 125), surface.nail_color())
+	canvas.generate(false)
+	await process_frame
 	tool.begin(Vector2(170, 170))
 	var attached = tool.finish(Vector2(210.5, 170.5))
 	check("black selection creates black gear separate from support", attached != null
 		and attached.gear_material == Palette.BLACK.id and not attached.fixed_to_world
 		and attached.yellow_anchor.body != attached.black_anchor.body)
+	if attached == null:
+		quit(1)
+		return
 	check("support solidification preserves full gear outline", Bearing.has_pixel(attached.yellow_anchor.body, Vector2i(-20, 0), Palette.BLACK.id)
 		and not Bearing.has_pixel(attached.yellow_anchor.body, Vector2i(39, 39), Palette.BLACK.id))
 	check("bearing disables only gear-support pair collision", attached.joint != null
@@ -166,7 +172,8 @@ func _run() -> void:
 		and bearings(level)[1].joint != null)
 	canvas.generate(false)
 	check("solidification reattaches reclaimed support", attached.joint != null
-		and attached.joint.body_b != null and attached.yellow_anchor.body != attached.black_anchor.body)
+		and attached.joint.body_b != null and not attached.black_anchor.is_empty()
+		and attached.yellow_anchor.body != attached.black_anchor.body)
 	creative.active = false
 	# 轴心被破坏后解除约束；沿用正式物理碎裂通知。
 	var target = attached.yellow_anchor.body
@@ -177,10 +184,12 @@ func _run() -> void:
 			mask[shape] = {cell: true}
 	level.get_node("SimulationRuntime/PhysicsStep").commit(level.world, {target: mask})
 	check("destroying center pixel removes gear axle", attached.is_queued_for_deletion() and attached.joint == null)
+	# 齿轮不再允许共用像素，所以逐个换位置摆放，而不是全叠在同一点。
 	for index in [0, 1, 2, 3, 4]:
 		surface.selected_ink = index
-		tool.begin(Vector2(230, 30))
-		var colored = tool.finish(Vector2(243.5, 30.5))
+		var spot := Vector2(20 + index * 40, 240)
+		tool.begin(spot)
+		var colored = tool.finish(spot + Vector2(14.0, 0.5))
 		var selected_material: int = Palette.material_id_of(Palette.ink_at(index))
 		check("gear uses selected " + Palette.ink_name(index), colored != null
 			and colored.gear_material == selected_material and surface.selected_ink == index

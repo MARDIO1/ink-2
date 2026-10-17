@@ -175,6 +175,9 @@ func _run() -> void:
 		for x in range(280, 341):
 			surface.write_pixel(Vector2i(x, y), Palette.BLACK.color)
 	surface.write_pixel(Vector2i(285, 105), Palette.nail_color())
+	# 放置齿轮不再顺带固化草稿，支座要按要求先固化，齿轮才能找到它。
+	canvas.generate(false)
+	await process_frame
 	surface.selected_ink = 0
 	surface.gear_tool.begin(Vector2(310, 130), 12)
 	var attached = surface.gear_tool.finish(Vector2(330.5, 130.5))

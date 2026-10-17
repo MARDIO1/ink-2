@@ -52,7 +52,8 @@ func _refresh() -> void:
 		_tween.kill()
 	_tween = create_tween()
 	var target := 1.0 if _button.disabled else (0.96 if _held else _rest_scale())
-	_icon.modulate.a = 0.4 if _button.disabled else 1.0
+	# 不可用只是「淡一点」，不要淡到像是换了另一种颜色。
+	_icon.modulate.a = 0.6 if _button.disabled else 1.0
 	_tween.tween_property(_icon, "scale", Vector2.ONE * target, 0.10)
 
 func pulse() -> void:

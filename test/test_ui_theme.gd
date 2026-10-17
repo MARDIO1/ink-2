@@ -175,10 +175,10 @@ func _run() -> void:
 		"Root/DialoguePanel/PixelText/TextViewport/NextHint",
 	]))
 	await _check_scene_fonts("res://actor/canvas/canvas.tscn", PackedStringArray([
-		"WorkbenchUI/Toggle",
-		"WorkbenchUI/Buttons/Hand",
-		"WorkbenchUI/ResizePanel/Grid/PlayerVisibility",
-		"WorkbenchUI/ResizePanel/Grid/NailVisibility",
+		"ToolbarLayer/WorkbenchUI/Toggle",
+		"ToolbarLayer/WorkbenchUI/Buttons/Hand",
+		"ToolbarLayer/WorkbenchUI/ResizePanel/Grid/PlayerVisibility",
+		"ToolbarLayer/WorkbenchUI/ResizePanel/Grid/NailVisibility",
 	]))
 
 	print("[UITheme] %d checks, %d failures" % [_checks, _failures])

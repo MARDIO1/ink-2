@@ -49,6 +49,14 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 
 	var pos: Vector2 = surface.global_position
 	var size: Vector2i = surface.canvas_size
+	# 还没固化的齿轮：轮廓已经在画布上（蓝墨工具只认画布像素），轮体却是独立刚体。
+	# 轮廓压在真实墨迹上的部分照常并进支座（滑环要够到轴心），落在空白画布上的部分跳过。
+	# 轮体本身在固化前就存在，所以「新造的刚体」里没有它，要单独把蓝墨挂上去。
+	var gear_cells: Dictionary = surface.gear_skip_cells
+	var gear_bodies: Array = []
+	for child in world.get_children():
+		if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
+			gear_bodies.append(child.yellow_anchor.body)
 
 	# 先按块收集墨水（块级拷贝，见 _scan_block），再只扫描实体与画布相交的局部区域。
 	var shape = PixelShape.new()
@@ -57,19 +65,17 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 	# 颜色 -> 材质缓存；认色本身仍走色表，见 _scan_block。
 	var color_table: Dictionary = {}
 	for block in _block_rects(surface, size):
-		_scan_block(surface, block, shape, white, anchors, color_table)
+		_scan_block(surface, block, shape, white, anchors, color_table, gear_cells)
 	var blue = surface.blue_rule()
 	var blue_pixels: Dictionary = surface.blue_layer.mask.duplicate()
 	if blue != null:
-		blue.merge_shape(surface, shape)
+		blue.merge_shape(surface, shape, gear_cells)
 	var previous: Array = world.world.bodies.duplicate()
 	var ink_pixels: int = shape.pixel_count()
 	var overlap_bodies: Array = world.world.bodies.duplicate()
-	# 齿轮与支座分层重叠，但只有**靠支座锚点固定**的齿轮才需要保住轴心像素。
-	# 钉在世界的齿轮没有支座，轮盘必须整块从新墨里挖掉，否则新固化的支座会插进轮齿。
+	# 齿轮与支座分层重叠；墨化后再固化不能把支座的轴心挖掉。
 	for child in world.get_children():
-		if child is GearBearing and not child.is_queued_for_deletion() \
-		and not child.fixed_to_world and not child.yellow_anchor.is_empty():
+		if child is GearBearing and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty():
 			overlap_bodies.erase(child.yellow_anchor.body)
 	var rejected_pixels: int = _remove_overlaps(shape, surface, overlap_bodies)
 
@@ -116,9 +122,9 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 		for body in world.world.bodies:
 			if not previous.has(body):
 				created.append(body)
-		blue.attach_wires(surface, created, blue_pixels)
+		blue.attach_wires(surface, created + gear_bodies, blue_pixels)
 	surface.clear(false)      # 这些墨水已经变成刚体带走了，不能还回瓶子
-	print("SOLID bodies=%d pixels=%d rejected=%d" % [spawned, total_pixels, rejected_pixels])
+	print("SOLID bodies=%d pixels=%d rejected=%d ink=%d skip=%d" % [spawned, total_pixels, rejected_pixels, ink_pixels, gear_cells.size()])
 
 
 ## 画布按 BLOCK_SIZE 切出来的块（画布坐标，已裁到画布与 black_image 内）。
@@ -174,7 +180,7 @@ func _block_pieces(island) -> Array:
 ## 形状的 chunk 键用画布坐标：固化出的形状局部坐标必须等于画布坐标 ——
 ## _spawn_component 的 local_aabb()、PixelShape2D.position、回收与破坏路径都按这个约定。
 func _scan_block(surface, block: Rect2i, ink, white, anchors: Dictionary,
-		color_table: Dictionary) -> void:
+		color_table: Dictionary, skip: Dictionary = {}) -> void:
 	var data: PackedByteArray = surface.black_image.get_region(block).get_data()
 	var width: int = block.size.x
 	var origin_x: int = block.position.x
@@ -203,6 +209,8 @@ func _scan_block(surface, block: Rect2i, ink, white, anchors: Dictionary,
 			if material == 0:
 				continue
 			var x: int = origin_x + lx
+			if skip.has(Vector2i(x, y)):
+				continue
 			var target = white if material == white_id else ink
 			var key: int = PixelShape.make_key(x >> 3, y >> 3)
 			if key != last_key or target != last_target:
@@ -375,6 +383,8 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 			world.remove_child(node)
 			node.queue_free()
 	surface.refresh()
+	# 墨化把真实实体写回画布：这些格子现在有真正的墨，不能再按「齿轮盖章的空白格」跳过。
+	surface.clear_gear_skip_cells()
 	print("RESTORE bodies=%d pixels=%d fragments=%d kept=%s" % [
 		targets.size(), pixels, fragments, str(keep_bodies)])
 
@@ -414,6 +424,7 @@ func rasterize_rect(surface, world, local_rect: Rect2i, moved_pixels: Dictionary
 		if not result.body_alive and is_instance_valid(node):
 			world.remove_child(node)
 			node.queue_free()
+	surface.clear_gear_skip_cells()
 	return removed
 
 
