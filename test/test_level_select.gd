@@ -35,6 +35,26 @@ func _run() -> void:
 	])
 	for path in deleted_levels:
 		valid = valid and not paths.has(path)
+	var hidden_levels := PackedStringArray([
+		"res://map/asset/imported/新地图1.tscn",
+		"res://map/asset/imported/新地图2.tscn",
+		"res://map/asset/imported/第二关（制作中）.tscn",
+		"res://map/asset/imported/第二关（小怪关）.tscn",
+		"res://map/asset/imported/黄色.tscn",
+		"res://map/second/第三关·墨泉边.tscn",
+		"res://map/test/空白大地图.tscn",
+	])
+	for path in hidden_levels:
+		valid = valid and not paths.has(path)
+	var playable_extras := PackedStringArray([
+		"res://map/asset/imported/新地图3.tscn",
+		"res://map/asset/imported/无画布挑战！.tscn",
+		"res://map/asset/imported/第二关（基本完成）.tscn",
+		"res://map/asset/imported/蓝色攀升.tscn",
+		"res://map/asset/imported/黄色2.tscn",
+	])
+	for path in playable_extras:
+		valid = valid and paths.has(path)
 
 	var screen := (load("res://ui/level_select/level_select.tscn") as PackedScene).instantiate()
 	root.add_child(screen)

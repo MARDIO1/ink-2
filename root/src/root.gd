@@ -182,8 +182,30 @@ func load_level(scene: PackedScene, editing := false) -> Node:
 	if level.has_method(&"rebuild") and level.get("world") == null:
 		level.call(&"rebuild")
 	level_root.add_child(level)
+	var player_body = level_player.get("body") if level_player != null else null
+	var player_input: Node = level_player.get_node_or_null("PlayerInput") if level_player != null else null
+	var input_was_processing := player_input.is_physics_processing() if player_input != null else false
+	var pause_tag_had := false
+	var pause_tag_value = false
+	var body_was_frozen := false
+	if not staged.is_empty() and player_body != null:
+		pause_tag_had = player_body.tags.has("editor_physics_paused")
+		pause_tag_value = player_body.tags.get("editor_physics_paused", false)
+		body_was_frozen = player_body.frozen
+		player_body.tags["editor_physics_paused"] = true
+		if player_input != null:
+			player_input.set_physics_process(false)
 	_play_music(level_music)
 	await _bake_staged_bodies(level, staged)
+	if player_body != null:
+		if pause_tag_had:
+			player_body.tags["editor_physics_paused"] = pause_tag_value
+		else:
+			player_body.tags.erase("editor_physics_paused")
+		if not body_was_frozen and player_body.frozen and level.world != null:
+			level.world.unfreeze(player_body)
+	if player_input != null:
+		player_input.set_physics_process(input_was_processing)
 	var editor := level.get_node_or_null("Creative")
 	if editor != null and editor.has_method("prepare_loaded_document"):
 		editor.prepare_loaded_document(editing)

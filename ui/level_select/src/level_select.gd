@@ -17,6 +17,16 @@ const BUTTON_SIZE := Vector2(340, 46)
 ## 「新建空白地图」复制这个模板；它自己不是关卡，不进程列表。
 const BLANK_TEMPLATE := "res://map/asset/blank_level.tscn"
 const NEW_MAP_DIR := "res://map/asset/imported"
+## 尚未完成出生点/地形，或仅用于测试的场景不进入玩家关卡目录。
+const HIDDEN_LEVELS := {
+	"res://map/asset/imported/新地图1.tscn": true,
+	"res://map/asset/imported/新地图2.tscn": true,
+	"res://map/asset/imported/第二关（制作中）.tscn": true,
+	"res://map/asset/imported/第二关（小怪关）.tscn": true,
+	"res://map/asset/imported/黄色.tscn": true,
+	"res://map/second/第三关·墨泉边.tscn": true,
+	"res://map/test/空白大地图.tscn": true,
+}
 
 signal level_chosen(path: String)
 signal back_pressed
@@ -166,7 +176,7 @@ static func _scan_map_levels() -> PackedStringArray:
 			if scene_name.is_empty():
 				continue
 			var path := directory.path_join(scene_name)
-			if path == BLANK_TEMPLATE or not _has_player(path):
+			if path == BLANK_TEMPLATE or HIDDEN_LEVELS.has(path) or not _has_player(path):
 				continue
 			result.append(path)
 	result.sort()
