@@ -20,6 +20,7 @@ const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const InkPanel := preload("res://actor/canvas/panel/src/ink_panel.gd")
 const ToolbarBuilder := preload("res://actor/canvas/toolbar/src/toolbar_builder.gd")
+const ExpandWindow := preload("res://actor/canvas/panel/src/expand_canvas_window.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
 const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
@@ -957,116 +958,33 @@ func _on_hand_pressed() -> void:
 
 
 func _build_expand_canvas_window() -> void:
-	_expand_canvas_window = Window.new()
-	_expand_canvas_window.name = "ExpandCanvasWindow"
-	_expand_canvas_window.title = "扩展画布"
-	_expand_canvas_window.size = Vector2i(420, 390)
-	_expand_canvas_window.min_size = Vector2i(380, 350)
-	_expand_canvas_window.visible = false
-	_expand_canvas_window.transient = true
-	_expand_canvas_window.theme = EditorTheme
-	_expand_canvas_window.close_requested.connect(_expand_canvas_window.hide)
-	add_child(_expand_canvas_window)
-	_expand_canvas_window.hide()
-
-	var margin := MarginContainer.new()
-	margin.name = "Content"
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 28)
-	margin.add_theme_constant_override("margin_top", 24)
-	margin.add_theme_constant_override("margin_right", 28)
-	margin.add_theme_constant_override("margin_bottom", 24)
-	_expand_canvas_window.add_child(margin)
-
-	var column := VBoxContainer.new()
-	column.name = "Column"
-	column.add_theme_constant_override("separation", 16)
-	margin.add_child(column)
-
-	var explanation := Label.new()
-	explanation.text = "正数扩展，负数缩小并删除越界内容。保留内容的世界位置不变，可 Ctrl+Z 撤销。"
-	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(explanation)
-
-	_expand_size_preview = Label.new()
-	_expand_size_preview.name = "SizePreview"
-	column.add_child(_expand_size_preview)
-
-	var input_grid := GridContainer.new()
-	input_grid.name = "Inputs"
-	input_grid.columns = 2
-	input_grid.add_theme_constant_override("h_separation", 24)
-	input_grid.add_theme_constant_override("v_separation", 10)
-	column.add_child(input_grid)
-	for side in ["Left", "Right", "Top", "Bottom"]:
-		var label := Label.new()
-		label.text = {"Left": "左侧", "Right": "右侧", "Top": "上侧", "Bottom": "下侧"}[side]
-		input_grid.add_child(label)
-		var amount := SpinBox.new()
-		amount.name = side + "Amount"
-		amount.custom_minimum_size = Vector2(210, 42)
-		amount.min_value = -8192
-		amount.max_value = 8192
-		amount.step = 1
-		amount.value = 0
-		amount.suffix = " px"
-		amount.value_changed.connect(_update_expand_size_preview.unbind(1))
-		input_grid.add_child(amount)
-		_expand_inputs[side] = amount
-
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(spacer)
-	var actions := HBoxContainer.new()
-	actions.alignment = BoxContainer.ALIGNMENT_END
-	actions.add_theme_constant_override("separation", 12)
-	column.add_child(actions)
-	var cancel := Button.new()
-	cancel.text = "取消"
-	cancel.pressed.connect(_expand_canvas_window.hide)
-	actions.add_child(cancel)
-	var confirm := Button.new()
-	confirm.text = "确认调整"
-	confirm.pressed.connect(_confirm_expand_canvas)
-	actions.add_child(confirm)
+	# 窗口结构与尺寸预览在 `panel/src/expand_canvas_window.gd`；这里只接回调与状态。
+	var built: Dictionary = ExpandWindow.build(self, EditorTheme,
+		_update_expand_size_preview, _confirm_expand_canvas)
+	_expand_canvas_window = built.window
+	_expand_inputs = built.inputs
+	_expand_size_preview = built.preview
 	_update_expand_size_preview()
 
 
 func _open_expand_canvas_window() -> void:
 	if not _map_editor_mode or _expand_canvas_window == null:
 		return
-	for input: SpinBox in _expand_inputs.values():
-		input.value = 0
+	ExpandWindow.reset(_expand_inputs)
 	_update_expand_size_preview()
 	_expand_canvas_window.popup_centered()
 
 
 func _update_expand_size_preview() -> void:
-	if _expand_size_preview == null:
-		return
-	var left := int((_expand_inputs.get("Left") as SpinBox).value)
-	var right := int((_expand_inputs.get("Right") as SpinBox).value)
-	var top := int((_expand_inputs.get("Top") as SpinBox).value)
-	var bottom := int((_expand_inputs.get("Bottom") as SpinBox).value)
-	_expand_size_preview.text = "当前：%d × %d px    调整后：%d × %d px" % [
-		canvas_size.x, canvas_size.y,
-		canvas_size.x + left + right, canvas_size.y + top + bottom,
-	]
-	if canvas_size.x + left + right < 1 or canvas_size.y + top + bottom < 1:
-		_expand_size_preview.text += "\n宽高必须至少为 1 px"
+	ExpandWindow.refresh_preview(_expand_size_preview, _expand_inputs, canvas_size)
 
 
 func _confirm_expand_canvas() -> void:
-	var left := int((_expand_inputs["Left"] as SpinBox).value)
-	var right := int((_expand_inputs["Right"] as SpinBox).value)
-	var top := int((_expand_inputs["Top"] as SpinBox).value)
-	var bottom := int((_expand_inputs["Bottom"] as SpinBox).value)
-	if left == 0 and right == 0 and top == 0 and bottom == 0:
+	var delta := ExpandWindow.amounts(_expand_inputs)
+	if delta == Vector4i.ZERO:
 		return
-	if expand_canvas_sides(left, right, top, bottom):
+	if expand_canvas_sides(delta.x, delta.y, delta.z, delta.w):
 		_expand_canvas_window.hide()
-
-
 ## 隐藏 / 显示工具栏本体。按钮自己一直露着，好点回来。
 func _toggle_workbench() -> void:
 	_workbench_hidden = not _workbench_hidden
