@@ -85,6 +85,13 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	for item in play_canvases:
 		_show(item, true)
 	_show(map_canvas, false)
+	# 编辑态里角色是隐藏的（编辑者不该被自己养的角色挡住），
+	# 但关卡存的必须是"玩家能玩的样子"——打包瞬间按进编辑器之前的状态还原。
+	var player = ctx.get("player")
+	var player_saved: Array = []
+	if is_instance_valid(player):
+		player_saved = [player.visible, player.process_mode]
+		player.visible = bool(ctx.get("player_visible", true))
 	# 草稿和实体分别序列化；保存不能生成、回收或改变撤销栈。
 	var editor := scene.get_node_or_null("Creative")
 	var old_document: Dictionary = editor.editor_draft if editor != null else {}
@@ -96,6 +103,9 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	if editor != null:
 		editor.editor_draft = old_document
 		editor.edit_snapshot_path = old_snapshot
+	if is_instance_valid(player) and not player_saved.is_empty():
+		player.visible = bool(player_saved[0])
+		player.process_mode = int(player_saved[1])
 	for item in saved:
 		if is_instance_valid(item):
 			item.visible = bool(saved[item][0])

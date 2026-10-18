@@ -52,7 +52,6 @@ const TEXT_MIN_SCALE := 0.35
 const TEXT_MAX_SCALE := 3.0
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 const DialogueTriggerScript := preload("res://debug/creative/src/map_dialogue_trigger.gd")
-const Nail := preload("res://actor/nail/src/nail.gd")
 const MapTextScript := preload("res://ui/map_text/src/map_text_label.gd")
 const MapPortalScript := preload("res://actor/portal/src/map_portal.gd")
 const InkFountainScript := preload("res://actor/fountain/src/ink_fountain.gd")
@@ -75,12 +74,6 @@ var _editor_ink_buttons: Array[Button]:
 var _editor_ink_label: Label:
 	get:
 		return _palette._editor_ink_label if is_instance_valid(_palette) else null
-var _gear_button: Button:
-	get:
-		return _palette._gear_button if is_instance_valid(_palette) else null
-var _gear8_button: Button:
-	get:
-		return _palette._gear8_button if is_instance_valid(_palette) else null
 const MAP_TEXT_FONT_PATH := "res://ui/map_text/asset/Muyao-Softbrush.ttf"
 const MONSTER_SCENES: Array[PackedScene] = [
 	preload("res://actor/monster/bomb_side.tscn"),
@@ -141,6 +134,9 @@ var _player = null
 var _body = null
 var _spawn_point: Marker2D = null
 var _layout_overlay = null
+var _respawn_area_dialog: ConfirmationDialog
+var _respawn_area_target: Marker2D
+var _respawn_area_fields: Array[SpinBox] = []
 var _layout_buttons: Dictionary:
 	get:
 		return _palette._layout_buttons if is_instance_valid(_palette) else {}
@@ -863,10 +859,6 @@ func _editor_preserved_bodies() -> Dictionary:
 			continue
 		if not GearCenters.body_records(body).is_empty():
 			keep[body] = true
-		# 无限钉子是不可破坏机关；墨化/重采样会在钉孔处留下白色缺口。
-		# 保留承载刚体，让无限钉子随实体一起存档，而不是把图标烘成画布孔洞。
-		if body.tags.has(Nail.INFINITE_TAG):
-			keep[body] = true
 	for child in level.get_children():
 		if child is YellowHinge:
 			_keep_anchor(keep, child.yellow_anchor)
@@ -1497,11 +1489,65 @@ func delete_respawn_point(point: Marker2D) -> bool:
 		return false
 	if _session.layout_drag_target == point:
 		_finish_layout_drag()
-	_record_edit({"type": &"respawn_delete", "position": point.global_position, "target": point})
+	_record_edit({"type": &"respawn_delete", "position": point.global_position, "target": point,
+		"settings": LayoutTools.capture_respawn_point(point)})
 	point.get_parent().remove_child(point)
 	point.queue_free()
 	_refresh_layout_overlay()
 	return true
+
+
+## 激活区独立于出生原点设置，支持编辑历史与地图序列化。
+func _open_respawn_area_dialog() -> void:
+	var target = _layout_overlay.selected if _layout_overlay != null else null
+	if not is_instance_valid(target) or not _respawn_points().has(target):
+		_layout_status_label.text = "先用操纵工具选中橙色复活点，再设置激活区域"
+		return
+	_respawn_area_target = target
+	if _respawn_area_dialog == null:
+		_respawn_area_dialog = ConfirmationDialog.new()
+		_respawn_area_dialog.name = "RespawnAreaDialog"
+		_respawn_area_dialog.title = "复活点：脚底落地激活区域"
+		_respawn_area_dialog.theme = EDITOR_THEME
+		_respawn_area_dialog.get_ok_button().text = "应用"
+		_respawn_area_dialog.get_cancel_button().text = "取消"
+		_palette.get_node("Root").add_child(_respawn_area_dialog)
+		var column := VBoxContainer.new()
+		_respawn_area_dialog.add_child(column)
+		for index in 4:
+			var row := HBoxContainer.new()
+			column.add_child(row)
+			var label := Label.new()
+			label.text = ["宽度", "高度", "水平偏移", "垂直偏移"][index] + "（像素）"
+			label.add_theme_color_override("font_color", Color(0.95, 0.93, 0.85))
+			label.custom_minimum_size.x = 150
+			row.add_child(label)
+			var field := SpinBox.new()
+			field.min_value = 1 if index < 2 else -8192
+			field.max_value = 8192
+			field.custom_minimum_size.x = 160
+			row.add_child(field)
+			_respawn_area_fields.append(field)
+		_respawn_area_dialog.confirmed.connect(_confirm_respawn_area)
+	var size: Vector2 = target.activation_size
+	var offset: Vector2 = target.activation_offset
+	for index in 4:
+		_respawn_area_fields[index].value = [size.x, size.y, offset.x, offset.y][index]
+	_respawn_area_dialog.popup_centered(Vector2i(390, 240))
+
+
+## 提交区域配置，沿用统一编辑历史。
+func _confirm_respawn_area() -> void:
+	var point := _respawn_area_target
+	if not is_instance_valid(point) or point.is_queued_for_deletion() or not _level_root().is_ancestor_of(point):
+		return
+	var before := LayoutTools.capture_respawn_point(point)
+	point.activation_size = Vector2(_respawn_area_fields[0].value, _respawn_area_fields[1].value)
+	point.activation_offset = Vector2(_respawn_area_fields[2].value, _respawn_area_fields[3].value)
+	var after := LayoutTools.capture_respawn_point(point)
+	if before != after:
+		_record_edit({"type": &"respawn_area", "target": point, "before": before, "after": after})
+	_refresh_layout_overlay(point)
 
 
 func _portals() -> Array:
@@ -1889,12 +1935,11 @@ func select_gear_tool(teeth := 12) -> void:
 
 
 func _sync_gear_button() -> void:
-	if _gear8_button != null:
-		_gear8_button.set_pressed_no_signal(_map_canvas != null \
-			and _map_canvas.surface.tool == CanvasSurfaceScript.Tool.GEAR_8)
-	if _gear_button != null:
-		_gear_button.set_pressed_no_signal(_map_canvas != null \
-			and _map_canvas.surface.tool == CanvasSurfaceScript.Tool.GEAR)
+	if not is_instance_valid(_palette) or _map_canvas == null:
+		return
+	var tool: int = _map_canvas.surface.tool
+	_palette.sync_gear_buttons(tool == CanvasSurfaceScript.Tool.GEAR,
+		tool == CanvasSurfaceScript.Tool.GEAR_8)
 
 
 ## 无限钉子是机关部件（钉在红墨上供给无尽能源），入口在右侧「机关部件」栏。
@@ -2863,6 +2908,10 @@ func export_map_to(save_path: String) -> Error:
 		"level_root": _level_root(),
 		"map_canvas": _map_canvas,
 		"play_canvases": _play_canvases(),
+		# 编辑态里角色是隐藏的；打包瞬间要按进编辑器之前的状态还原，
+		# 否则存出来的关卡一开始就是"看不见的玩家"。
+		"player": _player,
+		"player_visible": _saved_player_visible,
 		"bake_preview": save_preview_on_export,
 		"baked_map_path": baked_map_path,
 	}, save_path)
@@ -2906,12 +2955,12 @@ func _dispatch_palette_action(action: StringName, arguments: Array) -> void:
 		&"select_infinite_nail_tool": select_infinite_nail_tool,
 		&"_open_map_save_window": _open_map_save_window,
 		&"_reset_selected_monster_scale": _reset_selected_monster_scale,
-		&"_sync_gear_button": _sync_gear_button,
 		&"_build_canvas_size_dialog": _build_canvas_size_dialog,
 		&"_refresh_portal_choices": _refresh_portal_choices,
 		&"_on_portal_destination_selected": _on_portal_destination_selected,
 		&"_open_portal_menu": _open_portal_menu,
 		&"_open_canvas_size_dialog": _open_canvas_size_dialog,
+		&"_open_respawn_area_dialog": _open_respawn_area_dialog,
 		&"_on_ink_quota_changed": _on_ink_quota_changed,
 		&"reset_ink_quota": reset_ink_quota,
 	}
@@ -3016,4 +3065,28 @@ func editor_respawn_points() -> Array:
 
 func editor_canvases() -> Array:
 	return _play_canvases()
+
+
+func editor_canvas() -> Node:
+	return _map_canvas
+
+
+func editor_palette() -> Node:
+	return _palette
+
+
+func editor_undo_available() -> bool:
+	return not _history.undo_stack.is_empty()
+
+
+func editor_redo_available() -> bool:
+	return not _history.redo_stack.is_empty()
+
+
+func editor_history_depth() -> int:
+	return _history.undo_stack.size()
+
+
+func editor_clear_history() -> void:
+	_clear_edit_history()
 #endregion
