@@ -13,6 +13,7 @@ const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const InkBrush := preload("res://actor/canvas/src/ink_brush.gd")
+const SolidSnapshots := preload("res://actor/canvas/src/solid_snapshot_cache.gd")
 ## CanvasSurface.Tool.CIRCLE；rod_layer 被 surface 预加载，不能反向 preload 它。
 const TOOL_CIRCLE := 5
 @export var pixels: Image
@@ -553,13 +554,7 @@ func clear(refund := true) -> void:
 	refresh()
 
 func make_shape():
-	var shape = Shape.new()
-	var rect := pixels.get_used_rect()
-	for y in range(rect.position.y, rect.end.y):
-		for x in range(rect.position.x, rect.end.x):
-			if pixels.get_pixel(x, y).a > 0:
-				shape.set_pixel(x, y, Palette.YELLOW.id)
-	return shape
+	return SolidSnapshots.yellow_shape(pixels)
 
 func _rail_spans(rail: Dictionary, shape) -> Array:
 	var a := Vector2(rail.a)

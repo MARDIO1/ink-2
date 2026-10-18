@@ -11,6 +11,10 @@ const Anchor := preload("res://ink/yellow/src/stroke.gd")
 @export var paid := false
 @export var area: int = 0
 @export var source_canvas: NodePath
+## 到达功率的启动门、滑动窗口和爬坡；只平滑供能预算，不直接改最终施力。
+@export_range(0.0, 0.5, 0.01) var startup_delay := 0.1
+@export_range(0.02, 1.0, 0.01) var power_window := 0.2
+@export_range(0.01, 0.5, 0.01) var force_ramp := 0.15
 var body = null
 var cell := Vector2i.ZERO
 var anchor_local := Vector2.ZERO
@@ -26,6 +30,11 @@ var buffer_capacity := 0.0
 var release_seconds := 0.1
 var hold_seconds := 0.2
 var buffer_age := 0.0
+var _power_samples := PackedFloat32Array()
+var _power_index := 0
+var _power_sum := 0.0
+var _power_filled := 0
+var _stable_time := 0.0
 var support_cells := PackedVector2Array()
 var _support_revision: Array = []
 var _coverage_shape: Array = []
@@ -103,17 +112,61 @@ func consume(delta: float, force_per_length: float, power_per_width: float, idle
 		force_limit: float = INF, exponent := 2.0, minimum := 0.0) -> void:
 	buffer_age += delta
 	biological_age += delta
-	if biological_age > hold_seconds:
+	var expired := false
+	if biological_age >= hold_seconds - 0.000001:
 		energy_buffer = maxf(0.0, energy_buffer - biological_energy)
 		biological_energy = 0.0
-	if buffer_age > hold_seconds:
+	if buffer_age >= hold_seconds - 0.000001:
 		energy_buffer = 0.0
 		biological_energy = 0.0
-	received_power = minf(power_limit(power_per_width, exponent, minimum), energy_buffer / maxf(delta, release_seconds))
+		expired = true
+	var instant_power := minf(power_limit(power_per_width, exponent, minimum),
+		energy_buffer / maxf(delta, release_seconds))
+	var smooth_power := _window_power(instant_power, delta)
+	if smooth_power > 0.0:
+		_stable_time = minf(_stable_time + delta, startup_delay + force_ramp + 1.0)
+	else:
+		_stable_time = maxf(0.0, _stable_time - delta)
+	var gate := 0.0
+	if _stable_time > startup_delay:
+		gate = clampf((_stable_time - startup_delay) / maxf(force_ramp, 0.001), 0.0, 1.0)
+	if expired:
+		_stable_time = 0.0
+		_power_sum = 0.0
+		if not _power_samples.is_empty():
+			_power_samples.fill(0.0)
+		received_power = 0.0
+	else:
+		# 窗口只能重排缓冲里已经存在的能量，不能在空缓冲时凭空续力。
+		received_power = minf(smooth_power * gate, instant_power)
 	used_power = drive(received_power, delta, force_per_length, idle_power, force_limit, exponent, minimum)
 	var fraction := biological_energy / maxf(energy_buffer, 0.001)
 	energy_buffer = maxf(0.0, energy_buffer - used_power * delta)
 	biological_energy = minf(energy_buffer, maxf(0.0, biological_energy - used_power * delta * fraction))
+	if energy_buffer <= 0.0:
+		energy_buffer = 0.0
+		biological_energy = 0.0
+		_stable_time = 0.0
+		_power_sum = 0.0
+		if not _power_samples.is_empty():
+			_power_samples.fill(0.0)
+
+## 环形缓冲的移动平均：固定步长下每个电机每帧 O(1)，不新建数组节点。
+func _window_power(instant: float, delta: float) -> float:
+	var count := maxi(1, roundi(power_window / maxf(delta, 0.001)))
+	if _power_samples.size() != count:
+		_power_samples.resize(count)
+		_power_samples.fill(instant)
+		_power_sum = instant * count
+		_power_index = 0
+		_power_filled = count
+	_power_sum += instant - _power_samples[_power_index]
+	_power_samples[_power_index] = instant
+	_power_index = (_power_index + 1) % count
+	_power_filled = mini(_power_filled + 1, count)
+	if absf(_power_sum) < 0.000001:
+		_power_sum = 0.0
+	return _power_sum / maxf(_power_filled, 1.0)
 
 func drive(available: float, delta: float, force_per_length: float, idle_power: float,
 		force_limit: float = INF, exponent := 2.0, minimum := 0.0) -> float:

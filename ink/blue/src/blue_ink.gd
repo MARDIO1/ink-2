@@ -30,6 +30,12 @@ var flow := EnergyFlow.new()
 ## 单包能量按此周期同比增加，因此降低发包频率不会降低平均功率。
 @export var emission_interval := 0.2
 @export var motor_buffer_seconds := 0.8
+## 电机到达功率的启动门、滑动窗口和爬坡；0 启动门表示立即允许出力。
+@export_range(0.0, 0.5, 0.01) var motor_startup_delay := 0.1
+@export_range(0.02, 1.0, 0.01) var motor_power_window := 0.2
+@export_range(0.01, 0.5, 0.01) var motor_force_ramp := 0.15
+## 同格正反电流相遇时，较小一股回收给胜者的比例；0 = 全部损耗，0.5 = 回收一半。
+@export_range(0.0, 1.0, 0.01) var opposition_recovery := 0.0
 @export var energy_lifetime := 20.0
 @export_range(0.25, 3.0, 0.05) var short_falloff_exponent := 1.0
 @export_range(0.0, 1.0, 0.05) var short_min_scale := 0.0
@@ -401,6 +407,7 @@ func resolve_fixed(context: Dictionary) -> Dictionary:
 	flow.interval = maxf(0.02, emission_interval)
 	flow.lifetime = energy_lifetime
 	flow.pixel_power = power_per_width
+	flow.opposition_recovery = clampf(opposition_recovery, 0.0, 1.0)
 	var result: Dictionary = flow.update(self, context)
 	if _profile_enabled:
 		var elapsed := Time.get_ticks_usec() - started

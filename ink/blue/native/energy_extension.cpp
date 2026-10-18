@@ -128,7 +128,7 @@ static void register_energy_grid() {
 	info.free_instance_func = free_energy_instance;
 	g_register_class6(g_library, (GDExtensionConstStringNamePtr)g_sn_pf_class.buf,
 		(GDExtensionConstStringNamePtr)g_sn_parent.buf, &info);
-	printf("[InkEnergyGrid] 类已注册\n");
+	printf("[InkEnergyGrid2] 类已注册\n");
 
 	GDExtensionClassMethodInfo mi = {};
 	mi.name = (GDExtensionStringNamePtr)g_sn_pf_step.buf;
@@ -160,7 +160,7 @@ static void register_energy_grid() {
 	mi.default_argument_count = 0;
 	mi.default_arguments = nullptr;
 	g_register_method(g_library, (GDExtensionConstStringNamePtr)g_sn_pf_class.buf, &mi);
-	printf("[InkEnergyGrid] 已注册方法 step\n");
+	printf("[InkEnergyGrid2] 已注册方法 step\n");
 }
 
 
@@ -190,11 +190,11 @@ extern "C" __declspec(dllexport) GDExtensionBool gdextension_init(
 	g_pba_index_const = (GDExtensionInterfacePackedByteArrayOperatorIndexConst)p_get_proc_address("packed_byte_array_operator_index_const");
 	if (!g_sn_new || !g_str_new || !g_register_class6 || !g_register_method || !g_construct_object
 			|| !g_object_set_instance || !g_get_ctor || !g_pba_index || !g_pba_index_const) {
-		printf("[InkEnergyGrid] 关键接口缺失\n");
+		printf("[InkEnergyGrid2] 关键接口缺失\n");
 		return 0;
 	}
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_parent.buf, "Object");
-	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pf_class.buf, "InkEnergyGrid");
+	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pf_class.buf, "InkEnergyGrid2");
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pf_step.buf, "step");
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pf_a0.buf, "input");
 	g_sn_new((GDExtensionUninitializedStringNamePtr)g_sn_pf_a1.buf, "out_template");
@@ -203,9 +203,9 @@ extern "C" __declspec(dllexport) GDExtensionBool gdextension_init(
 	g_str_new((GDExtensionUninitializedStringPtr)g_str_empty_hint, "");
 	// PackedByteArray 的构造索引 1 = 拷贝构造
 	g_pba_copy_ctor = g_get_ctor(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY, 1);
-	if (!g_pba_copy_ctor) { printf("[InkEnergyGrid] 拿不到 PackedByteArray 构造函数\n"); return 0; }
+	if (!g_pba_copy_ctor) { printf("[InkEnergyGrid2] 拿不到 PackedByteArray 构造函数\n"); return 0; }
 	if (!g_get_to_type || !g_get_from_type || !g_get_destructor) {
-		printf("[InkEnergyGrid] 缺少 Variant 转换接口\n");
+		printf("[InkEnergyGrid2] 缺少 Variant 转换接口\n");
 		return 0;
 	}
 	g_pba_from_variant = g_get_to_type(GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY);
@@ -214,7 +214,7 @@ extern "C" __declspec(dllexport) GDExtensionBool gdextension_init(
 	// ⚠️ variant_get_ptr_destructor 对 POD 类型（int/float…）返回 **null** —— 它们没有析构函数。
 	// 所以可空项要分开判断，不能一起当"必需"。
 	if (!g_pba_from_variant || !g_pba_to_variant || !g_pba_destructor) {
-		printf("[InkEnergyGrid] Variant 转换函数解析失败: from=%p to=%p dtor=%p\n",
+		printf("[InkEnergyGrid2] Variant 转换函数解析失败: from=%p to=%p dtor=%p\n",
 			(void *)g_pba_from_variant, (void *)g_pba_to_variant,
 			(void *)g_pba_destructor);
 		return 0;
@@ -223,6 +223,6 @@ extern "C" __declspec(dllexport) GDExtensionBool gdextension_init(
 	r_initialization->userdata = nullptr;
 	r_initialization->initialize = initialize;
 	r_initialization->deinitialize = deinitialize;
-	printf("[InkEnergyGrid] 入口被调用，接口全部拿到\n");
+	printf("[InkEnergyGrid2] 入口被调用，接口全部拿到\n");
 	return 1;
 }

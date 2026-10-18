@@ -1,5 +1,7 @@
 extends SceneTree
 
+const Palette := preload("res://ink/general/src/ink_palette.gd")
+
 func _initialize() -> void:
 	call_deferred("_run")
 
@@ -48,13 +50,19 @@ func _run() -> void:
 		surface.rod_layer.pixels.set_pixelv(Vector2i(20, y), Color.YELLOW)
 		surface.rod_layer.pixels.set_pixelv(Vector2i(40, y), Color.YELLOW)
 	surface.rod_layer.refresh()
+	surface.selected_ink = 3
 	surface._begin_undo_step()
 	var yellow_closed: bool = surface._bucket_fill(Vector2(30, 30))
 	surface._commit_undo_step()
 	valid = valid and yellow_closed
-	valid = valid and surface.black_image.get_pixelv(Vector2i(30, 30)).a > 0.5
+	valid = valid and surface.rod_layer.pixels.get_pixelv(Vector2i(30, 30)).a > 0.5
+	valid = valid and surface.black_image.get_pixelv(Vector2i(30, 30)).a < 0.5
 	valid = valid and surface.black_image.get_pixelv(Vector2i(18, 18)).a < 0.5
-	print("[BucketFill] large closed area, undo/redo, open area, yellow border: ",
+	valid = valid and surface.undo_last_edit()
+	valid = valid and surface.rod_layer.pixels.get_pixelv(Vector2i(30, 30)).a < 0.5
+	valid = valid and surface.redo_last_edit()
+	valid = valid and surface.rod_layer.pixels.get_pixelv(Vector2i(30, 30)).a > 0.5
+	print("[BucketFill] large closed area, undo/redo, open area, layered yellow fill: ",
 		"PASS" if valid else "FAIL")
 	scene.queue_free()
 	await process_frame

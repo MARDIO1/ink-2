@@ -42,9 +42,7 @@ const OVERLAP_SHADER := preload("res://ink/yellow/asset/overlap.gdshader")
 #region 绘制与固化
 func _ready() -> void:
 	_world = get_parent().get_parent()
-	for child in _world.get_children():
-		if child is Stroke:
-			strokes.append(child)
+	_sync_strokes()
 	for index in spring_voice_count:
 		var voice := AudioStreamPlayer2D.new()
 		voice.name = "SpringVoice%d" % index
@@ -53,6 +51,22 @@ func _ready() -> void:
 		voice.attenuation = 1.0
 		add_child(voice)
 		_spring_voices.append(voice)
+
+## 场景中的弹簧节点才是权威数据。载入关卡时 Stroke 和 YellowInk 的 _ready/
+## 延迟关节恢复没有稳定的先后顺序；编辑器若恰好在这段窗口执行 F2 回收，
+## 只遍历缓存数组会漏掉整条弹簧。所有跨编辑/运行态的入口先重新发现节点。
+func _sync_strokes() -> void:
+	if not is_instance_valid(_world):
+		return
+	for stroke in strokes.duplicate():
+		if not is_instance_valid(stroke) or stroke.is_queued_for_deletion():
+			strokes.erase(stroke)
+	for child in _world.get_children():
+		# 只有已经提交、会随关卡保存的弹簧才可恢复；绘制预览和拒绝后淡出的
+		# 临时 Stroke 也挂在 world 下，但 owner 为空，不能误收进规则数组。
+		if child is Stroke and child.owner == _world and not child.is_queued_for_deletion() \
+		and not strokes.has(child):
+			strokes.append(child)
 
 func begin(surface, point: Vector2) -> void:
 	cancel()
@@ -107,14 +121,11 @@ func finish(surface, point: Vector2) -> bool:
 	var stroke = drawing
 	drawing = null
 	stroke.path.append(_world.to_local(surface.to_global(point.floor() + Vector2.ONE * 0.5)))
-	if not surface._inside(point) or not valid_anchor(surface, point) \
-	or not endpoint_legal(stroke.path[0]) or not endpoint_legal(stroke.path[-1]):
+	if not surface._inside(point) or not valid_anchor(surface, point):
 		_discard(stroke)
 		return false
-	var distance: float = stroke.path[0].distance_to(stroke.path[-1])
-	if distance > 0.001 and distance < 9.0:
-		_discard(stroke)
-		return false
+	# 端点间距不设硬限制；完全重合仍可做并联弹簧。短弹簧是否有有效几何，
+	# 由 build_pixels()/connected() 判断，而不是由固定的 9px 规则拒绝。
 	stroke.preview = false
 	if not stroke.build_pixels() or not stroke.connected():
 		_discard(stroke)
@@ -140,24 +151,19 @@ func cancel() -> void:
 		_discard(drawing)
 	drawing = null
 
-func endpoint_legal(point: Vector2) -> bool:
-	for stroke in strokes:
-		if stroke.state > Stroke.State.ACTIVE:
-			continue
-		var points: Array = [stroke.path[0], stroke.path[-1]]
-		if stroke.state == Stroke.State.ACTIVE and stroke.anchors.size() == 2:
-			points = [Stroke.anchor_world(stroke.anchors[0]), Stroke.anchor_world(stroke.anchors[1])]
-		for other: Vector2 in points:
-			var distance: float = point.distance_to(other)
-			if distance > 0.001 and distance < 9.0:
-				return false
-	return true
-
 func valid_anchor(surface, point: Vector2) -> bool:
 	if not surface._inside(point):
 		return false
 	var cell: Vector2i = Vector2i(point.floor())
-	return surface.material_at(cell.x, cell.y) == Palette.BLACK.id
+	if surface.material_at(cell.x, cell.y) == Palette.BLACK.id:
+		return true
+	# F2 keeps existing solids intact. They are valid spring supports even when
+	# the editable image has no draft ink at this point.
+	var physics = _world.get("world") if is_instance_valid(_world) else null
+	if physics == null:
+		return false
+	var world_point: Vector2 = _world.to_local(surface.to_global(Vector2(cell) + Vector2.ONE * 0.5))
+	return not Stroke.find_anchor(physics, world_point).is_empty()
 
 func erase_spring_ends(surface, from: Vector2, to: Vector2) -> void:
 	for stroke in strokes.duplicate():
@@ -289,6 +295,7 @@ func clear_drafts(surface) -> void:
 			stroke.queue_free()
 
 func reclaim(surface, keep_drafts := false, preserved: Dictionary = {}) -> void:
+	_sync_strokes()
 	for stroke in strokes.duplicate():
 		if stroke.get_meta(&"corroded", false):
 			continue

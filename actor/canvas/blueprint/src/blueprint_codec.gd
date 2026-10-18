@@ -12,6 +12,8 @@ const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
 const Traits := preload("res://ink/general/src/ink_traits.gd")
+const Rail := preload("res://ink/yellow/src/rail.gd")
+const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
 const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 
 static func vec(value: Array) -> Vector2:
@@ -46,6 +48,9 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	if rect.size.x < 1 or rect.size.y < 1 or rect.size.x > Format.MAX_SIDE or rect.size.y > Format.MAX_SIDE:
 		return {"error": "蓝图尺寸需在 1～1024 像素内"}
 	var surface = canvas.surface
+	var selection_bounds := Rect2(world_point(canvas, Vector2(rect.position)), Vector2.ZERO)
+	for corner in [rect.end, Vector2i(rect.end.x, rect.position.y), Vector2i(rect.position.x, rect.end.y)]:
+		selection_bounds = selection_bounds.expand(world_point(canvas, Vector2(corner)))
 	var data := {"version": Format.VERSION, "id": "", "name": "未命名蓝图", "description": "", "tags": [],
 		"updated": 0, "favorite": false, "editor_only": false, "size": [rect.size.x, rect.size.y],
 		"pixels": [], "fixed_nails": [], "background_nails": [], "infinite_nails": [],
@@ -89,6 +94,8 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 		var at := Vector2i(local_point(canvas, Stroke.anchor_world(child.yellow_anchor)).floor())
 		# 即使只框到轮缘，也不能把齿轮误存成普通碎片。
 		var wheel = child.yellow_anchor.body
+		if not wheel.aabb.intersects(selection_bounds):
+			continue
 		var touched := false
 		for shape in wheel.shapes:
 			var bounds: Rect2i = shape.local_aabb()
@@ -121,27 +128,37 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 			"world": bool(child.fixed_to_world), "legacy": not bool(child.explicit)})
 	# 逐像素读取草稿，不调用会移走原实体的 rasterize/return_to_canvas。
 	var scan := rect.intersection(Rect2i(Vector2i.ZERO, surface.canvas_size))
+	var black_bytes := PackedByteArray()
+	var rod_bytes := PackedByteArray()
+	if scan.has_area():
+		black_bytes = surface.black_image.get_region(scan).get_data()
+		rod_bytes = surface.rod_layer.pixels.get_region(scan).get_data()
+	var colors := {}
 	for y in range(scan.position.y, scan.end.y):
 		for x in range(scan.position.x, scan.end.x):
+			var offset: int = ((y - scan.position.y) * scan.size.x + x - scan.position.x) * 4
+			if black_bytes[offset + 3] <= 127 and rod_bytes[offset + 3] <= 127:
+				continue
 			var at := Vector2i(x, y)
-			if not inside(at, rect, mask):
+			if not mask.is_empty() and not Mask.contains(mask, at):
 				continue
 			var key := index(at - rect.position, rect.size.x)
-			var material: int = surface.material_at(x, y)
-			if material != 0:
-				pixels[key] = material
-			if surface.rod_layer.pixels.get_pixel(x, y).a > 0.5:
+			if black_bytes[offset + 3] > 127:
+				var color := Color8(black_bytes[offset], black_bytes[offset + 1], black_bytes[offset + 2], black_bytes[offset + 3])
+				if not colors.has(color):
+					colors[color] = Palette.material_id_at_color(color)
+				if int(colors[color]) != 0:
+					pixels[key] = int(colors[color])
+			if rod_bytes[offset + 3] > 127:
 				rods[key] = true
-			if surface.blue_layer.mask.has(at):
-				blues[key] = true
-			if surface.nail_layer.nails.has(at):
-				fixed_nails[key] = true
-			elif surface.nail_layer.background_nails.has(at):
-				background_nails[key] = true
-			elif surface.nail_layer.infinite_nails.has(at):
-				infinite_nails[key] = true
+	# 稀疏层按已有坐标读取，不在每个空白像素上反复查四个字典。
+	for pair in [[surface.blue_layer.mask, blues], [surface.nail_layer.nails, fixed_nails],
+		[surface.nail_layer.background_nails, background_nails], [surface.nail_layer.infinite_nails, infinite_nails]]:
+		for at: Vector2i in pair[0]:
+			if inside(at, rect, mask):
+				pair[1][index(at - rect.position, rect.size.x)] = true
 	for body in canvas.world.world.bodies:
-		if body.tags.has("living"):
+		if body.tags.has("living") or (not required.has(body) and not body.aabb.intersects(selection_bounds)):
 			continue
 		var saved := {"pixels": [], "static": body.is_static,
 			"fixed_nails": [], "background_nails": [], "infinite_nails": [],
@@ -251,12 +268,45 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	for pin in surface.rod_layer.slider_pins:
 		var source := Vector2(pin.source)
 		var position := Vector2(pin.position)
-		if not inside(Vector2i(source.floor()), rect, mask) or not inside(Vector2i(position.floor()), rect, mask):
+		var source_in := inside(Vector2i(source.floor()), rect, mask)
+		var position_in := inside(Vector2i(position.floor()), rect, mask)
+		if source_in != position_in:
 			return {"error": "滑块销未完整框入，请把滑块销和它所在的导轨一起框住"}
-		data.slider_pins.append({"source": xy(source - Vector2(rect.position)),
-			"position": xy(position - Vector2(rect.position))})
+		if source_in:
+			data.slider_pins.append({"source": xy(source - Vector2(rect.position)),
+				"position": xy(position - Vector2(rect.position))})
 	for child in canvas.world.get_children():
 		if child.is_queued_for_deletion():
+			continue
+		if child is Rail:
+			var endpoints: PackedVector2Array = child.endpoints_world()
+			var a := local_point(canvas, endpoints[0])
+			var b := local_point(canvas, endpoints[1])
+			var a_in := inside(Vector2i(a.floor()), rect, mask)
+			var b_in := inside(Vector2i(b.floor()), rect, mask)
+			var touched := a_in or b_in
+			if not touched:
+				var steps := maxi(1, ceili(a.distance_to(b)))
+				for step in steps + 1:
+					if inside(Vector2i(a.lerp(b, float(step) / steps).floor()), rect, mask):
+						touched = true
+						break
+			if touched and not (a_in and b_in):
+				return {"error": "黄墨导轨未完整框入，请同时包含导轨两端"}
+			if a_in and b_in:
+				data.rails.append({"a": xy(a - Vector2(rect.position)),
+					"b": xy(b - Vector2(rect.position)), "width": child.rail_width})
+			continue
+		if child is SliderPin and not child.black_anchor.is_empty():
+			var source := local_point(canvas, Stroke.anchor_world(child.black_anchor))
+			var position := local_point(canvas, child.pin_world())
+			var source_in := inside(Vector2i(source.floor()), rect, mask)
+			var position_in := inside(Vector2i(position.floor()), rect, mask)
+			if source_in != position_in:
+				return {"error": "滑块销未完整框入，请把滑块销和它所在的导轨一起框住"}
+			if source_in:
+				data.slider_pins.append({"source": xy(source - Vector2(rect.position)),
+					"position": xy(position - Vector2(rect.position))})
 			continue
 		if child is Hinge and not child is Bearing and not child.yellow_anchor.is_empty():
 			var point := local_point(canvas, Stroke.anchor_world(child.yellow_anchor))
@@ -286,11 +336,20 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 					return {"error": "蓝墨动力箭头未完整框入"}
 				data.motors.append(saved)
 		if child is Stroke and not child.preview and child.state in [Stroke.State.EDITING, Stroke.State.ACTIVE]:
+			var source_path: PackedVector2Array = child.path
+			if source_path.size() < 2:
+				# 激活后的 Stroke 可能已清空绘制路径，端点要从保存的锚点恢复。
+				if not child.activated or child.saved_anchor_a == child.saved_anchor_b:
+					continue
+				source_path = PackedVector2Array([child.saved_anchor_a, child.saved_anchor_b])
+			if source_path.size() < 2:
+				continue
 			var path: Array = []
 			var touched := false
 			var complete := true
-			var points: Array = [child.path[0], child.path[-1]]
-			if child.state == Stroke.State.ACTIVE and child.anchors.size() == 2:
+			var points: Array = [source_path[0], source_path[-1]]
+			if child.state == Stroke.State.ACTIVE and child.anchors.size() == 2 \
+			and not child.anchors[0].is_empty() and not child.anchors[1].is_empty():
 				points = [Stroke.anchor_world(child.anchors[0]), Stroke.anchor_world(child.anchors[1])]
 			for point in points:
 				var at := local_point(canvas, point)
@@ -307,10 +366,10 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 				if not complete:
 					return {"error": "黄墨弹簧连接到选区外，请完整框入"}
 				var worn: Array = []
-				var old_axis: Vector2 = child.path[-1] - child.path[0]
+				var old_axis: Vector2 = source_path[-1] - source_path[0]
 				var length_ratio: float = points[0].distance_to(points[-1]) / maxf(0.001, old_axis.length())
 				for point in child.worn:
-					var local: Vector2 = point if child.compact_raster else (point - child.path[0]).rotated(-old_axis.angle())
+					var local: Vector2 = point if child.compact_raster else (point - source_path[0]).rotated(-old_axis.angle())
 					worn.append(xy(Vector2(local.x * length_ratio, local.y)))
 				data.springs.append({"path": path, "width": child.brush_width, "worn": worn,
 					"dash": child.dash_length, "gap": child.dash_gap, "dashed": child.dashed})

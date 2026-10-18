@@ -382,7 +382,7 @@ func _on_mouse_button(button: InputEventMouseButton) -> void:
 					_rail_drawing = true
 					rod_layer.begin_rail(_mouse_point())
 				return
-			if tool in [Tool.BUCKET, Tool.NAIL]:
+			if tool == Tool.NAIL:
 				return
 		if not button.pressed and ink_material_id() == InkPalette.YELLOW.id and tool == Tool.CIRCLE:
 			return
@@ -1130,7 +1130,21 @@ func _bucket_fill(point: Vector2) -> bool:
 			return false
 	var targets: PackedInt32Array = region.cells
 	var w := canvas_size.x
-	# 整块空区统一从透明变为同一颜色；保存原图字节比逐像素 Dictionary
+
+	# 黄墨属于独立的杆层；填充只生成普通黄色实体，不凭空附加导轨、弹簧或轴点。
+	# 撤销沿用 RodLayer 的稀疏像素步骤，绝不能把黄色伪装进 black_image。
+	if material_id == InkPalette.YELLOW.id:
+		_undo.capture_rod_bucket_before(self, targets)
+		for idx: int in targets:
+			rod_layer.pixels.set_pixelv(Vector2i(idx % w, idx / w), InkPalette.YELLOW.color)
+		if not ink_free:
+			var health = _health_node()
+			if health != null:
+				health.reduce(InkPalette.YELLOW.id, targets.size())
+		rod_layer.refresh()
+		return true
+
+	# 普通墨水统一写入普通图层；保存原图字节比逐像素 Dictionary
 	# 撤销记录省得多，大图填充不会因为历史记录而占用数百 MB。
 	_undo.capture_bucket_before(self, data.duplicate(), material_id, targets.size())
 	var pixel := PackedByteArray([

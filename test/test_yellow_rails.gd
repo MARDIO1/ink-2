@@ -3,7 +3,9 @@ extends SceneTree
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Rail := preload("res://ink/yellow/src/rail.gd")
 const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
+const BlueprintCodec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const PJoint := preload("res://addons/pixel_destruction/physics/joint.gd")
+const SolidSnapshots := preload("res://actor/canvas/src/solid_snapshot_cache.gd")
 var checks := 0
 var failures := 0
 
@@ -74,6 +76,10 @@ func run() -> void:
 			pins.append(child)
 	check("solidification preserves one rail device", rails.size() == 1)
 	check("solidification preserves one slider pin", pins.size() == 1)
+	var runtime_blueprint: Dictionary = BlueprintCodec.capture(canvas, Rect2i(Vector2i.ZERO, surface.canvas_size))
+	check("blueprint captures a solidified rail and slider as functional metadata",
+		not runtime_blueprint.has("error") and runtime_blueprint.rails.size() == 1 \
+		and runtime_blueprint.slider_pins.size() == 1)
 	if rails.size() == 1 and pins.size() == 1:
 		var rail = rails[0]
 		var pin = pins[0]
@@ -107,6 +113,11 @@ func run() -> void:
 				restored_joint = true
 				break
 		check("scene reload restores the moved rail and slider", restored_joint)
+		var restored_canvas = restored.get_node("SmallCanvas")
+		restored_canvas.return_to_canvas(false, true)
+		check("F2-style reclaim restores rail and slider draft metadata",
+			restored_canvas.surface.rod_layer.rails.size() == 1 \
+			and restored_canvas.surface.rod_layer.slider_pins.size() == 1)
 		restored.queue_free()
 		await process_frame
 		pin.black_anchor.body.position += rail.axis_world() * 400.0
@@ -154,6 +165,39 @@ func run() -> void:
 		await process_frame
 		await process_frame
 		check("destroying the black source pixel permanently removes the pin", not is_instance_valid(pin))
+	# 回归：带滑块的大型固定黑体不能被 256px 分块后裁断导轨。
+	var support_scene = load("res://test/fixtures/maps/base_level.tscn").instantiate()
+	support_scene.auto_step = false
+	root.add_child(support_scene)
+	var support_canvas = support_scene.get_node("SmallCanvas")
+	support_canvas.position = Vector2(5000, -5000)
+	support_canvas.canvas_size = Vector2i(300, 520)
+	var support_surface = support_canvas.surface
+	support_surface.ink_free = true
+	support_surface.brush_size = 10
+	paint(support_surface, Rect2i(175, 100, 30, 350))
+	support_surface.write_pixel(Vector2i(178, 420), support_surface.nail_color())
+	support_surface.rod_layer.begin_rail(Vector2(190.5, 60.5))
+	support_surface.rod_layer.finish_rail(Vector2(190.5, 480.5))
+	support_surface.rod_layer.place_slider_pin(Vector2(190.5, 200.5))
+	var document: Dictionary = support_surface.capture_document()
+	support_canvas.generate(false)
+	await process_frame
+	await process_frame
+	var support_pins: Array = support_scene.get_children().filter(func(child): return child is SliderPin)
+	check("large static slider support keeps the entire guide without collisions",
+		support_pins.size() == 1 and support_pins[0].joint != null \
+		and not support_pins[0].joint.contacts_enabled and support_pins[0].black_anchor.body.is_static \
+		and support_pins[0].rail.endpoints_world()[0].distance_to(support_pins[0].rail.endpoints_world()[1]) > 410)
+	var hits_before: int = SolidSnapshots.hits
+	var restored_surface = support_scene.get_node("MapCanvas").surface
+	restored_surface.restore_document(document)
+	var yellow_snapshot = SolidSnapshots.yellow_shape(restored_surface.rod_layer.pixels)
+	yellow_snapshot.clear_pixel(190, 200)
+	check("runtime changes cannot pollute cached blueprint pixels",
+		SolidSnapshots.yellow_shape(restored_surface.rod_layer.pixels).get_pixel(190, 200) == Palette.YELLOW.id)
+	check("snapshot cache is reused and bounded", SolidSnapshots.hits > hits_before and SolidSnapshots._bytes <= SolidSnapshots.LIMIT)
+	support_scene.queue_free()
 	scene.queue_free()
 	await process_frame
 	print("[YellowRails] %d checks, %d failures" % [checks, failures])

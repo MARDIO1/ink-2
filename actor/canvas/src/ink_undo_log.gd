@@ -52,6 +52,17 @@ func capture_bucket_before(surface, data: PackedByteArray, material_id: int,
 	_capture = {"bucket_before": data, "bucket_material": material_id, "bucket_count": count}
 
 
+## 黄墨填充属于独立杆层，沿用杆层步骤以支持撤销、重做和返还墨水。
+func capture_rod_bucket_before(surface, cells: PackedInt32Array) -> void:
+	if not _capturing:
+		return
+	var before := {}
+	for index: int in cells:
+		before[Vector2i(index % surface.canvas_size.x, index / surface.canvas_size.x)] = false
+	_capture = {"rod_pixels": before,
+		"rod_anchors": surface.rod_layer.anchor_points.duplicate(), "rod_delta": cells.size()}
+
+
 ## 结束一次操作：把有变化的部分合成一个步骤压栈；没有变化就不留步骤。
 func commit(surface, rod_step: Dictionary = {}) -> void:
 	if not _capturing:

@@ -106,7 +106,7 @@ const MAX_EDIT_HISTORY := 128
 @export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
 ## 旧地图外置草稿快照的兼容入口；新保存使用 editor_draft。
 @export_file("*.snapshot", "*.png", "*.res", "*.tres") var edit_snapshot_path := ""
-## 场景内嵌的草稿数据；实体仍由原来的节点保存，不经过画布重采样。
+## 标准编辑蓝图；试玩实体不能反写它。空字典仅表示尚未迁移的旧地图。
 @export_storage var editor_draft: Dictionary = {}
 var _document_restored := false
 ## 退出编辑器时：把非机关实体墨化回画布，再保存“墨水为主”的快照。
@@ -325,12 +325,21 @@ func _prepare_document_after_ready() -> void:
 
 ## 游戏实例只固化自己的草稿；编辑实例保持草稿与实体的分离。
 func prepare_loaded_document(editing: bool) -> void:
-	if _document_restored or editor_draft.is_empty() or _map_canvas == null:
+	if _document_restored or _map_canvas == null:
 		return
-	_document_restored = true
 	var previous_free: bool = _map_canvas.surface.ink_free
 	_map_canvas.surface.ink_free = true
-	var error: Error = _map_canvas.surface.restore_document(editor_draft)
+	var error: Error = OK
+	if editor_draft.is_empty():
+		# 旧地图的内容在外置快照里；普通游玩也要读取，不能等第一次 F2。
+		_load_edit_snapshot_if_needed()
+		if not _edit_snapshot_loaded:
+			_map_canvas.surface.ink_free = previous_free
+			return
+		editor_draft = _map_canvas.surface.capture_document()
+	else:
+		error = _map_canvas.surface.restore_document(editor_draft)
+	_document_restored = error == OK
 	if error == OK and not editing:
 		_map_canvas.generate(false)
 	_map_canvas.surface.ink_free = previous_free
@@ -666,8 +675,11 @@ func _enter() -> void:
 		var edit_surface = _map_canvas.get_node_or_null("CanvasSurface")
 		if edit_surface != null:
 			edit_surface.clear_history()
-	# 进入编辑器不再把实体栅格化；只有显式“墨化”才执行重采样。
+	# 只有没有标准蓝图的旧地图允许转换一次；之后只加载蓝图。
 	_set_ink_free(true)
+	if _map_canvas != null and editor_draft.is_empty():
+		_map_canvas.return_to_canvas(false, true)
+		editor_draft = _map_canvas.surface.capture_document()
 	_set_monster_physics_paused(true)
 	_pause_editor_simulation()
 	if _player == null:
@@ -781,8 +793,14 @@ func _exit() -> void:
 	_show_canvas(_map_canvas, false)
 	for play_canvas in _play_canvases():
 		_show_canvas(play_canvas, true)
-	if _canvas != null and _canvas.has_method("activate_hand_tool"):
-		_canvas.activate_hand_tool()
+		play_canvas.activate_hand_tool()
+	# 无普通画布的地图也能游玩；隐藏的 MapCanvas 不会替玩家重新启用手。
+	if _map_canvas != null:
+		_map_canvas.activate_hand_tool()
+	if _player != null:
+		var hand: Node = _player.get_node_or_null("Arm/Hand/HandControl")
+		if hand != null:
+			hand.set_enabled(true)
 	_session.mode = MONSTER_MODE_NONE
 	_cancel_layout_drag()
 	_set_selected_monster(null)
@@ -2356,6 +2374,9 @@ func _remove_dialogue_trigger_by_id(trigger_id: String) -> bool:
 func _refresh_dialogue_trigger_visuals() -> void:
 	if not is_inside_tree():
 		return
+	var container := _level_root().get_node_or_null("DialogueTriggers") as Node2D
+	if container != null:
+		container.visible = active
 	for trigger in get_tree().get_nodes_in_group(DialogueTriggerScript.GROUP):
 		if trigger.has_method("_refresh_editor_visibility"):
 			trigger._refresh_editor_visibility()

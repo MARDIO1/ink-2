@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -54,7 +55,7 @@ struct Kernel {
     std::unordered_map<int,Wire> wires;
     int64_t clock=0,serial=0,updates=0;
     int64_t normalise_serial=0;
-    double injected=0,consumed=0,lost=0,capacity=1e7,minimum=1;
+    double injected=0,consumed=0,lost=0,capacity=1e7,minimum=1,opposition_recovery=0;
     int64_t life=12000;
     std::vector<double> rooms,delivered;
     std::vector<double> delivered_bio;
@@ -85,8 +86,12 @@ struct Kernel {
             h.yielded=0;
             if(h.ring_entry)continue;
             for(int d=0;d<4;d+=2)if(h.e[d]>0&&h.e[d+1]>0){
-                int loser=h.e[d]>h.e[d+1]?d+1:d; // 等值保留右/下方向。
-                lost+=h.e[loser];h.e[loser]=0;h.yielded|=uint8_t(1<<loser);
+                int winner=h.e[d]>h.e[d+1]?d:d+1; // 等值保留右/下方向。
+                int loser=winner^1;
+                double transfer=h.e[loser]*opposition_recovery;
+                h.e[winner]+=transfer;
+                lost+=h.e[loser]-transfer;
+                h.e[loser]=0;h.yielded|=uint8_t(1<<loser);
             }
         }
         for(auto &[id,w]:wires)for(auto &[p,h]:w.front)if(!h.ring_entry){
@@ -272,7 +277,7 @@ struct Kernel {
                     for(auto &[id,w]:wires)normalise(w.front,true);seeds.clear();
                     for(int i=0;i<steps;i++)step();write_snapshot(o);snapshot=true;
                 }
-                else if(op==11){capacity=r.read<double>();life=r.read<int64_t>();minimum=r.read<double>();biological_producer=r.read<int64_t>();}
+                else if(op==11){capacity=r.read<double>();life=r.read<int64_t>();minimum=r.read<double>();biological_producer=r.read<int64_t>();opposition_recovery=std::clamp(r.read<double>(),0.0,1.0);}
                 else if(op==12){
                     int id=r.read<int32_t>();auto &w=wires.at(id);size_t needed=4+w.front.size()*80;
                     if(needed>o.size)o.put<int32_t>(-int32_t(needed));
@@ -289,7 +294,8 @@ struct Kernel {
                 else throw std::runtime_error("unknown command");
             }
             if(!snapshot)o.put<int32_t>(0);
-        }catch(...){o.pos=0;o.put<int32_t>(-1);}
+        }catch(const std::exception &e){std::fprintf(stderr,"Energy command error: %s\n",e.what());o.pos=0;o.put<int32_t>(-1);}
+        catch(...){std::fprintf(stderr,"Energy command error: unknown\n");o.pos=0;o.put<int32_t>(-1);}
         written=o.pos;
     }
 };

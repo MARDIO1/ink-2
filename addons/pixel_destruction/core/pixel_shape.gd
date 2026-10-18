@@ -453,6 +453,14 @@ func local_aabb() -> Rect2i:
 	return _aabb_cache
 
 
+## 延迟物理重建期间：像素已删，但允许 AABB 暂时保持最后一份（只会偏大）。
+## 渲染器因此不必每帧 O(chunks) 重扫；下一次 decompose/rebuild 会写回真实 AABB。
+func freeze_aabb_cache() -> void:
+	if _aabb_cache.size.x <= 0 or _aabb_cache.size.y <= 0:
+		local_aabb()
+	_aabb_rev = _bounds_rev
+
+
 ## 凸包缓存（**与 local_aabb() 并列的另一种包围体**，见 HullFit）。
 ##
 ## ⚠️⚠️ 失效判据必须是 revision（**内容版本**），**不能**跟 AABB 一样挂在 _bounds_rev 上。

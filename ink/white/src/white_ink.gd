@@ -221,7 +221,7 @@ func _corrode(_context: Dictionary, state: Dictionary, amount: int,
 		removals: Dictionary) -> int:
 	var target = state.target
 	var seeds: Array = state.seeds
-	var plan: Dictionary = removals.get_or_add(target, {})
+	var plan: Dictionary = removals.get(target, {})
 	var added := 0
 	var stalled := 0
 	while added < amount and stalled < seeds.size() * 3:
@@ -239,7 +239,10 @@ func _corrode(_context: Dictionary, state: Dictionary, amount: int,
 		else:
 			added += bite
 			stalled = 0
-	_mark_corrosion(target, plan)
+	# 没有真正删掉像素时不要留下空 carve：否则调用方会白重建整块刚体。
+	if added > 0:
+		removals[target] = plan
+		_mark_corrosion(target, plan)
 	return added
 
 
