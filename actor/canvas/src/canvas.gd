@@ -21,6 +21,8 @@ const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.g
 const InkPanel := preload("res://actor/canvas/panel/src/ink_panel.gd")
 const ToolbarBuilder := preload("res://actor/canvas/toolbar/src/toolbar_builder.gd")
 const ExpandWindow := preload("res://actor/canvas/panel/src/expand_canvas_window.gd")
+const ShapeMenu := preload("res://actor/canvas/toolbar/src/shape_menu.gd")
+const ToolbarActions := preload("res://actor/canvas/toolbar/src/toolbar_actions.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
 const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
@@ -1024,31 +1026,17 @@ var _temporary_eraser := false
 
 ## 构建形状选择弹出菜单（矩形 / 圆形 / 直线）。
 func _build_shape_popup() -> void:
-	_shape_popup = PopupMenu.new()
-	_shape_popup.name = "ShapePopup"
-	_shape_popup.add_item("矩形", SurfaceScript.Tool.RECT)
-	_shape_popup.add_item("圆形", SurfaceScript.Tool.CIRCLE)
-	_shape_popup.add_item("直线", SurfaceScript.Tool.LINE)
-	_shape_popup.id_pressed.connect(_on_shape_picked)
-	_shape_popup.popup_hide.connect(_on_shape_popup_hide)
-	add_child(_shape_popup)
+	_shape_popup = ShapeMenu.build_shapes(self, _on_shape_picked, _on_shape_popup_hide)
 
 
 ## 左键沿用矩形框选；右键选择矩形或圆形，不占用额外工具栏位置。
 func _build_selection_popup() -> void:
-	_selection_popup = PopupMenu.new()
-	_selection_popup.name = "SelectionPopup"
-	_selection_popup.add_item("矩形框选", SurfaceScript.Tool.SELECT_DELETE)
-	_selection_popup.add_item("圆形框选", SurfaceScript.Tool.SELECT_CIRCLE)
-	_selection_popup.id_pressed.connect(_on_selection_picked)
-	add_child(_selection_popup)
+	_selection_popup = ShapeMenu.build_selection(self, _on_selection_picked)
 
 
 func _on_selection_button_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		_selection_popup.position = Vector2i(get_viewport().get_mouse_position())
-		_selection_popup.reset_size()
-		_selection_popup.popup()
+		ShapeMenu.popup_at(_selection_popup, self)
 		get_viewport().set_input_as_handled()
 
 
@@ -1062,10 +1050,7 @@ func _open_shape_popup() -> void:
 		return
 	# 打开菜单不代表已选择新形状，保留当前实际工具的选中状态。
 	_apply_tool(surface.tool)
-	# 按钮在 Node2D 父级下 global_rect 不准，直接用鼠标视口坐标。
-	_shape_popup.position = Vector2i(get_viewport().get_mouse_position())
-	_shape_popup.reset_size()
-	_shape_popup.popup()
+	ShapeMenu.popup_at(_shape_popup, self)
 
 
 ## 选中某个形状后切换工具并更新按钮提示。
@@ -1083,12 +1068,7 @@ func _on_shape_popup_hide() -> void:
 
 
 func _update_shape_tooltip(tool: int) -> void:
-	var shape_name := "矩形"
-	if tool == SurfaceScript.Tool.CIRCLE:
-		shape_name = "圆形"
-	elif tool == SurfaceScript.Tool.LINE:
-		shape_name = "直线"
-	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（3）\n点击按钮或按 3 选择形状" % shape_name
+	tool_grid.get_node("Shape").tooltip_text = ToolbarActions.shape_tooltip(tool)
 
 
 func _apply_tool(tool: int) -> void:
@@ -1096,20 +1076,7 @@ func _apply_tool(tool: int) -> void:
 			and not _map_editor_mode:
 		return
 	surface.tool = tool
-	hand_button.set_pressed_no_signal(tool == SurfaceScript.Tool.HAND)
-	tool_grid.get_node("Brush").set_pressed_no_signal(tool == SurfaceScript.Tool.BRUSH)
-	tool_grid.get_node("Eraser").set_pressed_no_signal(tool == SurfaceScript.Tool.ERASER)
-	tool_grid.get_node("Shape").set_pressed_no_signal(
-		tool == SurfaceScript.Tool.RECT or tool == SurfaceScript.Tool.CIRCLE \
-		or tool == SurfaceScript.Tool.LINE
-	)
-	tool_grid.get_node("Nail").set_pressed_no_signal(tool == SurfaceScript.Tool.NAIL)
-	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
-	tool_grid.get_node("SelectDelete").set_pressed_no_signal(
-		tool in [SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE])
-	tool_grid.get_node("SelectDelete").tooltip_text = (
-		"%s（6）\n左键拖动选区和内容；Ctrl+左键只移动选框；框内右键删除\nR 每次顺时针旋转 2°；按钮上右键切换矩形 / 圆形选区，Ctrl+Z 撤销" %
-		("圆形框选" if tool == SurfaceScript.Tool.SELECT_CIRCLE else "框选"))
+	ToolbarActions.highlight(tool_grid, hand_button, tool)
 	_sync_hand_enabled(tool)
 	if tool in [SurfaceScript.Tool.RECT, SurfaceScript.Tool.CIRCLE, SurfaceScript.Tool.LINE]:
 		_update_shape_tooltip(tool)
