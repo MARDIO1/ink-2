@@ -121,14 +121,11 @@ func finish(surface, point: Vector2) -> bool:
 	var stroke = drawing
 	drawing = null
 	stroke.path.append(_world.to_local(surface.to_global(point.floor() + Vector2.ONE * 0.5)))
-	if not surface._inside(point) or not valid_anchor(surface, point) \
-	or not endpoint_legal(stroke.path[0]) or not endpoint_legal(stroke.path[-1]):
+	if not surface._inside(point) or not valid_anchor(surface, point):
 		_discard(stroke)
 		return false
-	var distance: float = stroke.path[0].distance_to(stroke.path[-1])
-	if distance > 0.001 and distance < 9.0:
-		_discard(stroke)
-		return false
+	# 端点间距不设硬限制；完全重合仍可做并联弹簧。短弹簧是否有有效几何，
+	# 由 build_pixels()/connected() 判断，而不是由固定的 9px 规则拒绝。
 	stroke.preview = false
 	if not stroke.build_pixels() or not stroke.connected():
 		_discard(stroke)
@@ -153,25 +150,6 @@ func cancel() -> void:
 	if is_instance_valid(drawing):
 		_discard(drawing)
 	drawing = null
-
-func endpoint_legal(point: Vector2) -> bool:
-	for stroke in strokes:
-		if not is_instance_valid(stroke) or stroke.is_queued_for_deletion() or stroke.state > Stroke.State.ACTIVE:
-			continue
-		var points: Array = []
-		if stroke.state == Stroke.State.ACTIVE and stroke.anchors.size() == 2:
-			points = [Stroke.anchor_world(stroke.anchors[0]), Stroke.anchor_world(stroke.anchors[1])]
-		elif stroke.path.size() >= 2:
-			points = [stroke.path[0], stroke.path[-1]]
-		elif stroke.activated:
-			points = [stroke.saved_anchor_a, stroke.saved_anchor_b]
-		else:
-			continue
-		for other: Vector2 in points:
-			var distance: float = point.distance_to(other)
-			if distance > 0.001 and distance < 9.0:
-				return false
-	return true
 
 func valid_anchor(surface, point: Vector2) -> bool:
 	if not surface._inside(point):

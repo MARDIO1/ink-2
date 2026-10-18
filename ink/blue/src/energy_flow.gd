@@ -9,6 +9,7 @@ var speed := 600.0
 var interval := 0.1
 var lifetime := 20.0
 var minimum_energy := 1.0
+var opposition_recovery := 0.0
 var pixel_power := 100000000.0
 var biological_producer := 0
 var clock := 0
@@ -32,6 +33,7 @@ var _wire_rect_cache: Dictionary = {}
 var _wire_rect_layout: Dictionary = {}
 var stats := {"injected": 0.0, "consumed": 0.0, "lost": 0.0, "updates": 0, "shorts": 0}
 var _native: Object = null
+var _native_supports_recovery := false
 var _ids: Dictionary = {}
 var _layouts: Dictionary = {}
 var _serial := 0
@@ -49,10 +51,12 @@ func _notification(what: int) -> void:
 func _ensure() -> void:
 	if _native != null:
 		return
-	if not ClassDB.class_exists("InkEnergyGrid"):
+	if not ClassDB.class_exists("InkEnergyGrid2") and not ClassDB.class_exists("InkEnergyGrid"):
 		GDExtensionManager.load_extension("res://ink/blue/native/ink_energy.gdextension")
-	assert(ClassDB.class_exists("InkEnergyGrid"), "InkEnergyGrid missing: build ink/native then import project")
-	_native = ClassDB.instantiate("InkEnergyGrid")
+	var native_class := "InkEnergyGrid2" if ClassDB.class_exists("InkEnergyGrid2") else "InkEnergyGrid"
+	assert(ClassDB.class_exists(native_class), "InkEnergyGrid missing: build ink/native then import project")
+	_native_supports_recovery = native_class == "InkEnergyGrid2"
+	_native = ClassDB.instantiate(native_class)
 
 func _call(commands: PackedByteArray) -> StreamPeerBuffer:
 	_ensure()
@@ -97,6 +101,8 @@ func _vectors(buffer: StreamPeerBuffer, count: int) -> PackedVector2Array:
 	return bytes_to_var(encoded)
 
 func advance(wires: Array, delta: float) -> void:
+	# 先确定 DLL 协议版本，再决定是否发送回收字段；否则首帧会少写 8 字节。
+	_ensure()
 	var commands := StreamPeerBuffer.new()
 	var by_id := {}
 	for old in _ids.keys():
@@ -129,6 +135,8 @@ func advance(wires: Array, delta: float) -> void:
 	commands.put_64(maxi(1, ceili(lifetime * speed)))
 	commands.put_double(minimum_energy)
 	commands.put_64(biological_producer)
+	if _native_supports_recovery:
+		commands.put_double(opposition_recovery)
 	var contact_key: Array = [_serial, contact_epoch]
 	for wire in wires:
 		contact_key.append(_ids[wire])
@@ -281,6 +289,9 @@ func update(rule, context: Dictionary) -> Dictionary:
 				rule.short_falloff_exponent, rule.short_min_scale) * rule.motor_buffer_seconds
 			motor.release_seconds = interval
 			motor.hold_seconds = maxf(rule.motor_buffer_seconds, interval * 1.1)
+			motor.startup_delay = rule.motor_startup_delay
+			motor.power_window = rule.motor_power_window
+			motor.force_ramp = rule.motor_force_ramp
 			motors.append(motor)
 	var phase_start := Time.get_ticks_usec()
 	_rebuild_local_contacts(rule, wires, motors)

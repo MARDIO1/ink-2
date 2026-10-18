@@ -117,6 +117,10 @@ func _physics_process(delta: float) -> void:
 		steps += 1
 	if _elapsed > _main.fixed_dt * _main.max_substeps:
 		_elapsed = 0.0
+	if _physics.has_pending_carves():
+		var carve_nodes: Array = _main._body_nodes.duplicate()
+		if _physics.flush_due_carves(_main.world):
+			_physics.sync_after_commit(carve_nodes, [])
 	if is_instance_valid(_forces):
 		_forces.finish(delta)
 	_physics.sync_render()

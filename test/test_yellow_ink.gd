@@ -172,6 +172,7 @@ func run() -> void:
 	check("dying yellow stroke does not emit twice", splash.sprayed_count == splashes_before + 1)
 	_test_erosion()
 	_test_parallel()
+	await _test_spacing()
 	await _test_serialization()
 	if "--render" in OS.get_cmdline_user_args():
 		await _render_sample()
@@ -339,6 +340,24 @@ func _test_parallel() -> void:
 				shape.owner_body = null
 			body.shapes.clear()
 		world._rp = null
+
+
+func _test_spacing() -> void:
+	surface.clear()
+	rule.clear_drafts(surface)
+	paint(Rect2i(190, 20, 30, 30))
+	var previous_brush: int = surface.brush_size
+	surface.brush_size = 3
+	var before: int = rule.strokes.size()
+	check("short spring below old 9px length limit is accepted",
+		draw(Vector2(200, 30), Vector2(203, 30)) and rule.strokes.size() == before + 1)
+	check("nearby spring endpoint below old 9px spacing limit is accepted",
+		draw(Vector2(204, 30), Vector2(212, 30)) and rule.strokes.size() == before + 2)
+	surface.brush_size = previous_brush
+	rule.clear_drafts(surface)
+	surface.clear()
+	await process_frame
+
 
 func _render_sample() -> void:
 	surface.clear()

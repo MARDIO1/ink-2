@@ -6,10 +6,11 @@ import subprocess
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--compiler", default=shutil.which("g++") or "C:/mingw64/bin/g++.exe")
+parser.add_argument("--output", default="ink_energy.dll")
 args = parser.parse_args()
 here = Path(__file__).resolve().parent
 subprocess.run([
     args.compiler, "-O3", "-std=c++17", "-ffp-contract=off", "-shared", "-static",
-    str(here / "energy_extension.cpp"), "-o", str(here / "ink_energy.dll"),
+    str(here / "energy_extension.cpp"), "-o", str(here / args.output),
 ], check=True, cwd=here)
-print(here / "ink_energy.dll")
+print(here / args.output)

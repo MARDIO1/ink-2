@@ -32,11 +32,9 @@ const BACKGROUND_SWEEP_TAG: String = "background_original_white_sweep"
 ## 全局表面速度上限（px/s），0 表示关闭。
 ## _clamp_speeds 会直接修改所有动态体的线速度和角速度，因此不保持动量与能量；
 ## 角速度上限为 max_surface_speed / bounding_radius。
-@export var max_surface_speed: float = 1000.0
+@export var max_surface_speed: float = 2000.0
 ## 「世界光速」= 世界线速度上限（px/s）。由 root 统一下发，关卡不再各写一份。
 @export var world_max_linear_velocity: float = 2000.0
-## 世界下落分量钳制（px/s，<=0 = 不钳）；只钳下落、不影响水平抛射与爆炸冲量。
-@export var world_terminal_speed: float = 650.0
 
 ## Rapier 逐体 CCD 的软预测距离（px），0 表示无提前量。
 @export var ccd_soft_prediction: float = 0.5
@@ -48,6 +46,12 @@ const BACKGROUND_SWEEP_TAG: String = "background_original_white_sweep"
 @export var debris_isolate_thickness: float = 10.0
 ## 像素数低于该值的碎片也降级为纯视觉灰尘，0 表示关闭。
 @export var debris_max_pixels: int = 40
+
+## 腐蚀碰撞体延迟同步：像素与渲染每 tick 照常更新，碰撞体按像素数/时间批量重建。
+## 只有块数达到 min_chunks 的大目标才启用；小目标仍每 tick 精确重建。
+@export var carve_defer_min_chunks: int = 128
+@export var carve_sync_max_pixels: int = 48
+@export var carve_sync_max_ms: int = 350
 
 ## 碰撞层：默认刚体=1，隔离碎片=2，玩家及手=4。
 const DEBRIS_LAYER := 2
@@ -68,6 +72,9 @@ var _dust = null
 var _pending_dust: Array = []
 var profile_enabled: bool = false
 var _profile: Dictionary = {}
+## body -> {com_local, pixels, since_ms, dirty, chunks, shapes}
+## 延迟腐蚀期间只累计像素改动，碰撞体留到 flush_due_carves。
+var _carve_pending: Dictionary = {}
 ## 上一次固定步发生速度钳制的次数。
 var last_speed_clamped: int = 0
 ## 上一次固定步被预算压掉的子步数。
@@ -96,7 +103,9 @@ func setup(main, player, protected_bodies: Array, camera: Camera2D) -> void:
 	_push_knob(world, "max_surface_speed", max_surface_speed)
 	# 世界级的速度上限统一从这里下发（改名/改值只改 root，不用动关卡场景）
 	_push_knob(world, "rp_max_linear_velocity", world_max_linear_velocity)
-	_push_knob(world, "terminal_speed", world_terminal_speed)
+	# 旧的下落终端速度钳制已删除；不再把下落速度截在 650 px/s。
+	if "terminal_speed" in world:
+		world.terminal_speed = 0.0
 	if _player != null and _player.body != null:
 		_player.body.collision_layer = PLAYER_LAYER
 	for body in _protected:
@@ -200,7 +209,10 @@ func contacts(world) -> Array:
 ## 同步分片后的节点数组，并回收已经失去 PBody 的节点。
 func sync_after_commit(previous_nodes: Array, changed: Variant = null) -> void:
 	var start: int = Time.get_ticks_usec() if profile_enabled else 0
+	var world_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	_main.sync_world_bodies()
+	if profile_enabled:
+		_profile.sync_world_us = _profile.get("sync_world_us", 0) + Time.get_ticks_usec() - world_start
 	var live: Dictionary = {}
 	for body in _main.world.bodies:
 		live[body] = true
@@ -341,6 +353,8 @@ func commit(physics, removals: Dictionary, bursts: Dictionary = {},
 	var fragments: int = 0
 	var replacements: Dictionary = {}
 	for body in removals:
+		# 普通破坏会换掉/拆开 shape，延迟腐蚀的旧 COM 与块提示随之作废。
+		_carve_pending.erase(body)
 		if Traits.is_unbreakable(body):
 			continue
 		var anchor_points: Dictionary = body.tags.get(ANCHOR_TAG, {})
@@ -398,17 +412,15 @@ func carve(physics, removals: Dictionary) -> Dictionary:
 	var profile_start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var changed: Array = []
 	var removed := 0
+	var now := Time.get_ticks_msec()
 	for body in removals:
 		if not physics.bodies.has(body) or Traits.is_unbreakable(body):
+			_carve_pending.erase(body)
 			continue
 		var old_com: Vector2 = body.com_world()
-		var background_points: Dictionary = body.tags.get(BACKGROUND_TAG, {})
-		var background_layer: int = int(body.tags.get(BACKGROUND_LAYER_TAG, body.collision_layer))
-		var background_mask: int = int(body.tags.get(BACKGROUND_MASK_TAG, body.collision_mask))
-		var old_velocity: Vector2 = body.linear_velocity
-		var old_angular: float = body.angular_velocity
 		var dirty: Dictionary = {}
 		var changed_chunks: Dictionary = {}
+		var removed_here := 0
 		for shape in body.shapes:
 			var mask: Dictionary = removals[body].get(shape, {})
 			if mask.is_empty():
@@ -423,32 +435,137 @@ func carve(physics, removals: Dictionary) -> Dictionary:
 				var pixel_rect := Rect2i(cell, Vector2i.ONE)
 				bounds = bounds.merge(pixel_rect) if has_bounds else pixel_rect
 				has_bounds = true
-				removed += 1
+				removed_here += 1
 			if has_bounds:
 				dirty[shape] = bounds.grow(1)
-		var kept: Array = body.shapes.filter(func(shape): return shape.pixel_count() > 0)
-		if kept.is_empty():
-			physics.remove_body(body)
-			body_fractured.emit(physics, body, [])
+		removed += removed_here
+		if removed_here == 0:
+			# 空 carve 不要整块 rebuild：那会白跑一次分解并把整张图打回全量重绘。
 			continue
-		body.rebuild(kept, physics.density_callable(), physics.max_rects_per_shape,
-			Rect2i(), physics.friction_callable(), physics.restitution_callable(),
-			dirty, changed_chunks)
-		var offset: Vector2 = body.com_world() - old_com
-		body.linear_velocity = old_velocity + old_angular * Vector2(-offset.y, offset.x)
-		body.angular_velocity = old_angular
-		body.awake = true
-		body.sleep_timer = 0.0
-		GearCenters.prune(body)
-		_update_anchors(body, body.tags.get(ANCHOR_TAG, {}))
-		_update_background_anchors(body, background_points, background_layer, background_mask)
-		body_fractured.emit(physics, body, [body])
-		changed.append(body)
+		if _carve_pending.has(body) or _can_defer_carve(body):
+			_defer_carve(body, old_com, removed_here, dirty, changed_chunks, now)
+			continue
+		if _flush_carve(physics, body, old_com, null, dirty, changed_chunks):
+			changed.append(body)
 	if profile_enabled:
 		_profile.carve_us = _profile.get("carve_us", 0) + Time.get_ticks_usec() - profile_start
 		_profile.carve_calls = _profile.get("carve_calls", 0) + removals.size()
 		_profile.removed_pixels = _profile.get("removed_pixels", 0) + removed
 	return {"changed": changed, "calls": removals.size(), "removed": removed}
+
+
+## 块数够多才值得把碰撞体攒起来重建；小体每 tick 重建本来就很便宜。
+func _can_defer_carve(body) -> bool:
+	if carve_defer_min_chunks <= 0:
+		return false
+	var chunks := 0
+	for shape in body.shapes:
+		chunks += shape.chunks.size()
+		if chunks >= carve_defer_min_chunks:
+			return true
+	return false
+
+
+func _defer_carve(body, old_com: Vector2, removed_here: int, dirty: Dictionary,
+		changed_chunks: Dictionary, now: int) -> void:
+	var pending: Dictionary = _carve_pending.get(body, {})
+	if pending.is_empty():
+		pending = {
+			"com_local": body.to_local(old_com),
+			"pixels": 0,
+			"since_ms": now,
+			"dirty": {},
+			"chunks": {},
+			"shapes": body.shapes.duplicate(),
+		}
+		_carve_pending[body] = pending
+	pending["pixels"] = int(pending["pixels"]) + removed_here
+	pending["chunks"].merge(changed_chunks, true)
+	var merged: Dictionary = pending["dirty"]
+	for shape in dirty:
+		var prev: Rect2i = merged.get(shape, Rect2i())
+		merged[shape] = dirty[shape] if prev.size.x <= 0 or prev.size.y <= 0 \
+			else prev.merge(dirty[shape])
+		shape.freeze_aabb_cache()
+	# 锚点/背景层/齿轮中心不依赖碰撞体，仍然每 tick 精确更新；
+	# 否则"腐蚀掉最后一枚钉子"要等延迟同步才释放 static。
+	GearCenters.prune(body)
+	_update_anchors(body, body.tags.get(ANCHOR_TAG, {}))
+	var background_points: Dictionary = body.tags.get(BACKGROUND_TAG, {})
+	var background_layer: int = int(body.tags.get(BACKGROUND_LAYER_TAG, body.collision_layer))
+	var background_mask: int = int(body.tags.get(BACKGROUND_MASK_TAG, body.collision_mask))
+	_update_background_anchors(body, background_points, background_layer, background_mask)
+
+
+func has_pending_carves() -> bool:
+	return not _carve_pending.is_empty()
+
+
+## 每帧最多同步一个到期目标，避免多个大刚体在同一帧叠成尖峰。
+## 返回 true 表示这一帧确实重建过（哪怕目标刚好吃空并被移除）。
+func flush_due_carves(physics) -> bool:
+	if _carve_pending.is_empty():
+		return false
+	var now := Time.get_ticks_msec()
+	for body in _carve_pending.keys():
+		if not physics.bodies.has(body) or Traits.is_unbreakable(body):
+			_carve_pending.erase(body)
+			continue
+		var pending: Dictionary = _carve_pending[body]
+		var due: bool = int(pending["pixels"]) >= maxi(1, carve_sync_max_pixels) \
+			or now - int(pending["since_ms"]) >= maxi(1, carve_sync_max_ms)
+		if not due:
+			continue
+		_carve_pending.erase(body)
+		var old_com: Vector2 = body.to_world(pending["com_local"])
+		var flush_start: int = Time.get_ticks_usec() if profile_enabled else 0
+		_flush_carve(physics, body, old_com, pending, {}, {})
+		if profile_enabled:
+			_profile.carve_syncs = _profile.get("carve_syncs", 0) + 1
+			_profile.carve_flush_us = _profile.get("carve_flush_us", 0) + Time.get_ticks_usec() - flush_start
+		return true
+	return false
+
+
+## pending == null 是普通 carve；否则把延迟期间累计的脏块/COM 一起结算。
+func _flush_carve(physics, body, old_com: Vector2, pending: Variant,
+		dirty: Dictionary, changed_chunks: Dictionary) -> bool:
+	var dirty_rects: Dictionary = dirty
+	var chunks: Variant = changed_chunks
+	if pending != null and not pending.is_empty():
+		old_com = body.to_world(pending["com_local"])
+		dirty_rects = pending["dirty"]
+		chunks = pending["chunks"]
+		# shape 结构被别的路径换过：块提示可能过时，宁可全量重算质量。
+		if pending.get("shapes") != body.shapes:
+			chunks = null
+	var kept: Array = body.shapes.filter(func(shape): return not shape.is_empty())
+	if kept.is_empty():
+		physics.remove_body(body)
+		body_fractured.emit(physics, body, [])
+		return false
+	var rects: Dictionary = {}
+	for shape in kept:
+		var rect: Rect2i = dirty_rects.get(shape, Rect2i())
+		rects[shape] = rect if rect.size.x > 0 and rect.size.y > 0 else Rect2i(0, 0, 1, 1)
+	var old_velocity: Vector2 = body.linear_velocity
+	var old_angular: float = body.angular_velocity
+	body.rebuild(kept, physics.density_callable(), physics.max_rects_per_shape,
+		Rect2i(), physics.friction_callable(), physics.restitution_callable(),
+		rects, chunks)
+	var offset: Vector2 = body.com_world() - old_com
+	body.linear_velocity = old_velocity + old_angular * Vector2(-offset.y, offset.x)
+	body.angular_velocity = old_angular
+	body.awake = true
+	body.sleep_timer = 0.0
+	GearCenters.prune(body)
+	_update_anchors(body, body.tags.get(ANCHOR_TAG, {}))
+	var background_points: Dictionary = body.tags.get(BACKGROUND_TAG, {})
+	var background_layer: int = int(body.tags.get(BACKGROUND_LAYER_TAG, body.collision_layer))
+	var background_mask: int = int(body.tags.get(BACKGROUND_MASK_TAG, body.collision_mask))
+	_update_background_anchors(body, background_points, background_layer, background_mask)
+	body_fractured.emit(physics, body, [body])
+	return true
 
 
 ## 第二轮只查破坏后的几何并施力，不生成伤害、不搜索旧体对应的最近碎片。

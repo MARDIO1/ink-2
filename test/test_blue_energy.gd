@@ -114,6 +114,18 @@ func run() -> void:
 			flow.inject(wire, Vector2i(21 if adjacent else 20, 0), 0, 40.0 if strong_right else 100.0, 22)
 			advance(flow, wire, 25)
 			check("larger opposing current reaches sink adjacent=%s right=%s" % [adjacent, strong_right], is_equal_approx(sink.energy, 100.0) and is_equal_approx(flow.stats.lost, 40.0) and flow.stored_energy() == 0.0 and wire.mask.size() == 50)
+	for recovery in [0.0, 0.5, 1.0]:
+		var wire = wire_rects([Rect2i(0, 0, 50, 1)])
+		flow = Flow.new()
+		flow.opposition_recovery = recovery
+		sink = connect_sink(flow, wire, Rect2i(40, 0, 1, 1))
+		flow.inject(wire, Vector2i(20, 0), 1, 100.0, 11)
+		flow.inject(wire, Vector2i(20, 0), 0, 40.0, 22)
+		advance(flow, wire, 25)
+		check("opposition recovery %.1f transfers loser share" % recovery,
+			is_equal_approx(sink.energy, 100.0 + 40.0 * recovery)
+			and is_equal_approx(flow.stats.lost, 40.0 * (1.0 - recovery))
+			and is_equal_approx(flow.stats.injected, flow.stats.consumed + flow.stats.lost + flow.stored_energy()))
 	for reverse in [false, true]:
 		var wire = wire_rects([Rect2i(0, 0, 50, 1)])
 		flow = Flow.new()

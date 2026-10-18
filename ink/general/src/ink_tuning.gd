@@ -12,6 +12,10 @@ extends Resource
 @export var blue_propagation_speed := 600.0
 @export var blue_emission_interval := 0.2
 @export var blue_motor_buffer_seconds := 0.8
+@export var blue_motor_startup_delay := 0.1
+@export var blue_motor_power_window := 0.2
+@export var blue_motor_force_ramp := 0.15
+@export var blue_opposition_recovery := 0.0
 @export var blue_energy_lifetime := 20.0
 @export var blue_short_falloff_exponent := 1.0
 @export var blue_short_min_scale := 0.0
