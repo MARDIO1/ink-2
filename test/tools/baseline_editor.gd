@@ -5,8 +5,8 @@ extends SceneTree
 ## 任何"拆 creative / 拆 canvas / 动保存或蓝图"的提交，先跑这个脚本。
 ##
 ## 用法：
-##   --script res://test/tools/baseline_editor.gd                 完整跑（约 3–5 分钟，导出最慢）
-##   --script res://test/tools/baseline_editor.gd -- --no-export  跳过导出/重进（约 10 秒，改逻辑时用）
+##   --script res://test/tools/baseline_editor.gd                 完整跑（约 7 秒）
+##   --script res://test/tools/baseline_editor.gd -- --no-export  跳过导出/重进（约 5 秒，改逻辑时用）
 ##
 ## ⚠️ 契约（dbd7b45 起）：齿轮轴承只由**显式动作**产生（这里直接调 `GearBearings.install`），
 ##    固化不会再从 `gear_centers` 补轴承；`gear_centers` 的每一项是字典，用 `GearCenters.position_of` 取坐标。
@@ -14,7 +14,7 @@ extends SceneTree
 ## ⚠️ 顺序约束：`generate()`（固化）会把画布像素转成刚体**并清空画布**，
 ##    所以蓝图的采集/放置/撤销必须做在固化**之前**，否则采到的像素是 0。
 
-const LEVEL := "res://map/asset/imported/peak.tscn"
+const LEVEL := "res://test/fixtures/maps/base_level.tscn"
 const EXPORT := "user://baseline_export.tscn"
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Place := preload("res://blueprint/src/blueprint_place.gd")
