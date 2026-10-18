@@ -4,3 +4,5 @@
 
 [resource]
 script = ExtResource("1_tuning")
+blue_force_per_length = 900000.0
+blue_source_power_per_pixel = 900000000.0

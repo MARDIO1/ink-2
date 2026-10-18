@@ -3,7 +3,7 @@ extends Node
 var _plates := {}
 
 func _process(_delta: float) -> void:
-	for title in ["SmallCanvas", "BridgeLessonCanvas"]:
+	for title in ["SmallCanvas", "BridgeLessonCanvas", "RampLessonCanvas", "CrateLessonCanvas", "LiftLessonCanvas", "FinalLessonCanvas"]:
 		var canvas := get_parent().get_node_or_null(NodePath(title))
 		if canvas == null or canvas._side_panel == null: continue
 		if not _plates.has(title):
