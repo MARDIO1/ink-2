@@ -47,5 +47,31 @@ func _run() -> void:
 	await process_frame
 	level.queue_free()
 	await process_frame
+	# Real F2 lifecycle must reveal a container saved hidden by an older map.
+	var real_level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
+	real_level.auto_step = false
+	root.add_child(real_level)
+	current_scene = real_level
+	await process_frame
+	var real_creative = real_level.get_node("Creative")
+	real_creative.auto_save_edits = false
+	real_creative.auto_save_on_exit = false
+	var hidden_container := Node2D.new()
+	hidden_container.name = "DialogueTriggers"
+	hidden_container.visible = false
+	real_level.add_child(hidden_container)
+	var real_trigger := Trigger.new()
+	real_trigger.position = Vector2(10000, -10000)
+	hidden_container.add_child(real_trigger)
+	for round_index in 2:
+		real_creative.set_active(true)
+		await process_frame
+		assert(hidden_container.visible and real_trigger.is_visible_in_tree(), "F2 must reveal hidden parent and trigger")
+		real_creative.set_active(false)
+		await process_frame
+		assert(not hidden_container.visible and not real_trigger.is_visible_in_tree(), "Play mode must hide editor regions")
+	real_level.queue_free()
+	await process_frame
 	print("[DialogueTriggerEditorState] PASS: null/false/true, missing node, unscripted editor node")
+	print("[DialogueTriggerEditorState] PASS: hidden parent, two real F2 enter/exit cycles")
 	quit()

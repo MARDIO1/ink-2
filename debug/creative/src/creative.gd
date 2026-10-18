@@ -105,15 +105,15 @@ const MAX_EDIT_HISTORY := 128
 @export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
 ## 旧地图外置草稿快照的兼容入口；新保存使用 editor_draft。
 @export_file("*.snapshot", "*.png", "*.res", "*.tres") var edit_snapshot_path := ""
-## 场景内嵌的草稿数据；实体仍由原来的节点保存，不经过画布重采样。
+## 标准编辑蓝图；试玩实体不能反写它。空字典仅表示尚未迁移的旧地图。
 @export_storage var editor_draft: Dictionary = {}
 var _document_restored := false
 ## 旧场景兼容字段；F2 只切换试玩，不再触发磁盘保存。
 @export var auto_save_on_exit := false
 ## 每次完成绘图、小怪编辑或撤销后，覆盖保存当前地图。
-@export var auto_save_edits := true
+@export var auto_save_edits := false
 @export_range(0.05, 2.0, 0.05) var auto_save_delay := 0.3
-## 用户停止操作后再提交完整混合文档，避免连续编辑反复打包整关。
+## 用户停止操作后再提交完整编辑蓝图，避免连续编辑反复打包整关。
 @export_range(0.1, 30.0, 0.1) var full_auto_save_delay := 5.0
 ## 烘焙图目前只作参考、运行时没有节点读取。按需开启，默认避免保存时再次遍历整张地图。
 @export var save_preview_on_export := false
@@ -640,8 +640,11 @@ func _enter() -> void:
 		if edit_surface != null:
 			edit_surface._undo_steps.clear()
 			edit_surface._redo_steps.clear()
-	# 进入编辑器不再把实体栅格化；只有显式“墨化”才执行重采样。
+	# 只有没有标准蓝图的旧地图允许转换一次；之后只加载蓝图。
 	_set_ink_free(true)
+	if _map_canvas != null and editor_draft.is_empty():
+		_map_canvas.return_to_canvas(false, true)
+		editor_draft = _map_canvas.surface.capture_document()
 	_set_monster_physics_paused(true)
 	if _player == null:
 		push_error("Creative: 找不到 Player")
@@ -732,7 +735,7 @@ func _exit() -> void:
 		_body.awake = true
 		_body.sleep_timer = 0.0
 	_reset_player_to_spawn()
-	# F2 是内存中的试玩事务：先留存混合文档，再仅对试玩实例固化草稿。
+	# F2 是内存中的试玩事务：先留存编辑蓝图，再仅对试玩实例固化草稿。
 	# 即使旧地图保存了 auto_save_on_exit=true，也不能让模式切换覆盖文件。
 	var router := get_tree().current_scene
 	if router != null and router.has_method("restore_editor_level"):
@@ -747,8 +750,14 @@ func _exit() -> void:
 	_show_canvas(_map_canvas, false)
 	for play_canvas in _play_canvases():
 		_show_canvas(play_canvas, true)
-	if _canvas != null and _canvas.has_method("activate_hand_tool"):
-		_canvas.activate_hand_tool()
+		play_canvas.activate_hand_tool()
+	# 无普通画布的地图也能游玩；隐藏的 MapCanvas 不会替玩家重新启用手。
+	if _map_canvas != null:
+		_map_canvas.activate_hand_tool()
+	if _player != null:
+		var hand: Node = _player.get_node_or_null("Arm/Hand/HandControl")
+		if hand != null:
+			hand.set_enabled(true)
 	_session.mode = MONSTER_MODE_NONE
 	_cancel_layout_drag()
 	_set_selected_monster(null)
@@ -2166,6 +2175,9 @@ func _remove_dialogue_trigger_by_id(trigger_id: String) -> bool:
 func _refresh_dialogue_trigger_visuals() -> void:
 	if not is_inside_tree():
 		return
+	var container := _level_root().get_node_or_null("DialogueTriggers") as Node2D
+	if container != null:
+		container.visible = active
 	for trigger in get_tree().get_nodes_in_group(DialogueTriggerScript.GROUP):
 		if trigger.has_method("_refresh_editor_visibility"):
 			trigger._refresh_editor_visibility()

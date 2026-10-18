@@ -26,6 +26,7 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
 const Rail := preload("res://ink/yellow/src/rail.gd")
 const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
+const SolidSnapshots := preload("res://actor/canvas/src/solid_snapshot_cache.gd")
 const Traits := preload("res://ink/general/src/ink_traits.gd")
 const BACKGROUND_TAG := "background_anchor_points"
 #endregion
@@ -115,7 +116,11 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 				spawned += 1
 				total_pixels += island.pixel_count()
 			continue
-		var pieces: Array = [island] if not island_background.is_empty() else _block_pieces(island)
+		# 滑块安装在整个黑色连通体上。按 256px 拆开会只豁免销钉所在的一块，
+		# 其余块随即裁断导轨，且仍会与导轨碰撞；机构支座必须保持一个刚体。
+		var slider_support: bool = surface.rod_layer.slider_pins.any(func(pin):
+			return island.get_pixel(floori(pin.source.x), floori(pin.source.y)) != 0)
+		var pieces: Array = [island] if not island_background.is_empty() or slider_support else _block_pieces(island)
 		for piece in pieces:
 			# 块内再拆一次连通分量：多岛屿的 shape 会让 add_body_node 再造一批
 			# 没有节点的刚体（存关卡时整块丢掉），所以这里自己先拆干净。
@@ -224,6 +229,28 @@ func _block_pieces(island) -> Array:
 func _scan_block(surface, block: Rect2i, ink, white, anchors: Dictionary,
 		color_table: Dictionary) -> void:
 	var data: PackedByteArray = surface.black_image.get_region(block).get_data()
+	var cache_key := "scan:" + str(block) + SolidSnapshots.digest_of(data)
+	var snapshot = SolidSnapshots.lookup(cache_key)
+	var block_ink = PixelShape.new()
+	var block_white = PixelShape.new()
+	var block_anchors: Dictionary = {}
+	if snapshot == null:
+		_scan_block_pixels(data, block, block_ink, block_white, block_anchors, color_table)
+		SolidSnapshots.store(cache_key, [SolidSnapshots.clone_shape(block_ink),
+			SolidSnapshots.clone_shape(block_white), block_anchors.duplicate()],
+			(block_ink.chunks.size() + block_white.chunks.size()) * 256 + 128)
+	else:
+		block_ink = SolidSnapshots.clone_shape(snapshot[0])
+		block_white = SolidSnapshots.clone_shape(snapshot[1])
+		block_anchors = snapshot[2]
+	# 256px 块边界与 8px chunk 对齐，不会覆盖相邻块的数据。
+	ink.chunks.merge(block_ink.chunks)
+	white.chunks.merge(block_white.chunks)
+	anchors.merge(block_anchors)
+
+
+func _scan_block_pixels(data: PackedByteArray, block: Rect2i, ink, white,
+		anchors: Dictionary, color_table: Dictionary) -> void:
 	var width: int = block.size.x
 	var origin_x: int = block.position.x
 	var origin_y: int = block.position.y
@@ -272,6 +299,9 @@ func _scan_block(surface, block: Rect2i, ink, white, anchors: Dictionary,
 func _remove_overlaps(shape, surface, bodies: Array) -> int:
 	var removed: int = 0
 	var canvas_rect: Rect2 = Rect2(surface.global_position, Vector2(surface.canvas_size))
+	var shape_bounds: Rect2i = shape.local_aabb()
+	canvas_rect = canvas_rect.intersection(Rect2(
+		surface.to_global(Vector2(shape_bounds.position)), Vector2(shape_bounds.size)))
 	for body in bodies:
 		# 玩家、手和小怪只是暂时站在画布上，不是关卡固体的一部分。
 		# 若在这里按重叠挖洞，固化时会把整块墨水切成碎片。
@@ -347,13 +377,7 @@ func _spawn_component(world, pos, part, fixed_anchors: Dictionary,
 
 #把形状抽成 R8 材质图（R 通道 = 材质 id，0 = 空）；存关卡时靠它把像素写进 .tscn。
 func _material_image(shape, rect: Rect2i) -> Image:
-	var image := Image.create_empty(rect.size.x, rect.size.y, false, Image.FORMAT_R8)
-	for y in range(rect.size.y):
-		for x in range(rect.size.x):
-			var material: int = shape.get_pixel(rect.position.x + x, rect.position.y + y)
-			if material != 0:
-				image.set_pixel(x, y, Color8(material, 0, 0, 255))
-	return image
+	return SolidSnapshots.material_image(shape, rect)
 #endregion
 
 

@@ -118,6 +118,7 @@ func _run() -> void:
 	spring.brush_width = 3
 	spring.source_surface = surface
 	level.add_child(spring)
+	spring.owner = level
 	surface.yellow_rule().strokes.append(spring)
 	var motor := Motor.new()
 	motor.position = Codec.world_point(canvas, Vector2(20, 20))
@@ -129,6 +130,18 @@ func _run() -> void:
 	var mechanism := Codec.capture(canvas, Rect2i(10, 10, 40, 40))
 	check("multilayer mechanisms captured", not mechanism.has("error") and mechanism.rods.size() == 1 and mechanism.blue.size() == 1 and mechanism.springs.size() == 1 and mechanism.motors.size() == 1)
 	check("partial spring rejected", Codec.capture(canvas, Rect2i(18, 18, 8, 8)).has("error"))
+	# 模拟场景刚载入、Stroke 已进入活动态但延迟关节恢复和 YellowInk 登记尚未完成的窗口。
+	# F2 必须从场景节点重新发现它，蓝图也必须能读取活动态源数据。
+	spring.state = Stroke.State.ACTIVE
+	spring.activated = true
+	surface.yellow_rule().strokes.erase(spring)
+	var active_mechanism := Codec.capture(canvas, Rect2i(10, 10, 40, 40))
+	check("active spring captured before deferred joint restore", not active_mechanism.has("error")
+		and active_mechanism.springs.size() == 1)
+	surface.yellow_rule().reclaim(surface, true)
+	check("F2 rediscovers and restores active spring as editable draft",
+		surface.yellow_rule().strokes.has(spring) and spring.state == Stroke.State.EDITING
+		and not spring.activated and spring.source_surface == surface)
 	check("mechanism placement restores drafts", Place.place(canvas, mechanism, Vector2i(140, 140)).is_empty() and surface.rod_layer.pixels.get_pixel(154, 150).a > 0.5 and surface.blue_layer.mask.has(Vector2i(150, 150)))
 	check("mechanism placement undo succeeds", surface.undo_last_edit())
 	mechanism.name = "多层机关"

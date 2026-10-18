@@ -14,7 +14,7 @@ extends RefCounted
 ##   baked_map_path: String  参考图路径。
 
 
-## 自动保存只提交完整混合文档，避免草稿快照与场景分别写入造成版本错配。
+## 自动保存只提交完整编辑蓝图，避免草稿快照与场景分别写入造成版本错配。
 ##
 ## 定时器挂在 `host` 上。`ctx` 需要：
 ##   host: Node              用来取 SceneTree
@@ -44,7 +44,7 @@ static func _still_current(ctx: Dictionary) -> bool:
 	return check.is_valid() and bool(check.call(int(ctx.get("revision", 0))))
 
 
-## 保存混合文档：实体保持局部像素和位形，草稿独立无损保存。
+## F2 保存编辑蓝图；试玩时再由 prepare_loaded_document 固化。
 static func export_scene(ctx: Dictionary, save_path: String) -> Error:
 	var scene = ctx.get("level_root")
 	if scene == null:
@@ -91,7 +91,7 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	for item in play_canvases:
 		_show(item, true)
 	_show(map_canvas, false)
-	# 草稿和实体分别序列化；保存不能生成、回收或改变撤销栈。
+	# 打包已经归一化的蓝图；画布外的实体仍独立序列化。
 	var editor := scene.get_node_or_null("Creative")
 	var old_document: Dictionary = editor.editor_draft if editor != null else {}
 	var old_snapshot: String = editor.edit_snapshot_path if editor != null else ""

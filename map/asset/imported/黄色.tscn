@@ -1,0 +1,314 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_1f0kq"]
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_bliwp"]
+[ext_resource type="Resource" path="res://ink/black/asset/black.tres" id="3_8pxnv"]
+[ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="4_xpv6x"]
+[ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="5_orqvw"]
+[ext_resource type="Resource" path="res://ink/grey/asset/grey1.tres" id="6_rc68b"]
+[ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="7_dnxe1"]
+[ext_resource type="Resource" path="res://ink/invisible/asset/invisible.tres" id="8_o1kqs"]
+[ext_resource type="Resource" path="res://ink/red/asset/red.tres" id="9_33day"]
+[ext_resource type="Resource" path="res://ink/yellow/asset/yellow.tres" id="10_vqu35"]
+[ext_resource type="Resource" path="res://ink/white/asset/white.tres" id="11_ffv1x"]
+[ext_resource type="Resource" path="res://ink/blue/asset/blue.tres" id="12_qvedb"]
+[ext_resource type="Resource" path="res://actor/nail/asset/nail.tres" id="13_8dut3"]
+[ext_resource type="Script" path="res://actor/player/src/player_camera.gd" id="14_kxde2"]
+[ext_resource type="PackedScene" path="res://actor/canvas/canvas.tscn" id="15_3guae"]
+[ext_resource type="Script" path="res://actor/canvas/src/canvas.gd" id="16_orqvw"]
+[ext_resource type="PackedScene" path="res://actor/player/player.tscn" id="17_6v3r3"]
+[ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="18_rc68b"]
+[ext_resource type="Resource" path="res://actor/player/asset/player_controller_config.tres" id="19_dnxe1"]
+[ext_resource type="PackedScene" path="res://actor/monster/little_soldier.tscn" id="20_dnxe1"]
+[ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="20_w2ia2"]
+[ext_resource type="Script" path="res://actor/monster/src/map_monster.gd" id="21_33day"]
+[ext_resource type="Script" path="res://debug/hud/src/debug_hud.gd" id="21_o1kqs"]
+[ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="22_qdp5b"]
+[ext_resource type="Script" path="res://root/src/simulation_runtime.gd" id="23_33day"]
+[ext_resource type="Resource" path="res://ink/general/asset/ink_tuning.tres" id="24_vqu35"]
+[ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="25_rhtsl"]
+[ext_resource type="FontFile" path="res://ui/map_text/asset/Muyao-Softbrush.ttf" id="26_1f0kq"]
+[ext_resource type="Script" path="res://ui/map_text/src/map_text_label.gd" id="27_bliwp"]
+[ext_resource type="Script" path="res://ink/yellow/src/stroke.gd" id="28_bliwp"]
+[ext_resource type="Script" path="res://debug/creative/src/map_dialogue_trigger.gd" id="29_8pxnv"]
+[ext_resource type="PackedScene" path="res://actor/portal/map_portal.tscn" id="30_orqvw"]
+[ext_resource type="Script" path="res://actor/portal/src/map_portal.gd" id="31_ffv1x"]
+
+[node name="Main" type="Node2D" unique_id=1986120347]
+process_priority = 10
+script = ExtResource("1_1f0kq")
+max_linear_velocity = 1000.0
+max_angular_velocity = 60.0
+ccd_ignore_mass = 100.0
+min_fragment_pixels = 5
+debris_max_mass = 20.0
+debris_min_speed = 20.0
+materials = Array[ExtResource("2_bliwp")]([ExtResource("3_8pxnv"), ExtResource("4_xpv6x"), ExtResource("5_orqvw"), ExtResource("6_rc68b"), ExtResource("7_dnxe1"), ExtResource("8_o1kqs"), ExtResource("9_33day"), ExtResource("10_vqu35"), ExtResource("11_ffv1x"), ExtResource("12_qvedb"), ExtResource("13_8dut3")])
+densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0, 0.0, 1.0])
+voxel_size = 1.0
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1852305069]
+process_physics_priority = 20
+position = Vector2(154.49236, -9.845963)
+process_callback = 0
+script = ExtResource("14_kxde2")
+
+[node name="MapCanvas" type="Node2D" parent="." unique_id=408426064 instance=ExtResource("15_3guae")]
+process_physics_priority = 18
+visible = false
+z_index = -1
+position = Vector2(-512, -256)
+script = ExtResource("16_orqvw")
+canvas_size = Vector2i(2048, 1024)
+active = false
+
+[node name="Player" type="Node2D" parent="." unique_id=1439102296 groups=["player"] instance=ExtResource("17_6v3r3")]
+position = Vector2(120.492355, -53.086185)
+script = ExtResource("18_rc68b")
+controller_config = ExtResource("19_dnxe1")
+can_sleep = false
+metadata/canvas_undo_identity = 1096038747767
+
+[node name="Monsters" type="Node2D" parent="." unique_id=103560794]
+
+[node name="LittleSoldier" type="Node2D" parent="Monsters" unique_id=338219848 groups=["map_monster"] instance=ExtResource("20_dnxe1")]
+process_priority = 100
+z_index = 1000
+position = Vector2(-399.57742, 508.27637)
+scale = Vector2(0.7, 0.7)
+script = ExtResource("21_33day")
+kind = 1
+display_name = "小兵"
+editor_pick_radius = 250.0
+editor_id = "monster-861043668-5"
+physical_enabled = true
+physics_rect = Rect2i(-54, -189, 108, 189)
+hit_radius = 120.0
+hit_polygon = PackedVector2Array(0, -260, -65, -180, -45, -25, 45, -25, 65, -180)
+minimum_hit_speed = 15.0
+material_id = 6
+internal_render = false
+
+[node name="debugHUD" type="CanvasLayer" parent="." unique_id=850229604 groups=["debug_hud"] instance=ExtResource("20_w2ia2")]
+visible = false
+script = ExtResource("21_o1kqs")
+
+[node name="SimulationRuntime" type="Node" parent="." unique_id=134839302 instance=ExtResource("22_qdp5b")]
+process_physics_priority = 1
+script = ExtResource("23_33day")
+tuning_config = ExtResource("24_vqu35")
+
+[node name="Creative" type="Node" parent="." unique_id=1022248697]
+process_physics_priority = 15
+script = ExtResource("25_rhtsl")
+canvas_path = NodePath("")
+map_path = "res://map/asset/imported/黄色.tscn"
+baked_map_path = "res://map/asset/imported/黄色.png"
+edit_snapshot_path = "res://map/asset/imported/黄色.edit.snapshot"
+
+[node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1660057603 groups=["player_spawn"]]
+position = Vector2(12, -53)
+
+[node name="MapTexts" type="Node2D" parent="." unique_id=1784572584]
+
+[node name="MapText" type="Label" parent="MapTexts" unique_id=1689201428 groups=["map_text_label"]]
+z_index = 20
+offset_left = -465.74304
+offset_top = 129.78928
+offset_right = -33.743042
+offset_bottom = 178.78928
+theme_override_colors/font_color = Color(0.035, 0.031, 0.024, 1)
+theme_override_colors/font_shadow_color = Color(1, 1, 1, 0)
+theme_override_fonts/font = ExtResource("26_1f0kq")
+theme_override_font_sizes/font_size = 48
+text = "怎么把蹦床压下来？"
+script = ExtResource("27_bliwp")
+editor_id = "text_1"
+
+[node name="_Node2D_2400" type="Node2D" parent="." unique_id=1014339505]
+visible = false
+modulate = Color(1, 1, 1, 0.75)
+z_index = 8
+texture_filter = 1
+script = ExtResource("28_bliwp")
+path = PackedVector2Array()
+brush_width = 15
+rest_length = 135.05925
+worn = PackedVector2Array()
+saved_anchor_a = Vector2(374.5, 577.5)
+saved_anchor_b = Vector2(370.5, 712.5)
+activated = true
+source_canvas = NodePath("MapCanvas/CanvasSurface")
+compact_raster = true
+metadata/canvas_undo_identity = 2960926972534
+
+[node name="@Node2D@2412" type="Node2D" parent="." unique_id=1721460970]
+visible = false
+modulate = Color(1, 1, 1, 0.75)
+z_index = 8
+texture_filter = 1
+script = ExtResource("28_bliwp")
+path = PackedVector2Array()
+brush_width = 15
+rest_length = 148.12157
+worn = PackedVector2Array()
+saved_anchor_a = Vector2(536.5, 571.5)
+saved_anchor_b = Vector2(542.5, 719.5)
+activated = true
+source_canvas = NodePath("MapCanvas/CanvasSurface")
+compact_raster = true
+metadata/canvas_undo_identity = 2999061581334
+
+[node name="@Node2D@4706" type="Node2D" parent="." unique_id=1750744428]
+visible = false
+modulate = Color(1, 1, 1, 0.75)
+z_index = 8
+texture_filter = 1
+script = ExtResource("28_bliwp")
+path = PackedVector2Array()
+brush_width = 15
+rest_length = 142.01408
+worn = PackedVector2Array()
+saved_anchor_a = Vector2(450.5, 571.5)
+saved_anchor_b = Vector2(452.5, 713.5)
+activated = true
+source_canvas = NodePath("MapCanvas/CanvasSurface")
+compact_raster = true
+metadata/canvas_undo_identity = 5390385288474
+
+[node name="@Node2D@7659" type="Node2D" parent="." unique_id=570876437]
+visible = false
+modulate = Color(1, 1, 1, 0.75)
+z_index = 8
+texture_filter = 1
+script = ExtResource("28_bliwp")
+path = PackedVector2Array()
+brush_width = 14
+rest_length = 294.0
+worn = PackedVector2Array()
+saved_anchor_a = Vector2(-433.5, -20.5)
+saved_anchor_b = Vector2(-433.5, 273.5)
+activated = true
+source_canvas = NodePath("MapCanvas/CanvasSurface")
+compact_raster = true
+metadata/canvas_undo_identity = 10562129892106
+
+[node name="@Node2D@7663" type="Node2D" parent="." unique_id=39689708]
+visible = false
+modulate = Color(1, 1, 1, 0.75)
+z_index = 8
+texture_filter = 1
+script = ExtResource("28_bliwp")
+path = PackedVector2Array()
+brush_width = 14
+rest_length = 302.00165
+worn = PackedVector2Array()
+saved_anchor_a = Vector2(-376.5, -22.5)
+saved_anchor_b = Vector2(-375.5, 279.5)
+activated = true
+source_canvas = NodePath("MapCanvas/CanvasSurface")
+compact_raster = true
+metadata/canvas_undo_identity = 10583386627429
+
+[node name="@Node2D@7667" type="Node2D" parent="." unique_id=1365860964]
+visible = false
+modulate = Color(1, 1, 1, 0.75)
+z_index = 8
+texture_filter = 1
+script = ExtResource("28_bliwp")
+path = PackedVector2Array()
+brush_width = 14
+rest_length = 304.0148
+worn = PackedVector2Array()
+saved_anchor_a = Vector2(-322.5, -23.5)
+saved_anchor_b = Vector2(-319.5, 280.5)
+activated = true
+source_canvas = NodePath("MapCanvas/CanvasSurface")
+compact_raster = true
+metadata/canvas_undo_identity = 10601388578853
+
+[node name="@Node2D@7671" type="Node2D" parent="." unique_id=301553318]
+visible = false
+modulate = Color(1, 1, 1, 0.75)
+z_index = 8
+texture_filter = 1
+script = ExtResource("28_bliwp")
+path = PackedVector2Array()
+brush_width = 14
+rest_length = 306.00165
+worn = PackedVector2Array()
+saved_anchor_a = Vector2(-268.5, -25.5)
+saved_anchor_b = Vector2(-267.5, 280.5)
+activated = true
+source_canvas = NodePath("MapCanvas/CanvasSurface")
+compact_raster = true
+metadata/canvas_undo_identity = 10618752998783
+
+[node name="@Node2D@7675" type="Node2D" parent="." unique_id=1833380809]
+visible = false
+modulate = Color(1, 1, 1, 0.75)
+z_index = 8
+texture_filter = 1
+script = ExtResource("28_bliwp")
+path = PackedVector2Array()
+brush_width = 14
+rest_length = 314.078
+worn = PackedVector2Array()
+saved_anchor_a = Vector2(-214.5, -29.5)
+saved_anchor_b = Vector2(-207.5, 284.5)
+activated = true
+source_canvas = NodePath("MapCanvas/CanvasSurface")
+compact_raster = true
+metadata/canvas_undo_identity = 10638365561487
+
+[node name="@Node2D@7679" type="Node2D" parent="." unique_id=2037640555]
+visible = false
+modulate = Color(1, 1, 1, 0.75)
+z_index = 8
+texture_filter = 1
+script = ExtResource("28_bliwp")
+path = PackedVector2Array()
+brush_width = 14
+rest_length = 323.12537
+worn = PackedVector2Array()
+saved_anchor_a = Vector2(-154.5, -29.5)
+saved_anchor_b = Vector2(-145.5, 293.5)
+activated = true
+source_canvas = NodePath("MapCanvas/CanvasSurface")
+compact_raster = true
+metadata/canvas_undo_identity = 10656686280635
+
+[node name="DialogueTriggers" type="Node2D" parent="." unique_id=2035521151]
+visible = false
+
+[node name="DialogueTrigger" type="Node2D" parent="DialogueTriggers" unique_id=1788764938]
+position = Vector2(-288.9473, -94.81369)
+script = ExtResource("29_8pxnv")
+lines = PackedStringArray("一个蹦床....下面有传送门", "但是必须得非常重，或者非常快才能把蹦床踩下去吧.....", "怎么才能抵达传送门呢？")
+editor_id = "dialogue_1"
+
+[node name="DialogueTrigger2" type="Node2D" parent="DialogueTriggers" unique_id=1831436875]
+position = Vector2(193.4012, -26.384644)
+script = ExtResource("29_8pxnv")
+lines = PackedStringArray("黄色的圆形工具，可以放置转轴")
+editor_id = "dialogue_2"
+
+[node name="DialogueTrigger5" type="Node2D" parent="DialogueTriggers" unique_id=1385700395]
+position = Vector2(-257.05292, -108.72165)
+script = ExtResource("29_8pxnv")
+lines = PackedStringArray("捱三顶五")
+editor_id = "dialogue_5"
+
+[node name="DialogueTrigger6" type="Node2D" parent="DialogueTriggers" unique_id=716657453]
+position = Vector2(-249.22794, -199.02193)
+script = ExtResource("29_8pxnv")
+lines = PackedStringArray("123")
+editor_id = "dialogue_4"
+
+[node name="Portal" type="Node2D" parent="." unique_id=1870747897 groups=["map_portal"] instance=ExtResource("30_orqvw")]
+process_physics_priority = 100
+z_index = 4092
+z_as_relative = false
+position = Vector2(-32.297073, 186.6104)
+script = ExtResource("31_ffv1x")
+target_map = "res://map/test/空白大地图.tscn"
