@@ -12,10 +12,15 @@ func _check(label: String, ok: bool) -> void:
 	if not ok:
 		failures += 1
 
-func _move(body, center: Vector2) -> void:
-	body.position = center - body.local_com.rotated(body.rotation)
+func _move(body, center: Vector2, support = null) -> void:
+	body.position = center
 	body.refresh_com()
 	body.update_aabb()
+	var level := get_first_node_in_group(&"player").get_parent()
+	var recovery = level.get_node("Player/FallDeath")
+	var input = recovery._player_input
+	input.support = support if support != null else level.world.bodies[0]
+	input.contact_point = center + recovery._spawn_foot_offset()
 
 func _run() -> void:
 	var app: Node = load("res://root/root.tscn").instantiate()
@@ -23,12 +28,16 @@ func _run() -> void:
 	current_scene = app
 	root.get_node("SceneTransition").duration = 0.01
 	await app.request_level_change("res://map/asset/imported/第一页.tscn")
+	var source_editor = app.level_root.get_child(0).get_node("Creative")
+	source_editor.auto_save_edits = false
+	source_editor.auto_save_on_exit = false
 	await process_frame
 	var level: Node = app.level_root.get_child(0)
 	var recovery: Node = level.get_node("Player/FallDeath")
 	var body = level.get_node("Player").body
 	var hand: Node = level.get_node("Player/Arm/Hand/HandControl")
 	var points: Array[Marker2D] = []
+	var floors: Array = []
 	for i in 3:
 		var point := Marker2D.new()
 		point.name = "RespawnPointTest%d" % i
@@ -43,13 +52,14 @@ func _run() -> void:
 		var floor_shape := PixelShape.new()
 		floor_shape.fill_rect(Rect2i(0, 0, 320, 12), 1)
 		level.world.add_body(floor_body, [floor_shape], Callable(level, "_density_of"), true)
+		floors.append(floor_body)
 	recovery._checkpoints_initialized = false
 	recovery._body = body
-	_move(body, points[0].global_position)
+	_move(body, points[0].global_position, floors[0])
 	recovery._update_visited_points()
-	_move(body, points[1].global_position)
+	_move(body, points[1].global_position, floors[1])
 	recovery._update_visited_points()
-	_move(body, Vector2(2850, -1000))
+	_move(body, Vector2(2850, -1000), floors[1])
 	_check("only passed checkpoints visited", recovery._visited_points.has(points[0]) and recovery._visited_points.has(points[1]) and not recovery._visited_points.has(points[2]))
 	var esc: Node = get_first_node_in_group(&"esc_menu")
 	esc.open_menu()
@@ -65,7 +75,7 @@ func _run() -> void:
 	_check("clears motion and support", body.linear_velocity == Vector2.ZERO and body.angular_velocity == 0.0 and level.get_node("Player/PlayerInput").support == null)
 	_check("hand reset clears overrides and grip", hand.enabled and hand.grabbed_body == null and hand._grip_override == null and hand._target_override == null)
 	points[1].free()
-	_move(body, Vector2(2850, -1000))
+	_move(body, Vector2(2850, -1000), floors[1])
 	esc.open_menu()
 	var restored: bool = await esc._on_escape_stuck_button_pressed()
 	_check("deleted checkpoint safely skipped", restored and body.position.is_equal_approx(points[0].global_position))

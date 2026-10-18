@@ -84,10 +84,10 @@ func ink_of(material_id: int) -> float:
 	return _ink.get(material_id, 0.0)
 
 
-## 某种墨水的液面比例，0（空）..1（满）。
+## 某种墨水的液面比例，0（空）..1（满）。配额就是 0 时没有墨水，不能按满瓶算。
 func ratio_of(material_id: int) -> float:
 	var cap := max_of(material_id)
-	return 1.0 if cap <= 0.0 else clampf(ink_of(material_id) / cap, 0.0, 1.0)
+	return 0.0 if cap <= 0.0 else clampf(ink_of(material_id) / cap, 0.0, 1.0)
 
 
 ## 所有墨水合计比例，0（空）..1（满），仅供统计。`max_ink <= 0` 时按满瓶算。

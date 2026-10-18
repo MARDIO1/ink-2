@@ -320,7 +320,7 @@ func reset_canvas() -> void:
 			else:
 				scene.world.remove_body(body)
 	surface.clear()
-	surface._undo_steps.clear()
+	surface.clear_history()
 	rule.flow = rule.EnergyFlow.new()
 	await process_frame
 

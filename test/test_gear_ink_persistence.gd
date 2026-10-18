@@ -35,7 +35,7 @@ func _run() -> void:
 	var image: PackedByteArray = surface.black_image.get_data()
 	var path := "res://blueprints/gear_snapshot_%d.snapshot" % Time.get_ticks_usec()
 	surface.request_snapshot(path)
-	while surface._snapshot_task != -1:
+	while surface.snapshot_pending():
 		surface._poll_snapshot()
 		await process_frame
 	surface.clear()

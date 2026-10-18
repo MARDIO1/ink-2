@@ -44,12 +44,16 @@ func _run_layout_test() -> void:
 	fall_death.set("_body", player.get("body"))
 	player.body.position = respawn.global_position + Vector2(8.0, 0.0)
 	player.body.refresh_com()
+	player.get_node("PlayerInput").support = scene.get_node("Ground").body
+	player.get_node("PlayerInput").contact_point = player.body.position + fall_death._spawn_foot_offset()
 	creative.active = false # 只有实际游玩时经过复活范围才可解锁。
 	fall_death._checkpoints_initialized = false
 	fall_death._update_visited_points()
 	valid = valid and fall_death._find_respawn_target() == respawn
 	player.body.position = spawn.global_position + Vector2(8.0, 0.0)
 	player.body.refresh_com()
+	player.get_node("PlayerInput").contact_point = player.body.position + fall_death._spawn_foot_offset()
+	fall_death._update_visited_points()
 	valid = valid and fall_death._find_respawn_target() == spawn
 	creative.active = true
 

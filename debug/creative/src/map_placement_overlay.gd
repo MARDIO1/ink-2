@@ -26,6 +26,7 @@ func _draw() -> void:
 	for point in respawn_points:
 		if is_instance_valid(point):
 			_draw_point(point, RESPAWN_COLOR, "复活")
+			_draw_checkpoint_area(point)
 	for canvas in play_canvases:
 		if is_instance_valid(canvas):
 			_draw_canvas(canvas)
@@ -50,6 +51,24 @@ func _draw_point(point: Node2D, color: Color, label: String) -> void:
 	draw_line(center - Vector2(18.0, 0.0), center + Vector2(18.0, 0.0), color, 2.0, true)
 	draw_line(center - Vector2(0.0, 18.0), center + Vector2(0.0, 18.0), color, 2.0, true)
 	draw_string(ThemeDB.fallback_font, center + Vector2(18.0, -10.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, color)
+
+
+## 出生标记与脚底触发区分开显示，双层布局可以直接检查区域是否跨层。
+func _draw_checkpoint_area(point: Marker2D) -> void:
+	var controller := get_parent().get_parent().get_node_or_null("Player/FallDeath")
+	if controller == null:
+		return
+	if not controller.checkpoint_area(point).has_area():
+		return
+	var corners: PackedVector2Array = controller.checkpoint_polygon(point)
+	for index in corners.size():
+		corners[index] = to_local(corners[index])
+	draw_colored_polygon(corners, Color(RESPAWN_COLOR, 0.08))
+	for index in corners.size():
+		draw_line(corners[index], corners[(index + 1) % corners.size()], RESPAWN_COLOR, 2.0, true)
+	var center := (corners[0] + corners[2]) * 0.5
+	draw_line(to_local(point.global_position), center, Color(RESPAWN_COLOR, 0.5), 1.0, true)
+	draw_string(ThemeDB.fallback_font, corners[0] - Vector2(0, 7), "落地激活", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, RESPAWN_COLOR)
 
 
 func _draw_canvas(canvas: Node2D) -> void:

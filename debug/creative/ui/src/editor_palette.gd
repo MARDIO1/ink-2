@@ -271,7 +271,7 @@ func _build_monster_palette() -> void:
 	_infinite_nail_button.custom_minimum_size = Vector2(96.0, 44.0)
 	_infinite_nail_button.pressed.connect(select_infinite_nail_tool)
 	mechanism_grid.add_child(_infinite_nail_button)
-	_sync_gear_button()
+	sync_gear_buttons(false, false)
 	column.add_child(HSeparator.new())
 
 	var title := Label.new()
@@ -445,6 +445,13 @@ func _build_monster_palette() -> void:
 		layout_grid.add_child(layout_button)
 		_layout_buttons[int(tool[0])] = layout_button
 	_build_canvas_size_dialog(root)
+	var respawn_area_button := Button.new()
+	respawn_area_button.name = "RespawnAreaButton"
+	respawn_area_button.text = "复活点激活区域"
+	respawn_area_button.tooltip_text = "先选中橙色复活点，再设置脚底激活区的宽高和偏移；出生位置不变"
+	respawn_area_button.focus_mode = Control.FOCUS_NONE
+	respawn_area_button.pressed.connect(func(): action_requested.emit(&"_open_respawn_area_dialog", []))
+	column.add_child(respawn_area_button)
 	_portal_destination = PopupMenu.new()
 	_portal_destination.name = "PortalMapMenu"
 	_portal_destination.theme = EDITOR_THEME
@@ -559,14 +566,21 @@ func select_monster_tool(mode: int) -> void:
 func select_gear_tool(teeth := 12) -> void:
 	action_requested.emit(&"select_gear_tool", [teeth])
 
+func gear_tool_button(teeth: int) -> Button:
+	return _gear8_button if teeth == 8 else _gear_button
+
+## 画布工具状态由 Creative 同步，按钮只展示，不反向抓取 Creative。
+func sync_gear_buttons(gear12: bool, gear8: bool) -> void:
+	if _gear_button != null:
+		_gear_button.set_pressed_no_signal(gear12)
+	if _gear8_button != null:
+		_gear8_button.set_pressed_no_signal(gear8)
+
 func _open_map_save_window() -> void:
 	action_requested.emit(&"_open_map_save_window", [])
 
 func _reset_selected_monster_scale() -> void:
 	action_requested.emit(&"_reset_selected_monster_scale", [])
-
-func _sync_gear_button() -> void:
-	action_requested.emit(&"_sync_gear_button", [])
 
 func select_infinite_nail_tool() -> void:
 	action_requested.emit(&"select_infinite_nail_tool", [])

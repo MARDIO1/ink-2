@@ -69,7 +69,7 @@ func _run() -> void:
 	var raw: PackedByteArray = surface.black_image.get_data()
 	var blue: PackedVector2Array = surface.blue_layer.cells.duplicate()
 	var nails: Dictionary = surface.nail_layer.snapshot()
-	var undo_count: int = surface._undo_steps.size()
+	var undo_count: int = surface.undo_depth()
 	canvas.set_tool(surface.Tool.GEAR)
 	var tool: int = surface.tool
 	var body_count: int = level.world.bodies.size()
@@ -80,12 +80,12 @@ func _run() -> void:
 			surface.black_image.get_data() == raw and surface.blue_layer.cells == blue)
 		check("save preserves solid identity and original shape %d" % index,
 			node.body.shapes[0].pixel_count() == solid_pixels and level.world.bodies.size() == body_count)
-		check("save preserves tool and undo %d" % index, surface.tool == tool and surface._undo_steps.size() == undo_count)
+		check("save preserves tool and undo %d" % index, surface.tool == tool and surface.undo_depth() == undo_count)
 	# 自动保存的墨水快照由 test_editor_autosave_snapshot.gd 单独覆盖；
 	# 这里保持纯手动保存，避免自动保存的墨化改变后续 F2 检查的实体状态。
 	var preview_path := "user://document_preview.png"
 	check("preview bake succeeds", canvas.bake_png(preview_path) == OK)
-	check("preview leaves drafts, tool and history untouched", surface.black_image.get_data() == raw and surface.blue_layer.cells == blue and surface.tool == tool and surface._undo_steps.size() == undo_count)
+	check("preview leaves drafts, tool and history untouched", surface.black_image.get_data() == raw and surface.blue_layer.cells == blue and surface.tool == tool and surface.undo_depth() == undo_count)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(preview_path))
 	var saved: PackedScene = ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE)
 	var unmounted := saved.instantiate()

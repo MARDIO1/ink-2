@@ -40,13 +40,13 @@ func _run() -> void:
 			canvas.surface.blue_layer.extend(local + Vector2(40, -40 + row * 8))
 			canvas.surface.blue_layer.finish()
 		draft_before = canvas.surface.blue_layer.mask.duplicate()
-	var before: int = canvas.surface._undo_steps.size()
+	var before: int = canvas.surface.undo_depth()
 	var tick := Time.get_ticks_usec()
 	creative.editor_drag_begin(gear, start)
 	var select_us := Time.get_ticks_usec() - tick
 	check("selection defers snapshot", creative._gear_drag_history.is_empty())
 	creative.editor_drag_finish()
-	check("click leaves undo history unchanged", canvas.surface._undo_steps.size() == before)
+	check("click leaves undo history unchanged", canvas.surface.undo_depth() == before)
 	creative.editor_drag_begin(gear, start)
 	var first_us := 0
 	var motion_us := 0
@@ -66,7 +66,7 @@ func _run() -> void:
 		check("draft circuit moves with gear", canvas.surface.blue_layer.mask != draft_before)
 	creative.editor_drag_cancel()
 	check("cancel restores gear and leaves history unchanged", gear.global_position.is_equal_approx(start)
-		and canvas.surface._undo_steps.size() == before and gear.joint != null)
+		and canvas.surface.undo_depth() == before and gear.joint != null)
 	if not draft_before.is_empty():
 		check("cancel restores full draft circuit", canvas.surface.blue_layer.mask == draft_before)
 	print("[GearPerf] select=%.3f ms first_motion=%.3f ms subsequent_mean=%.3f ms bodies=%d" % [

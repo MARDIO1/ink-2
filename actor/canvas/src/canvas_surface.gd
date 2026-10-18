@@ -19,6 +19,10 @@ const GearCenterMarkers := preload("res://actor/canvas/src/gear_center_markers.g
 const InkBrush := preload("res://actor/canvas/src/ink_brush.gd")
 const InkBucket := preload("res://actor/canvas/src/ink_bucket.gd")
 const InkSnapshot := preload("res://actor/canvas/src/ink_snapshot.gd")
+const InkDocument := preload("res://actor/canvas/src/ink_document.gd")
+const InkTiles := preload("res://actor/canvas/src/ink_tiles.gd")
+const InkUndoLog := preload("res://actor/canvas/src/ink_undo_log.gd")
+const InkUndoApply := preload("res://actor/canvas/src/ink_undo_apply.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
 const NAIL_COST := 10
 var gear_tool: Node2D
@@ -41,8 +45,6 @@ const TILE_SIZE := 512
 ## 只有真的画到某块时才建 —— 空画布一张贴图都不占，也不上传。
 var _tiles := {}
 ## 尚未上传的像素范围（闭区间；lo > hi 表示没有脏像素）。
-var _dirty_lo := Vector2i(1 << 30, 1 << 30)
-var _dirty_hi := Vector2i(-(1 << 30), -(1 << 30))
 @onready var black_tiles: Node2D = $BlackTiles
 @onready var nail_layer: Node2D = $NailLayer
 @onready var bounds: CollisionShape2D = $Bounds
@@ -201,14 +203,6 @@ enum Tool { HAND, BRUSH, ERASER, NAIL, RECT, CIRCLE, BUCKET, SELECT_DELETE, LINE
 var _painting := false #状态机
 var _paint_color := Color.TRANSPARENT
 var _last_point := Vector2.ZERO
-var _undo_steps: Array[Dictionary] = []
-var _redo_steps: Array[Dictionary] = []
-var _undo_capture := {}
-var _undo_capturing := false
-var _nail_undo := {}
-var _blue_undo := {}
-var _gear_undo: Dictionary = {}
-const MAX_UNDO_STEPS := 64
 ## 框选只负责交互；移动和删除交给 Canvas，以便和固化实体共用撤销事务。
 var _selecting := false
 var _selection_origin := Vector2.ZERO
@@ -645,126 +639,42 @@ var _preserve_next_resize := false
 
 
 #region 黑墨瓦片
-## 上传脏范围覆盖到的瓦片；没碰到的块一次都不传。
+## 瓦片状态（块字典、脏矩形、内容框缓存）在 `ink_tiles.gd`；这里只做转调。
 ## 契约：改 black_image 之前必须先标脏（_mark_dirty / mark_dirty_rect），
 ## 否则那部分只活在 CPU 上，画面不动。
+var _tiles_state = InkTiles.new()
+
+
 func _flush_texture() -> void:
-	if _dirty_hi.x < _dirty_lo.x:
-		return
-	var rect := Rect2i(_dirty_lo, _dirty_hi - _dirty_lo + Vector2i.ONE)
-	_dirty_lo = Vector2i(1 << 30, 1 << 30)
-	_dirty_hi = Vector2i(-(1 << 30), -(1 << 30))
-	_upload_rect(rect)
+	_tiles_state.flush(self)
 
 
 func _mark_dirty(pixel: Vector2i) -> void:
-	_dirty_lo.x = mini(_dirty_lo.x, pixel.x)
-	_dirty_lo.y = mini(_dirty_lo.y, pixel.y)
-	_dirty_hi.x = maxi(_dirty_hi.x, pixel.x)
-	_dirty_hi.y = maxi(_dirty_hi.y, pixel.y)
+	_tiles_state.mark(pixel)
 
 
 func mark_dirty_rect(rect: Rect2i) -> void:
-	if not rect.has_area():
-		return
-	_mark_dirty(rect.position)
-	_mark_dirty(rect.end - Vector2i.ONE)
+	_tiles_state.mark_rect(rect)
 
 
-## 整张 CPU 图被换掉（读盘、撤销还原、扩展画布）之后重建瓦片：
-## 旧瓦片全丢，只按真的有不透明像素的范围重建；空图因此一张贴图都不建。
 func rebuild_ink_tiles() -> void:
-	_free_tiles()
-	var used := black_image.get_used_rect()
-	if used.has_area():
-		mark_dirty_rect(used)
-	_flush_texture()
+	_tiles_state.rebuild(self)
 
 
 func _free_tiles() -> void:
-	for key in _tiles:
-		var sprite: Sprite2D = _tiles[key]["sprite"]
-		black_tiles.remove_child(sprite)
-		sprite.queue_free()
-	_tiles.clear()
-	_dirty_lo = Vector2i(1 << 30, 1 << 30)
-	_dirty_hi = Vector2i(-(1 << 30), -(1 << 30))
+	_tiles_state.free_all(self)
 
 
-## rect 覆盖到的瓦片键。整图级操作（擦除、重数账本、重建钉子）都从这里出发，
-## 空块再交给 _tile_content 判掉 —— 这就是"分治"的粒度。
 func _tile_keys(rect: Rect2i) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	var last := (canvas_size - Vector2i.ONE) / TILE_SIZE
-	var first := (rect.position / TILE_SIZE).max(Vector2i.ZERO)
-	var end := ((rect.end - Vector2i.ONE) / TILE_SIZE).min(last)
-	for ty in range(first.y, end.y + 1):
-		for tx in range(first.x, end.x + 1):
-			out.append(Vector2i(tx, ty))
-	return out
+	return _tiles_state.keys(self, rect)
 
 
-func _upload_rect(rect: Rect2i) -> void:
-	for key in _tile_keys(rect):
-		_upload_tile(key, rect)
-
-
-## 这一块里真的有内容的范围（画布坐标）；整块空返回空矩形。
-## 懒算 + 缓存：任何上传都把它置脏，下次问再重算 —— 一次原生 get_used_rect，
-## 不用 GDScript 扫。整图操作因此只碰"真的有墨的那一小块"。
 func _tile_content(key: Vector2i) -> Rect2i:
-	var tile = _tiles.get(key)
-	if tile == null:
-		return Rect2i()
-	if not tile["stale"]:
-		return tile["content"]
-	var origin := key * TILE_SIZE
-	var size := (canvas_size - origin).min(Vector2i(TILE_SIZE, TILE_SIZE))
-	var box := Rect2i()
-	if size.x > 0 and size.y > 0:
-		var content := black_image.get_region(Rect2i(origin, size)).get_used_rect()
-		if content.has_area():
-			box = Rect2i(origin + content.position, content.size)
-	tile["content"] = box
-	tile["stale"] = false
-	return box
+	return _tiles_state.content(self, key)
 
 
-## 画布上所有真的有内容的块范围。整图级重数/重建按它遍历。
 func _content_boxes() -> Array[Rect2i]:
-	var boxes: Array[Rect2i] = []
-	for key in _tile_keys(Rect2i(Vector2i.ZERO, canvas_size)):
-		var box := _tile_content(key)
-		if box.has_area():
-			boxes.append(box)
-	return boxes
-
-
-func _upload_tile(key: Vector2i, rect: Rect2i) -> void:
-	var origin := key * TILE_SIZE
-	var tile_rect := Rect2i(origin, (canvas_size - origin).min(Vector2i(TILE_SIZE, TILE_SIZE)))
-	var hit := rect.intersection(tile_rect)
-	if not hit.has_area():
-		return
-	var tile = _tiles.get(key)
-	if tile == null:
-		var image := Image.create_empty(tile_rect.size.x, tile_rect.size.y, false, Image.FORMAT_RGBA8)
-		image.fill(Color.TRANSPARENT)
-		var texture := ImageTexture.create_from_image(image)
-		var sprite := Sprite2D.new()
-		sprite.centered = false
-		sprite.position = Vector2(origin)
-		sprite.texture = texture
-		black_tiles.add_child(sprite)
-		tile = {"image": image, "texture": texture, "sprite": sprite,
-			"content": Rect2i(), "stale": true}
-		_tiles[key] = tile
-	# blit_rect 是原样拷贝（不混合），正好把瓦片对齐到画布坐标。
-	var tile_image: Image = tile["image"]
-	var tile_texture: ImageTexture = tile["texture"]
-	tile_image.blit_rect(black_image, hit, hit.position - origin)
-	tile_texture.update(tile_image)
-	tile["stale"] = true          # 内容变了：这块的内容框要重算
+	return _tiles_state.content_boxes(self)
 #endregion
 
 
@@ -1222,9 +1132,7 @@ func _bucket_fill(point: Vector2) -> bool:
 	var w := canvas_size.x
 	# 整块空区统一从透明变为同一颜色；保存原图字节比逐像素 Dictionary
 	# 撤销记录省得多，大图填充不会因为历史记录而占用数百 MB。
-	if _undo_capturing:
-		_undo_capture = {"bucket_before": data.duplicate(),
-			"bucket_material": material_id, "bucket_count": targets.size()}
+	_undo.capture_bucket_before(self, data.duplicate(), material_id, targets.size())
 	var pixel := PackedByteArray([
 		int(ink_color().r * 255.0), int(ink_color().g * 255.0),
 		int(ink_color().b * 255.0), 255])
@@ -1363,70 +1271,59 @@ func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}, preserve_b
 	return true
 
 
+## 撤销日志（步骤栈、重做栈、一次操作的快照）在 `ink_undo_log.gd`；这里只做转调。
+var _undo = InkUndoLog.new()
+
+
 func _begin_undo_step() -> void:
-	if not _undo_capturing and blue_layer != null:
-		_blue_undo = {"cells": blue_layer.cells.duplicate(), "motors": blue_rule().capture(self) if blue_rule() != null else [], "ledger": ink_px_of(InkPalette.BLUE.id)}
-	_undo_capture = {}
-	_nail_undo = nail_layer.snapshot()
-	_gear_undo = {"centers": gear_centers.duplicate(true),
-		"bearings": draft_bearings.duplicate(true)}
-	_undo_capturing = true
+	_undo.begin(self)
 
 
 func _track_undo_pixel(pixel: Vector2i) -> void:
-	if not _undo_capturing or _undo_capture.has(pixel):
-		return
-	_undo_capture[pixel] = black_image.get_pixelv(pixel)
+	_undo.track(self, pixel)
 
 
 func _commit_undo_step(rod_step: Dictionary = {}) -> void:
-	if not _undo_capturing:
-		return
-	_undo_capturing = false
-	if nail_layer.snapshot() != _nail_undo:
-		_undo_capture["nails"] = _nail_undo
-	_nail_undo = {}
-	if not _gear_undo.is_empty():
-		if gear_centers != _gear_undo.centers:
-			_undo_capture["gear_centers"] = GearCenters.normalize(_gear_undo.centers)
-		if draft_bearings != _gear_undo.bearings:
-			_undo_capture["draft_bearings"] = _gear_undo.bearings.duplicate(true)
-	_gear_undo = {}
-	if not _blue_undo.is_empty() and (blue_layer.cells != _blue_undo.cells or ink_px_of(InkPalette.BLUE.id) != _blue_undo.ledger or (blue_rule() != null and blue_rule().draft_data(self).size() != _blue_undo.motors.size())):
-		_undo_capture["blue"] = _blue_undo
-	_blue_undo = {}
-	if _undo_capture.is_empty() and rod_step.is_empty():
-		_undo_capture = {}
-		return
-	if rod_step.is_empty():
-		push_undo_step(_undo_capture)
-	else:
-		if not _undo_capture.is_empty():
-			rod_step["black_pixels"] = _undo_capture.duplicate()
-		push_undo_step(rod_step)
-	_undo_capture = {}
+	_undo.commit(self, rod_step)
 
 
 func push_undo_step(step: Dictionary) -> void:
-	_undo_steps.append(step)
-	_redo_steps.clear()
-	if _undo_steps.size() > MAX_UNDO_STEPS:
-		_undo_steps.pop_front()
-	edit_committed.emit()
+	_undo.push(self, step)
 
 
 func _cancel_undo_step() -> void:
-	_undo_capture = {}
-	_nail_undo = {}
-	_gear_undo = {}
-	_undo_capturing = false
+	_undo.cancel()
+
+
+## 是否可以撤销 / 重做；给历史按钮等外部调用方用，不暴露内部栈。
+func undo_available() -> bool:
+	return not _undo.empty_undo()
+
+
+func redo_available() -> bool:
+	return not _undo.empty_redo()
+
+
+## 栈顶那一步（只读；选区旋转用它判断"是不是同一步"）。
+func undo_top() -> Dictionary:
+	return _undo.top()
+
+
+## 撤销栈深度（测试与调试用）。
+func undo_depth() -> int:
+	return _undo.undo_depth()
+
+
+## 清空两套栈（关卡重新加载时用）。
+func clear_history() -> void:
+	_undo.clear()
 
 
 ## 撤销最近一次完整的画笔、橡皮、形状、墨水桶或钉子操作。
 func undo_last_edit() -> bool:
 	if gear_tool != null:
 		gear_tool.cancel()
-	if _undo_steps.is_empty():
+	if _undo.empty_undo():
 		return false
 	_cancel_selection()
 	if _shaping:
@@ -1435,22 +1332,22 @@ func undo_last_edit() -> bool:
 	_shaping = false
 	_painting = false
 	_cancel_undo_step()
-	var step: Dictionary = _undo_steps.pop_back()
-	var after := _capture_redo_state(step)
+	var step: Dictionary = _undo.pop_undo()
+	var after := InkUndoApply.capture_redo_state(self, step)
 	if step.has("bucket_before"):
-		_restore_bucket_image(step.bucket_before, step.bucket_material, -step.bucket_count)
-		_redo_steps.append({"undo": step, "after": after})
+		InkUndoApply.restore_bucket_image(self, step.bucket_before, step.bucket_material, -step.bucket_count)
+		_undo.push_redo({"undo": step, "after": after})
 		return true
 	if step.has("rod_pixels"):
 		rod_layer.undo(step)
 		if step.has("black_pixels"):
-			_restore_black_pixels(step.black_pixels)
-		_redo_steps.append({"undo": step, "after": after})
+			InkUndoApply.restore_black_pixels(self, step.black_pixels)
+		_undo.push_redo({"undo": step, "after": after})
 		return true
 	if step.has("transaction"):
 		get_parent().History.restore(get_parent(), step.transaction)
-		_finish_redo_capture(after)
-		_redo_steps.append({"undo": step, "after": after})
+		InkUndoApply.finish_redo_capture(self, after)
+		_undo.push_redo({"undo": step, "after": after})
 		return true
 	if step.has("yellow"):
 		var yellow = yellow_rule()
@@ -1462,8 +1359,8 @@ func undo_last_edit() -> bool:
 						stroke = candidate
 						break
 			yellow.undo(stroke, self)
-		_finish_redo_capture(after)
-		_redo_steps.append({"undo": step, "after": after})
+		InkUndoApply.finish_redo_capture(self, after)
+		_undo.push_redo({"undo": step, "after": after})
 		return true
 	var blue_saved: Dictionary = step.get("blue", {})
 	for pixel in step:
@@ -1474,12 +1371,12 @@ func undo_last_edit() -> bool:
 	if step.has("draft_bearings"):
 		draft_bearings = step.draft_bearings
 	if step.has("nails"):
-		_restore_nail_edit(step.nails)
+		InkUndoApply.restore_nail_edit(self, step.nails)
 	if not blue_saved.is_empty():
-		_restore_blue_edit(blue_saved)
+		InkUndoApply.restore_blue_edit(self, blue_saved)
 	_flush_texture()
 	_flush_ink()
-	_redo_steps.append({"undo": step, "after": after})
+	_undo.push_redo({"undo": step, "after": after})
 	return true
 
 
@@ -1487,20 +1384,20 @@ func undo_last_edit() -> bool:
 func redo_last_edit() -> bool:
 	if gear_tool != null:
 		gear_tool.cancel()
-	if _redo_steps.is_empty():
+	if _undo.empty_redo():
 		return false
 	_cancel_selection()
-	var entry: Dictionary = _redo_steps.pop_back()
+	var entry: Dictionary = _undo.pop_redo()
 	var step: Dictionary = entry.undo
 	var after: Dictionary = entry.after
 	if after.has("transaction"):
 		get_parent().History.restore(get_parent(), after.transaction)
 	elif after.has("bucket_after"):
-		_restore_bucket_image(after.bucket_after, after.bucket_material, after.bucket_count)
+		InkUndoApply.restore_bucket_image(self, after.bucket_after, after.bucket_material, after.bucket_count)
 	elif after.has("rod_pixels"):
 		rod_layer.undo(after)
 		if after.has("black_pixels"):
-			_restore_black_pixels(after.black_pixels)
+			InkUndoApply.restore_black_pixels(self, after.black_pixels)
 	else:
 		for pixel in after:
 			if pixel is Vector2i:
@@ -1510,131 +1407,15 @@ func redo_last_edit() -> bool:
 		if after.has("draft_bearings"):
 			draft_bearings = after.draft_bearings
 		if after.has("nails"):
-			_restore_nail_edit(after.nails)
+			InkUndoApply.restore_nail_edit(self, after.nails)
 		if after.has("blue"):
-			_restore_blue_edit(after.blue)
+			InkUndoApply.restore_blue_edit(self, after.blue)
 		_flush_texture()
 		_flush_ink()
-	_undo_steps.append(step)
+	_undo.push(self, step)
 	return true
 
 
-func _capture_redo_state(step: Dictionary) -> Dictionary:
-	if step.has("bucket_before"):
-		return {"bucket_after": black_image.get_data(),
-			"bucket_material": step.bucket_material, "bucket_count": step.bucket_count}
-	if step.has("transaction") or step.has("yellow"):
-		var bounds: Rect2 = step.get("transaction", {}).get("bounds", Rect2())
-		# 重做还要捕获此次固化新建的支撑，否则撤销后再重做会丢失它。
-		var body_filter: Dictionary = step.get("transaction", {}).get("body_filter", {}).duplicate()
-		if not body_filter.is_empty():
-			body_filter.merge(step.transaction.remove_ids)
-		var state: Dictionary = get_parent().History.capture(get_parent(), step.has("transaction"), bounds, body_filter)
-		if bounds.has_area():
-			state["bounds"] = bounds
-		if step.has("transaction"):
-			for id in step.transaction.remove_ids:
-				state.remove_ids[id] = true
-			# 电路可能原地扩充；重做前先移除撤销恢复的旧版本，避免画出两层线。
-			for entry in state.blue:
-				state.blue_remove[entry.id] = true
-			for id in step.transaction.get("blue_remove", {}):
-				state.blue_remove[id] = true
-		return {"transaction": state}
-	if step.has("rod_pixels"):
-		var current := {"rod_pixels": {}, "rod_anchors": rod_layer.anchor_points.duplicate(),
-			"rod_delta": -int(step.rod_delta)}
-		for cell: Vector2i in step.rod_pixels:
-			current.rod_pixels[cell] = rod_layer.pixels.get_pixelv(cell).a > 0.5
-		if step.has("rod_springs"):
-			current.rod_springs = yellow_rule().draft_data(self)
-		if step.has("rod_rails"):
-			current.rod_rails = rod_layer.rails.duplicate(true)
-		if step.has("rod_pins"):
-			current.rod_pins = rod_layer.slider_pins.duplicate(true)
-		if step.has("black_pixels"):
-			current.black_pixels = {}
-			for cell in step.black_pixels:
-				if cell is Vector2i:
-					current.black_pixels[cell] = black_image.get_pixelv(cell)
-			if step.black_pixels.has("gear_centers"):
-				current.black_pixels["gear_centers"] = gear_centers.duplicate(true)
-			if step.black_pixels.has("draft_bearings"):
-				current.black_pixels["draft_bearings"] = draft_bearings.duplicate(true)
-			if step.black_pixels.has("blue"):
-				current.black_pixels["blue"] = _capture_blue_edit()
-			if step.black_pixels.has("nails"):
-				current.black_pixels["nails"] = nail_layer.snapshot()
-		return current
-	var current := {}
-	for pixel in step:
-		if pixel is Vector2i:
-			current[pixel] = black_image.get_pixelv(pixel)
-	if step.has("gear_centers"):
-		current["gear_centers"] = gear_centers.duplicate(true)
-	if step.has("draft_bearings"):
-		current["draft_bearings"] = draft_bearings.duplicate(true)
-	if step.has("blue"):
-		current["blue"] = _capture_blue_edit()
-	if step.has("nails"):
-		current["nails"] = nail_layer.snapshot()
-	return current
-
-
-func _restore_nail_edit(state: Dictionary) -> void:
-	var before: Dictionary = nail_layer.snapshot()
-	_bump_ink(InkPalette.GREY.id,
-		(state.get("fixed", {}).size() - before.fixed.size()) * NAIL_COST)
-	_bump_ink(InkPalette.WHITE.id,
-		(state.get("background", {}).size() - before.background.size()) * NAIL_COST)
-	nail_layer.restore(state)
-
-
-func _capture_blue_edit() -> Dictionary:
-	return {"cells": blue_layer.cells.duplicate(),
-		"motors": blue_rule().capture(self) if blue_rule() != null else [],
-		"ledger": ink_px_of(InkPalette.BLUE.id)}
-
-
-func _restore_blue_edit(state: Dictionary) -> void:
-	blue_layer.cells = state.cells
-	blue_layer.rebuild()
-	if blue_rule() != null:
-		blue_rule().restore(self, state.motors)
-	_bump_ink(InkPalette.BLUE.id, int(state.ledger) - ink_px_of(InkPalette.BLUE.id))
-
-
-func _restore_bucket_image(data: PackedByteArray, material_id: int, count: int) -> void:
-	black_image.set_data(canvas_size.x, canvas_size.y, false, Image.FORMAT_RGBA8, data)
-	rebuild_ink_tiles()
-	_bump_ink(material_id, count)
-	_flush_ink()
-
-
-func _restore_black_pixels(pixels: Dictionary) -> void:
-	for cell in pixels:
-		if cell is Vector2i:
-			_set_pixel_raw(cell, pixels[cell])
-	if pixels.has("gear_centers"):
-		gear_centers = pixels.gear_centers
-	if pixels.has("draft_bearings"):
-		draft_bearings = pixels.draft_bearings
-	if pixels.has("blue"):
-		_restore_blue_edit(pixels.blue)
-	if pixels.has("nails"):
-		_restore_nail_edit(pixels.nails)
-	_flush_texture()
-	_flush_ink()
-
-
-func _finish_redo_capture(after: Dictionary) -> void:
-	if not after.has("transaction"):
-		return
-	var state: Dictionary = after.transaction
-	var health = _health_node()
-	if health != null:
-		for id in state.get("health", {}):
-			state.health_delta[id] = state.health[id] - health.ink_of(id)
 #endregion
 
 
@@ -1763,229 +1544,48 @@ func _poll_snapshot() -> void:
 	_snapshot.poll(self)
 
 
+## 后台快照是否还在写；测试与调试用。
+func snapshot_pending() -> bool:
+	return _snapshot.busy()
+
+
 ## 内嵌文档使用无损 PNG，包含空草稿（避免旧快照重新覆盖已清空的画布）。
 func capture_document() -> Dictionary:
-	var data := InkSnapshot.metadata(self)
-	data["version"] = 1
-	data["black"] = black_image.save_png_to_buffer()
-	data["rod"] = rod_layer.pixels.save_png_to_buffer()
-	data["fixed_nails"] = nail_layer.nails.keys()
-	data["background_nails"] = nail_layer.background_nails.keys()
-	data["infinite_nails"] = nail_layer.infinite_nails.keys()
-	return data
+	return InkDocument.capture(self)
 
 
 func restore_document(data: Dictionary) -> Error:
-	var image := Image.new()
-	var error := image.load_png_from_buffer(data.get("black", PackedByteArray()))
-	if error != OK:
-		return error
-	return restore_document_pixels(image, data)
+	return InkDocument.restore(self, data)
 
 
 ## 保存 CPU 像素缓冲，包含颜色、透明度和尺寸；不读取 GPU，不触发固化。
 func save_ink(path: String) -> Error:
-	var error: Error
-	if path.get_extension().to_lower() == "snapshot":
-		error = _save_snapshot(path)
-	elif path.get_extension().to_lower() == "png":
-		error = black_image.save_png(ProjectSettings.globalize_path(path))
-	else:
-		error = ResourceSaver.save(black_image, path)
-	if error == OK:
-		print("CANVAS saved: ", ProjectSettings.globalize_path(path))
-	else:
-		push_error("Canvas save failed: %s (%d)" % [path, error])
-	return error
-
-
-## 编辑快照使用 PNG 压缩数据，但故意不用 .png 扩展名。Godot 编辑器会持续监视并
-## 导入 res:// 下的 PNG，自动保存恰好撞上导入线程时 Windows 会返回 ERR_FILE_CANT_WRITE。
-## 未注册的 .snapshot 不进入导入流水线，并通过同目录临时文件避免中途写坏快照。
-func _save_snapshot(path: String) -> Error:
-	var absolute := ProjectSettings.globalize_path(path)
-	var temporary := absolute + ".tmp"
-	DirAccess.make_dir_recursive_absolute(absolute.get_base_dir())
-	var file := FileAccess.open(temporary, FileAccess.WRITE)
-	if file == null:
-		return FileAccess.get_open_error()
-	file.store_buffer("INK2".to_ascii_buffer())
-	var rule = yellow_rule()
-	file.store_var({"black": black_image.save_png_to_buffer(), "rod": rod_layer.pixels.save_png_to_buffer(), "anchors": rod_layer.anchor_points,
-		"gear_centers": gear_centers.duplicate(true), "draft_bearings": draft_bearings.duplicate(true),
-		"rails": rod_layer.rails, "slider_pins": rod_layer.slider_pins,
-		"fixed_nails": nail_layer.nails.keys(), "background_nails": nail_layer.background_nails.keys(),
-		"infinite_nails": nail_layer.infinite_nails.keys(),
-		"springs": rule.draft_data(self) if rule != null else [], "blue": blue_layer.cells,
-		"motors": blue_rule().draft_data(self) if blue_rule() != null else []})
-	file.flush()
-	file.close()
-	if FileAccess.file_exists(path):
-		var remove_error := DirAccess.remove_absolute(absolute)
-		if remove_error != OK:
-			DirAccess.remove_absolute(temporary)
-			return remove_error
-	var rename_error := DirAccess.rename_absolute(temporary, absolute)
-	if rename_error != OK:
-		DirAccess.remove_absolute(temporary)
-	return rename_error
+	return InkDocument.save(self, path)
 
 
 ## 保存整张透明 PNG：黑=空、颜色=材质 id。
 func save_png(path: String) -> Error:
-	var error: Error = black_image.save_png(ProjectSettings.globalize_path(path))
-	if error == OK:
-		print("MAP saved: ", ProjectSettings.globalize_path(path))
-	else:
-		push_error("Map save failed: %s (%d)" % [path, error])
-	return error
+	return InkDocument.save_png(self, path)
 
 
 func load_ink(path: String) -> Error:
-	if not FileAccess.file_exists(path):
-		push_error("Canvas file missing: " + path)
-		return ERR_FILE_NOT_FOUND
-	var image: Image
-	var rod_data: Dictionary = {}
-	if path.get_extension().to_lower() == "snapshot":
-		image = Image.new()
-		var bytes := FileAccess.get_file_as_bytes(path)
-		if bytes.slice(0, 4).get_string_from_ascii() == "INK2":
-			var snapshot := FileAccess.open(path, FileAccess.READ)
-			snapshot.get_buffer(4)
-			rod_data = snapshot.get_var()
-			bytes = rod_data.black
-		var load_error := image.load_png_from_buffer(bytes)
-		if load_error != OK:
-			push_error("Canvas snapshot decode failed: %s (%d)" % [path, load_error])
-			return load_error
-	elif path.get_extension().to_lower() == "png":
-		image = Image.load_from_file(ProjectSettings.globalize_path(path))
-	else:
-		image = ResourceLoader.load(path, "Image", ResourceLoader.CACHE_MODE_IGNORE) as Image
-	if image == null or image.is_empty():
-		push_error("Canvas file is not an Image: " + path)
-		return ERR_INVALID_DATA
-	return restore_document_pixels(image, rod_data)
+	return InkDocument.load(self, path)
 
 
 ## 无坐标转换地恢复文档草稿；已固化实体由场景独立保存。
 func restore_document_pixels(image: Image, rod_data: Dictionary) -> Error:
-	_painting = false
-	get_parent().canvas_size = image.get_size()
-	black_image = image
-	black_image.convert(Image.FORMAT_RGBA8)
-	rebuild_ink_tiles()
-	_rebuild_loaded_metadata()
-	gear_centers = GearCenters.normalize(rod_data.get("gear_centers", []))
-	var pending = rod_data.get("draft_bearings", [])
-	draft_bearings = pending.duplicate(true) if pending is Array else []
-	if not rod_data.is_empty():
-		var rods := Image.new()
-		rods.load_png_from_buffer(rod_data.rod)
-		rod_layer.pixels = rods
-		rod_layer.anchor_points = rod_data.anchors
-		rod_layer.rails = rod_data.get("rails", []).duplicate(true)
-		rod_layer.slider_pins = rod_data.get("slider_pins", []).duplicate(true)
-		rod_layer.refresh()
-		if rod_data.has("fixed_nails") or rod_data.has("background_nails") or rod_data.has("infinite_nails"):
-			nail_layer.clear()
-			for point in rod_data.get("fixed_nails", []):
-				nail_layer.add(Vector2i(point), Nail.Kind.FIXED)
-			for point in rod_data.get("background_nails", []):
-				nail_layer.add(Vector2i(point), Nail.Kind.BACKGROUND)
-			for point in rod_data.get("infinite_nails", []):
-				nail_layer.add(Vector2i(point), Nail.Kind.INFINITE)
-			_bump_ink(InkPalette.GREY.id, nail_layer.nails.size() * NAIL_COST, false)
-			_bump_ink(InkPalette.WHITE.id, nail_layer.background_nails.size() * NAIL_COST, false)
-		var health = _health_node()
-		if not ink_free and health != null:
-			health.reduce(InkPalette.YELLOW.id, rod_layer.make_shape().pixel_count())
-		var rule = yellow_rule()
-		if rule != null:
-			rule.restore_drafts(self, rod_data.get("springs", []), not ink_free)
-		blue_layer.cells = rod_data.get("blue", PackedVector2Array())
-		blue_layer.rebuild()
-		_bump_ink(InkPalette.BLUE.id, blue_layer.cells.size())
-		if blue_rule() != null:
-			blue_rule().restore_draft_data(self, rod_data.get("motors", []))
-		_flush_ink()
-	return OK
+	return InkDocument.restore_pixels(self, image, rod_data)
 
 
 ## 读盘后重建钉子和墨水账：按块分治，只扫各块的内容框（空块一个字节都不扫）。
 func _rebuild_loaded_metadata() -> void:
-	nail_layer.clear()
-	ink_px_by_material = {}
-	_pending_ink = {}
-	var nail_id := InkPalette.nail_material_id()
-	var width := canvas_size.x
-	var data := black_image.get_data()
-	for box in _content_boxes():
-		for y in range(box.position.y, box.end.y):
-			var row := y * width
-			for x in range(box.position.x, box.end.x):
-				var at := (row + x) * 4
-				if data[at + 3] <= 127:
-					continue
-				var material_id := InkPalette.material_id_at_color(Color8(
-					data[at], data[at + 1], data[at + 2], data[at + 3]
-				))
-				if material_id == nail_id:
-					var point := Vector2i(x, y)
-					black_image.set_pixelv(point, InkPalette.GREY.color)
-					nail_layer.add(point, Nail.Kind.FIXED)
-					ink_px_by_material[InkPalette.GREY.id] = ink_px_of(InkPalette.GREY.id) + 1
-				elif InkPalette.is_ink(material_id):
-					ink_px_by_material[material_id] = ink_px_of(material_id) + 1
-	ink_px_by_material[InkPalette.GREY.id] = ink_px_of(InkPalette.GREY.id) + nail_layer.nails.size() * NAIL_COST
-	ink_px_by_material[InkPalette.WHITE.id] = ink_px_of(InkPalette.WHITE.id) + nail_layer.background_nails.size() * NAIL_COST
-	rebuild_ink_tiles()
+	InkDocument.rebuild_metadata(self)
 
 
 #按像素重新数一遍画布自己的账 —— 读盘、以及怀疑账本漂了的时候用。
 #⚠️ 只走一次性路径。按块分治：代价 = 各块内容框之和，不是整张画布。
 func recount_ink_px() -> void:
-	ink_px_by_material = {}
-	_pending_ink = {}
-	_flush_texture()                  # 先落地未上传的写入，块集合才是完整的
-	var width := canvas_size.x
-	var data := black_image.get_data()
-	for box in _content_boxes():
-		for y in range(box.position.y, box.end.y):
-			var row := y * width
-			for x in range(box.position.x, box.end.x):
-				var at := (row + x) * 4
-				if data[at + 3] <= 127:
-					continue
-				var material_id := InkPalette.material_id_at_color(Color8(
-					data[at], data[at + 1], data[at + 2], data[at + 3]
-				))
-				if InkPalette.is_ink(material_id):
-					ink_px_by_material[material_id] = ink_px_of(material_id) + 1
-	ink_px_by_material[InkPalette.GREY.id] = ink_px_of(InkPalette.GREY.id) + nail_layer.nails.size() * NAIL_COST
-	ink_px_by_material[InkPalette.WHITE.id] = ink_px_of(InkPalette.WHITE.id) + nail_layer.background_nails.size() * NAIL_COST
+	InkDocument.recount(self)
 
 
-#按像素颜色重建钉子外观层；只在读盘时走一次。同样只扫各块的内容框。
-func _rebuild_nails() -> void:
-	nail_layer.clear()
-	var nail_id := InkPalette.nail_material_id()
-	var width := canvas_size.x
-	var data := black_image.get_data()
-	for box in _content_boxes():
-		for y in range(box.position.y, box.end.y):
-			var row := y * width
-			for x in range(box.position.x, box.end.x):
-				var at := (row + x) * 4
-				if data[at + 3] <= 127:
-					continue
-				var material_id := InkPalette.material_id_at_color(Color8(
-					data[at], data[at + 1], data[at + 2], data[at + 3]
-				))
-				if material_id == nail_id:
-					var point := Vector2i(x, y)
-					black_image.set_pixelv(point, InkPalette.GREY.color)
-					nail_layer.add(point, Nail.Kind.FIXED)
-	rebuild_ink_tiles()
 #endregion

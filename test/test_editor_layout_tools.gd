@@ -56,6 +56,24 @@ func _run() -> void:
 		quit(1)
 		return
 	var first: Marker2D = points[0]
+	var saved_rects: Array = creative._editor_player_states[0].rects
+	var standing_bounds: Rect2 = saved_rects[0]
+	for rect in saved_rects:
+		standing_bounds = standing_bounds.merge(rect)
+	var recovery = level.get_node("Player/FallDeath")
+	check("editor zone retains real feet when player collision is suspended", recovery._spawn_foot_offset().is_equal_approx(Vector2(standing_bounds.get_center().x,standing_bounds.end.y)))
+
+	# 独立设置激活区域，不能改变出生标记；修改、删除恢复、放置重做均保留配置。
+	creative._open_respawn_area_dialog()
+	var values := [96.0, 20.0, 32.0, -4.0]
+	for index in 4:
+		creative._respawn_area_fields[index].value = values[index]
+	creative._confirm_respawn_area()
+	creative._respawn_area_dialog.hide()
+	check("activation settings do not move spawn", first.global_position == empty and first.activation_size == Vector2(96,20) and first.activation_offset == Vector2(32,-4))
+	check("activation settings undo", creative.undo_last_edit() and first.activation_size == Vector2(120,32) and first.activation_offset == Vector2.ZERO)
+	check("activation settings redo", creative.redo_last_edit() and first.activation_size == Vector2(96,20) and first.activation_offset == Vector2(32,-4))
+	first.global_rotation = 0.2
 
 	# 移动：按在已有复活点上不再是「再放一个」，而是拖动它。
 	var before: int = points.size()
@@ -72,11 +90,19 @@ func _run() -> void:
 	check("right click deletes the respawn under the cursor",
 		click(creative, MOUSE_BUTTON_RIGHT, first.global_position) and respawns(level).is_empty())
 	check("respawn delete is undoable", creative.undo_last_edit() and respawns(level).size() == 1)
+	var recovered: Marker2D = respawns(level)[0]
+	check("delete undo retains zone and spawn orientation", recovered.activation_size == Vector2(96,20) and recovered.activation_offset == Vector2(32,-4) and is_equal_approx(recovered.global_rotation,0.2))
 	check("respawn delete is redoable", creative.redo_last_edit() and respawns(level).is_empty())
 
 	# 删除工具按钮本身。
 	creative.select_monster_tool(creative.LAYOUT_MODE_DELETE_RESPAWN)
 	var placed: Marker2D = creative.place_respawn_point(Vector2(700, 0))
+	placed.activation_size = Vector2(75,10)
+	placed.activation_offset = Vector2(7,0)
+	check("configured placement undo", creative.undo_last_edit() and respawns(level).is_empty())
+	check("configured placement redo", creative.redo_last_edit() and respawns(level).size() == 1)
+	placed = respawns(level)[0]
+	check("placement redo retains activation settings", placed.activation_size == Vector2(75,10) and placed.activation_offset == Vector2(7,0))
 	await process_frame
 	check("delete tool removes a picked respawn",
 		click(creative, MOUSE_BUTTON_LEFT, placed.global_position) and respawns(level).is_empty())

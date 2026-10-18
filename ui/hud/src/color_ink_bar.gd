@@ -16,14 +16,19 @@ func _ready() -> void:
 
 
 func set_health(health: Node) -> void:
+	# 五种颜色共用玩家默认满瓶量作为横条标尺；不能用各自的关卡配额当分母，
+	# 否则把某色配额改成 0 后 0/0 会显示成满格，配额 500 也会显示成整段。
+	var base := 20000.0
+	if health != null:
+		base = maxf(float(health.get("max_ink")), 1.0)
 	for index in MATERIALS.size():
 		var material_id: int = MATERIALS[index].id
 		if health == null:
-			ratios[index] = 1.0
-			remaining[index] = 20000
+			ratios[index] = 0.0
+			remaining[index] = 0
 		else:
-			ratios[index] = clampf(health.ratio_of(material_id), 0.0, 1.0)
 			remaining[index] = maxi(0, roundi(health.ink_of(material_id)))
+			ratios[index] = clampf(float(remaining[index]) / base, 0.0, 1.0)
 	queue_redraw()
 
 

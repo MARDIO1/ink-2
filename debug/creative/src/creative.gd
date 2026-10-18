@@ -665,8 +665,7 @@ func _enter() -> void:
 	if _map_canvas != null:
 		var edit_surface = _map_canvas.get_node_or_null("CanvasSurface")
 		if edit_surface != null:
-			edit_surface._undo_steps.clear()
-			edit_surface._redo_steps.clear()
+			edit_surface.clear_history()
 	# 进入编辑器不再把实体栅格化；只有显式“墨化”才执行重采样。
 	_set_ink_free(true)
 	_set_monster_physics_paused(true)
@@ -3000,7 +2999,7 @@ func _configure_history() -> void:
 
 func _on_history_recorded(edit: Dictionary) -> void:
 	if edit.get("type", &"") != &"canvas" and _map_canvas != null:
-		_map_canvas.surface._redo_steps.clear()
+		_map_canvas.surface.clear_history()
 
 func _ensure_save_view() -> void:
 	if is_instance_valid(_save_view):

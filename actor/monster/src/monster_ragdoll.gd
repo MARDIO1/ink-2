@@ -33,6 +33,7 @@ var shield_broken := false
 var shield_sole_offset := 0.0
 ## 握盾时抬起左手；盾牌中心可以偏离掌心，破碎后放下。
 const SHIELD_HOLD_ARM_OFFSET := 1.15
+const SHIELD_SOLVER_ITERATIONS := 32
 
 
 static func sprite_shape(sprite: Sprite2D, frame: Transform2D, material: int) -> PixelShape:
@@ -216,7 +217,7 @@ func setup(monster: Node2D, pixel_world: Node2D, torso: PBody) -> void:
 			bone.rotation += SHIELD_HOLD_ARM_OFFSET
 	_align_standing_feet()
 	torso.ccd = true
-	torso.additional_solver_iterations = 32 if monster.has_shield else 8
+	torso.additional_solver_iterations = SHIELD_SOLVER_ITERATIONS if monster.has_shield else 8
 	for control: Dictionary in visual.LIMB_CONTROLS:
 		var bone: Bone2D = visual.get_node(control.bone)
 		var sprite := limb_art(bone)
@@ -230,7 +231,7 @@ func setup(monster: Node2D, pixel_world: Node2D, torso: PBody) -> void:
 		limb.tags["monster_part"] = str(bone.name)
 		limb.internal_render = false
 		limb.ccd = true
-		limb.additional_solver_iterations = 32 if monster.has_shield else 8
+		limb.additional_solver_iterations = SHIELD_SOLVER_ITERATIONS if monster.has_shield else 8
 		world_node.world.add_body(limb, [shape], Callable(world_node, "_density_of"), true)
 		var joint: PJoint = world_node.world.add_hinge(torso, limb, limb.position)
 		joint.set_limits(-1.4, 1.4)
@@ -252,6 +253,10 @@ func setup(monster: Node2D, pixel_world: Node2D, torso: PBody) -> void:
 			exclusion.contacts_enabled = false
 			self_contact_filters.append(exclusion)
 	_setup_shield(monster)
+	# 四个短时间步比单步堆迭代更能稳定重盾、握盾焊点和脚底接触。
+	# 只给躯干标记，碎片和脱落盾牌不会继承全世界的精度要求。
+	if monster.has_shield:
+		torso.tags["physics_min_substeps"] = 4
 	world_node.realign_body_nodes()
 	animation.play("walk")
 
@@ -322,7 +327,7 @@ func _setup_shield(monster: Node2D) -> void:
 	shield_body.tags["monster_part"] = "Shield"
 	shield_body.internal_render = false
 	shield_body.ccd = true
-	shield_body.additional_solver_iterations = 32
+	shield_body.additional_solver_iterations = SHIELD_SOLVER_ITERATIONS
 	world_node.world.add_body(shield_body, shield_shapes, Callable(world_node, "_density_of"), true)
 	# 盾牌由画面左侧的手臂握持，受击时与该手臂一起运动。
 	var palm := visual.get_node_or_null("Skeleton2D/Root/BodyBone/LeftArm/LeftArmArt/PalmGrip") as Node2D
@@ -421,10 +426,10 @@ func update_balance(delta: float, paused: bool, recovering: bool, walking: bool,
 		shield_body.control_torque = 0.0
 	var upright := gravity.angle() - PI * 0.5 if not gravity.is_zero_approx() else 0.0
 	var error := wrapf(upright - torso_body.rotation, -PI, PI)
-	var target_speed := clampf(error * 8.0, -MAX_RECOVERY_ANGULAR_SPEED, MAX_RECOVERY_ANGULAR_SPEED)
-	# 弹簧项渐入；恢复阶段的阻尼不随刚度削弱，先吸收旋转动量再扶正。
-	var acceleration := clampf((target_speed * drive_strength - torso_body.angular_velocity) * 50.0,
-		-MAX_RECOVERY_ANGULAR_ACCELERATION, MAX_RECOVERY_ANGULAR_ACCELERATION)
+	var carrying_shield := shield_body != null and not shield_broken
+	# 尖底重盾回正时放慢整套关节，攻击阶段仍保留独立的挥盾速度。
+	var balance_speed := 0.8 if carrying_shield else MAX_RECOVERY_ANGULAR_SPEED
+	var target_speed := clampf(error * 8.0, -balance_speed, balance_speed)
 	# 大角度倒地时需要克服绕支撑点的惯量，不能只按躯干质心惯量限力。
 	# 接近站立后平滑撤去这部分扶起能力，避免以倒地力度顶地回弹。
 	var support_inertia: float = torso_body.inertia + torso_body.mass * torso_body.local_com.length_squared()
@@ -432,6 +437,11 @@ func update_balance(delta: float, paused: bool, recovering: bool, walking: bool,
 	support_blend *= 1.0 - smoothstep(0.0, 40.0, upward_speed)
 	var recovery_inertia: float = lerpf(torso_body.inertia,
 		minf(support_inertia, torso_body.inertia * 4.0), support_blend)
+	# 弹簧项渐入，恢复阶段保留阻尼以吸收旋转动量。
+	# 支撑惯量放大的阻尼按物理步长隐式积分，避免显式阻尼反向注能。
+	var damping_step := 1.0 + 50.0 * delta * recovery_inertia / torso_body.inertia if carrying_shield else 1.0
+	var acceleration := clampf((target_speed * drive_strength - torso_body.angular_velocity) * 50.0 / damping_step,
+		-MAX_RECOVERY_ANGULAR_ACCELERATION, MAX_RECOVERY_ANGULAR_ACCELERATION)
 	torso_body.control_torque = 0.0 if recovering else recovery_inertia * acceleration
 	if absf(torso_body.control_torque) > 0.01:
 		torso_body.awake = true
@@ -477,18 +487,18 @@ func update_balance(delta: float, paused: bool, recovering: bool, walking: bool,
 		var pivot := limb.position
 		var load_inertia: float = limb.inertia
 		var motor_damping := 40.0 if str(part.bone.name).ends_with("Leg") else 32.0
-		var max_speed := MAX_RECOVERY_ANGULAR_SPEED
+		var max_speed := 1.0 if carrying_shield else MAX_RECOVERY_ANGULAR_SPEED
 		if monster != null and monster._attack != null and monster._attack.busy() and str(part.bone.name).ends_with("Arm"):
 			max_speed = 5.0
 		if not shield_holder.is_empty() and part == shield_holder and shield_body != null and not shield_broken:
 			load_inertia += limb.mass * limb.com_world().distance_squared_to(pivot)
 			load_inertia += shield_body.inertia + shield_body.mass * shield_body.com_world().distance_squared_to(pivot)
-			# 盾牌与手臂焊接，只由握盾关节回正；双重伺服在底缘接地时会注入额外能量。
-			# 对重载握盾臂使用略过阻尼伺服，避免重力下垂和回正过冲。
-			# 保留静态承重刚度，通过更强阻尼放慢重载回正，避免盾牌下垂。
-			stiffness = 900.0
-			motor_damping = 72.0
-			max_speed = 4.0
+			# 加速度马达按铰链自身惯量求解，焊接盾牌的惯量需同步折算。
+			var hinge_inertia := 1.0 / (limb.inv_inertia + torso_body.inv_inertia)
+			var load_ratio := load_inertia / hinge_inertia
+			stiffness = 120.0 * load_ratio
+			motor_damping = 32.0 * load_ratio
+			max_speed = 2.0 if monster != null and monster._attack != null and monster._attack.busy() else 0.6
 		var mirror_sign := -1.0 if part.bone.get_parent().global_transform.determinant() < 0.0 else 1.0
 		var target := wrapf(desired - part.joint_rest_angle, -PI, PI) * mirror_sign
 		# 上抬反馈不能撤掉握盾臂的承重力，否则盾牌落地后会再次顶起角色。
@@ -629,6 +639,8 @@ func _reset_body_pose() -> void:
 
 
 func release() -> void:
+	if torso_body != null:
+		torso_body.tags.erase("physics_min_substeps")
 	if is_instance_valid(world_node):
 		for joint in joints + self_contact_filters:
 			world_node.world.remove_joint(joint)

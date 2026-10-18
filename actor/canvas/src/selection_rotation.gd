@@ -19,8 +19,8 @@ func apply(canvas) -> bool:
 	var rect: Rect2i = surface.selection_rect()
 	var mask: Dictionary = surface.selection_mask()
 	var continuing: bool = not cache.is_empty() and cache.last_rect == rect \
-		and cache.circle == surface._selected_circle and not surface._undo_steps.is_empty() \
-		and surface._undo_steps.back() == cache.last_step
+		and cache.circle == surface._selected_circle and surface.undo_available() \
+		and surface.undo_top() == cache.last_step
 	var original: Rect2i = cache.rect if continuing else rect
 	var angle: float = cache.angle + deg_to_rad(2.0) if continuing else deg_to_rad(2.0)
 	var pivot := Vector2(original.position) + Vector2(original.size) * 0.5
@@ -164,5 +164,5 @@ func apply(canvas) -> bool:
 	canvas.History.commit(canvas, state)
 	cache.angle = angle
 	cache.last_rect = destination
-	cache.last_step = surface._undo_steps.back()
+	cache.last_step = surface.undo_top()
 	return true

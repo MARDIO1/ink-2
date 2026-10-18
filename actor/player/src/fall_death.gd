@@ -1,5 +1,5 @@
 extends Node
-## 掉落死亡：玩家连续下落超过阈值时显示"已死亡"，倒计时后回到最近的出生点或复活点。
+## 掉落死亡后回到最后一次落地激活的复活点，出生点始终可回退。
 ## 挂在 Player 节点下作为子节点；通过 PlayerInput.support 判断是否着地。
 
 #region 配置
@@ -11,14 +11,16 @@ extends Node
 @export_range(0.0, 20000.0, 1.0, "or_greater") var hurt_sound_threshold := 100.0
 ## 连续受伤时避免同一段声音过密重播。
 @export_range(0.0, 2.0, 0.01) var hurt_sound_cooldown := 0.25
-## 玩家中心进入以复活点为中心的此矩形后，死亡复活与“脱离卡死”才可选择该点。
-@export var checkpoint_visit_size := Vector2(200.0, 200.0)
+## 旧地图标记的默认脚底激活范围；新标记可单独配置大小和偏移。
+@export var checkpoint_visit_size := Vector2(120.0, 32.0)
 ## 达到受伤音效阈值后，整套玩家美术保持纯白的时间。
 @export_range(0.01, 0.5, 0.01) var hit_flash_duration := 0.08
 const PLAYER_SPAWN_NAME := "PlayerSpawn"
 const PLAYER_SPAWN_GROUP := &"player_spawn"
 const RESPAWN_POINT_PREFIX := "RespawnPoint"
 const RESPAWN_POINT_GROUP := &"respawn_point"
+const RespawnPoint := preload("res://map/src/respawn_point.gd")
+signal checkpoint_activated(point: Marker2D)
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SafeSpawnSearch := preload("res://actor/player/src/safe_spawn_search.gd")
 const DeathEffect := preload("res://actor/general/effects/character_death.gd")
@@ -42,6 +44,9 @@ var _death_timer := 0.0
 var _death_layer: CanvasLayer
 var _death_label: Label
 var _visited_points: Array[Marker2D] = []
+var _checkpoint_contacts: Array[Marker2D] = []
+var _checkpoint_notice: Label
+var _checkpoint_notice_time := 0.0
 var _checkpoints: Array = []
 var _checkpoints_initialized := false
 var _initial_position := Vector2.ZERO
@@ -80,6 +85,8 @@ func _ready() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_update_hit_flash(_delta)
+	_checkpoint_notice_time = maxf(0.0, _checkpoint_notice_time - _delta)
+	_checkpoint_notice.visible = _checkpoint_notice_time > 0.0 and not _dead and not _editor_active()
 	if not _pending_safety_check.is_empty() and not recovering and not _editor_active():
 		_verify_after_resume()
 		return
@@ -87,6 +94,7 @@ func _physics_process(_delta: float) -> void:
 		_update_visited_points()
 	else:
 		_checkpoints_initialized = false # 编辑器可新增、移动或删除复活点。
+		_checkpoint_contacts.clear()
 	if _dead:
 		_death_timer -= _delta
 		_death_layer.visible = _death_timer <= respawn_delay - _death_visual_duration
@@ -130,6 +138,20 @@ func _build_death_ui() -> void:
 	_death_layer.add_child(_death_label)
 	add_child(_death_layer)
 	_death_layer.visible = false
+	var checkpoint_layer := CanvasLayer.new()
+	checkpoint_layer.layer = 80
+	add_child(checkpoint_layer)
+	_checkpoint_notice = Label.new()
+	_checkpoint_notice.text = "复活点已激活"
+	_checkpoint_notice.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_checkpoint_notice.position.y = 76.0
+	_checkpoint_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_checkpoint_notice.add_theme_font_size_override("font_size", 24)
+	_checkpoint_notice.add_theme_color_override("font_color", Color.WHITE)
+	_checkpoint_notice.add_theme_color_override("font_outline_color", Color.BLACK)
+	_checkpoint_notice.add_theme_constant_override("outline_size", 4)
+	_checkpoint_notice.visible = false
+	checkpoint_layer.add_child(_checkpoint_notice)
 #endregion
 
 
@@ -331,11 +353,10 @@ func escape_stuck(skipped: Array = [], search = null) -> bool:
 	_pending_safety_check = {}
 	var was_paused := get_tree().paused
 	get_tree().paused = true
-	_update_visited_points()
+	_refresh_checkpoint_cache()
 	var level := _level_root() as Node2D
 	var points := _valid_visited_points()
-	var current_position: Vector2 = _body.com_world()
-	points.sort_custom(func(a, b): return level.to_local(a.global_position).distance_squared_to(current_position) < level.to_local(b.global_position).distance_squared_to(current_position))
+	points.reverse() # 最近激活优先；被堵住时才回退更早的有效点。
 	var targets: Array = []
 	for point in points:
 		targets.append({"position": level.to_local(point.global_position), "rotation": point.global_rotation - level.global_rotation})
@@ -413,12 +434,8 @@ func _editor_active() -> bool:
 	return creative != null and creative.get("active") == true
 
 
-func _update_visited_points() -> void:
-	if _editor_active() or _dead:
-		return
-	var level := _level_root() as Node2D
-	if level == null:
-		return
+## 只收集本关标记及出生回退点；查询时不能顺带激活区域。
+func _refresh_checkpoint_cache() -> void:
 	if _body == null:
 		_body = _player.get("body")
 	if not _checkpoints_initialized:
@@ -428,16 +445,80 @@ func _update_visited_points() -> void:
 		if spawn != null:
 			_checkpoints.append(spawn)
 			if not _visited_points.has(spawn):
-				_visited_points.append(spawn) # 关卡出生点始终是安全回退目标。
-	var position: Vector2 = _body.com_world() if _body != null else level.to_local(_player.global_position)
-	var half_size := checkpoint_visit_size.abs() * 0.5
+				_visited_points.push_front(spawn) # 出生点不能覆盖已激活的点。
+
+
+## 使用出生姿势的碰撞脚底作基准，兼容旧 Marker2D 的出生原点。
+func _spawn_foot_offset() -> Vector2:
+	# 编辑模式会临时清空刚体碰撞矩形，源形状仍保留同一套站立轮廓。
+	var shapes: Array = _player.collect_shapes()
+	if shapes.is_empty():
+		return Vector2.ZERO
+	var bounds := Rect2(shapes[0].local_aabb())
+	for shape in shapes:
+		bounds = bounds.merge(Rect2(shape.local_aabb()))
+	return Vector2(bounds.get_center().x, bounds.end.y)
+
+
+## 返回相对出生姿势的脚底矩形，配置偏移不改变实际出生位置。
+func checkpoint_area(point: Marker2D) -> Rect2:
+	var size: Vector2 = point.activation_size if point is RespawnPoint else checkpoint_visit_size
+	var offset: Vector2 = point.activation_offset if point is RespawnPoint else Vector2.ZERO
+	size = size.abs()
+	return Rect2(_spawn_foot_offset() + offset - size * 0.5, size)
+
+
+## 与出生传送相同：使用标记的位置和朝向，不把标记缩放应用给玩家。
+func _checkpoint_frame(point: Marker2D) -> Transform2D:
+	var level := _level_root() as Node2D
+	return level.global_transform * Transform2D(point.global_rotation - level.global_rotation, level.to_local(point.global_position))
+
+
+## 编辑器边框与运行时激活共用坐标变换。
+func checkpoint_polygon(point: Marker2D) -> PackedVector2Array:
+	var area := checkpoint_area(point)
+	var frame := _checkpoint_frame(point)
+	return PackedVector2Array([frame * area.position, frame * Vector2(area.end.x, area.position.y),
+		frame * area.end, frame * Vector2(area.position.x, area.end.y)])
+
+
+func _update_visited_points() -> void:
+	if _editor_active() or _dead or recovering:
+		return
+	_refresh_checkpoint_cache()
+	var level := _level_root() as Node2D
+	if _body == null or _player_input == null or _player_input.support == null \
+	or not level.world.bodies.has(_player_input.support):
+		_checkpoint_contacts.clear()
+		return
+	var foot: Vector2 = level.to_global(_player_input.contact_point)
+	var inside: Array[Marker2D] = []
+	var entered: Marker2D = null
+	var best_distance := INF
 	for point in _checkpoints:
 		if not is_instance_valid(point) or point.is_queued_for_deletion() \
-		or not level.is_ancestor_of(point) or _visited_points.has(point):
+		or not level.is_ancestor_of(point):
 			continue
-		var distance: Vector2 = (level.to_local(point.global_position) - position).abs()
-		if distance.x <= half_size.x and distance.y <= half_size.y:
-			_visited_points.append(point)
+		var area := checkpoint_area(point)
+		var local_foot := _checkpoint_frame(point).affine_inverse() * foot
+		if not area.has_point(local_foot):
+			continue
+		inside.append(point)
+		if _checkpoint_contacts.has(point):
+			continue
+		var distance := local_foot.distance_squared_to(area.get_center())
+		if distance < best_distance:
+			best_distance = distance
+			entered = point
+	_checkpoint_contacts = inside
+	if entered != null:
+		var previous := _valid_visited_points()
+		_visited_points.erase(entered)
+		_visited_points.append(entered)
+		if previous.is_empty() or previous.back() != entered:
+			_checkpoint_notice_time = 1.8
+			_checkpoint_notice.visible = true
+			checkpoint_activated.emit(entered)
 
 
 func _valid_visited_points() -> Array:
@@ -451,19 +532,11 @@ func _valid_visited_points() -> Array:
 
 
 #region 复活点查找
-## 仅在本关已路过的点中选最近的目标；出生点始终可作为安全回退。
+## 只读激活顺序；死亡位置和查询调用都不能改变当前复活点。
 func _find_respawn_target() -> Marker2D:
-	_update_visited_points()
-	var level := _level_root() as Node2D
-	var best: Marker2D = null
-	var best_dist := INF
-	var death_position: Vector2 = _body.com_world() if _body != null else level.to_local(_player.global_position)
-	for s in _valid_visited_points():
-		var d: float = level.to_local(s.global_position).distance_squared_to(death_position)
-		if d < best_dist:
-			best_dist = d
-			best = s
-	return best
+	_refresh_checkpoint_cache()
+	var points := _valid_visited_points()
+	return points.back() if not points.is_empty() else null
 
 
 func _find_player_spawn(root: Node) -> Marker2D:
