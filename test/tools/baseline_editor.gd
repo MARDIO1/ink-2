@@ -145,7 +145,7 @@ func run() -> void:
 	if skip_export:
 		print("[Baseline]   (--no-export：跳过导出/重进)")
 	else:
-		var export_error: Error = creative.export_map_to(EXPORT, false)
+		var export_error: Error = creative.export_map_to(EXPORT)
 		check("导出到临时副本", export_error == OK)
 		var packed = load(EXPORT)
 		check("临时副本可加载", packed is PackedScene)

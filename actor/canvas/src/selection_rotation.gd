@@ -1,6 +1,8 @@
 extends RefCounted
 ## 连续旋转始终重采样原始选区，避免每次 2° 的取整误差反复侵蚀像素。
 const Mask := preload("res://actor/canvas/src/selection_mask.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
+const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")
 var cache: Dictionary = {}
 
 func selected(point: Vector2, rect: Rect2i, mask: Dictionary) -> bool:
@@ -37,12 +39,17 @@ func apply(canvas) -> bool:
 	var bounds := Rect2(surface.to_global(Vector2(rect.position)), Vector2(rect.size))
 	var state: Dictionary = canvas.History.capture(canvas, true, bounds)
 	var physical := {}
-	canvas.solid.rasterize_rect(surface, canvas.world, rect, physical, mask)
+	var whole: Dictionary = cache.whole if continuing else canvas.whole_bodies_in_selection(rect, mask)
+	var moved_centers: Array = []
+	var moved_bearings: Array = []
+	canvas.solid.rasterize_rect(surface, canvas.world, rect, physical, mask, whole,
+		moved_centers, moved_bearings)
 	if not continuing:
-		cache = {"rect": rect, "mask": mask.duplicate(), "circle": surface._selected_circle,
+		cache = {"whole": whole, "rect": rect, "mask": mask.duplicate(), "circle": surface._selected_circle,
 			"black": surface.black_image.duplicate(), "rod": surface.rod_layer.pixels.duplicate(),
 			"blue": surface.blue_layer.mask.duplicate(), "physical": physical.duplicate(),
-			"centers": surface.gear_centers.duplicate(), "anchors": surface.rod_layer.anchor_points.duplicate(),
+			"centers": GearCenters.normalize(surface.gear_centers), "anchors": surface.rod_layer.anchor_points.duplicate(),
+			"draft_bearings": surface.draft_bearings.duplicate(true),
 			"rails": surface.rod_layer.rails.duplicate(true), "pins": surface.rod_layer.slider_pins.duplicate(true),
 			"springs": [], "motors": []}
 		var yellow = surface.yellow_rule()
@@ -92,10 +99,17 @@ func apply(canvas) -> bool:
 		surface.rod_layer.pixels.set_pixelv(at, writes[at][1])
 		if writes[at][2]:
 			surface.blue_layer.mask[at] = true
-	surface.gear_centers = cache.centers.duplicate()
+	surface.gear_centers = GearCenters.normalize(cache.centers)
 	for i in surface.gear_centers.size():
-		if selected(surface.gear_centers[i], original, cache.mask):
-			surface.gear_centers[i] = turn(surface.gear_centers[i], pivot, angle)
+		var record: Dictionary = surface.gear_centers[i]
+		if selected(GearCenters.position_of(record), original, cache.mask):
+			record["position"] = turn(GearCenters.position_of(record), pivot, angle)
+	surface.draft_bearings = cache.get("draft_bearings", []).duplicate(true)
+	for record in surface.draft_bearings:
+		if selected(Vector2(record.get("position", Vector2.ZERO)), original, cache.mask):
+			record["position"] = turn(Vector2(record.position), pivot, angle)
+			record["support_position"] = turn(Vector2(record.get("support_position", record.position)),
+				pivot, angle)
 	surface.rod_layer.anchor_points = cache.anchors.duplicate()
 	for i in surface.rod_layer.anchor_points.size():
 		if selected(surface.rod_layer.anchor_points[i], original, cache.mask):
@@ -129,14 +143,17 @@ func apply(canvas) -> bool:
 			entry.node.rotation = entry.rotation + angle
 	if not rotated_physical.is_empty():
 		canvas.solid.spawn_moved_pixels(surface, canvas.world, rotated_physical, Vector2i.ZERO, canvas._map_editor_mode)
-		var centers := PackedVector2Array()
-		for point in surface.gear_centers:
-			if rotated_physical.has(Vector2i(point.floor())):
-				centers.append(point)
-		canvas.solid.create_axles(surface, canvas.world, centers)
-		for point in centers:
-			surface.gear_centers.remove_at(surface.gear_centers.find(point))
+		for record in moved_centers:
+			record["position"] = turn(GearCenters.position_of(record), pivot, angle)
+		GearCenters.attach(surface, canvas.world, moved_centers)
+		for record in moved_bearings:
+			record["position"] = turn(Vector2(record.get("position", Vector2.ZERO)), pivot, angle)
+			var support_point := Vector2(record.get("support_position", record.position))
+			if bool(record.get("fixed_to_world", false)) or selected(support_point, original, cache.mask):
+				record["support_position"] = turn(support_point, pivot, angle)
+		GearBearings.restore(surface, moved_bearings)
 		canvas.solid.sync_serializable_bodies(canvas.world)
+	canvas.transform_whole_bodies(whole, Vector2.ZERO, deg_to_rad(2.0), pivot)
 	surface.rod_layer.refresh()
 	surface.blue_layer.refresh()
 	surface.blue_layer.build_widths()

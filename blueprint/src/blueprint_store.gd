@@ -58,8 +58,13 @@ func read(id: String) -> Dictionary:
 	if file == null or file.get_length() > MAX_FILE_BYTES:
 		return {}
 	var data = JSON.parse_string(file.get_as_text())
-	if data is Dictionary and data.get("version", 0) == 1:
-		data = migrate_v1(data)
+	if data is Dictionary and int(data.get("version", 0)) < VERSION:
+		var source_version := int(data.get("version", 0))
+		if source_version == 1:
+			data = migrate_v1(data)
+		if source_version < 3:
+			data = migrate_v2(data)
+		data = migrate_v3(data)
 		if validate(data) and data.id == id:
 			save(data, true)
 	if not data is Dictionary or not validate(data) or data.id != id:
@@ -228,4 +233,53 @@ static func migrate_v1(source: Dictionary) -> Dictionary:
 			if int(entry[1]) == Palette.nail_material_id():
 				body.fixed_nails.append(int(entry[0]))
 				entry[1] = Palette.GREY.id
+	return data
+
+
+## v2 -> v3：中心从裸坐标升级为 {position,radius,material}；
+## 轴承记录补齐明确连接（世界 / 蓝图内部支座）与轮体、支座的独立局部点。
+static func migrate_v2(source: Dictionary) -> Dictionary:
+	var data := source.duplicate(true)
+	data.version = VERSION
+	data["gear_centers"] = _migrate_centers(data.get("gear_centers", []))
+	for body in data.get("bodies", []):
+		body["gear_centers"] = _migrate_centers(body.get("gear_centers", []))
+	for gear in data.get("gears", []):
+		if not gear is Dictionary:
+			continue
+		gear["wheel_point"] = gear.get("wheel_point", gear.get("point", [0, 0]))
+		gear["support_point"] = gear.get("support_point", gear.get("point", [0, 0]))
+		gear["world"] = bool(gear.get("world", int(gear.get("support", -1)) < 0))
+		gear["legacy"] = bool(gear.get("legacy", true))
+		gear["support_material"] = int(gear.get("support_material", 0))
+	return data
+
+
+static func _migrate_centers(raw) -> Array:
+	var out: Array = []
+	if not raw is Array:
+		return out
+	for entry in raw:
+		if entry is Dictionary:
+			var position = entry.get("position")
+			if position is Vector2:
+				position = [position.x, position.y]
+			if position is Array and position.size() == 2:
+				out.append({"position": [float(position[0]), float(position[1])],
+					"radius": float(entry.get("radius", 48.0)),
+					"material": int(entry.get("material", 0)),
+					"id": int(entry.get("id", 0))})
+		elif entry is Array and entry.size() == 2:
+			out.append({"position": [float(entry[0]), float(entry[1])],
+				"radius": 48.0, "material": 0, "id": 0})
+		elif entry is Vector2:
+			out.append({"position": [entry.x, entry.y], "radius": 48.0, "material": 0, "id": 0})
+	return out
+
+
+## v3 -> v4：草稿手动轴承独立保存；旧蓝图没有轴承就保持自由，绝不推导补轴。
+static func migrate_v3(source: Dictionary) -> Dictionary:
+	var data := source.duplicate(true)
+	data.version = VERSION
+	data["draft_bearings"] = data.get("draft_bearings", [])
 	return data

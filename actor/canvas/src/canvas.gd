@@ -14,6 +14,8 @@ const YellowHinge := preload("res://ink/yellow/src/hinge.gd")
 var _selection_rotation = preload("res://actor/canvas/src/selection_rotation.gd").new()
 const YellowAxle := preload("res://ink/yellow/src/axle.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
+const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const InkPanel := preload("res://actor/canvas/panel/src/ink_panel.gd")
@@ -235,10 +237,13 @@ func generate(record_undo := true) -> void:
 	for index in range(surface.rod_layer.anchor_points.size() - 1, -1, -1):
 		if not surface.rod_layer._black(surface.rod_layer.anchor_points[index]):
 			surface.rod_layer.anchor_points.remove_at(index)
-	var centers: PackedVector2Array = surface.gear_centers.duplicate()
+	var centers: Array = GearCenters.normalize(surface.gear_centers)
+	var pending_bearings: Array = surface.draft_bearings.duplicate(true)
 	solid.solidify(surface, world, _map_editor_mode)
-	surface.rod_layer.solidify(world, nail_state, centers)
-	solid.create_axles(surface, world, centers)
+	surface.rod_layer.solidify(world, nail_state, GearCenters.positions(centers))
+	# 固化只把中心转移到刚体；轴承必须来自草稿里明确记录的手动放置。
+	GearCenters.attach(surface, world, centers)
+	GearBearings.restore(surface, pending_bearings)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.solidify(surface)
@@ -331,14 +336,60 @@ func _delete_selection(rect: Rect2i, mask: Dictionary = {}) -> void:
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 
+## 完整选中的实体直接变换，保持重叠部件、局部像素和连接身份，不经过栅格化。
+func whole_bodies_in_selection(rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
+	var result := {}
+	for body in world.world.bodies:
+		if body.tags.has("living") or body.tags.has("map_monster"):
+			continue
+		var box: Rect2 = body.aabb
+		var corners := [box.position, Vector2(box.end.x - 0.001, box.position.y),
+			box.end - Vector2.ONE * 0.001, Vector2(box.position.x, box.end.y - 0.001)]
+		var complete := true
+		for corner in corners:
+			var at := Vector2i(surface.to_local(corner).floor())
+			if not rect.has_point(at) or not SelectionMask.contains(mask, at):
+				complete = false
+				break
+		if complete:
+			result[body] = true
+	return result
+
+
+func transform_whole_bodies(bodies: Dictionary, offset: Vector2, angle := 0.0, pivot := Vector2.ZERO) -> void:
+	var world_pivot: Vector2 = surface.to_global(pivot)
+	var shift: Vector2 = surface.to_global(offset) - surface.global_position
+	for body in bodies:
+		body.position = world_pivot + (body.position - world_pivot).rotated(angle) + shift
+		body.rotation += angle
+		body.update_aabb()
+		var node = GearCenters.node_for_body(world, body)
+		if node != null:
+			node.position = body.position
+			node.rotation = body.rotation
+	for child in world.get_children():
+		if child is YellowAxle and not child.yellow_anchor.is_empty():
+			if bodies.has(child.yellow_anchor.body) and child.fixed_to_world:
+				child.remove_joint()
+				child.black_position = world_pivot + (child.black_position - world_pivot).rotated(angle) + shift
+			child._process(0.0)
+		elif child.has_method("sync_pose"):
+			child.sync_pose()
+
+
 ## 框选拖动：固化像素先回收到画布，再与普通/黄色图层一起搬移。
 func _move_selection(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> void:
 	if offset == Vector2i.ZERO:
 		return
 	var bounds := Rect2(surface.to_global(Vector2(rect.position)), Vector2(rect.size))
 	var state := History.capture(self, true, bounds)
+	var whole := whole_bodies_in_selection(rect, mask)
 	var moved_physical: Dictionary = {}
-	var removed: int = solid.rasterize_rect(surface, world, rect, moved_physical, mask)
+	var moved_centers: Array = []
+	var moved_bearings: Array = []
+	var removed: int = solid.rasterize_rect(surface, world, rect, moved_physical, mask, whole,
+		moved_centers, moved_bearings)
+	transform_whole_bodies(whole, Vector2(offset))
 	var moved_black: bool = surface.move_rect(rect, offset, mask, true)
 	var blue = surface.blue_rule()
 	var moved_blue: bool = blue.move_selection_drafts(surface, rect, offset, mask) if blue != null else false
@@ -347,23 +398,23 @@ func _move_selection(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> v
 	var moved_spring: bool = yellow.move_drafts_in_rect(surface, rect, offset, mask) if yellow != null else false
 	if removed > 0:
 		solid.spawn_moved_pixels(surface, world, moved_physical, offset, _map_editor_mode)
-		var moved_centers := PackedVector2Array()
-		for point in surface.gear_centers:
-			if moved_physical.has(Vector2i(point.floor()) - offset):
-				moved_centers.append(point)
-		solid.create_axles(surface, world, moved_centers)
-		for point in moved_centers:
-			surface.gear_centers.remove_at(surface.gear_centers.find(point))
+		for record in moved_centers:
+			record["position"] = GearCenters.position_of(record) + Vector2(offset)
+		GearCenters.attach(surface, world, moved_centers)
+		for record in moved_bearings:
+			record["position"] = Vector2(record.get("position", Vector2.ZERO)) + Vector2(offset)
+			var support_point := Vector2(record.get("support_position", Vector2.ZERO))
+			var support_at := Vector2i(support_point.floor())
+			if bool(record.get("fixed_to_world", false)) or (rect.has_point(support_at) and SelectionMask.contains(mask, support_at)):
+				record["support_position"] = support_point + Vector2(offset)
+		GearBearings.restore(surface, moved_bearings)
 		solid.sync_serializable_bodies(world)
-	if removed > 0 or moved_black or moved_blue or moved_yellow or moved_spring:
+	if removed > 0 or moved_black or moved_blue or moved_yellow or moved_spring or not whole.is_empty():
 		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 func bake_png(path: String) -> Error:
-	solid.rasterize(surface, world, true)
-	var error: Error = surface.save_png(path)
-	surface.clear(false)          # 采样是临时的：存完把画布还给"空的"，别让存档里多一层图
-	return error
+	return solid.preview_image(surface, world).save_png(ProjectSettings.globalize_path(path))
 
 
 ## 切换画笔/橡皮擦/普通手。

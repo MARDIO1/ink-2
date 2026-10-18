@@ -18,7 +18,7 @@ func check(label: String, okay: bool) -> void:
 func motion(creative, point: Vector2) -> void:
 	var event := InputEventMouseMotion.new()
 	event.position = root.get_canvas_transform() * point
-	creative._handle_layout_mouse_motion(event)
+	creative.editor_mouse_motion(event)
 
 func gear_at(level, point: Vector2):
 	for node in level.get_children():
@@ -71,7 +71,7 @@ func _run() -> void:
 	var arrow_start: Vector2 = rule.objects(Motor)[0].global_position
 	creative.select_control_tool()
 	var count: int = surface._undo_steps.size()
-	creative._begin_layout_drag(gear, start)
+	creative.editor_drag_begin(gear, start)
 	motion(creative, start + Vector2(80, 40))
 	check("control drag carries draft wire", surface.blue_layer.mask.has(Vector2i(195, 152))
 		and not surface.blue_layer.mask.has(Vector2i(115, 112)))
@@ -80,13 +80,13 @@ func _run() -> void:
 	motion(creative, start + Vector2(-80, -82))
 	motion(creative, start + Vector2(80, 40))
 	check("passing over another draft wire preserves it", surface.blue_layer.mask.has(Vector2i(40, 30)))
-	creative._cancel_layout_drag()
+	creative.editor_drag_cancel()
 	check("cancel restores draft wire exactly", surface.blue_layer.mask == original_cells)
 	check("cancel restores arrow and history", rule.objects(Motor)[0].global_position.is_equal_approx(arrow_start)
 		and surface._undo_steps.size() == count)
-	creative._begin_layout_drag(gear, start)
+	creative.editor_drag_begin(gear, start)
 	motion(creative, start + Vector2(80, 40))
-	creative._finish_layout_drag()
+	creative.editor_drag_finish()
 	check("circuit drag commits one transaction", surface._undo_steps.size() == count + 1)
 	check("draft circuit movement undo succeeds", creative.undo_last_edit())
 	await process_frame
@@ -132,11 +132,11 @@ func _run() -> void:
 	var motor = motors[0]
 	var wire_start: Vector2 = wire.global_position
 	var motor_start: Vector2 = motor.global_position
-	creative._begin_layout_drag(gear, center)
+	creative.editor_drag_begin(gear, center)
 	motion(creative, center + Vector2(50, 0))
 	check("active wire follows in the same event", wire.global_position.is_equal_approx(wire_start + Vector2(50, 0)))
 	check("active motor follows in the same event", motor.global_position.is_equal_approx(motor_start + Vector2(50, 0)))
-	creative._finish_layout_drag()
+	creative.editor_drag_finish()
 	var active_start: Vector2 = gear.global_position
 	var circle := Rect2i(280, 200, 80, 80)
 	canvas._move_selection(circle, Vector2i(0, 80), {"circle_rect": circle})

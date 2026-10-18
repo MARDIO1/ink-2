@@ -15,10 +15,30 @@ func check(label: String, ok: bool) -> void:
 		failures += 1
 	print("[ManualGearBearing] %s %s" % ["PASS" if ok else "FAIL", label])
 
-func hinges(level) -> Array:
-	return level.get_children().filter(func(node): return node is Hinge and not node.is_queued_for_deletion())
+func connections(level) -> Array:
+	return level.get_children().filter(func(node):
+		return node is Hinge and not node.is_queued_for_deletion())
 
 func _run() -> void:
+	# 没有手动点击时，固化后的齿轮必须保持完全自由。
+	var plain = load("res://test/fixtures/maps/base_level.tscn").instantiate()
+	plain.auto_step = false
+	root.add_child(plain)
+	await process_frame
+	plain.get_node("Creative").auto_save_edits = false
+	plain.get_node("Creative").auto_save_on_exit = false
+	var plain_canvas = plain.get_node("MapCanvas")
+	plain_canvas.position = Vector2(10000, -10000)
+	plain_canvas.canvas_size = Vector2i(256, 256)
+	plain_canvas.set_map_editor_mode(true)
+	plain_canvas.surface.ink_free = true
+	plain_canvas.surface.gear_tool.begin(Vector2(100, 100), 12)
+	plain_canvas.surface.gear_tool.finish(Vector2(124, 100))
+	plain_canvas.generate()
+	check("solidify without a bearing click creates no connection", connections(plain).is_empty())
+	plain.queue_free()
+	await process_frame
+
 	for offset in [-12, -5, 0, 6, 12]:
 		var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 		level.auto_step = false
@@ -38,36 +58,29 @@ func _run() -> void:
 		for x in range(55, 146):
 			surface.rod_layer.pixels.set_pixel(x, 100, Palette.YELLOW.color)
 		var manual := Vector2(100.5 + offset, 100.5)
-		check("manual bearing placed at offset %d" % offset, surface.rod_layer.place_anchor(manual))
+		check("manual bearing click accepted at offset %d" % offset,
+			surface.rod_layer.place_anchor(manual))
 		canvas.generate()
 		await process_frame
-		var connections := hinges(level)
-		check("manual bearing suppresses automatic axle at offset %d" % offset,
-			connections.size() == 1 and not connections[0] is Axle)
-		if connections.size() == 1:
-			var bearing = connections[0]
-			check("manual pivot and connection preserved at offset %d" % offset,
-				bearing.joint != null and bearing.joint.is_active() and bearing.texture != null
-				and bearing.yellow_position.is_equal_approx(canvas.world.to_local(surface.to_global(manual))))
-			# 校验同一画布附近，但连接到其他物件的轴承不会抑制自动轴。
-			check("unrelated wheel cannot borrow nearby bearing at offset %d" % offset,
-				not canvas.solid._has_manual_gear_bearing(surface, level, level.get_node("Player").body, Vector2(100.5, 100.5)))
-			# 模拟旧地图中已经保存的多余自动轴；恢复后应只保留手动连接。
-			var redundant := Axle.new()
-			redundant.gear_material = Palette.BLACK.id
-			redundant.yellow_position = level.to_local(surface.to_global(Vector2(100.5, 100.5)))
-			redundant.black_position = redundant.yellow_position
-			level.add_child(redundant)
-			await process_frame
-			await process_frame
-			check("legacy duplicate axle removed at offset %d" % offset, hinges(level).size() == 1)
-			# 事务撤销与重做仍只恢复手动轴承，不补自动轴。
+		var linked := connections(level)
+		check("exactly one explicit connection at offset %d" % offset, linked.size() == 1)
+		if linked.size() == 1:
+			var bearing = linked[0]
+			check("connection is active at offset %d" % offset,
+				bearing.joint != null and bearing.joint.is_active())
+			if bearing is Axle:
+				check("centered manual bearing follows the yellow support, not the world at offset %d" % offset,
+					not bearing.fixed_to_world and not bearing.black_anchor.is_empty())
+				check("manual bearing snap point equals wheel center at offset %d" % offset,
+					bearing.yellow_anchor.body.to_world(bearing.yellow_anchor.local)
+						.is_equal_approx(surface.to_global(Vector2(100.5, 100.5))))
 			check("solidification undo at offset %d" % offset, surface.undo_last_edit())
+			check("solidification undo leaves no connection at offset %d" % offset,
+				connections(level).is_empty())
 			check("solidification redo at offset %d" % offset, surface.redo_last_edit())
 			await process_frame
-			connections = hinges(level)
-			check("redo keeps only manual bearing at offset %d" % offset,
-				connections.size() == 1 and not connections[0] is Axle)
+			check("redo restores exactly one connection at offset %d" % offset,
+				connections(level).size() == 1)
 		level.queue_free()
 		await process_frame
 	print("[ManualGearBearing] %d checks, %d failures" % [checks, failures])

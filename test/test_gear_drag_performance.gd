@@ -42,19 +42,19 @@ func _run() -> void:
 		draft_before = canvas.surface.blue_layer.mask.duplicate()
 	var before: int = canvas.surface._undo_steps.size()
 	var tick := Time.get_ticks_usec()
-	creative._begin_layout_drag(gear, start)
+	creative.editor_drag_begin(gear, start)
 	var select_us := Time.get_ticks_usec() - tick
 	check("selection defers snapshot", creative._gear_drag_history.is_empty())
-	creative._finish_layout_drag()
+	creative.editor_drag_finish()
 	check("click leaves undo history unchanged", canvas.surface._undo_steps.size() == before)
-	creative._begin_layout_drag(gear, start)
+	creative.editor_drag_begin(gear, start)
 	var first_us := 0
 	var motion_us := 0
 	for i in 40:
 		var event := InputEventMouseMotion.new()
 		event.position = root.get_canvas_transform() * (start + Vector2(i + 1, -20))
 		tick = Time.get_ticks_usec()
-		creative._handle_layout_mouse_motion(event)
+		creative.editor_mouse_motion(event)
 		var elapsed := Time.get_ticks_usec() - tick
 		if i == 0:
 			first_us = elapsed
@@ -64,7 +64,7 @@ func _run() -> void:
 		and not creative._gear_drag_history.has("image") and not creative._gear_drag_history.has("bodies"))
 	if not draft_before.is_empty():
 		check("draft circuit moves with gear", canvas.surface.blue_layer.mask != draft_before)
-	creative._cancel_layout_drag()
+	creative.editor_drag_cancel()
 	check("cancel restores gear and leaves history unchanged", gear.global_position.is_equal_approx(start)
 		and canvas.surface._undo_steps.size() == before and gear.joint != null)
 	if not draft_before.is_empty():

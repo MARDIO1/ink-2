@@ -43,7 +43,7 @@ func _run() -> void:
 	var phase: float = portal._spiral_phase
 	portal._process(0.1)
 	_check("spiral rotates", portal._spiral_phase > phase and portal._spiral_material.get_shader_parameter("phase") == portal._spiral_phase)
-	_check("placement and owner", portal.owner == level and creative._portals().size() == 1)
+	_check("placement and owner", portal.owner == level and creative.editor_portals().size() == 1)
 	_check("UI controls", creative._portal_destination.item_count == choices.size() + 1 \
 		and creative._layout_buttons.has(creative.LAYOUT_MODE_PLACE_PORTAL))
 	var grid := creative._monster_palette_panel.find_child("LayoutGrid", true, false) as GridContainer
@@ -58,9 +58,9 @@ func _run() -> void:
 	_check("destination label hidden in play mode", portal._editor_label.is_empty())
 	creative.active = true
 	_check("control tool picks portal", creative._pick_control_target(portal.global_position) == portal)
-	creative._begin_layout_drag(portal, portal.global_position)
+	creative.editor_drag_begin(portal, portal.global_position)
 	portal.global_position += Vector2(100, 30)
-	creative._finish_layout_drag()
+	creative.editor_drag_finish()
 	creative.undo_last_edit()
 	_check("move undo", portal.global_position.is_equal_approx(Vector2(500, 0)))
 	creative.select_control_tool()
@@ -68,13 +68,13 @@ func _run() -> void:
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
 	press.position = root.get_canvas_transform() * portal.global_position
-	creative._handle_layout_mouse_button(press)
+	creative.editor_mouse_button(press)
 	_check("control left click selects portal", creative._layout_drag_target == portal and creative._selected_portal == portal)
 	var motion := InputEventMouseMotion.new()
 	motion.position = root.get_canvas_transform() * (portal.global_position + Vector2(30, 20))
-	creative._handle_layout_mouse_motion(motion)
+	creative.editor_mouse_motion(motion)
 	press.pressed = false
-	creative._handle_layout_mouse_button(press)
+	creative.editor_mouse_button(press)
 	_check("control left drag moves portal", portal.global_position.is_equal_approx(Vector2(530, 20)))
 	creative.undo_last_edit()
 	creative._open_portal_menu(portal)
@@ -129,12 +129,12 @@ func _run() -> void:
 		and restored_portal.target_map == destination and restored_portal.position == portal.position)
 	restored.free()
 	creative.delete_portal(portal)
-	_check("delete", creative._portals().is_empty())
+	_check("delete", creative.editor_portals().is_empty())
 	creative.undo_last_edit()
-	_check("delete undo", creative._portals().size() == 1 and creative._portals()[0].target_map == destination)
+	_check("delete undo", creative.editor_portals().size() == 1 and creative.editor_portals()[0].target_map == destination)
 	creative.place_portal(Vector2(800, 0))
 	creative.undo_last_edit()
-	_check("placement undo", creative._portals().size() == 1)
+	_check("placement undo", creative.editor_portals().size() == 1)
 	grid.get_node("PlacePortalButton").pressed.emit()
 	_check("placement opens target submenu first", creative._portal_destination.visible \
 		and creative._monster_mode == creative.CONTROL_MODE)
@@ -143,38 +143,38 @@ func _run() -> void:
 	_check("submenu choice enters placement mode", creative._monster_mode == creative.LAYOUT_MODE_PLACE_PORTAL)
 	press.pressed = true
 	press.position = root.get_canvas_transform() * Vector2(800, 0)
-	creative._handle_layout_mouse_button(press)
+	creative.editor_mouse_button(press)
 	var placed_portal = creative._selected_portal
-	_check("single placement switches to control", creative._portals().size() == 2 \
+	_check("single placement switches to control", creative.editor_portals().size() == 2 \
 		and creative._monster_mode == creative.CONTROL_MODE)
 	press.pressed = false
-	creative._handle_layout_mouse_button(press)
+	creative.editor_mouse_button(press)
 	press.pressed = true
-	creative._handle_layout_mouse_button(press)
+	creative.editor_mouse_button(press)
 	_check("new portal immediately draggable", creative._layout_drag_target == placed_portal)
 	motion.position = root.get_canvas_transform() * Vector2(840, 30)
-	creative._handle_layout_mouse_motion(motion)
+	creative.editor_mouse_motion(motion)
 	press.pressed = false
-	creative._handle_layout_mouse_button(press)
-	_check("automatic control moves without placing more", creative._portals().size() == 2 \
+	creative.editor_mouse_button(press)
+	_check("automatic control moves without placing more", creative.editor_portals().size() == 2 \
 		and placed_portal.global_position.is_equal_approx(Vector2(840, 30)))
 	creative.undo_last_edit()
 	creative.undo_last_edit()
-	_check("single placement and drag undo", creative._portals().size() == 1)
-	var remaining_portal = creative._portals()[0]
+	_check("single placement and drag undo", creative.editor_portals().size() == 1)
+	var remaining_portal = creative.editor_portals()[0]
 	var right_click := InputEventMouseButton.new()
 	right_click.button_index = MOUSE_BUTTON_RIGHT
 	right_click.pressed = true
 	right_click.position = root.get_canvas_transform() * Vector2(1800, 0)
-	_check("right click empty space does not delete", not creative._handle_layout_mouse_button(right_click) \
-		and creative._portals().size() == 1)
+	_check("right click empty space does not delete", not creative.editor_mouse_button(right_click) \
+		and creative.editor_portals().size() == 1)
 	right_click.position = root.get_canvas_transform() * remaining_portal.global_position
 	creative._selected_control_target = remaining_portal
-	_check("control right click deletes portal", creative._handle_layout_mouse_button(right_click) \
-		and creative._portals().is_empty() and creative._selected_control_target == null)
+	_check("control right click deletes portal", creative.editor_mouse_button(right_click) \
+		and creative.editor_portals().is_empty() and creative._selected_control_target == null)
 	creative.undo_last_edit()
-	_check("right click deletion undo preserves destination", creative._portals().size() == 1 \
-		and creative._portals()[0].target_map == destination)
+	_check("right click deletion undo preserves destination", creative.editor_portals().size() == 1 \
+		and creative.editor_portals()[0].target_map == destination)
 	body = null
 	packed = null
 	level.queue_free()

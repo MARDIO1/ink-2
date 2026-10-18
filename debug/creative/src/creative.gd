@@ -103,14 +103,17 @@ const MAX_EDIT_HISTORY := 128
 @export_file("*.tscn") var map_path: String = "res://map/1（终极版）.tscn"
 ## 保底 PNG：存关卡的同时存一张整图（黑=空、颜色=材质 id），现在只当参考图，没有节点读它。
 @export_file("*.png") var baked_map_path: String = "res://map/asset/baked_map.png"
-## 自动保存的未固化画布像素；路径存放在关卡本体，避免实例子节点属性被场景打包忽略。
+## 旧地图外置草稿快照的兼容入口；新保存使用 editor_draft。
 @export_file("*.snapshot", "*.png", "*.res", "*.tres") var edit_snapshot_path := ""
-## F2 退出编辑器时覆盖保存当前地图；自动测试可关闭它来避免重复打包超大地图。
-@export var auto_save_on_exit := true
+## 场景内嵌的草稿数据；实体仍由原来的节点保存，不经过画布重采样。
+@export_storage var editor_draft: Dictionary = {}
+var _document_restored := false
+## 旧场景兼容字段；F2 只切换试玩，不再触发磁盘保存。
+@export var auto_save_on_exit := false
 ## 每次完成绘图、小怪编辑或撤销后，覆盖保存当前地图。
 @export var auto_save_edits := true
 @export_range(0.05, 2.0, 0.05) var auto_save_delay := 0.3
-## 编辑快照很小，可以快速保存；完整场景等用户停止操作后再落盘，避免连续编辑反复打包整关。
+## 用户停止操作后再提交完整混合文档，避免连续编辑反复打包整关。
 @export_range(0.1, 30.0, 0.1) var full_auto_save_delay := 5.0
 ## 烘焙图目前只作参考、运行时没有节点读取。按需开启，默认避免保存时再次遍历整张地图。
 @export var save_preview_on_export := false
@@ -299,6 +302,29 @@ func _ready() -> void:
 	# 游戏启动时不读取十几 MB 的编辑快照，也不创建地图编辑专用窗口和字体。
 	# 这些资源只在首次进入地图编辑器时按需初始化。
 	_show_canvas(_map_canvas, false)
+	_prepare_document_after_ready.call_deferred()
+
+
+func _prepare_document_after_ready() -> void:
+	var level := _level_root()
+	if level.get("body_bake_pending"):
+		await level.body_bake_completed
+	prepare_loaded_document(bool(level.get_meta(&"editor_document_load", false)))
+
+
+## 游戏实例只固化自己的草稿；编辑实例保持草稿与实体的分离。
+func prepare_loaded_document(editing: bool) -> void:
+	if _document_restored or editor_draft.is_empty() or _map_canvas == null:
+		return
+	_document_restored = true
+	var previous_free: bool = _map_canvas.surface.ink_free
+	_map_canvas.surface.ink_free = true
+	var error: Error = _map_canvas.surface.restore_document(editor_draft)
+	if error == OK and not editing:
+		_map_canvas.generate(false)
+	_map_canvas.surface.ink_free = previous_free
+	if error != OK:
+		push_error("Creative: 无法恢复内嵌草稿 (%d)" % error)
 
 
 func _exit_tree() -> void:
@@ -317,7 +343,11 @@ func _bind_paths_to_current_level() -> void:
 		return
 	map_path = current_path
 	baked_map_path = current_path.get_basename() + ".png"
-	# 场景内明确记录的编辑快照优先；退出编辑器保存的固化场景会清空此路径。
+	# 新文档自带草稿，不再接受外置快照覆盖。
+	if not editor_draft.is_empty():
+		edit_snapshot_path = ""
+		return
+	# 旧地图保留快照恢复兼容。
 	if edit_snapshot_path.begins_with(current_path.get_basename() + ".edit.") \
 	and FileAccess.file_exists(edit_snapshot_path):
 		return
@@ -379,6 +409,10 @@ func _handle_editor_input(event: InputEvent) -> bool:
 	elif active and event.is_action_pressed("canvas_save"):
 		export_map()
 		return true
+	elif active and event is InputEventMouseButton and event.pressed \
+	and event.button_index == MOUSE_BUTTON_RIGHT \
+	and (MONSTER_KINDS.has(_session.mode) or _session.mode == MONSTER_MODE_DELETE):
+		return remove_monster_at(_event_world_position(event))
 	elif active and (LAYOUT_MODES.has(_session.mode) or _session.mode == CONTROL_MODE) \
 	and event is InputEventMouseButton:
 		return _handle_layout_mouse_button(event as InputEventMouseButton)
@@ -462,26 +496,7 @@ func _handle_monster_adjust_button(event: InputEventMouseButton) -> bool:
 		_update_monster_status()
 		return true
 	if event.button_index == MOUSE_BUTTON_RIGHT:
-		if not event.pressed:
-			return false
-		var world_pos := _event_world_position(event)
-		var target := _find_monster_at(world_pos)
-		if target == null:
-			return false
-		if target == _session.selected_monster:
-			_set_selected_monster(null)
-		var container := _ensure_monster_container()
-		var removed := {
-			"type": &"monster_delete",
-			"id": str(target.get("editor_id")),
-			"kind": int(target.get("kind")),
-			"position": target.global_position,
-			"scale": target.scale,
-		}
-		container.remove_child(target)
-		target.queue_free()
-		_record_edit(removed)
-		return true
+		return event.pressed and remove_monster_at(_event_world_position(event))
 	if event.button_index != MOUSE_BUTTON_LEFT:
 		return false
 	if event.pressed:
@@ -612,9 +627,9 @@ func set_active(value: bool) -> void:
 
 
 func _enter() -> void:
-	# 从游玩态进编辑器时，运行中的破坏/碎片不能带进来。通过 Root 换成上次
-	# F2 退出时覆盖保存的关卡实例，再由新实例进入编辑态。
-	if not _skip_restore_on_enter and _reload_saved_map_for_editor():
+	# 游玩中的破坏/碎片不能反写编辑文档。优先恢复内存试玩快照；
+	# 首次打开编辑器时才从磁盘载入文档。
+	if not _skip_restore_on_enter and _restore_editor_document():
 		return
 	_skip_restore_on_enter = false
 	_ensure_editor_resources()
@@ -625,11 +640,8 @@ func _enter() -> void:
 		if edit_surface != null:
 			edit_surface._undo_steps.clear()
 			edit_surface._redo_steps.clear()
-	# 记录1是上次退出时保存的可游玩关卡；编辑时把它还原为可画的液态像素。
-	# 这是进入编辑器的恢复步骤，不应占用一次 Ctrl+Z。
+	# 进入编辑器不再把实体栅格化；只有显式“墨化”才执行重采样。
 	_set_ink_free(true)
-	if _map_canvas != null:
-		_map_canvas.return_to_canvas(false, true)
 	_set_monster_physics_paused(true)
 	if _player == null:
 		push_error("Creative: 找不到 Player")
@@ -690,7 +702,7 @@ func _ensure_editor_resources() -> void:
 
 
 func _load_edit_snapshot_if_needed() -> void:
-	if _edit_snapshot_loaded or edit_snapshot_path.is_empty() or _map_canvas == null:
+	if not editor_draft.is_empty() or _edit_snapshot_loaded or edit_snapshot_path.is_empty() or _map_canvas == null:
 		return
 	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
 	if surface == null or not surface.has_method("load_ink"):
@@ -720,15 +732,21 @@ func _exit() -> void:
 		_body.awake = true
 		_body.sleep_timer = 0.0
 	_reset_player_to_spawn()
-	# 玩家复位后再覆盖地图，编辑器中的飞行位置绝不能成为下一次出生位置。
-	if auto_save_on_exit:
-		_save_current_map_overwrite()
+	# F2 是内存中的试玩事务：先留存混合文档，再仅对试玩实例固化草稿。
+	# 即使旧地图保存了 auto_save_on_exit=true，也不能让模式切换覆盖文件。
+	var router := get_tree().current_scene
+	if router != null and router.has_method("restore_editor_level"):
+		var checkpoint := PackedScene.new()
+		EditorSave.sync_node_transforms(_level_root())
+		if _pack_as_playable_scene(checkpoint, _level_root()) == OK:
+			router.set_meta(&"editor_preview_document", {"path": map_path, "scene": checkpoint})
+	if _map_canvas != null:
+		_map_canvas.set_map_editor_mode(false)
+		_map_canvas.generate(false)
 	_set_monster_physics_paused(false)
 	_show_canvas(_map_canvas, false)
 	for play_canvas in _play_canvases():
 		_show_canvas(play_canvas, true)
-	if _map_canvas != null:
-		_map_canvas.set_map_editor_mode(false)
 	if _canvas != null and _canvas.has_method("activate_hand_tool"):
 		_canvas.activate_hand_tool()
 	_session.mode = MONSTER_MODE_NONE
@@ -977,8 +995,7 @@ func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
 	if _session.mode == CONTROL_MODE and event.button_index == MOUSE_BUTTON_RIGHT:
 		if not event.pressed:
 			return false
-		_delete_control_target(_event_world_position(event))
-		return true
+		return _delete_control_target(_event_world_position(event))
 	if _session.mode == CONTROL_MODE \
 	and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
 		if not event.pressed:
@@ -1213,7 +1230,7 @@ func _delete_control_target(world_position: Vector2) -> bool:
 		_finish_layout_drag()
 	var deleted := false
 	if target.is_in_group(MapMonsterScript.GROUP):
-		deleted = remove_monster_at(world_position)
+		deleted = delete_monster(target)
 	elif target.is_in_group(MapTextScript.GROUP):
 		deleted = remove_map_text_at(world_position)
 	elif target.is_in_group(DialogueTriggerScript.GROUP):
@@ -1824,23 +1841,30 @@ func place_monster(
 
 
 func remove_monster_at(world_position: Vector2) -> bool:
+	return delete_monster(_find_monster_at(world_position))
+
+
+func delete_monster(monster: Node2D, record_undo := true) -> bool:
 	var container := _ensure_monster_container()
-	if container == null:
+	if not is_instance_valid(monster) or container == null or monster.get_parent() != container:
 		return false
-	var nearest := _find_monster_at(world_position)
-	if nearest == null:
-		return false
+	if _session.layout_drag_target == monster:
+		_finish_layout_drag()
+	if monster == _session.selected_monster:
+		_set_selected_monster(null)
+	if _session.selected_control_target == monster:
+		_session.selected_control_target = null
 	var removed := {
 		"type": &"monster_delete",
-		"id": str(nearest.get("editor_id")),
-		"kind": int(nearest.get("kind")),
-		"position": nearest.global_position,
-		"scale": nearest.scale,
+		"id": str(monster.get("editor_id")),
+		"kind": int(monster.get("kind")),
+		"position": monster.global_position,
+		"scale": monster.scale,
 	}
-	if nearest == _session.selected_monster:
-		_set_selected_monster(null)
-	MonsterTools.remove(container, nearest)
-	_record_edit(removed)
+	MonsterTools.remove(container, monster)
+	if record_undo:
+		_record_edit(removed)
+	_refresh_layout_overlay(_session.selected_control_target)
 	return true
 
 
@@ -2457,16 +2481,7 @@ func _rebind_history_target(old_target, restored: Node) -> void:
 	_history.rebind(old_target, restored)
 
 func _remove_monster_by_id(monster_id: String) -> bool:
-	var container := _ensure_monster_container()
-	if container == null or monster_id.is_empty():
-		return false
-	for child in container.get_children():
-		if str(child.get("editor_id")) != monster_id:
-			continue
-		container.remove_child(child)
-		child.queue_free()
-		return true
-	return false
+	return delete_monster(MonsterTools.find_by_id(_ensure_monster_container(), monster_id), false)
 
 
 func _apply_monster_transform(monster_id: String, position: Vector2, scale: Vector2) -> bool:
@@ -2616,11 +2631,8 @@ func _queue_edit_auto_save() -> void:
 		"host": self,
 		"revision": _auto_save_revision,
 		"map_path": map_path,
-		"snapshot_delay": auto_save_delay,
 		"full_delay": full_auto_save_delay,
-		"map_canvas": _map_canvas,
 		"is_current": _auto_save_is_current,
-		"on_snapshot": _snapshot_written,
 		"export_scene": export_map_to,
 	})
 
@@ -2630,18 +2642,15 @@ func _auto_save_is_current(revision: int) -> bool:
 	return revision == _auto_save_revision and active and auto_save_edits
 
 
-## 快照是后台写的；这里只登记路径，退出/重进时据此恢复。
-func _snapshot_written(path: String) -> void:
-	edit_snapshot_path = path
-	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface") if _map_canvas != null else null
-	if surface != null:
-		surface.saved_ink_path = path
-
-
-func _reload_saved_map_for_editor() -> bool:
+func _restore_editor_document() -> bool:
 	var tree_root := get_tree().current_scene
 	if tree_root == null or not tree_root.has_method("restore_editor_level") or map_path.is_empty():
 		return false
+	var checkpoint: Dictionary = tree_root.get_meta(&"editor_preview_document", {})
+	if checkpoint.get("path", "") == map_path and checkpoint.get("scene") is PackedScene:
+		_map_reload_in_progress = true
+		tree_root.call_deferred("restore_editor_level", checkpoint.scene, _mode_transition_pending)
+		return true
 	if _map_reload_in_progress:
 		return true
 	# 自动保存会反复覆盖同一路径；忽略资源缓存才能恢复磁盘上的最新版本。
@@ -2686,32 +2695,20 @@ func _activate_restored_editor() -> void:
 	set_active(true)
 
 
-## 保存入口始终写出可直接运行的 `.tscn`。prepare_canvas=false 仅供自动测试或只打包当前状态使用。
-func export_map_to(save_path: String, prepare_canvas := true) -> Error:
+## 保存只序列化文档，不承担固化或模式切换。
+func export_map_to(save_path: String) -> Error:
 	var error := EditorSave.export_scene({
 		"level_root": _level_root(),
 		"map_canvas": _map_canvas,
 		"player": _player,
 		"player_visible": _saved_player_visible,
 		"play_canvases": _play_canvases(),
-		"editing": active,
-		"solidify": prepare_canvas,
 		"bake_preview": save_preview_on_export,
 		"baked_map_path": baked_map_path,
-		"on_solidified": _clear_snapshot_links,
 	}, save_path)
 	if error == OK:
 		map_saved.emit(save_path)
 	return error
-
-
-## 固化之后地图就是"一次成型"的可运行场景，快照链接要断掉，否则下次进编辑器会
-## 拿草稿快照覆盖已固化的地图。
-func _clear_snapshot_links() -> void:
-	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface") if _map_canvas != null else null
-	if surface != null:
-		surface.saved_ink_path = ""
-	edit_snapshot_path = ""
 
 
 func _normalize_scene_path(path: String) -> String:
@@ -2726,7 +2723,6 @@ func _pack_as_playable_scene(packed: PackedScene, scene: Node) -> Error:
 		"player_visible": _saved_player_visible,
 		"map_canvas": _map_canvas,
 		"play_canvases": _play_canvases(),
-		"editing": active,
 	})
 
 
@@ -2740,11 +2736,6 @@ func _level_root() -> Node:
 		return _map_canvas.get_parent()
 	return get_tree().current_scene
 
-
-## 把每个像素刚体的 PBody 位形写回它的节点。
-## ⚠️ 节点自己不跟物理走（每帧跟的是视觉精灵），不写回去就会把玩家存回出生点。
-func _sync_node_transforms(root: Node) -> void:
-	EditorSave.sync_node_transforms(root)
 #endregion
 
 ## 视图只提交已知动作；不允许通过反射任意调用编辑器。
@@ -2820,3 +2811,49 @@ func _save_scene_from_form(path: String) -> Error:
 		map_path = previous_map
 		baked_map_path = previous_bake
 	return error
+
+#region 对外入口
+## 编辑器对外的**唯一契约**：输入、拖动、查询。
+##
+## 实现仍留在私有方法里（它们是实现细节，允许继续拆分）；
+## 测试和外部脚本只调这里，这样重命名/搬家不会再把 29 个测试文件打散。
+
+func editor_input(event: InputEvent) -> bool:
+	return _handle_editor_input(event)
+
+
+func editor_mouse_button(event: InputEventMouseButton) -> bool:
+	return _handle_layout_mouse_button(event)
+
+
+func editor_mouse_motion(event: InputEventMouse) -> bool:
+	return _handle_layout_mouse_motion(event)
+
+
+func editor_drag_begin(target, world_position: Vector2) -> void:
+	_begin_layout_drag(target, world_position)
+
+
+func editor_drag_finish() -> void:
+	_finish_layout_drag()
+
+
+func editor_drag_cancel() -> void:
+	_cancel_layout_drag()
+
+
+func editor_portals() -> Array:
+	return _portals()
+
+
+func editor_fountains() -> Array:
+	return _ink_fountains()
+
+
+func editor_respawn_points() -> Array:
+	return _respawn_points()
+
+
+func editor_canvases() -> Array:
+	return _play_canvases()
+#endregion

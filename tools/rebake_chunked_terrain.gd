@@ -101,7 +101,7 @@ func _run() -> void:
 	var text := FileAccess.get_file_as_string(path)
 	creative.map_path = _property_in_creative(text, "map_path")
 	creative.baked_map_path = _property_in_creative(text, "baked_map_path")
-	var error: Error = creative.export_map_to(path, false)
+	var error: Error = creative.export_map_to(path)
 	print("REBAKE save %s -> %d" % [path, error])
 	quit(0 if error == OK else 5)
 

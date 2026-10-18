@@ -38,7 +38,7 @@ func _run() -> void:
 			click.button_index = MOUSE_BUTTON_LEFT
 			click.pressed = true
 			click.position = view * pivot
-			var handled: bool = creative._handle_layout_mouse_button(click) if unified else creative._handle_monster_adjust_button(click)
+			var handled: bool = creative.editor_mouse_button(click) if unified else creative._handle_monster_adjust_button(click)
 			_check("drag starts for kind " + str(kind), handled and creative._monster_drag_view_locked)
 			var owned: Array = [monster.body]
 			for part in monster._ragdoll.parts:
@@ -60,7 +60,7 @@ func _run() -> void:
 			for index in 1000:
 				motion.position = click.position + screen_delta * float(index + 1) / 1000.0
 				if unified:
-					creative._handle_layout_mouse_motion(motion)
+					creative.editor_mouse_motion(motion)
 				else:
 					creative._handle_monster_adjust_motion(motion)
 			print("[MonsterDrag] 1000 events kind=", kind, " unified=", unified, " ms=", (Time.get_ticks_usec() - start) / 1000.0)
@@ -78,16 +78,16 @@ func _run() -> void:
 			click.pressed = false
 			click.position = motion.position
 			if unified:
-				creative._handle_layout_mouse_button(click)
+				creative.editor_mouse_button(click)
 			else:
 				creative._handle_monster_adjust_button(click)
 			_check("release restores camera and player freeze state", not creative._monster_drag_view_locked
 				and not camera._editor_drag_locked and player.body.frozen == player_frozen)
 			_check("undo restores original monster position", creative.undo_last_edit() and monster.global_position.is_equal_approx(old_position))
-		creative._begin_layout_drag(monster, monster.global_position)
+		creative.editor_drag_begin(monster, monster.global_position)
 		creative.select_monster_tool(creative.MONSTER_MODE_NONE)
 		_check("tool switch cancels camera lock", not creative._monster_drag_view_locked and not camera._editor_drag_locked)
-		creative._begin_layout_drag(monster, monster.global_position)
+		creative.editor_drag_begin(monster, monster.global_position)
 		creative._on_drag_focus_lost()
 		_check("losing focus releases camera/player lock", not creative._monster_drag_view_locked and not camera._editor_drag_locked)
 	level.queue_free()

@@ -125,7 +125,7 @@ func run() -> void:
 	level.auto_step = true
 	var creative = level.get_node("Creative")
 	creative.save_preview_on_export = false
-	if creative.export_map_to(DESTINATION, false) != OK:
+	if creative.export_map_to(DESTINATION) != OK:
 		quit(1)
 		return
 	level.queue_free()

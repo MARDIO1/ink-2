@@ -29,12 +29,12 @@ func mouse(creative, point: Vector2, pressed: bool) -> void:
 	event.button_index = MOUSE_BUTTON_LEFT
 	event.pressed = pressed
 	event.position = root.get_canvas_transform() * point
-	creative._handle_layout_mouse_button(event)
+	creative.editor_mouse_button(event)
 
 func motion(creative, point: Vector2) -> void:
 	var event := InputEventMouseMotion.new()
 	event.position = root.get_canvas_transform() * point
-	creative._handle_layout_mouse_motion(event)
+	creative.editor_mouse_motion(event)
 
 func teeth_on_ring(body, radius: float, ink_material: int) -> int:
 	var last := false

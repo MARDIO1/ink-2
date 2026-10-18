@@ -111,9 +111,16 @@ func _follow() -> void:
 
 #钉子像素还在这个刚体上吗。
 func _anchor_alive() -> bool:
-	if body == null:
+	if body == null or not body.tags.get(tag_for(kind), {}).has(pixel):
 		return false
-	return body.tags.get(tag_for(kind), {}).has(pixel)
+	return _pixel_exists(body, pixel)
+
+
+static func _pixel_exists(target, at: Vector2i) -> bool:
+	for shape in target.shapes:
+		if shape.get_pixel(at.x, at.y) != 0:
+			return true
+	return false
 
 
 func _try_rebind() -> bool:
@@ -125,7 +132,7 @@ func _try_rebind() -> bool:
 	var best = null
 	var best_distance := INF
 	for candidate in physics.bodies:
-		if candidate == null or not candidate.tags.get(tag, {}).has(pixel):
+		if candidate == null or not candidate.tags.get(tag, {}).has(pixel) or not _pixel_exists(candidate, pixel):
 			continue
 		var distance: float = candidate.to_world(Vector2(pixel) + Vector2.ONE * 0.5).distance_squared_to(global_position)
 		if distance < best_distance:

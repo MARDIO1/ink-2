@@ -14,11 +14,20 @@ signal edit_committed
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const GearTool := preload("res://actor/canvas/src/gear_tool.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
+const GearCenterMarkers := preload("res://actor/canvas/src/gear_center_markers.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
 const NAIL_COST := 10
 var gear_tool: Node2D
-## 黄色圆轴的草稿中心，随墨水移动、旋转、蓝图与快照保存。
-@export var gear_centers := PackedVector2Array()
+## 齿轮中心记录：{id, position, radius, material}。
+## 草稿里 position 是画布局部坐标；实体上由 InkItem 保存刚体局部坐标。
+## 这些记录只是定位信息，绝不隐含轴承。
+@export var gear_centers: Array = []:
+	set(value):
+		gear_centers = GearCenters.normalize(value)
+## 草稿里明确放置、等待固化时接管的手动轴承；没有记录就不会生成轴承。
+@export var draft_bearings: Array = []
+var gear_center_markers: Node2D
 #endregion
 
 #region 初始化
@@ -43,10 +52,39 @@ func _ready() -> void:
 	gear_tool.name = "GearTool"
 	gear_tool.z_index = 12
 	add_child(gear_tool)
+	gear_center_markers = GearCenterMarkers.new()
+	gear_center_markers.name = "GearCenterMarkers"
+	add_child(gear_center_markers)
 	black_tiles.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_resize()
 	# 地图编辑快照由 Creative 在首次进入编辑器时按需恢复；游戏启动时不读盘。
+
+
+## 增加一条中心记录；同一位置只保留一条。
+func add_gear_center(point: Vector2, radius: float, material: int) -> Dictionary:
+	for record in gear_centers:
+		if GearCenters.position_of(record).distance_squared_to(point) < 0.0001:
+			record["radius"] = maxf(float(radius), 1.0)
+			if material != 0:
+				record["material"] = material
+			return record
+	var created := GearCenters.make(point, radius, material)
+	gear_centers.append(created)
+	return created
+
+
+## 增加一条“已明确点击”的草稿轴承；不会由中心自动推导出来。
+func add_draft_bearing(point: Vector2, fixed_to_world: bool, support_position: Vector2,
+		support_material: int, center_id := -1) -> bool:
+	for record in draft_bearings:
+		if Vector2(record.get("position", Vector2.ZERO)).distance_squared_to(point) < 0.25:
+			return false
+	draft_bearings.append({"position": Vector2(point), "fixed_to_world": fixed_to_world,
+		"support_position": Vector2(support_position), "support_material": support_material,
+		"center_id": center_id})
+	return true
+
 
 
 # ⚠️ 后台写盘任务必须等回来：它的 Callable 是 static、只带一份 Image 副本，
@@ -168,6 +206,7 @@ var _undo_capture := {}
 var _undo_capturing := false
 var _nail_undo := {}
 var _blue_undo := {}
+var _gear_undo: Dictionary = {}
 const MAX_UNDO_STEPS := 64
 ## 框选只负责交互；移动和删除交给 Canvas，以便和固化实体共用撤销事务。
 var _selecting := false
@@ -764,10 +803,17 @@ func resize_preserving_content(new_size: Vector2i, content_offset := Vector2i.ZE
 	_preserve_next_resize = false
 
 	gear_centers.clear()
-	for point in old_centers:
-		var shifted := point + Vector2(content_offset)
+	for record in old_centers:
+		var shifted: Vector2 = GearCenters.position_of(record) + Vector2(content_offset)
 		if Rect2(Vector2.ZERO, Vector2(new_size)).has_point(shifted):
-			gear_centers.append(shifted)
+			var copy: Dictionary = record.duplicate()
+			copy["position"] = shifted
+			gear_centers.append(copy)
+	draft_bearings = draft_bearings.filter(func(record):
+		var shifted: Vector2 = Vector2(record.get("position", Vector2.ZERO)) + Vector2(content_offset)
+		record["position"] = shifted
+		record["support_position"] = Vector2(record.get("support_position", Vector2.ZERO)) + Vector2(content_offset)
+		return Rect2(Vector2.ZERO, Vector2(new_size)).has_point(shifted))
 	blue_layer.mask.clear()
 	for point in old_blue:
 		var at := Vector2i(point) + content_offset
@@ -834,6 +880,7 @@ func clear(refund := true, preserve_yellow := false) -> void:
 	_free_tiles()                      # 画布空了：贴图一起丢掉，不用再传一遍空白
 	nail_layer.clear()
 	gear_centers.clear()
+	draft_bearings.clear()
 	queue_redraw()
 
 
@@ -940,11 +987,7 @@ func _set_pixel_raw(pixel: Vector2i, color: Color, erase_blue := true, preserve_
 	if color.a <= 0.5:
 		_remove_nail_at(pixel)
 	if color.a <= 0.5 and not preserve_axes:
-		for index in range(gear_centers.size() - 1, -1, -1):
-			if Vector2i(gear_centers[index].floor()) == pixel:
-				if _undo_capturing and not _undo_capture.has("gear_centers"):
-					_undo_capture["gear_centers"] = gear_centers.duplicate()
-				gear_centers.remove_at(index)
+		_remove_centers_at(pixel)
 	if color.a <= 0.5 and erase_blue:
 		blue_layer.erase(pixel)
 		var blue = blue_rule()
@@ -991,6 +1034,22 @@ func _remove_nail_at(pixel: Vector2i, charge := true) -> int:
 	if removed_kind >= 0 and removed_kind != Nail.Kind.INFINITE:
 		_bump_ink(_nail_material(removed_kind), -NAIL_COST, charge)
 	return removed_kind
+
+
+## 擦掉中心像素就移除中心记录；留着的记录不能变成空中可点击的吸附点。
+func _remove_centers_at(pixel: Vector2i) -> void:
+	var keep: Array = []
+	for record in gear_centers:
+		if Vector2i(GearCenters.position_of(record).floor()) != pixel:
+			keep.append(record)
+	if keep.size() != gear_centers.size():
+		gear_centers = keep
+	var bearings: Array = []
+	for record in draft_bearings:
+		if Vector2i(Vector2(record.get("position", Vector2.ZERO)).floor()) != pixel:
+			bearings.append(record)
+	if bearings.size() != draft_bearings.size():
+		draft_bearings = bearings
 
 
 func _has_nailable_pixel(pixel: Vector2i) -> bool:
@@ -1297,11 +1356,29 @@ func erase_rect(rect: Rect2i, mask: Dictionary = {}) -> bool:
 	#分治：按瓦片走。整块空的直接跳过（一个字节都不扫），有内容的块也只扫自己的
 	#内容框 —— 全选整张地图时，代价只和"真有墨的地方"成正比，跟画布多大无关。
 	_flush_texture()                  # 先落地未上传的写入，瓦片集合才是完整的
-	for index in range(gear_centers.size() - 1, -1, -1):
-		var at := Vector2i(gear_centers[index].floor())
+	var kept_centers: Array = []
+	for record in gear_centers:
+		var at := Vector2i(GearCenters.position_of(record).floor())
 		if clipped.has_point(at) and SelectionMask.contains(mask, at):
-			gear_centers.remove_at(index)
+			continue
+		kept_centers.append(record)
+	if kept_centers.size() != gear_centers.size():
+		gear_centers = kept_centers
+	var kept_bearings: Array = []
+	for record in draft_bearings:
+		var at := Vector2i(Vector2(record.get("position", Vector2.ZERO)).floor())
+		if clipped.has_point(at) and SelectionMask.contains(mask, at):
+			continue
+		kept_bearings.append(record)
+	if kept_bearings.size() != draft_bearings.size():
+		draft_bearings = kept_bearings
 	var changed := false
+	# 钉子是独立元数据，可能只钉着黄墨或落在透明底上，不能依赖黑墨瓦片遍历。
+	for points: Dictionary in [nail_layer.nails, nail_layer.background_nails, nail_layer.infinite_nails]:
+		for pixel: Vector2i in points.keys():
+			if clipped.has_point(pixel) and SelectionMask.contains(mask, pixel):
+				_remove_nail_at(pixel)
+				changed = true
 	for key in _tile_keys(clipped):
 		var box := _tile_content(key).intersection(clipped)
 		if box.has_area():
@@ -1361,10 +1438,15 @@ func move_rect(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}, preserve_b
 				source[point] = color
 	if source.is_empty() and source_nails.is_empty():
 		return false
-	for index in gear_centers.size():
-		var at := Vector2i(gear_centers[index].floor())
+	for record in gear_centers:
+		var at := Vector2i(GearCenters.position_of(record).floor())
 		if rect.has_point(at) and SelectionMask.contains(mask, at):
-			gear_centers[index] += Vector2(offset)
+			record["position"] = GearCenters.position_of(record) + Vector2(offset)
+	for record in draft_bearings:
+		var at := Vector2i(Vector2(record.get("position", Vector2.ZERO)).floor())
+		if rect.has_point(at) and SelectionMask.contains(mask, at):
+			record["position"] = Vector2(record.position) + Vector2(offset)
+			record["support_position"] = Vector2(record.get("support_position", record.position)) + Vector2(offset)
 	for point: Vector2i in source_nails:
 		_remove_nail_at(point)
 	for point: Vector2i in source:
@@ -1386,6 +1468,8 @@ func _begin_undo_step() -> void:
 		_blue_undo = {"cells": blue_layer.cells.duplicate(), "motors": blue_rule().capture(self) if blue_rule() != null else [], "ledger": ink_px_of(InkPalette.BLUE.id)}
 	_undo_capture = {}
 	_nail_undo = nail_layer.snapshot()
+	_gear_undo = {"centers": gear_centers.duplicate(true),
+		"bearings": draft_bearings.duplicate(true)}
 	_undo_capturing = true
 
 
@@ -1402,6 +1486,12 @@ func _commit_undo_step(rod_step: Dictionary = {}) -> void:
 	if nail_layer.snapshot() != _nail_undo:
 		_undo_capture["nails"] = _nail_undo
 	_nail_undo = {}
+	if not _gear_undo.is_empty():
+		if gear_centers != _gear_undo.centers:
+			_undo_capture["gear_centers"] = GearCenters.normalize(_gear_undo.centers)
+		if draft_bearings != _gear_undo.bearings:
+			_undo_capture["draft_bearings"] = _gear_undo.bearings.duplicate(true)
+	_gear_undo = {}
 	if not _blue_undo.is_empty() and (blue_layer.cells != _blue_undo.cells or ink_px_of(InkPalette.BLUE.id) != _blue_undo.ledger or (blue_rule() != null and blue_rule().draft_data(self).size() != _blue_undo.motors.size())):
 		_undo_capture["blue"] = _blue_undo
 	_blue_undo = {}
@@ -1428,6 +1518,7 @@ func push_undo_step(step: Dictionary) -> void:
 func _cancel_undo_step() -> void:
 	_undo_capture = {}
 	_nail_undo = {}
+	_gear_undo = {}
 	_undo_capturing = false
 
 
@@ -1479,7 +1570,9 @@ func undo_last_edit() -> bool:
 		if pixel is Vector2i:
 			_set_pixel_raw(pixel, step[pixel])
 	if step.has("gear_centers"):
-		gear_centers = step.gear_centers.duplicate()
+		gear_centers = step.gear_centers
+	if step.has("draft_bearings"):
+		draft_bearings = step.draft_bearings
 	if step.has("nails"):
 		_restore_nail_edit(step.nails)
 	if not blue_saved.is_empty():
@@ -1513,7 +1606,9 @@ func redo_last_edit() -> bool:
 			if pixel is Vector2i:
 				_set_pixel_raw(pixel, after[pixel])
 		if after.has("gear_centers"):
-			gear_centers = after.gear_centers.duplicate()
+			gear_centers = after.gear_centers
+		if after.has("draft_bearings"):
+			draft_bearings = after.draft_bearings
 		if after.has("nails"):
 			_restore_nail_edit(after.nails)
 		if after.has("blue"):
@@ -1563,7 +1658,9 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 				if cell is Vector2i:
 					current.black_pixels[cell] = black_image.get_pixelv(cell)
 			if step.black_pixels.has("gear_centers"):
-				current.black_pixels["gear_centers"] = gear_centers.duplicate()
+				current.black_pixels["gear_centers"] = gear_centers.duplicate(true)
+			if step.black_pixels.has("draft_bearings"):
+				current.black_pixels["draft_bearings"] = draft_bearings.duplicate(true)
 			if step.black_pixels.has("blue"):
 				current.black_pixels["blue"] = _capture_blue_edit()
 			if step.black_pixels.has("nails"):
@@ -1574,7 +1671,9 @@ func _capture_redo_state(step: Dictionary) -> Dictionary:
 		if pixel is Vector2i:
 			current[pixel] = black_image.get_pixelv(pixel)
 	if step.has("gear_centers"):
-		current["gear_centers"] = gear_centers.duplicate()
+		current["gear_centers"] = gear_centers.duplicate(true)
+	if step.has("draft_bearings"):
+		current["draft_bearings"] = draft_bearings.duplicate(true)
 	if step.has("blue"):
 		current["blue"] = _capture_blue_edit()
 	if step.has("nails"):
@@ -1617,7 +1716,9 @@ func _restore_black_pixels(pixels: Dictionary) -> void:
 		if cell is Vector2i:
 			_set_pixel_raw(cell, pixels[cell])
 	if pixels.has("gear_centers"):
-		gear_centers = pixels.gear_centers.duplicate()
+		gear_centers = pixels.gear_centers
+	if pixels.has("draft_bearings"):
+		draft_bearings = pixels.draft_bearings
 	if pixels.has("blue"):
 		_restore_blue_edit(pixels.blue)
 	if pixels.has("nails"):
@@ -1807,11 +1908,32 @@ static func _write_snapshot(image: Image, path: String, metadata: Dictionary) ->
 func _snapshot_metadata() -> Dictionary:
 	var rule = yellow_rule()
 	return {"rod": rod_layer.pixels.duplicate(), "anchors": rod_layer.anchor_points.duplicate(),
-		"gear_centers": gear_centers.duplicate(), "rails": rod_layer.rails.duplicate(true),
+		"gear_centers": gear_centers.duplicate(true), "draft_bearings": draft_bearings.duplicate(true),
+		"rails": rod_layer.rails.duplicate(true),
 		"slider_pins": rod_layer.slider_pins.duplicate(true),
 		"springs": rule.draft_data(self).duplicate(true) if rule != null else [],
 		"blue": blue_layer.cells.duplicate(),
 		"motors": blue_rule().draft_data(self).duplicate(true) if blue_rule() != null else []}
+
+
+## 内嵌文档使用无损 PNG，包含空草稿（避免旧快照重新覆盖已清空的画布）。
+func capture_document() -> Dictionary:
+	var data := _snapshot_metadata()
+	data["version"] = 1
+	data["black"] = black_image.save_png_to_buffer()
+	data["rod"] = rod_layer.pixels.save_png_to_buffer()
+	data["fixed_nails"] = nail_layer.nails.keys()
+	data["background_nails"] = nail_layer.background_nails.keys()
+	data["infinite_nails"] = nail_layer.infinite_nails.keys()
+	return data
+
+
+func restore_document(data: Dictionary) -> Error:
+	var image := Image.new()
+	var error := image.load_png_from_buffer(data.get("black", PackedByteArray()))
+	if error != OK:
+		return error
+	return restore_document_pixels(image, data)
 
 
 ## 保存 CPU 像素缓冲，包含颜色、透明度和尺寸；不读取 GPU，不触发固化。
@@ -1843,7 +1965,8 @@ func _save_snapshot(path: String) -> Error:
 	file.store_buffer("INK2".to_ascii_buffer())
 	var rule = yellow_rule()
 	file.store_var({"black": black_image.save_png_to_buffer(), "rod": rod_layer.pixels.save_png_to_buffer(), "anchors": rod_layer.anchor_points,
-		"gear_centers": gear_centers, "rails": rod_layer.rails, "slider_pins": rod_layer.slider_pins,
+		"gear_centers": gear_centers.duplicate(true), "draft_bearings": draft_bearings.duplicate(true),
+		"rails": rod_layer.rails, "slider_pins": rod_layer.slider_pins,
 		"fixed_nails": nail_layer.nails.keys(), "background_nails": nail_layer.background_nails.keys(),
 		"infinite_nails": nail_layer.infinite_nails.keys(),
 		"springs": rule.draft_data(self) if rule != null else [], "blue": blue_layer.cells,
@@ -1896,13 +2019,20 @@ func load_ink(path: String) -> Error:
 	if image == null or image.is_empty():
 		push_error("Canvas file is not an Image: " + path)
 		return ERR_INVALID_DATA
+	return restore_document_pixels(image, rod_data)
+
+
+## 无坐标转换地恢复文档草稿；已固化实体由场景独立保存。
+func restore_document_pixels(image: Image, rod_data: Dictionary) -> Error:
 	_painting = false
 	get_parent().canvas_size = image.get_size()
 	black_image = image
 	black_image.convert(Image.FORMAT_RGBA8)
 	rebuild_ink_tiles()
 	_rebuild_loaded_metadata()
-	gear_centers = rod_data.get("gear_centers", PackedVector2Array())
+	gear_centers = GearCenters.normalize(rod_data.get("gear_centers", []))
+	var pending = rod_data.get("draft_bearings", [])
+	draft_bearings = pending.duplicate(true) if pending is Array else []
 	if not rod_data.is_empty():
 		var rods := Image.new()
 		rods.load_png_from_buffer(rod_data.rod)
@@ -1933,7 +2063,6 @@ func load_ink(path: String) -> Error:
 		if blue_rule() != null:
 			blue_rule().restore_draft_data(self, rod_data.get("motors", []))
 		_flush_ink()
-	print("CANVAS loaded: ", ProjectSettings.globalize_path(path))
 	return OK
 
 

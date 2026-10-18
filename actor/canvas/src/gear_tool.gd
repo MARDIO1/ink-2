@@ -1,7 +1,9 @@
 extends Node2D
-## 按当前选色落一整块墨水轮廓；轴心只记进 `gear_centers`，固化时再按中心格找轮体建铰链。
+## 按当前选色落一整块墨水轮廓；中心只作为定位记录写进 `gear_centers`。
+## 这里绝不创建轴承：固化、移动、旋转都不会把“有中心”解释成“需要固定”。
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 const MIN_RADIUS := 12.0
 const DEFAULT_TEETH := 12
 var teeth := DEFAULT_TEETH
@@ -52,9 +54,15 @@ func _draw() -> void:
 	var border := polygon.duplicate()
 	border.append(polygon[0])
 	draw_polyline(border, Color(0.95, 0.72, 0.08), 1.0)
-	# 中心只留一个十字准星；预览里也不画黄点，避免和落笔结果不一致。
-	draw_line(Vector2(-6, 0), Vector2(6, 0), Color.BLACK)
-	draw_line(Vector2(0, -6), Vector2(0, 6), Color.BLACK)
+	# 预览与放置后一致：小黄色十字只是中心提示，不是轴承。
+	_draw_center_cross(Vector2.ZERO)
+
+
+func _draw_center_cross(point: Vector2) -> void:
+	draw_line(point + Vector2(-3, 0), point + Vector2(3, 0), Color(0.08, 0.07, 0.02, 1.0), 3.0)
+	draw_line(point + Vector2(0, -3), point + Vector2(0, 3), Color(0.08, 0.07, 0.02, 1.0), 3.0)
+	draw_line(point + Vector2(-3, 0), point + Vector2(3, 0), Palette.YELLOW.color, 1.0)
+	draw_line(point + Vector2(0, -3), point + Vector2(0, 3), Palette.YELLOW.color, 1.0)
 
 func finish(point: Vector2):
 	if not dragging:
@@ -73,10 +81,8 @@ func finish(point: Vector2):
 	var color: Color = Palette.color_for_material_id(ink_material)
 	for at: Vector2i in cells:
 		surface._set_pixel_raw(at, color)
-	# 齿轮就是一整块普通墨水：中心不再画黄色轴点，轴心只记在 gear_centers 里，
-	# 固化时 create_axles 按中心格的实际墨水找轮体。
-	if not surface.gear_centers.has(center):
-		surface.gear_centers.append(center)
+	# 齿轮就是一整块普通墨水：只记录中心与吸附半径，不写黄色轴点、不提交轴承。
+	surface.add_gear_center(center, radius, ink_material)
 	surface._flush_texture()
 	surface._flush_ink()
 	History.commit(canvas, state)

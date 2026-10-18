@@ -162,6 +162,16 @@ func _run() -> void:
 		level.renderer.sync(part.body)
 		hidden_valid = hidden_valid and not level.renderer._nodes.has(part.body.id)
 		hidden_valid = hidden_valid and not level.renderer._tiles.has(part.body.id)
+		part.body.internal_render = true
+		level.renderer.sync(part.body)
+		hidden_valid = hidden_valid and level.renderer._nodes.has(part.body.id)
+		part.body.internal_render = false
+		level.renderer.sync(part.body)
+		hidden_valid = hidden_valid and not level.renderer._nodes.has(part.body.id)
+		hidden_valid = hidden_valid and not level.renderer._tiles.has(part.body.id)
+	level.sync_world_bodies()
+	for part in monster._ragdoll.parts:
+		hidden_valid = hidden_valid and not level.renderer._nodes.has(part.body.id)
 	valid = valid and hidden_valid
 	print("[MonsterPhysics] invisible limb rendering: ", hidden_valid)
 	var arms_down := true

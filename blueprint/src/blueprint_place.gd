@@ -15,6 +15,7 @@ const Wire := preload("res://ink/blue/src/wire_layer.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 
 
 static func placement_error(canvas, data: Dictionary, offset: Vector2i, amounts: Dictionary = {}, occupied: Dictionary = {}) -> String:
@@ -91,8 +92,14 @@ static func place(canvas, data: Dictionary, offset: Vector2i) -> String:
 	var bounds := Rect2(surface.to_global(Vector2(offset)), Vector2(Codec.vec(data.size)))
 	var state: Dictionary = canvas.History.capture(canvas, true, bounds)
 	state["bounds"] = bounds
+	var center_ids := {}
 	for point in data.get("gear_centers", []):
-		surface.gear_centers.append(Codec.vec(point) + Vector2(offset))
+		var record := Format.center_any(point)
+		if record.is_empty():
+			continue
+		var copied: Dictionary = surface.add_gear_center(Vector2(record.position[0], record.position[1]) + Vector2(offset),
+			float(record.radius), int(record.material))
+		center_ids[int(record.id)] = int(copied.id)
 	var width := int(data.size[0])
 	for entry in data.pixels:
 		var material := int(entry[1])
@@ -164,6 +171,14 @@ static func place(canvas, data: Dictionary, offset: Vector2i) -> String:
 			func(saved_index): return Codec.cell(saved_index, width)))
 		node.infinite_nail_body = bool(saved.get("infinite_nail_body", false))
 		node.infinite_fuel_body = bool(saved.get("infinite_fuel_body", false))
+		var local_centers: Array = []
+		for point in saved.get("gear_centers", []):
+			var record := Format.center_any(point)
+			if record.is_empty():
+				continue
+			local_centers.append(GearCenters.make(Vector2(record.position[0], record.position[1]),
+				float(record.radius), int(record.material)))
+		node.gear_centers = local_centers
 		node.add_to_group("ink_item", true)
 		var shape := ShapeNode.new()
 		shape.source = ShapeNode.Source.PAINT
@@ -173,24 +188,48 @@ static func place(canvas, data: Dictionary, offset: Vector2i) -> String:
 		node.owner = canvas.world
 		shape.owner = canvas.world
 		created.append({"node": node, "body": canvas.world.add_body_node(node)})
+	for saved in data.get("draft_bearings", []):
+		var record: Dictionary = saved.duplicate(true)
+		for key in ["support_path", "support_body", "wheel_path", "wheel_body"]:
+			record.erase(key)
+		record["position"] = Codec.vec(saved.position) + Vector2(offset)
+		record["support_position"] = Codec.vec(saved.support_position) + Vector2(offset)
+		record["center_id"] = int(center_ids.get(int(saved.get("center_id", -1)), -1))
+		var support_index := int(saved.get("support", -1))
+		if support_index >= 0:
+			record["support_path"] = canvas.world.get_path_to(created[support_index].node)
+		record.erase("support")
+		surface.draft_bearings.append(record)
 	for saved in data.gears:
 		var bearing := Bearing.new()
 		var wheel = created[int(saved.wheel)]
-		var axle := Codec.world_point(canvas, Codec.vec(saved.point) + Vector2(offset))
-		bearing.yellow_position = axle
-		bearing.black_position = axle
+		var wheel_local_at := Codec.vec(saved.get("wheel_point", saved.point)) + Vector2(offset)
+		var wheel_world := Codec.world_point(canvas, wheel_local_at)
+		bearing.explicit = true
+		bearing.yellow_position = wheel_world
+		bearing.black_position = wheel_world
 		bearing.teeth = int(saved.teeth)
 		bearing.gear_material = int(saved.material)
-		bearing.fixed_to_world = saved.support < 0
-		bearing.yellow_anchor = {"body": wheel.body, "cell": Vector2i(wheel.body.to_local(axle).floor()), "local": wheel.body.to_local(axle)}
-		if saved.support >= 0:
-			var support = created[int(saved.support)].body
-			var at := Vector2i(support.to_local(axle).floor())
-			bearing.support_material = Wire.material_at(support, at)
-			bearing.black_anchor = {"body": support, "cell": at, "local": support.to_local(axle)}
+		var support_index := int(saved.get("support", -1))
+		bearing.fixed_to_world = bool(saved.get("world", support_index < 0))
+		var wheel_cell := Vector2i(wheel.body.to_local(wheel_world).floor())
+		bearing.yellow_anchor = {"body": wheel.body, "cell": wheel_cell,
+			"local": wheel.body.to_local(wheel_world)}
 		canvas.world.add_child(bearing)
 		bearing.owner = canvas.world
 		bearing.wheel_path = bearing.get_path_to(wheel.node)
+		if support_index >= 0:
+			var support = created[support_index].body
+			var support_point := Codec.vec(saved.get("support_point", saved.point)) + Vector2(offset)
+			var support_world := Codec.world_point(canvas, support_point)
+			var at := Vector2i(support.to_local(support_world).floor())
+			bearing.support_material = int(saved.get("support_material", 0))
+			if bearing.support_material == 0:
+				bearing.support_material = Wire.material_at(support, at)
+			bearing.black_anchor = {"body": support, "cell": at,
+				"local": support.to_local(support_world)}
+			bearing.black_position = support_world
+			bearing.support_path = bearing.get_path_to(created[support_index].node)
 		bearing.connect_joint()
 		bearing._process(0.0)
 	surface.refresh()

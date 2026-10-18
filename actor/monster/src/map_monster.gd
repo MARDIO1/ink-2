@@ -433,7 +433,10 @@ func editor_contains_point(world_point: Vector2, margin: float) -> bool:
 	if _visual == null:
 		return false
 	var has_art := false
-	for sprite: Sprite2D in _visual.find_children("*", "Sprite2D", true, false):
+	var sprites := _visual.find_children("*", "Sprite2D", true, false)
+	if is_instance_valid(_shield_visual):
+		sprites.append(_shield_visual)
+	for sprite: Sprite2D in sprites:
 		if sprite.texture == null or not sprite.is_visible_in_tree():
 			continue
 		has_art = true

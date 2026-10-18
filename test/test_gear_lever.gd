@@ -67,7 +67,11 @@ func _run() -> void:
 	check("lever is one continuous body", left != null and left == right)
 	var axles: Array = canvas.world.get_children().filter(
 		func(node): return node is Axle and not node.is_queued_for_deletion())
-	check("one axle created for the gear", axles.size() == 1)
+	check("solidify does not create an automatic axle", axles.is_empty())
+	check("manual bearing tool connects wheel to the lever", surface.rod_layer.place_anchor(Vector2(100.5, 100.5)))
+	axles = canvas.world.get_children().filter(
+		func(node): return node is Axle and not node.is_queued_for_deletion())
+	check("one explicit axle created for the gear", axles.size() == 1)
 	if axles.size() == 1:
 		var axle = axles[0]
 		check("axle hinges wheel to lever instead of pinning to world", not axle.fixed_to_world

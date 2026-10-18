@@ -121,7 +121,7 @@ func _run_ui_test() -> void:
 	var f_event := InputEventKey.new()
 	f_event.keycode = KEY_F
 	f_event.pressed = true
-	var f_handled: bool = creative._handle_editor_input(f_event)
+	var f_handled: bool = creative.editor_input(f_event)
 	valid = valid and f_handled
 	valid = valid and int(creative.get("_monster_mode")) == -13
 	print("[UIPptEditorControls] F mode=", creative.get("_monster_mode"))
@@ -145,9 +145,9 @@ func _run_ui_test() -> void:
 		valid = valid and picked == target
 		var old_position: Vector2 = target.global_position
 		creative.set("_selected_control_target", target)
-		creative._begin_layout_drag(target, old_position)
+		creative.editor_drag_begin(target, old_position)
 		target.global_position += Vector2(23, 17)
-		creative._finish_layout_drag()
+		creative.editor_drag_finish()
 		valid = valid and target.global_position.is_equal_approx(old_position + Vector2(23, 17))
 
 	var old_text_scale: Vector2 = map_text.scale
