@@ -219,7 +219,7 @@ static func _strip_scene_uid(source: String) -> String:
 static func next_level(current: String) -> String:
 	var index := LEVEL_PATHS.find(current)
 	# 只连接前三次翻页；第三页和 Peak 都没有自动下一关。
-	if index < 0 or index >= 3:
+	if index < 0 or index >= LEVEL_PATHS.size() - 2:
 		return ""
 	var destination := LEVEL_PATHS[index + 1]
 	return destination if ResourceLoader.exists(destination, "PackedScene") else ""

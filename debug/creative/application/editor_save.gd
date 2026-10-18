@@ -90,8 +90,9 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	var player = ctx.get("player")
 	var player_saved: Array = []
 	if is_instance_valid(player):
-		player_saved = [player.visible, player.process_mode]
+		player_saved = [player.visible, player.process_mode, player.modulate]
 		player.visible = bool(ctx.get("player_visible", true))
+		player.modulate = ctx.get("player_modulate", Color.WHITE)
 	# 草稿和实体分别序列化；保存不能生成、回收或改变撤销栈。
 	var editor := scene.get_node_or_null("Creative")
 	var old_document: Dictionary = editor.editor_draft if editor != null else {}
@@ -106,6 +107,7 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	if is_instance_valid(player) and not player_saved.is_empty():
 		player.visible = bool(player_saved[0])
 		player.process_mode = int(player_saved[1])
+		player.modulate = player_saved[2]
 	for item in saved:
 		if is_instance_valid(item):
 			item.visible = bool(saved[item][0])

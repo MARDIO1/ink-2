@@ -774,6 +774,10 @@ func _exit() -> void:
 	_reset_player_to_spawn()
 	# F2 是内存中的试玩事务：先留存编辑蓝图，再仅对试玩实例固化草稿。
 	# 即使旧地图保存了 auto_save_on_exit=true，也不能让模式切换覆盖文件。
+	if auto_save_on_exit:
+		var save_error := save_editor_snapshot_before_leave(true)
+		if save_error != OK:
+			push_error("Creative: snapshot save failed (%d)" % save_error)
 	var router := get_tree().current_scene
 	if router != null and router.has_method("restore_editor_level"):
 		var checkpoint := PackedScene.new()
@@ -2873,6 +2877,7 @@ func export_map_to(save_path: String) -> Error:
 		# 否则存出来的关卡一开始就是"看不见的玩家"。
 		"player": _player,
 		"player_visible": _saved_player_visible,
+		"player_modulate": _saved_player_modulate,
 		"bake_preview": save_preview_on_export,
 		"baked_map_path": baked_map_path,
 	}, save_path)
@@ -2891,6 +2896,7 @@ func _pack_as_playable_scene(packed: PackedScene, scene: Node) -> Error:
 	return EditorSave.pack_playable(packed, scene, {
 		"player": _player,
 		"player_visible": _saved_player_visible,
+		"player_modulate": _saved_player_modulate,
 		"map_canvas": _map_canvas,
 		"play_canvases": _play_canvases(),
 	})
@@ -2916,6 +2922,7 @@ func _dispatch_palette_action(action: StringName, arguments: Array) -> void:
 		&"select_infinite_nail_tool": select_infinite_nail_tool,
 		&"_open_map_save_window": _open_map_save_window,
 		&"_reset_selected_monster_scale": _reset_selected_monster_scale,
+		&"_sync_gear_button": _sync_gear_button,
 		&"_build_canvas_size_dialog": _build_canvas_size_dialog,
 		&"_refresh_portal_choices": _refresh_portal_choices,
 		&"_on_portal_destination_selected": _on_portal_destination_selected,

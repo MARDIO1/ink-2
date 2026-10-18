@@ -565,6 +565,11 @@ func _open_map_save_window() -> void:
 func _reset_selected_monster_scale() -> void:
 	action_requested.emit(&"_reset_selected_monster_scale", [])
 
+func sync_gear_buttons(twelve_active: bool, _eight_active: bool) -> void:
+	if is_instance_valid(_gear_button):
+		_gear_button.set_pressed_no_signal(twelve_active)
+
+
 func _sync_gear_button() -> void:
 	action_requested.emit(&"_sync_gear_button", [])
 
