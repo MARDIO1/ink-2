@@ -1,5 +1,6 @@
 extends Node
 signal body_fractured(world, body, pieces: Array)
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 ## 物理引擎边界：只负责配置、推进、查询接触和应用通用物理效果。
 ## 本脚本不知道墨水、颜色、伤害规则或任何具体玩法类型。
 
@@ -353,6 +354,7 @@ func commit(physics, removals: Dictionary, bursts: Dictionary = {},
 		replacements[body] = result.fragments.duplicate()
 		if result.body_alive:
 			replacements[body].append(body)
+		GearCenters.observe_fracture(body, replacements[body])
 		body_fractured.emit(physics, body, replacements[body])
 		if not result.body_alive:
 			for shape in body.shapes:
@@ -437,6 +439,7 @@ func carve(physics, removals: Dictionary) -> Dictionary:
 		body.angular_velocity = old_angular
 		body.awake = true
 		body.sleep_timer = 0.0
+		GearCenters.prune(body)
 		_update_anchors(body, body.tags.get(ANCHOR_TAG, {}))
 		_update_background_anchors(body, background_points, background_layer, background_mask)
 		body_fractured.emit(physics, body, [body])

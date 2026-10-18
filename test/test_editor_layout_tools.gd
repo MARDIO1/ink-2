@@ -22,7 +22,7 @@ func click(creative, button: int, world_position: Vector2, pressed := true) -> b
 	event.button_index = button
 	event.pressed = pressed
 	event.position = creative.get_viewport().get_canvas_transform() * world_position
-	return creative._handle_layout_mouse_button(event)
+	return creative.editor_mouse_button(event)
 
 
 func respawns(level) -> Array:
@@ -62,7 +62,7 @@ func _run() -> void:
 	click(creative, MOUSE_BUTTON_LEFT, first.global_position)
 	var motion := InputEventMouseMotion.new()
 	motion.position = creative.get_viewport().get_canvas_transform() * (first.global_position + Vector2(60, 40))
-	creative._handle_layout_mouse_motion(motion)
+	creative.editor_mouse_motion(motion)
 	click(creative, MOUSE_BUTTON_LEFT, first.global_position + Vector2(60, 40), false)
 	await process_frame
 	check("left press on an existing respawn drags instead of stacking", respawns(level).size() == before

@@ -37,7 +37,7 @@ func _run_layout_test() -> void:
 	var added_canvas: Node2D = creative.place_play_canvas(spawn.global_position + Vector2(900.0, 300.0))
 	valid = valid and added_canvas != null and added_canvas.is_in_group(&"play_canvas")
 	valid = valid and added_canvas.get("canvas_size") == main_canvas.get("canvas_size")
-	valid = valid and creative._play_canvases().size() == 2
+	valid = valid and creative.editor_canvases().size() == 2
 
 	var player: Node2D = scene.get_node("Player")
 	var fall_death: Node = player.get_node("FallDeath")

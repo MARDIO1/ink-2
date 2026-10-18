@@ -9,6 +9,11 @@ const Stroke := preload("res://ink/yellow/src/stroke.gd")
 const Rail := preload("res://ink/yellow/src/rail.gd")
 const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
+const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")
+const History := preload("res://actor/canvas/src/canvas_history.gd")
+## CanvasSurface.Tool.CIRCLE；rod_layer 被 surface 预加载，不能反向 preload 它。
+const TOOL_CIRCLE := 5
 @export var pixels: Image
 @export var anchor_points: PackedVector2Array = []
 @export var rails: Array = []
@@ -24,6 +29,12 @@ var prior_springs: Array = []
 var rail_drawing := false
 var rail_origin := Vector2.ZERO
 var rail_cursor := Vector2.ZERO
+## 轴承工具预览与点击共用同一个解析结果，避免预览吸附到中心、点击却连到别处。
+var _bearing_preview: Dictionary = {}
+var _bearing_preview_mouse := Vector2.INF
+var _bearing_support_index := -1
+var _bearing_support_body = null
+var _bearing_draft_support := false
 
 func _ready() -> void:
 	source_surface = get_parent()
@@ -60,6 +71,7 @@ func _draw() -> void:
 	for point in anchor_points:
 		if _black(point) and pixels.get_pixelv(Vector2i(point.floor())).a > 0:
 			draw_texture(Hinge.BEARING, point - Vector2(5.5, 5.5))
+	_draw_bearing_preview()
 	for rail in rails:
 		_draw_centerline(Vector2(rail.a), Vector2(rail.b))
 	for pin in slider_pins:
@@ -101,8 +113,65 @@ func _process(_delta: float) -> void:
 	var rule = source_surface.yellow_rule()
 	if rule != null:
 		modulate.a = rule.yellow_opacity
-	if not anchor_points.is_empty():
+	_update_bearing_preview()
+	if not anchor_points.is_empty() or not _bearing_preview.is_empty():
 		queue_redraw()
+
+
+func _bearing_tool_active() -> bool:
+	if source_surface == null or int(source_surface.get("tool")) != TOOL_CIRCLE:
+		return false
+	if source_surface.ink_material_id() != Palette.YELLOW.id:
+		return false
+	return source_surface._inside(source_surface._mouse_point())
+
+
+func _update_bearing_preview() -> void:
+	if not _bearing_tool_active():
+		if not _bearing_preview.is_empty():
+			_bearing_preview = {}
+			_bearing_preview_mouse = Vector2.INF
+			queue_redraw()
+		return
+	var point: Vector2 = source_surface._mouse_point()
+	if point != _bearing_preview_mouse:
+		_bearing_support_index = -1
+		_bearing_support_body = null
+		_bearing_draft_support = false
+	_bearing_preview_mouse = point
+	_bearing_preview = bearing_target(point.floor() + Vector2.ONE * 0.5)
+
+
+## 预览与点击唯一的入口：按住 Alt 禁用吸附，允许偏心安装。
+func _bearing_options() -> Dictionary:
+	var options := {"snap": not Input.is_key_pressed(KEY_ALT), "support_index": _bearing_support_index}
+	if _bearing_support_body != null:
+		options["support_body"] = _bearing_support_body
+	if _bearing_draft_support:
+		options["draft_support"] = true
+	return options
+
+
+func bearing_target(point: Vector2) -> Dictionary:
+	return GearBearings.resolve_target(source_surface, point, _bearing_options())
+
+
+func _draw_bearing_preview() -> void:
+	if _bearing_preview.is_empty():
+		return
+	var point: Vector2 = Vector2(_bearing_preview.get("position", Vector2.ZERO))
+	if _bearing_preview.has("error"):
+		draw_arc(point, 6.0, 0.0, TAU, 20, Color(0.8, 0.15, 0.12), 1.5, false)
+		return
+	draw_arc(point, 5.5, 0.0, TAU, 20, Palette.YELLOW.color, 1.5, false)
+	draw_line(point + Vector2(-3, 0), point + Vector2(3, 0), Color(0.08, 0.07, 0.02), 1.0)
+	draw_line(point + Vector2(0, -3), point + Vector2(0, 3), Color(0.08, 0.07, 0.02), 1.0)
+	if _bearing_preview.get("support", null) != null:
+		var support_point: Vector2 = Vector2(_bearing_preview.get("support_position", point))
+		draw_arc(support_point, 7.0, 0.0, TAU, 20, Color(0.95, 0.72, 0.08, 0.85), 1.0, false)
+		var support = _bearing_preview.support
+		var box: Rect2 = support.aabb
+		draw_rect(Rect2(source_surface.to_local(box.position), box.size), Color(1.0, 0.45, 0.08, 0.9), false, 1.5)
 
 func _black(point: Vector2) -> bool:
 	return source_surface._inside(point) and source_surface.material_at(int(point.x), int(point.y)) == Palette.BLACK.id
@@ -263,8 +332,46 @@ func _move_rail_metadata(selected: Dictionary, offset: Vector2i) -> void:
 			moving = next_moving
 	rails = updated
 
-func place_anchor(point: Vector2) -> bool:
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_TAB \
+	and _bearing_tool_active() and int(_bearing_preview.get("support_count", 0)) > 1:
+		_bearing_support_index = posmod(_bearing_support_index + 1, int(_bearing_preview.support_count))
+		_bearing_support_body = null
+		_bearing_draft_support = false
+		_bearing_preview = bearing_target(source_surface._mouse_point().floor() + Vector2.ONE * 0.5)
+		_bearing_support_body = _bearing_preview.get("support")
+		_bearing_draft_support = _bearing_preview.get("kind") == "draft" and _bearing_support_body == null and not bool(_bearing_preview.get("fixed_to_world", true))
+		queue_redraw()
+		source_surface.notice_requested.emit("轴承支座 %d / %d（Tab 切换）" % [_bearing_support_index + 1, int(_bearing_preview.support_count)])
+		get_viewport().set_input_as_handled()
+
+
+func place_anchor(point: Vector2, options: Dictionary = {}) -> bool:
 	var candidate := point.floor() + Vector2.ONE * 0.5
+	var resolved := _bearing_options()
+	resolved.merge(options, true)
+	var target: Dictionary = GearBearings.resolve_target(source_surface, candidate, resolved)
+	if not target.is_empty():
+		if target.has("error"):
+			source_surface.notice_requested.emit(str(target.error))
+			return false
+		if target.kind == "draft":
+			var before_bearings: Array = source_surface.draft_bearings.duplicate(true)
+			if not GearBearings.install(source_surface, target):
+				return false
+			source_surface.push_undo_step({"rod_pixels": {},
+				"rod_anchors": anchor_points.duplicate(), "rod_delta": 0,
+				"black_pixels": {"draft_bearings": before_bearings}})
+		else:
+			var canvas = source_surface.get_parent()
+			var bounds := Rect2(source_surface.to_global(candidate - Vector2.ONE * 16.0), Vector2(32, 32))
+			var state: Dictionary = History.capture(canvas, true, bounds)
+			if not GearBearings.install(source_surface, target):
+				return false
+			History.commit(canvas, state)
+		refresh()
+		return true
+	# 普通黄墨连接：黑墨与黄墨必须重叠，保留原有手动轴点语义。
 	if not _black(candidate) or pixels.get_pixelv(Vector2i(candidate.floor())).a <= 0 or anchor_points.has(candidate):
 		return false
 	var before := anchor_points.duplicate()
@@ -366,6 +473,27 @@ func place_slider_pin(point: Vector2) -> bool:
 	return true
 
 func erase_anchor(point: Vector2) -> bool:
+	var host = GearBearings.host_of(source_surface)
+	if host != null:
+		var has_bearing := false
+		for child in host.get_children():
+			if child is Hinge and not child.is_queued_for_deletion() and not child.yellow_anchor.is_empty() \
+			and source_surface.to_local(host.to_global(Stroke.anchor_world(child.yellow_anchor))).distance_to(point) <= 6.5:
+				has_bearing = true
+				break
+		if not has_bearing:
+			for record in source_surface.draft_bearings:
+				if Vector2(record.get("position", Vector2.ZERO)).distance_to(point) <= 6.5:
+					has_bearing = true
+					break
+		if has_bearing:
+			var canvas = source_surface.get_parent()
+			var bounds := Rect2(source_surface.to_global(point - Vector2.ONE * 16.0), Vector2(32, 32))
+			var state: Dictionary = History.capture(canvas, true, bounds)
+			if GearBearings.erase_at(source_surface, point):
+				History.commit(canvas, state)
+				refresh()
+				return true
 	for index in range(slider_pins.size() - 1, -1, -1):
 		if Vector2(slider_pins[index].position).distance_squared_to(point) <= 30.25:
 			var before_pins := slider_pins.duplicate(true)

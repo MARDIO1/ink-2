@@ -23,6 +23,8 @@ var _cells_dirty := false
 @export var active := false
 @export var carrier_material: int = 1
 @export var carrier_path: NodePath
+## 新文档的像素已在载体局部网格中，重载时禁止再次投影/取整。
+@export var carrier_local := false
 ## 只调显示，不影响能源量/传播。Inspector 可按每条导线覆盖。
 @export_range(0.0, 8.0, 0.1) var highlight_brightness := 2.5
 @export_range(1.0, 6.0, 0.5) var highlight_core_width := 2.0
@@ -219,6 +221,7 @@ func restore() -> void:
 	if physics == null or cells.is_empty():
 		return
 	var carrier := get_node_or_null(carrier_path) if not carrier_path.is_empty() else null
+	var same_grid: bool = carrier_local and carrier is BodyNode and physics.bodies.has(carrier.body)
 	if carrier is BodyNode and physics.bodies.has(carrier.body):
 		body = carrier.body
 	else:
@@ -246,7 +249,11 @@ func restore() -> void:
 	if body == null:
 		queue_free()
 		return
-	# 序列化坐标属于旧载体；绑定到不同局部坐标系时必须同步变换像素。
+	if same_grid:
+		sync_pose()
+		remember_revision()
+		return
+	# 仅旧数据或载体变更需要转换坐标。
 	var restored := PackedVector2Array()
 	for at in cells:
 		var local := Vector2i(body.to_local(_display_to_physics(at + Vector2.ONE * 0.5)).floor())
@@ -265,6 +272,8 @@ func prune(physics) -> bool:
 		return true
 	var revision: Array = []
 	for shape in body.shapes:
+		if not is_instance_valid(shape):
+			continue
 		revision.append(shape.get_instance_id())
 		revision.append(shape.revision)
 	if revision == _revision:
@@ -330,6 +339,7 @@ func intact_on(target) -> bool:
 	return true
 
 func remember_revision() -> void:
+	carrier_local = true
 	var carrier := get_node_or_null(carrier_path) if not carrier_path.is_empty() else null
 	if not (carrier is BodyNode and carrier.body == body):
 		carrier_path = NodePath()
@@ -339,6 +349,8 @@ func remember_revision() -> void:
 				break
 	_revision.clear()
 	for shape in body.shapes:
+		if not is_instance_valid(shape):
+			continue
 		_revision.append(shape.get_instance_id())
 		_revision.append(shape.revision)
 #endregion

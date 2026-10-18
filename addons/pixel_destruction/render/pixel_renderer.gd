@@ -166,7 +166,8 @@ func material_color(material: int) -> Color:
 
 
 func sync(body) -> void:
-	if body.shapes.is_empty():
+	# 无节点的物理肢体也必须遵守显示开关，并清除先前创建的轮廓。
+	if not body.internal_render or body.shapes.is_empty():
 		forget(body.id)
 		return
 	var aabb: Rect2i = _local_bounds(body)

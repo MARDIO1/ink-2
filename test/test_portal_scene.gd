@@ -117,11 +117,11 @@ func _run() -> void:
 	placed.portal_size = Vector2(210, 120)
 	creative.delete_portal(placed)
 	var undone: bool = creative.undo_last_edit()
-	var portal = creative._portals()[0] if not creative._portals().is_empty() else null
+	var portal = creative.editor_portals()[0] if not creative.editor_portals().is_empty() else null
 	check("deletion undo restores scene instance and settings", undone and portal != null and portal.scene_file_path == "res://actor/portal/map_portal.tscn" and portal.portal_size == Vector2(210, 120) and portal.target_map == "res://map/asset/imported/第一页.tscn")
 	if portal != null:
 		portal.set_physics_process(false)
-	check("deletion redo removes portal", creative.redo_last_edit() and creative._portals().is_empty())
+	check("deletion redo removes portal", creative.redo_last_edit() and creative.editor_portals().is_empty())
 	map.queue_free()
 	await process_frame
 	if OS.get_cmdline_user_args().has("--render-compare"):

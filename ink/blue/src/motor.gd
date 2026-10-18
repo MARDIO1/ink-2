@@ -202,6 +202,8 @@ func valid(physics) -> bool:
 		return false
 	var revision: Array = []
 	for shape in body.shapes:
+		if not is_instance_valid(shape):
+			continue
 		revision.append(shape.get_instance_id())
 		revision.append(shape.revision)
 	if revision != _support_revision:

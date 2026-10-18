@@ -42,8 +42,8 @@ func refresh() -> void:
 	if not is_instance_valid(canvas) or undo_button == null:
 		return
 	var creative := _editor()
-	var undo_empty: bool = creative._edit_history.is_empty() if creative != null else canvas.surface._undo_steps.is_empty()
-	var redo_empty: bool = creative._redo_history.is_empty() if creative != null else canvas.surface._redo_steps.is_empty()
+	var undo_empty: bool = creative._history.undo_stack.is_empty() if creative != null else canvas.surface._undo_steps.is_empty()
+	var redo_empty: bool = creative._history.redo_stack.is_empty() if creative != null else canvas.surface._redo_steps.is_empty()
 	var blueprints := get_node_or_null("/root/Blueprints")
 	var blocked: bool = not canvas.active or get_tree().paused or (blueprints != null and blueprints.is_world_input_blocked())
 	undo_button.disabled = blocked or undo_empty

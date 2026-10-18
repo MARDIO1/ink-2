@@ -15,6 +15,8 @@ const BACKGROUND_WHITE_TAG := "background_original_white_ink"
 const BACKGROUND_SWEEP_TAG := "background_original_white_sweep"
 const Nail := preload("res://actor/nail/src/nail.gd")
 const Traits := preload("res://ink/general/src/ink_traits.gd")
+const GearCenterMarkers := preload("res://actor/canvas/src/gear_center_markers.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 #endregion
 
 ## 关卡文件里的墨水实体默认属于地图编辑器预置内容，其钉子仅供编辑时查看。
@@ -26,6 +28,18 @@ const Traits := preload("res://ink/general/src/ink_traits.gd")
 @export var infinite_nails := PackedVector2Array()
 @export var infinite_nail_body := false
 @export var infinite_fuel_body := false
+## 齿轮中心记录（刚体局部坐标）。这里只保存定位信息，不表示轮体已经装了轴承。
+var _saved_gear_centers: Array = []
+@export var gear_centers: Array:
+	get:
+		return GearCenters.body_records(_body) if _body != null else _saved_gear_centers
+	set(value):
+		var normalized := GearCenters.normalize(value)
+		if _body != null:
+			GearCenters.set_body_records(_body, normalized)
+			_saved_gear_centers = []
+		else:
+			_saved_gear_centers = normalized
 @export_flags_2d_physics var background_collision_layer := 1
 @export_flags_2d_physics var background_collision_mask := 0xFFFFFFFF
 ## 强制白墨使用高速扫掠；关闭时仍会自动识别画布生成的圆环。
@@ -35,10 +49,17 @@ const Traits := preload("res://ink/general/src/ink_traits.gd")
 #region 装载
 ## 白墨沿用刚体运动和渲染；普通白墨接触后关闭碰撞，圆形扫掠从生成起无碰撞。
 func bake():
+	var centers: Array = gear_centers
 	_migrate_legacy_nails()
 	if not fixed_nails.is_empty():
 		is_static = true
 	var result = super.bake()
+	# 中心是实体自己的可序列化数据；有中心不等于有轴承。
+	if not centers.is_empty():
+		var normalized := GearCenters.normalize(centers)
+		GearCenters.set_body_records(result, normalized)
+		gear_centers = normalized
+	_saved_gear_centers = []
 	var white := false
 	var other := false
 	var shapes: Array = collect_shapes()
@@ -198,6 +219,22 @@ func _ready() -> void:
 	_restore_nails.call_deferred()
 
 
+## 标记仅跟随本实体；不创建物理对象，也不扫描其他实体。
+func ensure_gear_center_markers() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree() or _body == null or gear_centers.is_empty():
+		return
+	var markers := get_node_or_null("GearCenterMarkers")
+	if markers == null:
+		markers = GearCenterMarkers.new()
+		markers.name = "GearCenterMarkers"
+		markers.entity_body = _body
+		markers.entity_host = get_parent()
+		add_child(markers)
+		markers.top_level = true
+	else:
+		markers.entity_body = _body
+
+
 #把材质 4 的像素认成锚点：打标签给破坏管线，并补上可见的钉子外观。
 func _restore_nails() -> void:
 	if not is_inside_tree():
@@ -206,4 +243,5 @@ func _restore_nails() -> void:
 	if body == null:
 		return
 	apply_nails(body, true)
+	ensure_gear_center_markers()
 #endregion

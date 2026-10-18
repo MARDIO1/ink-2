@@ -143,11 +143,12 @@ func _set_screen(screen: Node) -> void:
 ## 实测第二页 69 个刚体要 3.1 秒，这一帧里加载动画和鼠标都是死的。
 ## 做法：先把直接子级的刚体节点摘下来，让 `rebuild()` 只造一个空世界（毫秒级），
 ## 再逐帧放回并 `bake_node()`。关卡此刻在遮罩后面，玩家看不到中间状态。
-func load_level(scene: PackedScene) -> Node:
+func load_level(scene: PackedScene, editing := false) -> Node:
 	for child in level_root.get_children():
 		level_root.remove_child(child)
 		child.queue_free()
 	var level := scene.instantiate()
+	level.set_meta(&"editor_document_load", editing)
 	var staged := _detach_unbaked_bodies(level)
 	if not staged.is_empty():
 		level.body_bake_pending = true
@@ -158,6 +159,9 @@ func load_level(scene: PackedScene) -> Node:
 	level_root.add_child(level)
 	_play_music(level_music)
 	await _bake_staged_bodies(level, staged)
+	var editor := level.get_node_or_null("Creative")
+	if editor != null and editor.has_method("prepare_loaded_document"):
+		editor.prepare_loaded_document(editing)
 	level_changed.emit(level)
 	return level
 
@@ -165,7 +169,7 @@ func load_level(scene: PackedScene) -> Node:
 ## 恢复事务由常驻 Root 等待；旧 Creative 会在 load_level 中释放，不能持有续执行点。
 func restore_editor_level(scene: PackedScene, finish_transition: bool) -> void:
 	_loading_level = true
-	var level: Node = await load_level(scene)
+	var level: Node = await load_level(scene, true)
 	var replacement := level.get_node_or_null(^"Creative")
 	if replacement != null:
 		replacement._activate_restored_editor()

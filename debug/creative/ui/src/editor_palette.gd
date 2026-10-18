@@ -306,6 +306,16 @@ func _build_monster_palette() -> void:
 		monster_grid.add_child(button)
 		_monster_buttons.append(button)
 
+	_delete_monster_button = Button.new()
+	_delete_monster_button.name = "DeleteMonsterButton"
+	_delete_monster_button.text = "删除怪物"
+	_delete_monster_button.tooltip_text = "选择后左键点击怪物删除；右键也可删除，Ctrl+Z 撤销"
+	_delete_monster_button.toggle_mode = true
+	_delete_monster_button.focus_mode = Control.FOCUS_NONE
+	_delete_monster_button.custom_minimum_size = Vector2(96.0, 44.0)
+	_delete_monster_button.pressed.connect(select_monster_tool.bind(MONSTER_MODE_DELETE))
+	monster_grid.add_child(_delete_monster_button)
+
 	_reset_monster_scale_button = Button.new()
 	_reset_monster_scale_button.name = "ResetMonsterScaleButton"
 	_reset_monster_scale_button.text = "恢复原始大小"

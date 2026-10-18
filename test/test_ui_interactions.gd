@@ -254,23 +254,23 @@ func _run() -> void:
 	await click(column.get_node("ViewActions/NailVisibility"))
 	check("nail toggle restores prior visibility", canvas.surface.nail_layer.visible == nails_visible)
 	await click(column.get_node("EditActions/SaveMapButton"))
-	check("save map button opens confirmation UI only", creative._map_save_window.visible and FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn") == original_map_hash)
-	creative._save_name_input.text = ""
-	await click(creative._map_save_window.get_node("Content/Actions/SaveButton"))
-	check("invalid map name shows actionable error without saving", creative._map_save_window.visible and creative._save_status.visible and FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn") == original_map_hash)
-	creative._save_name_input.text = "UI 临时地图不保存"
-	await click(creative._map_save_window.find_child("BrowseButton", true, false))
-	check("map save browse opens directory chooser", creative._save_directory_dialog.visible)
-	await click(creative._save_directory_dialog.get_cancel_button())
-	check("directory cancel returns to map save confirmation", not creative._save_directory_dialog.visible and creative._map_save_window.visible and creative._save_name_input.text == "UI 临时地图不保存")
-	await click(creative._map_save_window.find_child("BrowseButton", true, false))
-	creative._save_directory_dialog.current_dir = "res://map/asset"
+	check("save map button opens confirmation UI only", creative._save_view._map_save_window.visible and FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn") == original_map_hash)
+	creative._save_view._save_name_input.text = ""
+	await click(creative._save_view._map_save_window.get_node("Content/Actions/SaveButton"))
+	check("invalid map name shows actionable error without saving", creative._save_view._map_save_window.visible and creative._save_view._save_status.visible and FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn") == original_map_hash)
+	creative._save_view._save_name_input.text = "UI 临时地图不保存"
+	await click(creative._save_view._map_save_window.find_child("BrowseButton", true, false))
+	check("map save browse opens directory chooser", creative._save_view._save_directory_dialog.visible)
+	await click(creative._save_view._save_directory_dialog.get_cancel_button())
+	check("directory cancel returns to map save confirmation", not creative._save_view._save_directory_dialog.visible and creative._save_view._map_save_window.visible and creative._save_view._save_name_input.text == "UI 临时地图不保存")
+	await click(creative._save_view._map_save_window.find_child("BrowseButton", true, false))
+	creative._save_view._save_directory_dialog.current_dir = "res://map/asset"
 	await settle()
-	await click(creative._save_directory_dialog.get_ok_button())
-	check("directory confirmation fills original save form", not creative._save_directory_dialog.visible and creative._map_save_window.visible and creative._save_directory_input.text.trim_suffix("/") == "res://map/asset")
-	check("directory selection never writes or renames map", creative._save_name_input.text == "UI 临时地图不保存" and FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn") == original_map_hash)
-	await click(creative._map_save_window.get_node("Content/Actions/CancelButton"))
-	check("map save cancel works", not creative._map_save_window.visible)
+	await click(creative._save_view._save_directory_dialog.get_ok_button())
+	check("directory confirmation fills original save form", not creative._save_view._save_directory_dialog.visible and creative._save_view._map_save_window.visible and creative._save_view._save_directory_input.text.trim_suffix("/") == "res://map/asset")
+	check("directory selection never writes or renames map", creative._save_view._save_name_input.text == "UI 临时地图不保存" and FileAccess.get_sha256("res://test/fixtures/maps/base_level.tscn") == original_map_hash)
+	await click(creative._save_view._map_save_window.get_node("Content/Actions/CancelButton"))
+	check("map save cancel works", not creative._save_view._map_save_window.visible)
 	audit_buttons(creative._monster_palette)
 	await snapshot("editor")
 	creative.active = false

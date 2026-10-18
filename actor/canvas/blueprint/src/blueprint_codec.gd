@@ -14,12 +14,20 @@ const Nail := preload("res://actor/nail/src/nail.gd")
 const Traits := preload("res://ink/general/src/ink_traits.gd")
 const Rail := preload("res://ink/yellow/src/rail.gd")
 const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 
 static func vec(value: Array) -> Vector2:
 	return Vector2(value[0], value[1])
 
 static func xy(value: Vector2) -> Array:
 	return [value.x, value.y]
+
+
+static func _center_payload(record: Dictionary, origin: Vector2,
+		canvas_point: Vector2 = Vector2.INF) -> Dictionary:
+	var point := GearCenters.position_of(record) if canvas_point == Vector2.INF else canvas_point
+	return {"position": xy(point - origin), "radius": GearCenters.radius_of(record),
+		"material": GearCenters.material_of(record), "id": int(record.get("id", 0))}
 
 static func cell(index, width: int) -> Vector2i:
 	return Vector2i(int(index) % width, int(index) / width)
@@ -44,10 +52,10 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 		"updated": 0, "favorite": false, "editor_only": false, "size": [rect.size.x, rect.size.y],
 		"pixels": [], "fixed_nails": [], "background_nails": [], "infinite_nails": [],
 		"rods": [], "blue": [], "anchors": [], "springs": [], "motors": [], "bodies": [], "gears": [],
-		"gear_centers": [], "rails": [], "slider_pins": []}
-	for point in surface.gear_centers:
-		if inside(Vector2i(point.floor()), rect, mask):
-			data.gear_centers.append(xy(point - Vector2(rect.position)))
+		"gear_centers": [], "draft_bearings": [], "rails": [], "slider_pins": []}
+	for record in GearCenters.normalize(surface.gear_centers):
+		if inside(Vector2i(GearCenters.position_of(record).floor()), rect, mask):
+			data.gear_centers.append(_center_payload(record, Vector2(rect.position)))
 	var pixels := {}
 	var rods := {}
 	var blues := {}
@@ -56,6 +64,27 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	var infinite_nails := {}
 	var required := []
 	var gears := []
+	for record in surface.draft_bearings:
+		var at := Vector2(record.get("position", Vector2.ZERO))
+		if not inside(Vector2i(at.floor()), rect, mask):
+			continue
+		var support_point := Vector2(record.get("support_position", at))
+		var fixed := bool(record.get("fixed_to_world", true))
+		if not fixed and not inside(Vector2i(support_point.floor()), rect, mask):
+			return {"error": "草稿轴承支座未完整框入，请同时包含支座连接点"}
+		var support = null
+		var path: NodePath = record.get("support_path", NodePath())
+		if not fixed and not path.is_empty():
+			var node: Node = canvas.world.get_node_or_null(path)
+			if node == null or node.get("body") == null:
+				return {"error": "草稿轴承支座无效，请先修复连接"}
+			support = node.body
+			if not required.has(support):
+				required.append(support)
+		data.draft_bearings.append({"position": xy(at - Vector2(rect.position)),
+			"support_position": xy(support_point - Vector2(rect.position)), "fixed_to_world": fixed,
+			"support": required.find(support), "support_material": int(record.get("support_material", 0)),
+			"wheel_material": int(record.get("wheel_material", 0)), "center_id": int(record.get("center_id", -1))})
 	for child in canvas.world.get_children():
 		if not child is Bearing or child.is_queued_for_deletion() or child.yellow_anchor.is_empty():
 			continue
@@ -76,13 +105,22 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 		if not required.has(wheel):
 			required.append(wheel)
 		var support = null
+		var support_at := at
+		var support_material := 0
 		if not child.fixed_to_world:
 			if child.black_anchor.is_empty():
 				return {"error": "齿轮支座无效，请先修复连接"}
 			support = child.black_anchor.body
+			support_at = Vector2i(local_point(canvas,
+				Stroke.anchor_world(child.black_anchor)).floor())
+			if not inside(support_at, rect, mask):
+				return {"error": "齿轮支座未完整框入：请同时包含支座连接点"}
+			support_material = int(child.support_material)
 			if not required.has(support):
 				required.append(support)
-		gears.append({"node": child, "wheel": wheel, "support": support, "at": at})
+		gears.append({"node": child, "wheel": wheel, "support": support, "at": at,
+			"support_at": support_at, "support_material": support_material,
+			"world": bool(child.fixed_to_world), "legacy": not bool(child.explicit)})
 	# 逐像素读取草稿，不调用会移走原实体的 rasterize/return_to_canvas。
 	var scan := rect.intersection(Rect2i(Vector2i.ZERO, surface.canvas_size))
 	for y in range(scan.position.y, scan.end.y):
@@ -109,9 +147,21 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 			continue
 		var saved := {"pixels": [], "static": body.is_static,
 			"fixed_nails": [], "background_nails": [], "infinite_nails": [],
+			"gear_centers": [],
 			"infinite_nail_body": Traits.is_unbreakable(body),
 			"infinite_fuel_body": Traits.is_infinite_fuel(body)}
 		var is_required := required.has(body)
+		for record in GearCenters.body_records(body):
+			if not GearCenters.record_alive(body, record):
+				continue
+			var center_canvas := local_point(canvas, body.to_world(GearCenters.position_of(record)))
+			var center_at := Vector2i(center_canvas.floor())
+			if not inside(center_at, rect, mask):
+				continue
+			if is_required:
+				saved.gear_centers.append(_center_payload(record, Vector2(rect.position), center_canvas))
+			else:
+				data.gear_centers.append(_center_payload(record, Vector2(rect.position), center_canvas))
 		for shape in body.shapes:
 			var bounds: Rect2i = shape.local_aabb()
 			# 大型地面只扫描映射后的选区范围；功能部件另做完整性检查。
@@ -169,8 +219,13 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 					pair[2][key] = true
 	for entry in gears:
 		var gear = entry.node
-		data.gears.append({"point": xy(Vector2(entry.at - rect.position) + Vector2.ONE * 0.5),
+		data.gears.append({
+			"point": xy(Vector2(entry.at - rect.position) + Vector2.ONE * 0.5),
+			"wheel_point": xy(Vector2(entry.at - rect.position) + Vector2.ONE * 0.5),
+			"support_point": xy(Vector2(entry.support_at - rect.position) + Vector2.ONE * 0.5),
 			"wheel": required.find(entry.wheel), "support": required.find(entry.support),
+			"world": bool(entry.world), "legacy": bool(entry.legacy),
+			"support_material": int(entry.support_material),
 			"material": gear.gear_material, "teeth": gear.teeth})
 	data.editor_only = not data.gears.is_empty()
 	for at in surface.rod_layer.anchor_points:

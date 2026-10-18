@@ -8,6 +8,7 @@ const Rail := preload("res://ink/yellow/src/rail.gd")
 const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const YellowAxle := preload("res://ink/yellow/src/axle.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 const TOKEN := &"canvas_undo_identity"
 
 static func identity(node: Node) -> int:
@@ -31,7 +32,8 @@ static func capture(canvas, include_bodies := false, selection := Rect2(), body_
 		"nails": surface.nail_layer.snapshot(),
 		"rod_rails": surface.rod_layer.rails.duplicate(true), "rod_pins": surface.rod_layer.slider_pins.duplicate(true),
 		"image": data.compress(FileAccess.COMPRESSION_FASTLZ), "ledger": surface.ink_px_by_material.duplicate(),
-		"gear_centers": surface.gear_centers.duplicate(),
+		"gear_centers": GearCenters.normalize(surface.gear_centers),
+		"draft_bearings": surface.draft_bearings.duplicate(true),
 		"bodies": [], "before_ids": {}, "remove_ids": {}, "yellow": [], "hinges": [],
 		"rails_runtime": [], "pins_runtime": [], "health": {}, "health_delta": {}}
 	# 可选实体过滤用于局部事务；新建实体仍通过身份差集纳入撤销。
@@ -44,8 +46,10 @@ static func capture(canvas, include_bodies := false, selection := Rect2(), body_
 				if not child.is_queued_for_deletion():
 					state.hinges.append([child.yellow_position, child.black_position,
 						{"material": child.gear_material, "support_material": child.support_material,
-						"world": child.fixed_to_world, "wheel_path": child.wheel_path, "teeth": child.teeth,
-						"hide_bearing": child.hide_bearing}])
+						"world": child.fixed_to_world, "wheel_path": child.wheel_path,
+						"support_path": child.support_path, "explicit": child.explicit,
+						"teeth": child.teeth, "hide_bearing": child.hide_bearing,
+						"local_anchors": child.saved_local_anchors, "wheel_local": child.wheel_local, "support_local": child.support_local}])
 			elif not child.yellow_anchor.is_empty() and not child.black_anchor.is_empty():
 				state.hinges.append([Stroke.anchor_world(child.yellow_anchor), Stroke.anchor_world(child.black_anchor)])
 		elif child is Rail and not child.is_queued_for_deletion() and child.body != null:
@@ -165,6 +169,11 @@ static func restore(canvas, state: Dictionary) -> void:
 			hinge.support_material = saved[2].support_material
 			hinge.fixed_to_world = saved[2].world
 			hinge.wheel_path = saved[2].wheel_path
+			hinge.support_path = saved[2].get("support_path", NodePath())
+			hinge.explicit = saved[2].get("explicit", false)
+			hinge.saved_local_anchors = saved[2].get("local_anchors", false)
+			hinge.wheel_local = saved[2].get("wheel_local", Vector2.ZERO)
+			hinge.support_local = saved[2].get("support_local", Vector2.ZERO)
 			hinge.teeth = saved[2].get("teeth", 12)
 			hinge.hide_bearing = saved[2].get("hide_bearing", false)
 		hinge.yellow_position = saved[0]
@@ -228,7 +237,8 @@ static func restore(canvas, state: Dictionary) -> void:
 	var bytes: PackedByteArray = state.image.decompress(size.x * size.y * 4, FileAccess.COMPRESSION_FASTLZ)
 	surface.black_image = Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGBA8, bytes)
 	# 盖章空白格属于画布编辑状态，必须跟着图像一起回滚。
-	surface.gear_centers = state.get("gear_centers", PackedVector2Array()).duplicate()
+	surface.gear_centers = GearCenters.normalize(state.get("gear_centers", []))
+	surface.draft_bearings = state.get("draft_bearings", []).duplicate(true)
 	surface.rebuild_ink_tiles()
 	if state.has("rod_image"):
 		surface.rod_layer.pixels = state.rod_image.duplicate()

@@ -14,10 +14,15 @@ const YellowHinge := preload("res://ink/yellow/src/hinge.gd")
 var _selection_rotation = preload("res://actor/canvas/src/selection_rotation.gd").new()
 const YellowAxle := preload("res://ink/yellow/src/axle.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
+const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 const InkPanel := preload("res://actor/canvas/panel/src/ink_panel.gd")
 const ToolbarBuilder := preload("res://actor/canvas/toolbar/src/toolbar_builder.gd")
+const ExpandWindow := preload("res://actor/canvas/panel/src/expand_canvas_window.gd")
+const ShapeMenu := preload("res://actor/canvas/toolbar/src/shape_menu.gd")
+const ToolbarActions := preload("res://actor/canvas/toolbar/src/toolbar_actions.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
 const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
@@ -235,10 +240,13 @@ func generate(record_undo := true) -> void:
 	for index in range(surface.rod_layer.anchor_points.size() - 1, -1, -1):
 		if not surface.rod_layer._black(surface.rod_layer.anchor_points[index]):
 			surface.rod_layer.anchor_points.remove_at(index)
-	var centers: PackedVector2Array = surface.gear_centers.duplicate()
+	var centers: Array = GearCenters.normalize(surface.gear_centers)
+	var pending_bearings: Array = surface.draft_bearings.duplicate(true)
 	solid.solidify(surface, world, _map_editor_mode)
-	surface.rod_layer.solidify(world, nail_state, centers)
-	solid.create_axles(surface, world, centers)
+	surface.rod_layer.solidify(world, nail_state, GearCenters.positions(centers))
+	# 固化只把中心转移到刚体；轴承必须来自草稿里明确记录的手动放置。
+	GearCenters.attach(surface, world, centers)
+	GearBearings.restore(surface, pending_bearings)
 	var yellow = surface.yellow_rule()
 	if yellow != null:
 		yellow.solidify(surface)
@@ -331,14 +339,60 @@ func _delete_selection(rect: Rect2i, mask: Dictionary = {}) -> void:
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 
+## 完整选中的实体直接变换，保持重叠部件、局部像素和连接身份，不经过栅格化。
+func whole_bodies_in_selection(rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
+	var result := {}
+	for body in world.world.bodies:
+		if body.tags.has("living") or body.tags.has("map_monster"):
+			continue
+		var box: Rect2 = body.aabb
+		var corners := [box.position, Vector2(box.end.x - 0.001, box.position.y),
+			box.end - Vector2.ONE * 0.001, Vector2(box.position.x, box.end.y - 0.001)]
+		var complete := true
+		for corner in corners:
+			var at := Vector2i(surface.to_local(corner).floor())
+			if not rect.has_point(at) or not SelectionMask.contains(mask, at):
+				complete = false
+				break
+		if complete:
+			result[body] = true
+	return result
+
+
+func transform_whole_bodies(bodies: Dictionary, offset: Vector2, angle := 0.0, pivot := Vector2.ZERO) -> void:
+	var world_pivot: Vector2 = surface.to_global(pivot)
+	var shift: Vector2 = surface.to_global(offset) - surface.global_position
+	for body in bodies:
+		body.position = world_pivot + (body.position - world_pivot).rotated(angle) + shift
+		body.rotation += angle
+		body.update_aabb()
+		var node = GearCenters.node_for_body(world, body)
+		if node != null:
+			node.position = body.position
+			node.rotation = body.rotation
+	for child in world.get_children():
+		if child is YellowAxle and not child.yellow_anchor.is_empty():
+			if bodies.has(child.yellow_anchor.body) and child.fixed_to_world:
+				child.remove_joint()
+				child.black_position = world_pivot + (child.black_position - world_pivot).rotated(angle) + shift
+			child._process(0.0)
+		elif child.has_method("sync_pose"):
+			child.sync_pose()
+
+
 ## 框选拖动：固化像素先回收到画布，再与普通/黄色图层一起搬移。
 func _move_selection(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> void:
 	if offset == Vector2i.ZERO:
 		return
 	var bounds := Rect2(surface.to_global(Vector2(rect.position)), Vector2(rect.size))
 	var state := History.capture(self, true, bounds)
+	var whole := whole_bodies_in_selection(rect, mask)
 	var moved_physical: Dictionary = {}
-	var removed: int = solid.rasterize_rect(surface, world, rect, moved_physical, mask)
+	var moved_centers: Array = []
+	var moved_bearings: Array = []
+	var removed: int = solid.rasterize_rect(surface, world, rect, moved_physical, mask, whole,
+		moved_centers, moved_bearings)
+	transform_whole_bodies(whole, Vector2(offset))
 	var moved_black: bool = surface.move_rect(rect, offset, mask, true)
 	var blue = surface.blue_rule()
 	var moved_blue: bool = blue.move_selection_drafts(surface, rect, offset, mask) if blue != null else false
@@ -347,23 +401,23 @@ func _move_selection(rect: Rect2i, offset: Vector2i, mask: Dictionary = {}) -> v
 	var moved_spring: bool = yellow.move_drafts_in_rect(surface, rect, offset, mask) if yellow != null else false
 	if removed > 0:
 		solid.spawn_moved_pixels(surface, world, moved_physical, offset, _map_editor_mode)
-		var moved_centers := PackedVector2Array()
-		for point in surface.gear_centers:
-			if moved_physical.has(Vector2i(point.floor()) - offset):
-				moved_centers.append(point)
-		solid.create_axles(surface, world, moved_centers)
-		for point in moved_centers:
-			surface.gear_centers.remove_at(surface.gear_centers.find(point))
+		for record in moved_centers:
+			record["position"] = GearCenters.position_of(record) + Vector2(offset)
+		GearCenters.attach(surface, world, moved_centers)
+		for record in moved_bearings:
+			record["position"] = Vector2(record.get("position", Vector2.ZERO)) + Vector2(offset)
+			var support_point := Vector2(record.get("support_position", Vector2.ZERO))
+			var support_at := Vector2i(support_point.floor())
+			if bool(record.get("fixed_to_world", false)) or (rect.has_point(support_at) and SelectionMask.contains(mask, support_at)):
+				record["support_position"] = support_point + Vector2(offset)
+		GearBearings.restore(surface, moved_bearings)
 		solid.sync_serializable_bodies(world)
-	if removed > 0 or moved_black or moved_blue or moved_yellow or moved_spring:
+	if removed > 0 or moved_black or moved_blue or moved_yellow or moved_spring or not whole.is_empty():
 		History.commit(self, state)
 	_apply_nail_visuals(_nails_visible if _map_editor_mode else true)
 
 func bake_png(path: String) -> Error:
-	solid.rasterize(surface, world, true)
-	var error: Error = surface.save_png(path)
-	surface.clear(false)          # 采样是临时的：存完把画布还给"空的"，别让存档里多一层图
-	return error
+	return solid.preview_image(surface, world).save_png(ProjectSettings.globalize_path(path))
 
 
 ## 切换画笔/橡皮擦/普通手。
@@ -906,116 +960,33 @@ func _on_hand_pressed() -> void:
 
 
 func _build_expand_canvas_window() -> void:
-	_expand_canvas_window = Window.new()
-	_expand_canvas_window.name = "ExpandCanvasWindow"
-	_expand_canvas_window.title = "扩展画布"
-	_expand_canvas_window.size = Vector2i(420, 390)
-	_expand_canvas_window.min_size = Vector2i(380, 350)
-	_expand_canvas_window.visible = false
-	_expand_canvas_window.transient = true
-	_expand_canvas_window.theme = EditorTheme
-	_expand_canvas_window.close_requested.connect(_expand_canvas_window.hide)
-	add_child(_expand_canvas_window)
-	_expand_canvas_window.hide()
-
-	var margin := MarginContainer.new()
-	margin.name = "Content"
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 28)
-	margin.add_theme_constant_override("margin_top", 24)
-	margin.add_theme_constant_override("margin_right", 28)
-	margin.add_theme_constant_override("margin_bottom", 24)
-	_expand_canvas_window.add_child(margin)
-
-	var column := VBoxContainer.new()
-	column.name = "Column"
-	column.add_theme_constant_override("separation", 16)
-	margin.add_child(column)
-
-	var explanation := Label.new()
-	explanation.text = "正数扩展，负数缩小并删除越界内容。保留内容的世界位置不变，可 Ctrl+Z 撤销。"
-	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(explanation)
-
-	_expand_size_preview = Label.new()
-	_expand_size_preview.name = "SizePreview"
-	column.add_child(_expand_size_preview)
-
-	var input_grid := GridContainer.new()
-	input_grid.name = "Inputs"
-	input_grid.columns = 2
-	input_grid.add_theme_constant_override("h_separation", 24)
-	input_grid.add_theme_constant_override("v_separation", 10)
-	column.add_child(input_grid)
-	for side in ["Left", "Right", "Top", "Bottom"]:
-		var label := Label.new()
-		label.text = {"Left": "左侧", "Right": "右侧", "Top": "上侧", "Bottom": "下侧"}[side]
-		input_grid.add_child(label)
-		var amount := SpinBox.new()
-		amount.name = side + "Amount"
-		amount.custom_minimum_size = Vector2(210, 42)
-		amount.min_value = -8192
-		amount.max_value = 8192
-		amount.step = 1
-		amount.value = 0
-		amount.suffix = " px"
-		amount.value_changed.connect(_update_expand_size_preview.unbind(1))
-		input_grid.add_child(amount)
-		_expand_inputs[side] = amount
-
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(spacer)
-	var actions := HBoxContainer.new()
-	actions.alignment = BoxContainer.ALIGNMENT_END
-	actions.add_theme_constant_override("separation", 12)
-	column.add_child(actions)
-	var cancel := Button.new()
-	cancel.text = "取消"
-	cancel.pressed.connect(_expand_canvas_window.hide)
-	actions.add_child(cancel)
-	var confirm := Button.new()
-	confirm.text = "确认调整"
-	confirm.pressed.connect(_confirm_expand_canvas)
-	actions.add_child(confirm)
+	# 窗口结构与尺寸预览在 `panel/src/expand_canvas_window.gd`；这里只接回调与状态。
+	var built: Dictionary = ExpandWindow.build(self, EditorTheme,
+		_update_expand_size_preview, _confirm_expand_canvas)
+	_expand_canvas_window = built.window
+	_expand_inputs = built.inputs
+	_expand_size_preview = built.preview
 	_update_expand_size_preview()
 
 
 func _open_expand_canvas_window() -> void:
 	if not _map_editor_mode or _expand_canvas_window == null:
 		return
-	for input: SpinBox in _expand_inputs.values():
-		input.value = 0
+	ExpandWindow.reset(_expand_inputs)
 	_update_expand_size_preview()
 	_expand_canvas_window.popup_centered()
 
 
 func _update_expand_size_preview() -> void:
-	if _expand_size_preview == null:
-		return
-	var left := int((_expand_inputs.get("Left") as SpinBox).value)
-	var right := int((_expand_inputs.get("Right") as SpinBox).value)
-	var top := int((_expand_inputs.get("Top") as SpinBox).value)
-	var bottom := int((_expand_inputs.get("Bottom") as SpinBox).value)
-	_expand_size_preview.text = "当前：%d × %d px    调整后：%d × %d px" % [
-		canvas_size.x, canvas_size.y,
-		canvas_size.x + left + right, canvas_size.y + top + bottom,
-	]
-	if canvas_size.x + left + right < 1 or canvas_size.y + top + bottom < 1:
-		_expand_size_preview.text += "\n宽高必须至少为 1 px"
+	ExpandWindow.refresh_preview(_expand_size_preview, _expand_inputs, canvas_size)
 
 
 func _confirm_expand_canvas() -> void:
-	var left := int((_expand_inputs["Left"] as SpinBox).value)
-	var right := int((_expand_inputs["Right"] as SpinBox).value)
-	var top := int((_expand_inputs["Top"] as SpinBox).value)
-	var bottom := int((_expand_inputs["Bottom"] as SpinBox).value)
-	if left == 0 and right == 0 and top == 0 and bottom == 0:
+	var delta := ExpandWindow.amounts(_expand_inputs)
+	if delta == Vector4i.ZERO:
 		return
-	if expand_canvas_sides(left, right, top, bottom):
+	if expand_canvas_sides(delta.x, delta.y, delta.z, delta.w):
 		_expand_canvas_window.hide()
-
-
 ## 隐藏 / 显示工具栏本体。按钮自己一直露着，好点回来。
 func _toggle_workbench() -> void:
 	_workbench_hidden = not _workbench_hidden
@@ -1055,31 +1026,17 @@ var _temporary_eraser := false
 
 ## 构建形状选择弹出菜单（矩形 / 圆形 / 直线）。
 func _build_shape_popup() -> void:
-	_shape_popup = PopupMenu.new()
-	_shape_popup.name = "ShapePopup"
-	_shape_popup.add_item("矩形", SurfaceScript.Tool.RECT)
-	_shape_popup.add_item("圆形", SurfaceScript.Tool.CIRCLE)
-	_shape_popup.add_item("直线", SurfaceScript.Tool.LINE)
-	_shape_popup.id_pressed.connect(_on_shape_picked)
-	_shape_popup.popup_hide.connect(_on_shape_popup_hide)
-	add_child(_shape_popup)
+	_shape_popup = ShapeMenu.build_shapes(self, _on_shape_picked, _on_shape_popup_hide)
 
 
 ## 左键沿用矩形框选；右键选择矩形或圆形，不占用额外工具栏位置。
 func _build_selection_popup() -> void:
-	_selection_popup = PopupMenu.new()
-	_selection_popup.name = "SelectionPopup"
-	_selection_popup.add_item("矩形框选", SurfaceScript.Tool.SELECT_DELETE)
-	_selection_popup.add_item("圆形框选", SurfaceScript.Tool.SELECT_CIRCLE)
-	_selection_popup.id_pressed.connect(_on_selection_picked)
-	add_child(_selection_popup)
+	_selection_popup = ShapeMenu.build_selection(self, _on_selection_picked)
 
 
 func _on_selection_button_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		_selection_popup.position = Vector2i(get_viewport().get_mouse_position())
-		_selection_popup.reset_size()
-		_selection_popup.popup()
+		ShapeMenu.popup_at(_selection_popup, self)
 		get_viewport().set_input_as_handled()
 
 
@@ -1093,10 +1050,7 @@ func _open_shape_popup() -> void:
 		return
 	# 打开菜单不代表已选择新形状，保留当前实际工具的选中状态。
 	_apply_tool(surface.tool)
-	# 按钮在 Node2D 父级下 global_rect 不准，直接用鼠标视口坐标。
-	_shape_popup.position = Vector2i(get_viewport().get_mouse_position())
-	_shape_popup.reset_size()
-	_shape_popup.popup()
+	ShapeMenu.popup_at(_shape_popup, self)
 
 
 ## 选中某个形状后切换工具并更新按钮提示。
@@ -1114,12 +1068,7 @@ func _on_shape_popup_hide() -> void:
 
 
 func _update_shape_tooltip(tool: int) -> void:
-	var shape_name := "矩形"
-	if tool == SurfaceScript.Tool.CIRCLE:
-		shape_name = "圆形"
-	elif tool == SurfaceScript.Tool.LINE:
-		shape_name = "直线"
-	tool_grid.get_node("Shape").tooltip_text = "自选形状：%s（3）\n点击按钮或按 3 选择形状" % shape_name
+	tool_grid.get_node("Shape").tooltip_text = ToolbarActions.shape_tooltip(tool)
 
 
 func _apply_tool(tool: int) -> void:
@@ -1127,20 +1076,7 @@ func _apply_tool(tool: int) -> void:
 			and not _map_editor_mode:
 		return
 	surface.tool = tool
-	hand_button.set_pressed_no_signal(tool == SurfaceScript.Tool.HAND)
-	tool_grid.get_node("Brush").set_pressed_no_signal(tool == SurfaceScript.Tool.BRUSH)
-	tool_grid.get_node("Eraser").set_pressed_no_signal(tool == SurfaceScript.Tool.ERASER)
-	tool_grid.get_node("Shape").set_pressed_no_signal(
-		tool == SurfaceScript.Tool.RECT or tool == SurfaceScript.Tool.CIRCLE \
-		or tool == SurfaceScript.Tool.LINE
-	)
-	tool_grid.get_node("Nail").set_pressed_no_signal(tool == SurfaceScript.Tool.NAIL)
-	tool_grid.get_node("Bucket").set_pressed_no_signal(tool == SurfaceScript.Tool.BUCKET)
-	tool_grid.get_node("SelectDelete").set_pressed_no_signal(
-		tool in [SurfaceScript.Tool.SELECT_DELETE, SurfaceScript.Tool.SELECT_CIRCLE])
-	tool_grid.get_node("SelectDelete").tooltip_text = (
-		"%s（6）\n左键拖动选区和内容；Ctrl+左键只移动选框；框内右键删除\nR 每次顺时针旋转 2°；按钮上右键切换矩形 / 圆形选区，Ctrl+Z 撤销" %
-		("圆形框选" if tool == SurfaceScript.Tool.SELECT_CIRCLE else "框选"))
+	ToolbarActions.highlight(tool_grid, hand_button, tool)
 	_sync_hand_enabled(tool)
 	if tool in [SurfaceScript.Tool.RECT, SurfaceScript.Tool.CIRCLE, SurfaceScript.Tool.LINE]:
 		_update_shape_tooltip(tool)

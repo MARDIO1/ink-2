@@ -412,7 +412,7 @@ func _run() -> void:
 	var save_absolute := ProjectSettings.globalize_path(save_path)
 	if FileAccess.file_exists(save_path):
 		DirAccess.remove_absolute(save_absolute)
-	var export_error: Error = creative.export_map_to(save_path, false)
+	var export_error: Error = creative.export_map_to(save_path)
 	valid = valid and export_error == OK
 	var scene_exists := ResourceLoader.exists(save_path)
 	valid = valid and scene_exists

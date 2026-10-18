@@ -6,6 +6,7 @@ const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Bearing := preload("res://ink/yellow/src/axle.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
 const Motor := preload("res://ink/blue/src/motor.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 var failures := 0
 var checks := 0
 
@@ -74,11 +75,14 @@ func _run() -> void:
 	health.add(Palette.GREY.id, grey_before - 999)
 	surface.ink_free = true
 	canvas.set_map_editor_mode(true)
-	# 保存到测试独立目录，不触碰玩家蓝图库。
+	# 保存到测试独立目录，不触碰玩家蓝图库；使用项目内可写目录以兼容受限运行环境。
 	var store := Store.new()
-	store.directory = "user://blueprint_test_%d_%d" % [Time.get_ticks_usec(), randi()]
+	store.directory = "res://blueprints/test_%d_%d" % [Time.get_ticks_usec(), randi()]
 	data.name = "桥梁测试"
 	check("save versioned blueprint", store.save(data))
+	if store.error != "":
+		print("[Blueprints] DEBUG save error=", store.error, " valid=", Store.validate(data),
+			" version=", data.get("version"))
 	var loaded := store.read(data.id)
 	check("JSON round-trip keeps material data", not loaded.is_empty() and loaded.pixels.size() == data.pixels.size() and int(loaded.pixels[0][0]) == data.pixels[0][0] and int(loaded.pixels[0][1]) == data.pixels[0][1] and loaded.name == data.name)
 	loaded.description = "一座桥"
@@ -203,14 +207,25 @@ func _run() -> void:
 	check("gear paste undo restores draft axle count", surface.undo_last_edit() and surface.gear_centers.size() == 1)
 	check("gear paste redo restores draft axle", surface.redo_last_edit() and surface.gear_centers.size() == 2)
 	gear_data.name = "墨水齿轮"
-	check("gear draft persists as safe JSON", store.save(gear_data) and store.read(gear_data.id).gear_centers == gear_data.gear_centers)
+	check("gear draft persists as safe JSON", store.save(gear_data)
+		and GearCenters.normalize(store.read(gear_data.id).gear_centers)
+			== GearCenters.normalize(gear_data.gear_centers))
 	canvas.set_map_editor_mode(false)
 	canvas._workbench_nearby = true
 	check("ordinary ink gear blueprint works near gameplay canvas", Place.place(canvas, gear_data, Vector2i(180, 55)).is_empty())
 	canvas.set_map_editor_mode(true)
 	canvas.generate(false)
 	var axles: Array = level.get_children().filter(func(node): return node is Bearing and not node.is_queued_for_deletion())
-	check("solidifying blueprint gears generates yellow axles", axles.size() == 3)
+	check("solidifying blueprint gears leaves them free", axles.is_empty())
+	var installed := 0
+	for center in [Vector2(70.5, 80.5), Vector2(135.5, 80.5), Vector2(205.5, 80.5)]:
+		if surface.rod_layer.place_anchor(center):
+			installed += 1
+	check("manual bearing can be installed on each blueprint gear", installed == 3
+		and level.get_children().filter(func(node): return node is Bearing and not node.is_queued_for_deletion()).size() == 3)
+	check("blueprint gear bearings are world connections", level.get_children().filter(
+		func(node): return node is Bearing and not node.is_queued_for_deletion()).all(
+			func(node): return node.fixed_to_world and node.joint != null))
 	# 只清理本测试随机目录中的文件。
 	var folder := DirAccess.open(store.directory)
 	if folder != null:

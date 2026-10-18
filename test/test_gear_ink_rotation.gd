@@ -3,6 +3,7 @@ extends SceneTree
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Surface := preload("res://actor/canvas/src/canvas_surface.gd")
 const Bearing := preload("res://ink/yellow/src/axle.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 var failures := 0
 
@@ -16,6 +17,9 @@ func check(label: String, ok: bool) -> void:
 
 func bearings(level) -> Array:
 	return level.get_children().filter(func(node): return node is Bearing and not node.is_queued_for_deletion())
+
+func center_position(surface) -> Vector2:
+	return GearCenters.position_of(surface.gear_centers[0]) if not surface.gear_centers.is_empty() else Vector2.INF
 
 func select(surface, rect: Rect2i, circle := false) -> void:
 	surface.tool = Surface.Tool.SELECT_CIRCLE if circle else Surface.Tool.SELECT_DELETE
@@ -43,20 +47,23 @@ func _run() -> void:
 	tool.finish(Vector2(128, 96))
 	check("placement is ink, not a body or bearing", surface.material_at(108, 96) == Palette.BLACK.id and bearings(level).is_empty())
 	check("placement is one solid ink shape with no yellow hub", surface.material_at(96, 96) == Palette.BLACK.id and surface.material_at(99, 96) == Palette.BLACK.id and surface.material_at(99, 99) == Palette.BLACK.id)
-	check("draft remembers its axle", surface.gear_centers == PackedVector2Array([Vector2(96.5, 96.5)]))
+	check("draft remembers center and snap radius", surface.gear_centers.size() == 1
+		and center_position(surface) == Vector2(96.5, 96.5)
+		and GearCenters.radius_of(surface.gear_centers[0]) > 12.0)
 	surface._begin_undo_step()
 	surface._set_pixel_raw(Vector2i(96, 96), Color.TRANSPARENT)
 	surface._commit_undo_step()
-	check("erasing center removes draft axle", surface.gear_centers.is_empty())
-	check("brush erasure undo restores axle", surface.undo_last_edit() and surface.gear_centers.size() == 1)
-	check("brush erasure redo removes axle", surface.redo_last_edit() and surface.gear_centers.is_empty())
+	check("erasing center pixel removes center only", surface.gear_centers.is_empty())
+	check("brush erasure undo restores center", surface.undo_last_edit() and surface.gear_centers.size() == 1)
+	check("brush erasure redo removes center", surface.redo_last_edit() and surface.gear_centers.is_empty())
 	surface.undo_last_edit()
 	var original: PackedByteArray = surface.black_image.get_data()
 	check("ink gear placement undo", surface.undo_last_edit() and surface.gear_centers.is_empty() and surface.black_image.get_used_rect().size == Vector2i.ZERO)
 	check("ink gear placement redo", surface.redo_last_edit() and surface.black_image.get_data() == original and surface.gear_centers.size() == 1)
 	var rect := Rect2i(56, 56, 81, 81)
 	var blueprint: Dictionary = Codec.capture(canvas, rect)
-	check("blueprint stores draft axle", not blueprint.has("error") and blueprint.get("gear_centers", []).size() == 1)
+	check("blueprint stores center record without an axle", not blueprint.has("error")
+		and blueprint.get("gear_centers", []).size() == 1 and blueprint.get("gears", []).is_empty())
 	select(surface, rect)
 	var key := InputEventKey.new()
 	key.keycode = KEY_R
@@ -72,17 +79,32 @@ func _run() -> void:
 	check("180 presses restore exact raster without erosion", surface.black_image.get_data() == original)
 	check("rotation undo and redo", surface.undo_last_edit() and surface.redo_last_edit() and surface.black_image.get_data() == original)
 	canvas.generate()
-	check("solidify creates one axle on the gear's own ink", bearings(level).size() == 1 and bearings(level)[0].gear_material == Palette.BLACK.id and bearings(level)[0].joint != null)
-	check("generated gear is pure ink at its center", not bearings(level).is_empty() and Bearing.has_pixel(bearings(level)[0].yellow_anchor.body, bearings(level)[0].yellow_anchor.cell, Palette.BLACK.id))
+	var free_axles := bearings(level)
+	var entity_center := GearCenters.query(surface, level, Vector2(96.5, 96.5))
+	check("solidify keeps gear free: no joint, dynamic body", free_axles.is_empty()
+		and entity_center.get("kind") == "body" and not entity_center.body.is_static
+		and entity_center.body.gravity_scale > 0.0)
+	check("solidify transfers center to the body, not the canvas", surface.gear_centers.is_empty()
+		and entity_center.get("kind") == "body")
+	check("bearing tool installs world bearing only after explicit click", surface.rod_layer.place_anchor(Vector2(96.5, 96.5))
+		and bearings(level).size() == 1 and bearings(level)[0].fixed_to_world
+		and bearings(level)[0].joint != null)
+	check("duplicate bearing click rejected", not surface.rod_layer.place_anchor(Vector2(96.5, 96.5)) and bearings(level).size() == 1)
+	check("installed bearing keeps pure ink wheel", Bearing.has_pixel(bearings(level)[0].yellow_anchor.body,
+		bearings(level)[0].yellow_anchor.cell, Palette.BLACK.id))
 	select(surface, rect)
 	canvas._move_selection(rect, Vector2i(12, 0))
-	check("physical selection moves axle with ink", bearings(level).size() == 1 and is_equal_approx(bearings(level)[0].yellow_position.x, 10108.5))
+	check("physical selection moves the manual bearing with its wheel", bearings(level).size() == 1
+		and is_equal_approx(bearings(level)[0].yellow_position.x, 10108.5))
 	select(surface, Rect2i(68, 56, 81, 81))
-	check("physical selection rotates with axle", canvas._selection_rotation.apply(canvas) and bearings(level).size() == 1)
+	check("physical selection rotates the manual bearing with its wheel",
+		canvas._selection_rotation.apply(canvas) and bearings(level).size() == 1)
 	canvas.return_to_canvas()
-	check("reclaim restores ink and removes axle", bearings(level).is_empty() and surface.gear_centers.size() == 1)
+	check("reclaim restores center and pending manual bearing", bearings(level).is_empty()
+		and surface.gear_centers.size() == 1 and surface.draft_bearings.size() == 1)
 	canvas.generate()
-	check("re-solidify restores axle", bearings(level).size() == 1)
+	check("re-solidify restores the same manual connection, not a new auto one",
+		bearings(level).size() == 1 and bearings(level)[0].fixed_to_world)
 	canvas.return_to_canvas()
 	surface.clear()
 	surface._undo_steps.clear()
