@@ -1,7 +1,7 @@
 extends SceneTree
 ## 临时预览：走真实路由进指定关卡，截图玩家所在位置，用于对比加载方式改动前后的画面。
 
-const LEVEL := "res://map/asset/imported/第二页.tscn"
+const LEVEL := "res://map/asset/imported/第三页.tscn"
 
 
 func _initialize() -> void:

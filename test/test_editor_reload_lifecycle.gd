@@ -129,7 +129,7 @@ func _run() -> void:
 		and loaded.get_node("Wire").body == loaded.get_node("Wheel").body)
 	var path := "res://test/fixtures/maps/base_level.tscn"
 	if OS.get_cmdline_user_args().has("--full-map"):
-		path = "res://map/asset/imported/第二页.tscn"
+		path = "res://map/asset/imported/第三页.tscn"
 	check("test map loads", await app.request_level_change(path))
 	for round_index in 2:
 		var level: Node = app.level_root.get_child(0)

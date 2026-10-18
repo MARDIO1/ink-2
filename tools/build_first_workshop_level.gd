@@ -289,7 +289,7 @@ func _build() -> void:
 	portal.set_script(Portal)
 	portal.name = "WorkshopExit"
 	portal.position = Vector2(5760, 270)
-	portal.target_map = "res://map/asset/imported/第二页.tscn"
+	portal.target_map = "res://map/asset/imported/第三页.tscn"
 	_own(portal)
 
 	var packed := PackedScene.new()

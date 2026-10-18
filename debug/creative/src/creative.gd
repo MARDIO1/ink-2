@@ -52,6 +52,7 @@ const TEXT_MIN_SCALE := 0.35
 const TEXT_MAX_SCALE := 3.0
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 const DialogueTriggerScript := preload("res://debug/creative/src/map_dialogue_trigger.gd")
+const Nail := preload("res://actor/nail/src/nail.gd")
 const MapTextScript := preload("res://ui/map_text/src/map_text_label.gd")
 const MapPortalScript := preload("res://actor/portal/src/map_portal.gd")
 const InkFountainScript := preload("res://actor/fountain/src/ink_fountain.gd")
@@ -166,6 +167,10 @@ var _saved_mask := 0xFFFFFFFF
 var _saved_gravity := 1.0
 var _saved_player_visible := true
 var _player_visibility_saved := false
+var _saved_player_modulate := Color.WHITE
+## 只有完整执行完进入编辑器流程后才允许“卸载前保存”，
+## 避免 F2 异步重载刚开始时把尚未初始化好的旧关卡写成地图。
+var _editor_ready := false
 var _editor_player_states: Array[Dictionary] = []
 var _editor_input_mode := Node.PROCESS_MODE_INHERIT
 var _editor_arm_mode := Node.PROCESS_MODE_INHERIT
@@ -637,13 +642,22 @@ func set_active(value: bool) -> void:
 
 
 func _enter() -> void:
+	_editor_ready = false
 	# 先隐藏玩家，再尝试恢复/重载编辑文档。
 	# 第二页等大关卡进入编辑器时会走异步重载；旧实现要等重载分支返回后才隐藏玩家，
 	# 重载稍慢或失败时就会把上一个游玩实例的墨水瓶留在画面里。
+	if _player == null:
+		for candidate in get_tree().get_nodes_in_group(&"player"):
+			if candidate.get_parent() == _level_root():
+				_player = candidate
+				break
 	if _player != null and not _player_visibility_saved:
 		_saved_player_visible = _player.visible
+		_saved_player_modulate = _player.modulate
 		_player_visibility_saved = true
-		_player.visible = false
+	_hide_editor_player()
+	# 即使下面因为文档重载/Player 尚未烘焙而提前返回，也让编辑器帧兜底保持隐藏。
+	set_physics_process(true)
 	# 游玩中的破坏/碎片不能反写编辑文档。优先恢复内存试玩快照；
 	# 首次打开编辑器时才从磁盘载入文档。
 	if not _skip_restore_on_enter and _restore_editor_document():
@@ -675,6 +689,7 @@ func _enter() -> void:
 	_saved_gravity = _body.gravity_scale
 	_player.visible = false
 	_suspend_player_entity()
+	_clear_character_effects()
 	_hide_health_ui()
 	_body.collision_layer = 0          # 不在任何层：碰不到任何东西
 	_body.collision_mask = 0
@@ -699,6 +714,7 @@ func _enter() -> void:
 		if health != null:
 			health.damage_enabled = false   # 创造模式不许掉血
 	set_physics_process(true)
+	_editor_ready = true
 	print("CREATIVE on")
 
 
@@ -730,6 +746,7 @@ func _load_edit_snapshot_if_needed() -> void:
 
 
 func _exit() -> void:
+	_editor_ready = false
 	set_physics_process(false)
 	_flush_monster_drag_move()
 	_unlock_monster_drag_view()
@@ -784,6 +801,7 @@ func _exit() -> void:
 	_set_ink_free(false)
 	if _player != null:
 		_player.visible = _saved_player_visible
+		_player.modulate = _saved_player_modulate
 		_player_visibility_saved = false
 		var health = _player.get_node_or_null("InkHealth")
 		if health != null:
@@ -823,7 +841,7 @@ func _resume_editor_simulation() -> void:
 ## 退出编辑器/离开关卡前调用：非机关实体墨化回画布，保存“墨水为主”的快照。
 ## 再次进入编辑器直接恢复这份快照，不做二次墨化。
 func save_editor_snapshot_before_leave(force := false) -> Error:
-	if not force and not active:
+	if not force and (not active or not _editor_ready):
 		return OK
 	if not auto_save_on_exit:
 		return OK
@@ -844,6 +862,10 @@ func _editor_preserved_bodies() -> Dictionary:
 		if body == null or body.tags.has("living"):
 			continue
 		if not GearCenters.body_records(body).is_empty():
+			keep[body] = true
+		# 无限钉子是不可破坏机关；墨化/重采样会在钉孔处留下白色缺口。
+		# 保留承载刚体，让无限钉子随实体一起存档，而不是把图标烘成画布孔洞。
+		if body.tags.has(Nail.INFINITE_TAG):
 			keep[body] = true
 	for child in level.get_children():
 		if child is YellowHinge:
@@ -878,6 +900,22 @@ func _inkify_non_mechanism_bodies() -> void:
 
 
 ## 编辑时只保留无几何的相机锚点，身体、手臂和手均不再参与任何实体查询。
+func _hide_editor_player() -> void:
+	if _player != null:
+		_player.visible = false
+		var hidden := _saved_player_modulate
+		hidden.a = 0.0
+		_player.modulate = hidden
+
+
+## 死亡/复活残影是玩家贴图的 Sprite2D 克隆，不属于 Player 节点；
+## 进入编辑器时必须清掉，否则会看起来像“玩家没隐藏”。
+func _clear_character_effects() -> void:
+	for effect in get_tree().get_nodes_in_group(&"character_death_effect"):
+		if is_instance_valid(effect):
+			effect.queue_free()
+
+
 func _suspend_player_entity() -> void:
 	if not _editor_player_states.is_empty():
 		return
@@ -2647,8 +2685,7 @@ func _ensure_monster_container() -> Node2D:
 func _physics_process(delta: float) -> void:
 	# 保存/自动保存会为了打包临时把玩家设为可见；这里在渲染前再兜底一次，
 	# 避免任何异步路径把上一个游玩实例的墨水瓶留在编辑器画面里。
-	if _player != null:
-		_player.visible = false
+	_hide_editor_player()
 	_flush_monster_drag_move()
 	if _session.monster_drag_view_locked:
 		return
@@ -2812,6 +2849,10 @@ func _finish_threaded_map_reload(tree_root: Node) -> void:
 
 
 func _activate_restored_editor() -> void:
+	# Root 会在入树前把编辑器关卡的 Player 隐藏，避免重载闪一帧。
+	# 这个隐藏不是“进入编辑器前的可见性”，退出编辑器必须恢复为可见。
+	_saved_player_visible = true
+	_player_visibility_saved = true
 	_skip_restore_on_enter = true
 	set_active(true)
 
@@ -2821,8 +2862,6 @@ func export_map_to(save_path: String) -> Error:
 	var error := EditorSave.export_scene({
 		"level_root": _level_root(),
 		"map_canvas": _map_canvas,
-		"player": _player,
-		"player_visible": _saved_player_visible,
 		"play_canvases": _play_canvases(),
 		"bake_preview": save_preview_on_export,
 		"baked_map_path": baked_map_path,

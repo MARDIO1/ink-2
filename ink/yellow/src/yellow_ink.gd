@@ -393,6 +393,8 @@ func dissolve(stroke) -> void:
 func connect_stroke(stroke, world) -> void:
 	if stroke.joint != null and stroke.joint.is_active():
 		return
+	if stroke.anchors.size() < 2:
+		return
 	var a = stroke.anchors[0].body
 	var b = stroke.anchors[1].body
 	if a == b or (a.is_static and b.is_static):

@@ -2,7 +2,7 @@ extends SceneTree
 ## 切关卡顿验收：走真实 root 路由切到最大的地图，统计单帧最长耗时。
 ## 优化前：`PixelWorld.rebuild()` 一次烘焙 3.1 s，表现为一帧 3000+ ms。
 
-const LEVEL := "res://map/asset/imported/第二页.tscn"
+const LEVEL := "res://map/asset/imported/第三页.tscn"
 
 
 func _initialize() -> void:

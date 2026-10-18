@@ -9,7 +9,6 @@ const PATHS := [
 	"res://map/asset/imported/扉页.tscn",
 	"res://map/asset/imported/第一页.tscn",
 	"res://map/asset/imported/第三页.tscn",
-	"res://map/asset/imported/第二页.tscn",
 	"res://map/asset/imported/peak.tscn",
 ]
 var _stage := 1
@@ -23,7 +22,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var paths: Array = PATHS if _stage < 2 else ["res://map/asset/imported/第二页.tscn"]
+	var paths: Array = PATHS if _stage < 2 else ["res://map/asset/imported/第三页.tscn"]
 	if _stage == 3:
 		for path in paths:
 			var packed := load(path) as PackedScene

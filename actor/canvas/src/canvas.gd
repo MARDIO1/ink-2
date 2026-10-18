@@ -630,6 +630,19 @@ func set_screen_fixed(on: bool) -> void:
 func set_map_editor_mode(on: bool) -> void:
 	_map_editor_mode = on
 	surface.map_editor_mode = on
+	# 地图编辑器的任何入口都必须先让 Player 退出画面；不能只依赖 Creative.active，
+	# 否则从模板/独立场景打开编辑器时会残留墨水瓶。
+	var level := get_parent()
+	var level_player := level.get_node_or_null("Player") if level != null else null
+	if level_player != null:
+		if on:
+			level_player.visible = false
+			var hidden: Color = level_player.modulate
+			hidden.a = 0.0
+			level_player.modulate = hidden
+		else:
+			level_player.visible = true
+			level_player.modulate = Color.WHITE
 	if not on and surface.tool in [SurfaceScript.Tool.GEAR, SurfaceScript.Tool.GEAR_8,
 			SurfaceScript.Tool.INFINITE_NAIL]:
 		_apply_tool(SurfaceScript.Tool.HAND)

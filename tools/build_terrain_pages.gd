@@ -1,7 +1,7 @@
 extends "res://tools/build_first_workshop_level.gd"
 ## 仅新增纯地形关卡；已有同名文件时拒绝覆盖。
 
-const PAGES := ["第二页", "第三页"]
+const PAGES := ["第三页"]
 
 func _initialize() -> void:
 	if OS.get_cmdline_user_args().has("--verify"):
@@ -23,9 +23,9 @@ func _build() -> void:
 			if FileAccess.file_exists(path):
 				assert(DirAccess.copy_absolute(path, backup + "/" + title + ".tscn") == OK)
 		print("[TerrainPages] Backup: ", backup)
-	for index in 2:
+	for index in PAGES.size():
 		_prepare_page(PAGES[index])
-		if index == 0:
+		if PAGES[index] == "第二页":
 			# 上路短而断续，下路连续但更长；失败后仍能从谷底爬回。
 			_land("Start", [[-200,800],[400,800],[650,710],[850,710],[1030,610],[1150,610]])
 			_land("FirstLanding", [[1390,640],[1560,640],[1730,590],[1880,590]])

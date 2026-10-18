@@ -6,8 +6,6 @@ extends RefCounted
 ##
 ## `ctx` 字段（都可选）：
 ##   level_root: Node        要打包的关卡根
-##   player: Node            玩家节点
-##   player_visible: bool    保存时玩家的常态可见性（进入编辑器前的值）
 ##   map_canvas: Node        主画布
 ##   play_canvases: Array    普通游玩画布
 ##   bake_preview: bool      额外导出只读参考图。
@@ -75,19 +73,15 @@ static func export_scene(ctx: Dictionary, save_path: String) -> Error:
 ## 打包瞬间恢复正常游玩布局，pack 完成后立刻回到编辑布局。
 ## 关卡里存的必须是"玩家能玩的样子"，不能被编辑器里的临时状态污染。
 static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> Error:
-	var player = ctx.get("player")
 	var map_canvas = ctx.get("map_canvas")
 	if map_canvas != null:
 		map_canvas.solid.sync_serializable_bodies(scene)
 	var play_canvases: Array = ctx.get("play_canvases", [])
-	var player_visible: bool = player.visible if player != null else true
 	var saved: Dictionary = {}
 	for item in play_canvases:
 		saved[item] = [item.visible, item.active]
 	var map_visible: bool = map_canvas.visible if map_canvas != null else false
 	var map_active: bool = map_canvas.active if map_canvas != null else false
-	if player != null:
-		player.visible = bool(ctx.get("player_visible", true))
 	for item in play_canvases:
 		_show(item, true)
 	_show(map_canvas, false)
@@ -109,8 +103,6 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	if map_canvas != null:
 		map_canvas.visible = map_visible
 		map_canvas.active = map_active
-	if player != null:
-		player.visible = player_visible
 	return error
 
 

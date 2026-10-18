@@ -737,7 +737,7 @@ process_physics_priority = 15
 script = ExtResource("18_kcngp")
 map_path = "res://map/asset/imported/第三页.tscn"
 baked_map_path = "res://map/asset/imported/第三页.png"
-auto_save_edits = false
+auto_save_edits = true
 
 [node name="Monsters" type="Node2D" parent="." unique_id=623056446]
 

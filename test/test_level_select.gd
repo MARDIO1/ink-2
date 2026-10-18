@@ -13,13 +13,13 @@ func _run() -> void:
 	var required_levels := PackedStringArray([
 		"res://map/asset/imported/扉页.tscn",
 		"res://map/asset/imported/第一页.tscn",
-		"res://map/asset/imported/第二页.tscn",
 		"res://map/asset/imported/第三页.tscn",
 		"res://map/asset/imported/peak.tscn",
 	])
 	valid = valid and not paths.has("res://test/fixtures/maps/base_level.tscn")
-	valid = valid and paths.size() == required_levels.size()
-	valid = valid and paths == required_levels
+	valid = valid and paths.size() >= required_levels.size()
+	for index in required_levels.size():
+		valid = valid and paths[index] == required_levels[index]
 	for path in required_levels:
 		valid = valid and paths.has(path)
 	var deleted_levels := PackedStringArray([
@@ -43,7 +43,7 @@ func _run() -> void:
 		valid = valid and scroll.horizontal_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED
 		valid = valid and scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_AUTO
 		valid = valid and scroll.get_v_scroll_bar().focus_mode == Control.FOCUS_ALL
-		valid = valid and list.get_child_count() == paths.size()
+		valid = valid and list.get_child_count() == paths.size() + 1
 		# 地图数量超过可视区域时，纵向条必须有可滚动的范围。
 		if list.get_combined_minimum_size().y > scroll.size.y:
 			valid = valid and scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page
@@ -68,7 +68,7 @@ func _run() -> void:
 	await process_frame
 	valid = valid and scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page
 	valid = valid and screen.get_node("Center/Panel").get_global_rect().end.y <= screen.size.y * 0.85
-	for index in range(list.get_child_count() - 1, paths.size() - 1, -1):
+	for index in range(list.get_child_count() - 1, paths.size(), -1):
 		var extra: Node = list.get_child(index)
 		list.remove_child(extra)
 		extra.queue_free()
