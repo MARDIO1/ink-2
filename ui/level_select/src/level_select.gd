@@ -162,9 +162,10 @@ static func _scan_map_levels() -> PackedStringArray:
 		for name in dir.get_directories():
 			pending.append(directory.path_join(name))
 		for name in dir.get_files():
-			if not name.ends_with(".tscn"):
+			var scene_name := _scene_filename(name)
+			if scene_name.is_empty():
 				continue
-			var path := directory.path_join(name)
+			var path := directory.path_join(scene_name)
 			if path == BLANK_TEMPLATE or not _has_player(path):
 				continue
 			result.append(path)
@@ -173,6 +174,13 @@ static func _scan_map_levels() -> PackedStringArray:
 
 
 ## 复制空白模板成一张新关卡，返回新路径；失败返回空串。
+## PCK 里可加载场景表现为 `.tscn.remap`；扫描与资源路径都使用去掉 remap 的场景名。
+static func _scene_filename(name: String) -> String:
+	if name.ends_with(".tscn.remap"):
+		return name.trim_suffix(".remap")
+	return name if name.ends_with(".tscn") else ""
+
+
 static func create_blank_map() -> String:
 	var source := FileAccess.get_file_as_string(BLANK_TEMPLATE)
 	if source.is_empty():

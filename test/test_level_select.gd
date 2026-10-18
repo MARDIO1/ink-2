@@ -10,6 +10,9 @@ func _initialize() -> void:
 func _run() -> void:
 	var valid := true
 	var paths := LevelSelectScript.find_levels()
+	valid = valid and LevelSelectScript._scene_filename("level.tscn") == "level.tscn"
+	valid = valid and LevelSelectScript._scene_filename("level.tscn.remap") == "level.tscn"
+	valid = valid and LevelSelectScript._scene_filename("level.png") == ""
 	var required_levels := PackedStringArray([
 		"res://map/asset/imported/扉页.tscn",
 		"res://map/asset/imported/第一页.tscn",
