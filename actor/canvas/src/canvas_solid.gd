@@ -22,6 +22,9 @@ const PixelShape2D := preload("res://addons/pixel_destruction/nodes/pixel_shape_
 const PixelBody2D := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
+const Stroke := preload("res://ink/yellow/src/stroke.gd")
+const Rail := preload("res://ink/yellow/src/rail.gd")
+const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
 const Traits := preload("res://ink/general/src/ink_traits.gd")
 const BACKGROUND_TAG := "background_anchor_points"
 #endregion
@@ -382,6 +385,7 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		return
 	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
 	if not keep_bodies:
+		_restore_rail_devices_to_surface(surface, world, canvas_rect)
 		reclaim_axles(surface, world, Rect2i(Vector2i.ZERO, surface.canvas_size))
 	var targets: Array = []
 	for child in world.get_children():
@@ -431,6 +435,37 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 	surface.refresh()
 	print("RESTORE bodies=%d pixels=%d fragments=%d kept=%s" % [
 		targets.size(), pixels, fragments, str(keep_bodies)])
+
+
+## 导轨和滑块销的功能不在黄色像素里，而在独立节点中。实体回收到画布前先把
+## 这些节点的当前世界姿态转回草稿元数据，否则 F2 后只剩普通黄墨。
+func _restore_rail_devices_to_surface(surface, world, canvas_rect: Rect2) -> void:
+	for child in world.get_children():
+		if child.is_queued_for_deletion():
+			continue
+		if child is Rail:
+			var endpoints: PackedVector2Array = child.endpoints_world()
+			if endpoints.size() != 2 or not canvas_rect.has_point(endpoints[0]) \
+			or not canvas_rect.has_point(endpoints[1]):
+				continue
+			var a: Vector2 = surface.to_local(endpoints[0])
+			var b: Vector2 = surface.to_local(endpoints[1])
+			var duplicate: bool = surface.rod_layer.rails.any(func(saved):
+				return Vector2(saved.a).is_equal_approx(a) and Vector2(saved.b).is_equal_approx(b))
+			if not duplicate:
+				surface.rod_layer.rails.append({"a": a, "b": b, "width": child.rail_width})
+		elif child is SliderPin and not child.black_anchor.is_empty():
+			var source_world: Vector2 = Stroke.anchor_world(child.black_anchor)
+			var pin_world: Vector2 = child.pin_world()
+			if not canvas_rect.has_point(source_world) or not canvas_rect.has_point(pin_world):
+				continue
+			var source: Vector2 = surface.to_local(source_world)
+			var position: Vector2 = surface.to_local(pin_world)
+			var duplicate: bool = surface.rod_layer.slider_pins.any(func(saved):
+				return Vector2(saved.source).is_equal_approx(source) \
+					and Vector2(saved.position).is_equal_approx(position))
+			if not duplicate:
+				surface.rod_layer.slider_pins.append({"source": source, "position": position})
 
 
 ## 把框内的固化像素采样回画布并从世界实体中摘除。

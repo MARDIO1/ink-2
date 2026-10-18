@@ -3,6 +3,7 @@ extends SceneTree
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Rail := preload("res://ink/yellow/src/rail.gd")
 const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
+const BlueprintCodec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const PJoint := preload("res://addons/pixel_destruction/physics/joint.gd")
 var checks := 0
 var failures := 0
@@ -74,6 +75,10 @@ func run() -> void:
 			pins.append(child)
 	check("solidification preserves one rail device", rails.size() == 1)
 	check("solidification preserves one slider pin", pins.size() == 1)
+	var runtime_blueprint: Dictionary = BlueprintCodec.capture(canvas, Rect2i(Vector2i.ZERO, surface.canvas_size))
+	check("blueprint captures a solidified rail and slider as functional metadata",
+		not runtime_blueprint.has("error") and runtime_blueprint.rails.size() == 1 \
+		and runtime_blueprint.slider_pins.size() == 1)
 	if rails.size() == 1 and pins.size() == 1:
 		var rail = rails[0]
 		var pin = pins[0]
@@ -107,6 +112,11 @@ func run() -> void:
 				restored_joint = true
 				break
 		check("scene reload restores the moved rail and slider", restored_joint)
+		var restored_canvas = restored.get_node("SmallCanvas")
+		restored_canvas.return_to_canvas(false, true)
+		check("F2-style reclaim restores rail and slider draft metadata",
+			restored_canvas.surface.rod_layer.rails.size() == 1 \
+			and restored_canvas.surface.rod_layer.slider_pins.size() == 1)
 		restored.queue_free()
 		await process_frame
 		pin.black_anchor.body.position += rail.axis_world() * 400.0

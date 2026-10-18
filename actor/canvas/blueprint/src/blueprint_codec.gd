@@ -12,6 +12,8 @@ const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const ShapeNode := preload("res://addons/pixel_destruction/nodes/pixel_shape_2d.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
 const Traits := preload("res://ink/general/src/ink_traits.gd")
+const Rail := preload("res://ink/yellow/src/rail.gd")
+const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")
 
 static func vec(value: Array) -> Vector2:
 	return Vector2(value[0], value[1])
@@ -196,12 +198,45 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 	for pin in surface.rod_layer.slider_pins:
 		var source := Vector2(pin.source)
 		var position := Vector2(pin.position)
-		if not inside(Vector2i(source.floor()), rect, mask) or not inside(Vector2i(position.floor()), rect, mask):
+		var source_in := inside(Vector2i(source.floor()), rect, mask)
+		var position_in := inside(Vector2i(position.floor()), rect, mask)
+		if source_in != position_in:
 			return {"error": "滑块销未完整框入，请把滑块销和它所在的导轨一起框住"}
-		data.slider_pins.append({"source": xy(source - Vector2(rect.position)),
-			"position": xy(position - Vector2(rect.position))})
+		if source_in:
+			data.slider_pins.append({"source": xy(source - Vector2(rect.position)),
+				"position": xy(position - Vector2(rect.position))})
 	for child in canvas.world.get_children():
 		if child.is_queued_for_deletion():
+			continue
+		if child is Rail:
+			var endpoints: PackedVector2Array = child.endpoints_world()
+			var a := local_point(canvas, endpoints[0])
+			var b := local_point(canvas, endpoints[1])
+			var a_in := inside(Vector2i(a.floor()), rect, mask)
+			var b_in := inside(Vector2i(b.floor()), rect, mask)
+			var touched := a_in or b_in
+			if not touched:
+				var steps := maxi(1, ceili(a.distance_to(b)))
+				for step in steps + 1:
+					if inside(Vector2i(a.lerp(b, float(step) / steps).floor()), rect, mask):
+						touched = true
+						break
+			if touched and not (a_in and b_in):
+				return {"error": "黄墨导轨未完整框入，请同时包含导轨两端"}
+			if a_in and b_in:
+				data.rails.append({"a": xy(a - Vector2(rect.position)),
+					"b": xy(b - Vector2(rect.position)), "width": child.rail_width})
+			continue
+		if child is SliderPin and not child.black_anchor.is_empty():
+			var source := local_point(canvas, Stroke.anchor_world(child.black_anchor))
+			var position := local_point(canvas, child.pin_world())
+			var source_in := inside(Vector2i(source.floor()), rect, mask)
+			var position_in := inside(Vector2i(position.floor()), rect, mask)
+			if source_in != position_in:
+				return {"error": "滑块销未完整框入，请把滑块销和它所在的导轨一起框住"}
+			if source_in:
+				data.slider_pins.append({"source": xy(source - Vector2(rect.position)),
+					"position": xy(position - Vector2(rect.position))})
 			continue
 		if child is Hinge and not child is Bearing and not child.yellow_anchor.is_empty():
 			var point := local_point(canvas, Stroke.anchor_world(child.yellow_anchor))
