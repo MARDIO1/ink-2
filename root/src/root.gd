@@ -187,28 +187,32 @@ func load_level(scene: PackedScene, editing := false) -> Node:
 	var input_was_processing := player_input.is_physics_processing() if player_input != null else false
 	var pause_tag_had := false
 	var pause_tag_value = false
-	var body_was_frozen := false
-	if not staged.is_empty() and player_body != null:
+	if player_body != null:
 		pause_tag_had = player_body.tags.has("editor_physics_paused")
 		pause_tag_value = player_body.tags.get("editor_physics_paused", false)
-		body_was_frozen = player_body.frozen
 		player_body.tags["editor_physics_paused"] = true
 		if player_input != null:
 			player_input.set_physics_process(false)
 	_play_music(level_music)
 	await _bake_staged_bodies(level, staged)
 	if player_body != null:
-		if pause_tag_had:
+		if editing and pause_tag_had:
 			player_body.tags["editor_physics_paused"] = pause_tag_value
 		else:
 			player_body.tags.erase("editor_physics_paused")
-		if not body_was_frozen and player_body.frozen and level.world != null:
+		if level.world != null:
 			level.world.unfreeze(player_body)
+		if not editing:
+			player_body.frozen = false
+			player_body.awake = true
+			player_body.sleep_timer = 0.0
 	if player_input != null:
-		player_input.set_physics_process(input_was_processing)
+		player_input.set_physics_process(input_was_processing if editing else true)
 	var editor := level.get_node_or_null("Creative")
 	if editor != null and editor.has_method("prepare_loaded_document"):
 		editor.prepare_loaded_document(editing)
+	if not editing:
+		_restore_exported_static_collisions(level)
 	level_changed.emit(level)
 	return level
 
@@ -271,6 +275,26 @@ func _bake_staged_bodies(level: Node, staged: Array) -> void:
 		level.call(&"_bake_joints")
 	level.body_bake_pending = false
 	level.body_bake_completed.emit()
+
+
+## 导出场景可能保留背景禁用标记；正常游玩时恢复静态地形原始碰撞层。
+func _restore_exported_static_collisions(level: Node) -> void:
+	var world = level.get("world")
+	if world == null:
+		return
+	for body in world.bodies:
+		if not body.is_static or not body.tags.has("background_original_layer"):
+			continue
+		var layer := int(body.tags.get("background_original_layer", 0))
+		var mask := int(body.tags.get("background_original_mask", 0))
+		if layer == 0 and mask == 0:
+			continue
+		body.collision_layer = layer
+		body.collision_mask = mask
+		for tag in ["background_original_layer", "background_original_mask",
+				"background_original_no_impact_damage", "background_original_white_ink",
+				"background_original_white_sweep", "background_original"]:
+			body.tags.erase(tag)
 
 
 ## 音乐由全局根持有，换 UI 不会重复创建；进入关卡时只切换一次曲目。
