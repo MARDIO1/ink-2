@@ -83,11 +83,19 @@ func _run() -> void:
 		var end: Vector2 = screen + Vector2(25, 0)
 		await _move(end)
 		_button(end, false)
-		var placed := false
-		for node in level.get_children():
-			if node is Bearing and node.teeth == teeth and node.joint != null:
-				placed = true
-		check("arrow release creates usable %d-tooth bearing" % teeth, placed)
+		# 新契约：齿轮工具只写墨水与轴心记录，**不建轴承**（轴承必须显式安装）。
+		check("arrow release writes %d-tooth gear center" % teeth,
+			canvas.surface.gear_centers.size() == (1 if teeth == 8 else 2))
+	canvas.generate(false)
+	var gear_records: Array = []
+	for pending in canvas.surface.draft_bearings:
+		gear_records.append(pending)
+	# 两个齿轮都已固化前先补装轴承：固化只认草稿记录，不会从轴心补。
+	var installed := 0
+	for node in level.get_children():
+		if node is Bearing and node.joint != null:
+			installed += 1
+	check("箭头放置的齿轮不会自动生成轴承", installed == 0 and gear_records.is_empty())
 	creative.select_monster_tool(creative.LAYOUT_MODE_PLACE_PORTAL)
 	var portals_before: int = creative.editor_portals().size()
 	screen = canvas.surface.get_global_transform_with_canvas() * Vector2(128, 128)
@@ -102,7 +110,10 @@ func _run() -> void:
 	canvas.set_tool(Tool.BRUSH)
 	canvas.set_brush_size(33)
 	cursor._refresh_cursor(screen, true, false)
-	check("returning to brush restores correctly sized ring", cursor.pointer.texture == cursor.CANVAS_TEXTURE and is_equal_approx(cursor.pointer.size.x * 52.0 / 60.0, 33.0))
+	# 粗笔刷用大图（`LARGE_CANVAS_TEXTURE`，环径 52），尺寸 = 33 × 贴图宽 / 52。
+	var large: Texture2D = cursor.LARGE_CANVAS_TEXTURE
+	check("returning to brush restores correctly sized ring", cursor.pointer.texture == large \
+		and is_equal_approx(cursor.pointer.size.x, 33.0 * float(large.get_width()) / cursor.LARGE_RING_DIAMETER))
 	cursor._release_mouse()
 	creative.active = false
 	level.queue_free()
