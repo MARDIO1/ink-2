@@ -1,6 +1,7 @@
 extends "res://test/test_blue_energy.gd"
 ## 使用真实圆盘笔刷生成走线，不用理想矩形代替手绘；从端点和侧面供能。
 const Surface := preload("res://actor/canvas/src/canvas_surface.gd")
+const InkBrush := preload("res://actor/canvas/src/ink_brush.gd")
 
 func run() -> void:
 	var brush := Surface.new()
@@ -16,7 +17,7 @@ func run() -> void:
 					var previous := Vector2(20.3, 120.7)
 					for x in range(25, 470, 5):
 						var point := Vector2(x + 0.3, 120.7 + (x - 20) * slope + sin(x * 1.3) * jitter)
-						brush._brush_line(pixels, previous, point)
+						InkBrush.line(pixels, previous, point, brush.brush_size, brush.canvas_size)
 						previous = point
 					var wire := Wire.new()
 					wire.cells = PackedVector2Array(pixels.keys())

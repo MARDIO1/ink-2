@@ -11,7 +11,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var args := OS.get_cmdline_user_args()
-	var scene_path := args[0] if args.size() > 0 else "res://map/asset/imported/第二页.tscn"
+	var scene_path := args[0] if args.size() > 0 else "res://map/asset/imported/第三页.tscn"
 	var frames := int(args[1]) if args.size() > 1 else 120
 	print("[bench] scene=", scene_path, " frames=", frames)
 	var packed = load(scene_path)

@@ -51,6 +51,7 @@ func _run() -> void:
 	cursor._refresh_cursor(Vector2(20, 20), false, false)
 	check("inactive overlay does not own mouse", not cursor.pointer.visible and not cursor._owns_mouse)
 	check("provided images retain original dimensions", cursor.CANVAS_TEXTURE.get_size() == Vector2(40, 40) and cursor.WORLD_TEXTURE.get_size() == Vector2(60, 76))
+	check("small cursor asset has no baked center cross", cursor.CANVAS_TEXTURE.get_image().get_pixel(20, 20).a == 0)
 	check("overlay ignores GUI input and runs while paused", cursor.pointer.mouse_filter == Control.MOUSE_FILTER_IGNORE and cursor.pointer.focus_mode == Control.FOCUS_NONE and cursor.process_mode == Node.PROCESS_MODE_ALWAYS and cursor.layer > 1000)
 	check("pixel art uses nearest filtering", cursor.pointer.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST)
 	var level := Node2D.new()
@@ -72,16 +73,22 @@ func _run() -> void:
 	if DisplayServer.get_name() != "headless":
 		check("system cursor is hidden while custom cursor is visible", Input.mouse_mode == Input.MOUSE_MODE_HIDDEN)
 	check("ring center is click hotspot", (cursor.pointer.position + cursor.pointer.size / 2).is_equal_approx(inside))
+	check("brush core matches current brush size", cursor.inner.visible
+		and cursor.inner.texture.get_size() == Vector2(7, 7))
 	check("small brush retains minimum visible ring", is_equal_approx(cursor.pointer.size.x * 32.0 / 40.0, 10.0))
 	surface.brush_size = 1
 	cursor._refresh_cursor(inside, true, false)
 	check("single pixel brush stays visible", is_equal_approx(cursor.pointer.size.x * 32.0 / 40.0, 10.0))
+	check("single pixel brush core is exactly one pixel", cursor.inner.texture.get_size() == Vector2.ONE
+		and is_equal_approx(cursor.inner.scale.x, 1.0))
 	surface.brush_size = 10
 	cursor._refresh_cursor(inside, true, false)
 	check("10px keeps small two-tone cursor", cursor.pointer.texture == cursor.CANVAS_TEXTURE)
+	check("10px brush core follows brush size", cursor.inner.texture.get_size() == Vector2(10, 10))
 	surface.brush_size = 11
 	cursor._refresh_cursor(inside, true, false)
 	check("above 10px selects provided hollow ring", cursor.pointer.texture == cursor.LARGE_CANVAS_TEXTURE and cursor.LARGE_CANVAS_TEXTURE.get_image().get_pixel(30, 30).a == 0)
+	check("11px brush core follows brush size", cursor.inner.texture.get_size() == Vector2(11, 11))
 	check("large ring remains centered", (cursor.pointer.position + cursor.pointer.size / 2).is_equal_approx(inside))
 	surface.brush_size = 33
 	cursor._refresh_cursor(inside, true, false)

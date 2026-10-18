@@ -3,6 +3,7 @@ extends "res://test/test_collision_damage.gd"
 const NailVisual := preload("res://actor/nail/src/nail.gd")
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
+var valid := false
 
 
 func _initialize() -> void:
@@ -10,7 +11,9 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var valid := true
+	valid = true
+
+
 	var scene: Node = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	scene.auto_step = false
 	root.add_child(scene)
@@ -465,9 +468,20 @@ func _run() -> void:
 	valid = valid and dialogue_valid
 	print("[CreativeEditor] dialogue trigger placement/save/playback: ",
 		"PASS" if dialogue_valid else "FAIL")
-	valid = valid and player.visible and small_canvas.visible and not map_canvas.visible
+	# 聚合断言失败时要能一眼看出是哪一条：先各自算好再合并。
+	var player_back: bool = player.visible
+	var small_back: bool = small_canvas.visible
+	var map_gone: bool = not map_canvas.visible
+	var health_back := true
+	var hidden_health: Array = []
 	for item in health_ui:
-		valid = valid and item.visible
+		if not item.visible:
+			health_back = false
+			hidden_health.append(item.name)
+	valid = valid and player_back and small_back and map_gone and health_back
+	if not (player_back and small_back and map_gone and health_back):
+		print("[CreativeEditor]   exit visibility: player=%s small_canvas=%s map_hidden=%s health=%s %s" % [
+			player_back, small_back, map_gone, health_back, hidden_health])
 
 	print("[CreativeEditor] UI, undo, monsters, fixed toolbar, expand, scene save: ",
 		"PASS" if valid else "FAIL")

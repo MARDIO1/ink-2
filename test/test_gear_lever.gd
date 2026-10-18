@@ -77,12 +77,12 @@ func _run() -> void:
 		check("axle hinges wheel to lever instead of pinning to world", not axle.fixed_to_world
 			and not axle.black_anchor.is_empty() and axle.black_anchor.body == left)
 		check("axle joint is active", axle.joint != null and axle.joint.is_active())
-		check("no synthetic bearing sprite on yellow ink", axle.texture == null)
+		check("manual bearing sprite is visible on yellow support", axle.texture != null)
 	var center_hinges: Array = canvas.world.get_children().filter(func(node):
 		return node is Hinge and not node.is_queued_for_deletion() \
 			and node.yellow_position.distance_to(Vector2(10100.5, -9899.5)) < 0.1)
 	check("gear center has only one physical hinge", center_hinges.size() == 1)
-	check("gear center does not show an extra bearing", center_hinges.size() == 1 and center_hinges[0].texture == null)
+	check("gear center shows exactly one bearing", center_hinges.size() == 1 and center_hinges[0].texture != null)
 	var support_hinges: Array = canvas.world.get_children().filter(func(node):
 		return node is Hinge and not node is Axle and not node.is_queued_for_deletion())
 	check("other lever attachment keeps its bearing", support_hinges.size() == 1 and support_hinges[0].texture != null)
@@ -91,7 +91,7 @@ func _run() -> void:
 	canvas.History.restore(canvas, saved)
 	await process_frame
 	axles = canvas.world.get_children().filter(func(node): return node is Axle and not node.is_queued_for_deletion())
-	check("history restore keeps hidden bearing", axles.size() == 1 and axles[0].texture == null)
+	check("history restore keeps visible bearing", axles.size() == 1 and axles[0].texture != null)
 	level.queue_free()
 	await process_frame
 	print("[GearLever] %d checks, %d failures" % [checks, failures])

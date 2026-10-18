@@ -14,7 +14,7 @@ func _run() -> void:
 	var app = load("res://root/root.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
-	await app.request_level_change("res://map/asset/imported/第二页.tscn")
+	await app.request_level_change("res://map/asset/imported/第三页.tscn")
 	var level = app.level_root.get_child(0)
 	level.auto_step = false
 	var creative = level.get_node("Creative")

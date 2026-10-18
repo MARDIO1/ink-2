@@ -9,7 +9,6 @@ const PLAYER_NODE := "Player"
 const LEVEL_PATHS: Array[String] = [
 	"res://map/asset/imported/扉页.tscn",
 	"res://map/asset/imported/第一页.tscn",
-	"res://map/asset/imported/第二页.tscn",
 	"res://map/asset/imported/第三页.tscn",
 	"res://map/asset/imported/peak.tscn",
 ]

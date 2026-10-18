@@ -6,8 +6,6 @@ extends RefCounted
 ##
 ## `ctx` 字段（都可选）：
 ##   level_root: Node        要打包的关卡根
-##   player: Node            玩家节点
-##   player_visible: bool    保存时玩家的常态可见性（进入编辑器前的值）
 ##   map_canvas: Node        主画布
 ##   play_canvases: Array    普通游玩画布
 ##   bake_preview: bool      额外导出只读参考图。
@@ -75,23 +73,26 @@ static func export_scene(ctx: Dictionary, save_path: String) -> Error:
 ## 打包瞬间恢复正常游玩布局，pack 完成后立刻回到编辑布局。
 ## 关卡里存的必须是"玩家能玩的样子"，不能被编辑器里的临时状态污染。
 static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> Error:
-	var player = ctx.get("player")
 	var map_canvas = ctx.get("map_canvas")
 	if map_canvas != null:
 		map_canvas.solid.sync_serializable_bodies(scene)
 	var play_canvases: Array = ctx.get("play_canvases", [])
-	var player_visible: bool = player.visible if player != null else true
 	var saved: Dictionary = {}
 	for item in play_canvases:
 		saved[item] = [item.visible, item.active]
 	var map_visible: bool = map_canvas.visible if map_canvas != null else false
 	var map_active: bool = map_canvas.active if map_canvas != null else false
-	if player != null:
-		player.visible = bool(ctx.get("player_visible", true))
 	for item in play_canvases:
 		_show(item, true)
 	_show(map_canvas, false)
-	# 打包已经归一化的蓝图；画布外的实体仍独立序列化。
+	# 编辑态里角色是隐藏的（编辑者不该被自己养的角色挡住），
+	# 但关卡存的必须是"玩家能玩的样子"——打包瞬间按进编辑器之前的状态还原。
+	var player = ctx.get("player")
+	var player_saved: Array = []
+	if is_instance_valid(player):
+		player_saved = [player.visible, player.process_mode]
+		player.visible = bool(ctx.get("player_visible", true))
+	# 草稿和实体分别序列化；保存不能生成、回收或改变撤销栈。
 	var editor := scene.get_node_or_null("Creative")
 	var old_document: Dictionary = editor.editor_draft if editor != null else {}
 	var old_snapshot: String = editor.edit_snapshot_path if editor != null else ""
@@ -102,6 +103,9 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	if editor != null:
 		editor.editor_draft = old_document
 		editor.edit_snapshot_path = old_snapshot
+	if is_instance_valid(player) and not player_saved.is_empty():
+		player.visible = bool(player_saved[0])
+		player.process_mode = int(player_saved[1])
 	for item in saved:
 		if is_instance_valid(item):
 			item.visible = bool(saved[item][0])
@@ -109,8 +113,6 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	if map_canvas != null:
 		map_canvas.visible = map_visible
 		map_canvas.active = map_active
-	if player != null:
-		player.visible = player_visible
 	return error
 
 

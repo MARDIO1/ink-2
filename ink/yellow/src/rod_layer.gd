@@ -13,6 +13,7 @@ const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
 const SolidSnapshots := preload("res://actor/canvas/src/solid_snapshot_cache.gd")
+const InkBrush := preload("res://actor/canvas/src/ink_brush.gd")
 ## CanvasSurface.Tool.CIRCLE；rod_layer 被 surface 预加载，不能反向 preload 它。
 const TOOL_CIRCLE := 5
 @export var pixels: Image
@@ -71,6 +72,11 @@ func _draw() -> void:
 		draw_texture(texture, Vector2.ZERO)
 	for point in anchor_points:
 		if _black(point) and pixels.get_pixelv(Vector2i(point.floor())).a > 0:
+			draw_texture(Hinge.BEARING, point - Vector2(5.5, 5.5))
+	# 草稿里已经明确放置的轴承也要立即显示，而不是等固化后才出现。
+	for record in source_surface.draft_bearings:
+		var point := Vector2(record.get("position", Vector2.ZERO))
+		if source_surface._inside(point):
 			draw_texture(Hinge.BEARING, point - Vector2(5.5, 5.5))
 	_draw_bearing_preview()
 	for rail in rails:
@@ -189,7 +195,7 @@ func begin(point: Vector2, erase := false) -> void:
 
 func extend(point: Vector2) -> void:
 	var out := {}
-	source_surface._brush_line(out, last_point, point)
+	InkBrush.line(out, last_point, point, source_surface.brush_size, source_surface.canvas_size)
 	var health = source_surface._health_node()
 	var room: int = int(source_surface._drawable_ink_room(Palette.YELLOW.id))
 	var visual_changed := false

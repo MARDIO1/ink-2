@@ -35,6 +35,13 @@ func _run() -> void:
 		assert(portal._editor_active() == expected)
 		trigger._refresh_editor_visibility()
 		assert(trigger.visible == expected)
+	# 快照/父节点可能把 visible 直接写成 false；再次刷新必须恢复，而不是被旧状态拦截。
+	trigger.visible = false
+	trigger._refresh_editor_visibility()
+	assert(trigger.visible)
+	triggers.visible = false
+	trigger._refresh_editor_visibility()
+	assert(triggers.visible and trigger.visible)
 	level.remove_child(creative)
 	assert(not trigger._is_map_editor_active())
 	assert(not portal._editor_active())

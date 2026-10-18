@@ -258,12 +258,16 @@ func generate(record_undo := true) -> void:
 
 
 ## 画布范围内的实体重采样回墨水。
-func return_to_canvas(record_undo := true, keep_yellow_drafts := false) -> void:
+## `preserved` 中的刚体保持实体；用于退出编辑器时只保留齿轮/机构。
+func return_to_canvas(record_undo := true, keep_yellow_drafts := false,
+		preserved: Dictionary = {}) -> void:
 	var state: Dictionary = History.capture(self, true) if record_undo else {}
 	if keep_yellow_drafts or _map_editor_mode:
 		# 黄墨连杆转回蓝图时，保存轴点并移除旧关节；下次固化重新创建。
 		for child in world.get_children().duplicate():
 			if not child is YellowHinge or child is YellowAxle:
+				continue
+			if not child.yellow_anchor.is_empty() and preserved.has(child.yellow_anchor.body):
 				continue
 			var point: Vector2 = surface.to_local(world.to_global(child.yellow_position))
 			if not surface._inside(point):
@@ -275,10 +279,10 @@ func return_to_canvas(record_undo := true, keep_yellow_drafts := false) -> void:
 			child.queue_free()
 	var yellow = surface.yellow_rule()
 	if yellow != null:
-		yellow.reclaim(surface, keep_yellow_drafts or _map_editor_mode)
+		yellow.reclaim(surface, keep_yellow_drafts or _map_editor_mode, preserved)
 	if surface.blue_rule() != null:
-		surface.blue_rule().reclaim(surface)
-	solid.rasterize(surface, world)
+		surface.blue_rule().reclaim(surface, Rect2i(), preserved)
+	solid.rasterize(surface, world, preserved)
 	if record_undo:
 		History.commit(self, state)
 
@@ -626,6 +630,19 @@ func set_screen_fixed(on: bool) -> void:
 func set_map_editor_mode(on: bool) -> void:
 	_map_editor_mode = on
 	surface.map_editor_mode = on
+	# 地图编辑器的任何入口都必须先让 Player 退出画面；不能只依赖 Creative.active，
+	# 否则从模板/独立场景打开编辑器时会残留墨水瓶。
+	var level := get_parent()
+	var level_player := level.get_node_or_null("Player") if level != null else null
+	if level_player != null:
+		if on:
+			level_player.visible = false
+			var hidden: Color = level_player.modulate
+			hidden.a = 0.0
+			level_player.modulate = hidden
+		else:
+			level_player.visible = true
+			level_player.modulate = Color.WHITE
 	if not on and surface.tool in [SurfaceScript.Tool.GEAR, SurfaceScript.Tool.GEAR_8,
 			SurfaceScript.Tool.INFINITE_NAIL]:
 		_apply_tool(SurfaceScript.Tool.HAND)

@@ -17,6 +17,8 @@ const LARGE_CANVAS_HOTSPOT := Vector2(30, 30)
 ## 逻辑屏幕像素；极细笔触、镜头缩远时也不让圆环缩成不可见的点。
 @export_range(8.0, 32.0, 1.0) var minimum_ring_diameter := 10.0
 @onready var pointer: TextureRect = $Pointer
+var inner: Sprite2D
+var _inner_textures: Dictionary = {}
 var _mouse_in_window := true
 var _owns_mouse := false
 var _previous_mouse_mode := Input.MOUSE_MODE_VISIBLE
@@ -26,6 +28,15 @@ func _ready() -> void:
 	var contrast := ShaderMaterial.new()
 	contrast.shader = preload("res://ui/cursor/src/invert_cursor.gdshader")
 	pointer.material = contrast
+	# 圆环只负责“可点击范围”；中心黑块按真实笔触像素单独绘制。
+	inner = Sprite2D.new()
+	inner.name = "BrushCore"
+	inner.centered = true
+	inner.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	inner.material = contrast
+	inner.visible = false
+	add_child(inner)
+	move_child(inner, 0)
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_priority = 100
 	get_window().mouse_entered.connect(_on_mouse_entered)
@@ -90,6 +101,29 @@ func _ring_scale(canvas: Node) -> Vector2:
 		maxf(minimum_ring_diameter, diameter * transform.y.length())) / image_diameter
 
 
+## 中心黑块就是笔刷圆盘的屏幕预览：每个纹理像素对应一个画布像素，
+## 由 Sprite2D 的 scale 映射到屏幕；1 px 笔触就是 1×1 黑点。
+func _inner_texture(size: int) -> ImageTexture:
+	if _inner_textures.has(size):
+		return _inner_textures[size]
+	var image := Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	# 与 _collect_stamp 的圆盘半径一致；偶数直径用半像素半径补成完整圆盘。
+	var radius := maxf(0.5, (float(size) - 1.0) * 0.5)
+	if size > 1 and size % 2 == 0:
+		radius = float(size) * 0.5
+	var center := Vector2.ONE * float(size) * 0.5
+	for y in range(size):
+		for x in range(size):
+			var dx := float(x) + 0.5 - center.x
+			var dy := float(y) + 0.5 - center.y
+			if dx * dx + dy * dy <= radius * radius:
+				image.set_pixel(x, y, Color.BLACK)
+	var texture := ImageTexture.create_from_image(image)
+	_inner_textures[size] = texture
+	return texture
+
+
 func _uses_ring(canvas: Node) -> bool:
 	var surface: Node = canvas.get_node("CanvasSurface")
 	if surface.tool in [Tool.NAIL, Tool.INFINITE_NAIL, Tool.GEAR, Tool.GEAR_8]:
@@ -121,6 +155,19 @@ func _refresh_cursor(screen_position: Vector2, enabled: bool, over_gui: bool) ->
 		hotspot = LARGE_CANVAS_HOTSPOT
 	var texture_scale := _ring_scale(canvas) if in_canvas else Vector2.ONE * display_scale
 	var rotation: float = canvas.get_node("CanvasSurface").get_global_transform_with_canvas().get_rotation() if in_canvas else 0.0
+	if in_canvas:
+		var surface: Node2D = canvas.get_node("CanvasSurface")
+		var brush := maxi(1, surface.brush_size)
+		var transform := surface.get_global_transform_with_canvas()
+		inner.texture = _inner_texture(brush)
+		inner.scale = Vector2(
+			maxf(1.0 / float(brush), absf(transform.x.length())),
+			maxf(1.0 / float(brush), absf(transform.y.length())))
+		inner.rotation = rotation
+		inner.position = screen_position
+		inner.visible = true
+	else:
+		inner.visible = false
 	pointer.texture = texture
 	pointer.size = texture.get_size() * texture_scale
 	pointer.rotation = rotation
@@ -136,6 +183,8 @@ func _refresh_cursor(screen_position: Vector2, enabled: bool, over_gui: bool) ->
 func _release_mouse() -> void:
 	if is_instance_valid(pointer):
 		pointer.hide()
+	if is_instance_valid(inner):
+		inner.hide()
 	if _owns_mouse:
 		if Input.mouse_mode == Input.MOUSE_MODE_HIDDEN:
 			Input.mouse_mode = _previous_mouse_mode

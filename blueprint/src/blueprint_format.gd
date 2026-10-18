@@ -179,7 +179,7 @@ static func validate(data: Dictionary) -> bool:
 		if not bearing.fixed_to_world and support < 0:
 			var point := Vector2(bearing.support_position[0], bearing.support_position[1])
 			if int(bearing.get("support_material", 0)) != Palette.YELLOW.id \
-			or not data.rods.has(floori(point.y) * width + floori(point.x)):
+			or not _has_cell(data.rods, floori(point.y) * width + floori(point.x)):
 				return false
 		for key in ["center_id", "wheel_material", "support_material"]:
 			var field = bearing.get(key, 0)
@@ -217,6 +217,15 @@ static func validate(data: Dictionary) -> bool:
 			return false
 		total += int(motor.area)
 	return total > 0 and total <= MAX_CELLS and (data.gears.is_empty() or data.get("editor_only", false))
+
+## JSON 数组里的数字读回来都是 float；不能直接用 Array.has(int) 比较，
+## 否则带“黄墨支座待生成轴承”的蓝图能保存却会在读回校验时被判损坏。
+static func _has_cell(cells: Array, target: int) -> bool:
+	for value in cells:
+		if int(value) == target:
+			return true
+	return false
+
 
 static func cells_valid(cells, area: int, materials: bool) -> bool:
 	if not cells is Array or cells.size() > MAX_CELLS:

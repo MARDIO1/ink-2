@@ -83,11 +83,15 @@ func _is_map_editor_active() -> bool:
 
 func _refresh_editor_visibility() -> void:
 	var next_visible := _is_map_editor_active()
-	if next_visible == _editor_visible:
-		return
 	_editor_visible = next_visible
-	visible = _editor_visible
-	queue_redraw()
+	# 不能只在状态变化时赋值：快照/父节点会直接把 visible 写成 false，
+	# 而 _editor_visible 仍是 true，之后就会一直看不到对话点。
+	visible = next_visible
+	if next_visible:
+		var container := get_parent()
+		if container is CanvasItem:
+			container.visible = true
+		queue_redraw()
 
 
 func _draw() -> void:

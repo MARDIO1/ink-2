@@ -31,16 +31,10 @@ func _check_pages() -> void:
 		level.get_node("Creative").auto_save_on_exit=false
 		level.get_node("Creative").auto_save_edits=false
 		await _frames(20)
-		var expected_monsters := 2 if title=="第二页" else 1
-		if level.get_node("Monsters").get_child_count() != expected_monsters: failures+=1
+		if level.get_node("Monsters").get_child_count() != 1: failures+=1
 		# 机构测试隔离战斗破坏；攻击规则另由 test_monster_attacks.gd 覆盖。
 		for monster in level.get_node("Monsters").get_children():
 			monster.attacks_enabled=false
-		if title == "第二页":
-			# 第二页不再包含亮灯机构，出口仅按地图顺序前往第三页。
-			if not level.get_node("PageExit").machine_paths.is_empty(): failures+=1
-			if level.has_node("Transmission") or level.has_node("Balance"): failures+=1
-			continue
 		var gate_y: float=level.get_node("GearGate").position.y
 		var exit_node: Node=level.get_node("PageExit")
 		exit_node._activate()

@@ -68,10 +68,28 @@ func _return_to_menu() -> void:
 	await _transition.finish()
 
 
+## 关卡被释放/窗口关闭时，编辑器里可能还有尚未到 5 秒自动保存的修改；
+## 这里在卸载前同步写一次，避免“退出后回到修改前版本”。
+func _save_active_editor_before_unload() -> void:
+	for child in level_root.get_children():
+		var creative := child.get_node_or_null("Creative")
+		if creative == null or creative.get("active") != true or creative.get("_editor_ready") != true:
+			continue
+		var error: Error = creative.save_editor_snapshot_before_leave(false)
+		if error != OK:
+			push_error("Root: 卸载关卡前保存编辑器失败 (%d)" % error)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_save_active_editor_before_unload()
+
+
 ## 最后一页的纸洞返回关卡目录；过渡遮住画面后再释放关卡。
 func finish_current_level() -> void:
 	if _loading_level or not await _transition.begin(_transition.Style.PAGE, "登顶完成，合上这一页…"):
 		return
+	_save_active_editor_before_unload()
 	for child in level_root.get_children():
 		level_root.remove_child(child)
 		child.queue_free()
@@ -144,11 +162,18 @@ func _set_screen(screen: Node) -> void:
 ## 做法：先把直接子级的刚体节点摘下来，让 `rebuild()` 只造一个空世界（毫秒级），
 ## 再逐帧放回并 `bake_node()`。关卡此刻在遮罩后面，玩家看不到中间状态。
 func load_level(scene: PackedScene, editing := false) -> Node:
+	_save_active_editor_before_unload()
 	for child in level_root.get_children():
 		level_root.remove_child(child)
 		child.queue_free()
 	var level := scene.instantiate()
 	level.set_meta(&"editor_document_load", editing)
+	# 编辑器文档会以隐藏状态保存玩家，进游戏时必须恢复可见；
+	# 进编辑器则在入树前就隐藏，避免保存/重载期间闪出墨水瓶。
+	var level_player := level.get_node_or_null("Player")
+	if level_player != null:
+		level_player.visible = not editing
+		level_player.modulate = Color.WHITE
 	var staged := _detach_unbaked_bodies(level)
 	if not staged.is_empty():
 		level.body_bake_pending = true
