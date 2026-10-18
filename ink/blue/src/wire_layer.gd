@@ -272,6 +272,8 @@ func prune(physics) -> bool:
 		return true
 	var revision: Array = []
 	for shape in body.shapes:
+		if not is_instance_valid(shape):
+			continue
 		revision.append(shape.get_instance_id())
 		revision.append(shape.revision)
 	if revision == _revision:
@@ -347,6 +349,8 @@ func remember_revision() -> void:
 				break
 	_revision.clear()
 	for shape in body.shapes:
+		if not is_instance_valid(shape):
+			continue
 		_revision.append(shape.get_instance_id())
 		_revision.append(shape.revision)
 #endregion

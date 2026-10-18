@@ -372,6 +372,8 @@ func _settle_fuel_account(rule, body, account: Dictionary, result: Dictionary) -
 
 func _red_shape_at(body, cell: Vector2i):
 	for shape in body.shapes:
+		if not is_instance_valid(shape):
+			continue
 		if shape.get_pixel(cell.x, cell.y) == Palette.RED.id:
 			return shape
 	return null
@@ -382,9 +384,16 @@ func _rect_world(body, rect: Rect2) -> Rect2:
 		result = result.expand(body.to_world(p))
 	return result
 
+## 摘掉已释放的电机条目（烧毁/碎裂后缓存里可能还留着它们）。
+## 对已释放对象调用 get_instance_id() 会直接崩，所以必须先判有效。
+static func drop_dead_entries(entries: Array, dead_id: int) -> Array:
+	return entries.filter(
+		func(entry): return is_instance_valid(entry) and entry.get_instance_id() != dead_id)
 func _revision(body) -> Array:
 	var result: Array = []
 	for shape in body.shapes:
+		if not is_instance_valid(shape):
+			continue
 		result.append(shape.get_instance_id())
 		result.append(shape.revision)
 	return result
@@ -394,6 +403,8 @@ func _bounds(body) -> Rect2:
 	# 形状替换/新建或 living 身份变化则重扫，避免每次燃烧遍历整块黑色载体。
 	var identity: Array = [body.tags.has("living")]
 	for shape in body.shapes:
+		if not is_instance_valid(shape):
+			continue
 		identity.append(shape.get_instance_id())
 	var cached: Dictionary = source_bounds.get(body, {})
 	if cached.get("identity", []) == identity:
@@ -401,6 +412,8 @@ func _bounds(body) -> Rect2:
 	var rect := Rect2()
 	var regions: Array[Rect2] = []
 	for shape in body.shapes:
+		if not is_instance_valid(shape):
+			continue
 		if body.tags.has("living"):
 			var part: Rect2 = Rect2(shape.local_aabb())
 			regions.append(part)
@@ -551,6 +564,8 @@ func _pose_key(body) -> Array:
 func _refresh_neighbours(wires: Array) -> void:
 	var stamp: Array = []
 	for wire in wires:
+		if not is_instance_valid(wire):
+			continue
 		stamp.append(wire.get_instance_id())
 		stamp.append(wire.layout_version)
 		stamp.append(_pose_key(wire.body))
@@ -634,7 +649,8 @@ func _refresh_consumers(wires: Array, motors: Array) -> void:
 			for wire in consumers.keys():
 				var targets: Dictionary = consumers[wire]
 				for at in targets.keys():
-					var kept: Array = targets[at].filter(func(entry): return entry.get_instance_id() != dead)
+					# 电机可能已被释放（烧毁/碎裂）：对已释放对象取 id 会直接崩。
+					var kept := drop_dead_entries(targets[at], dead)
 					if kept.is_empty():
 						targets.erase(at)
 					else:
@@ -651,6 +667,8 @@ func _refresh_consumers(wires: Array, motors: Array) -> void:
 func _bridge_layout_key(wires: Array) -> Array:
 	var key: Array = []
 	for wire in wires:
+		if not is_instance_valid(wire):
+			continue
 		key.append(wire.get_instance_id())
 		key.append(wire.layout_version)
 	return key

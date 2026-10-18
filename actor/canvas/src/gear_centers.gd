@@ -27,6 +27,11 @@ static func _stable_id(position: Vector2) -> int:
 	return (x * 73856093) ^ (y * 19349663) ^ 0x5f3759df
 
 
+## 已释放的刚体没有有效 id：排到最末，避免对已释放对象取 id 直接崩。
+static func _body_id(body) -> int:
+	return body.get_instance_id() if is_instance_valid(body) else 0x7FFFFFFF
+
+
 static func make(position: Vector2, radius := DEFAULT_RADIUS, material := 0, id := _MISSING) -> Dictionary:
 	return {
 		"id": _new_id() if id == _MISSING else id,
@@ -166,7 +171,7 @@ static func find_wheel(host, world_point: Vector2, radius: float, material := 0)
 			return a_match
 		if int(a.score) != int(b.score):
 			return int(a.score) > int(b.score)
-		return a.body.get_instance_id() < b.body.get_instance_id())
+		return _body_id(a.body) < _body_id(b.body))
 	return candidates[0]
 
 
@@ -257,7 +262,7 @@ static func support_candidates(host, wheel, world_point: Vector2) -> Array:
 		var bd: float = bc.distance_squared_to(world_point)
 		if not is_equal_approx(ad, bd):
 			return ad < bd
-		return a.body.get_instance_id() < b.body.get_instance_id())
+		return _body_id(a.body) < _body_id(b.body))
 	return candidates
 
 
