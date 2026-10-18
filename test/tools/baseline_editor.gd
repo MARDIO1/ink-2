@@ -8,6 +8,9 @@ extends SceneTree
 ##   --script res://test/tools/baseline_editor.gd                 完整跑（约 3–5 分钟，导出最慢）
 ##   --script res://test/tools/baseline_editor.gd -- --no-export  跳过导出/重进（约 10 秒，改逻辑时用）
 ##
+## ⚠️ 契约（dbd7b45 起）：齿轮轴承只由**显式动作**产生（这里直接调 `GearBearings.install`），
+##    固化不会再从 `gear_centers` 补轴承；`gear_centers` 的每一项是字典，用 `GearCenters.position_of` 取坐标。
+##
 ## ⚠️ 顺序约束：`generate()`（固化）会把画布像素转成刚体**并清空画布**，
 ##    所以蓝图的采集/放置/撤销必须做在固化**之前**，否则采到的像素是 0。
 
@@ -17,6 +20,8 @@ const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Place := preload("res://blueprint/src/blueprint_place.gd")
 const Axle := preload("res://ink/yellow/src/axle.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
+const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 
 var checks := 0
 var failures := 0
@@ -86,6 +91,16 @@ func run() -> void:
 	check("齿轮中心是纯墨水", surface.material_at(60, 64) == Palette.BLACK.id
 		and surface.material_at(60, 64) != Palette.YELLOW.id)
 	check("工具栏没有外层底板", canvas.workbench.get_node_or_null("ToolbarPlate") == null)
+	# 新规则（dbd7b45）：齿轮工具**绝不**创建轴承。轴承来自显式动作——
+	# 黄墨点按（rod_layer.place_anchor → GearBearings.install）或蓝图里的草稿记录。
+	var record: Dictionary = surface.gear_centers[0]
+	var center_point: Vector2 = GearCenters.position_of(record)
+	var target: Dictionary = GearBearings.resolve_target(surface, center_point)
+	check("解析出可安装的轴心", not target.is_empty() and not target.has("error"))
+	if target.has("error"):
+		print("[Baseline]   resolve error: ", target.error)
+	check("显式安装轴承", GearBearings.install(surface, target))
+	check("轴心记进草稿", surface.draft_bearings.size() == 1)
 	phase("落笔")
 
 	# ---- 3. 蓝图：采集 → 放置 → 撤销 → 重做（固化之前）----
@@ -95,6 +110,7 @@ func run() -> void:
 	if data.has("error"):
 		print("[Baseline]   capture error: ", data.error)
 	check("蓝图里有像素", data.get("pixels", []).size() > 0)
+	check("蓝图带走轴心记录", data.get("draft_bearings", []).size() == 1)
 	var pixels_before: PackedByteArray = surface.black_image.get_data()
 	var centers_before: int = surface.gear_centers.size()
 	# place() 返回错误字符串，空串才算成功。
@@ -105,6 +121,7 @@ func run() -> void:
 	var pixels_placed: PackedByteArray = surface.black_image.get_data()
 	check("放置写入了像素", pixels_placed != pixels_before)
 	check("放置登记了新轴心", surface.gear_centers.size() == centers_before + 1)
+	check("放置复制了轴心记录", surface.draft_bearings.size() == 2)
 	surface.undo_last_edit()
 	check("撤销复原像素", surface.black_image.get_data() == pixels_before)
 	check("撤销复原轴心", surface.gear_centers.size() == centers_before)
@@ -170,22 +187,18 @@ func run() -> void:
 		phase("导出重进")
 
 	# ---- 7. 自动保存（把地图路径临时指向 user://，绝不碰真地图）----
+	# `dbd7b45` 起自动保存只提交完整文档，不再写 `.edit.snapshot`（避免草稿与场景版本错配）。
 	if not skip_export:
 		var auto_scene := "user://baseline_auto.tscn"
-		var auto_snapshot := auto_scene.get_basename() + ".edit.snapshot"
 		creative.map_path = auto_scene
 		creative.auto_save_edits = true
-		creative.auto_save_delay = 0.05
 		creative.full_auto_save_delay = 0.1
 		creative._queue_edit_auto_save()
 		for frame in 40:
 			await process_frame
-		check("自动保存写出了编辑快照",
-			FileAccess.file_exists(ProjectSettings.globalize_path(auto_snapshot)))
 		check("自动保存写出了场景",
 			FileAccess.file_exists(ProjectSettings.globalize_path(auto_scene)))
 		creative.auto_save_edits = false
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(auto_snapshot))
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(auto_scene))
 		phase("自动保存")
 
