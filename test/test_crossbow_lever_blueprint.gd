@@ -2,7 +2,7 @@ extends SceneTree
 ## Real-body acceptance for 弩箭3: long bell-crank lever cocks a spring crossbow.
 const Store := preload("res://blueprint/src/blueprint_store.gd")
 const Format := preload("res://blueprint/src/blueprint_format.gd")
-const Place := preload("res://blueprint/src/blueprint_place.gd")
+const Place := preload("res://actor/canvas/blueprint/src/blueprint_place.gd")
 const InkItem := preload("res://actor/ink_item/src/ink_item.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
 const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")

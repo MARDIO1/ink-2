@@ -1,4 +1,5 @@
 extends RefCounted
+const LayoutTools := preload("res://debug/creative/features/layout_tools.gd")
 ## 文档命令适配器；只获得明确列出的编辑端口，不持有 Creative 或 UI 节点。
 const REQUIRED_PORTS := [&"_remove_monster_by_id", &"place_monster", &"_apply_monster_transform", &"_remove_dialogue_trigger_by_id", &"place_dialogue_trigger", &"_remove_map_text_by_id", &"_restore_deleted_image", &"place_map_text", &"_refresh_layout_overlay", &"_undo_placed_layout_node", &"_restore_deleted_play_canvas", &"place_ink_fountain", &"place_respawn_point", &"_restore_ink_quota", &"place_portal", &"place_play_canvas", &"delete_play_canvas", &"_ensure_monster_container", &"_ensure_dialogue_container", &"_ensure_text_container"]
 var ports: Dictionary
@@ -96,8 +97,15 @@ func undo(edit: Dictionary) -> bool:
 		&"respawn_delete":
 			var respawn = ports.place_respawn_point.call(edit.get("position", Vector2.ZERO), false)
 			if respawn != null:
+				LayoutTools.restore_respawn_point(respawn, edit.get("settings", {}))
 				history.rebind(edit.get("target"), respawn)
 				edit["target"] = respawn
+				changed = true
+		&"respawn_area":
+			var point = edit.get("target")
+			if is_instance_valid(point):
+				LayoutTools.restore_respawn_point(point, edit.before)
+				ports._refresh_layout_overlay.call(point)
 				changed = true
 		&"ink_quota":
 			changed = ports._restore_ink_quota.call(edit.get("before", {}))
@@ -163,6 +171,14 @@ func redo(edit: Dictionary, data: Dictionary) -> bool:
 			if data.has("position"):
 				restored = ports.place_respawn_point.call(data.position, false)
 				changed = restored != null
+				if changed:
+					LayoutTools.restore_respawn_point(restored, data.get("settings", {}))
+		&"respawn_area":
+			var point = edit.get("target")
+			if is_instance_valid(point):
+				LayoutTools.restore_respawn_point(point, edit.after)
+				ports._refresh_layout_overlay.call(point)
+				changed = true
 		&"play_canvas_place":
 			if data.has("position"):
 				restored = ports.place_play_canvas.call(data.position + Vector2(data.size) * 0.5,
@@ -225,6 +241,8 @@ func _capture_redo_data(edit: Dictionary) -> Dictionary:
 				data = {"position": node.global_position, "scale": node.scale}
 				if kind == &"play_canvas_place":
 					data["size"] = node.get("canvas_size")
+				elif kind == &"respawn_place":
+					data["settings"] = LayoutTools.capture_respawn_point(node)
 				elif kind == &"portal_place":
 					data["destination"] = node.target_map
 					data["size"] = node.portal_size

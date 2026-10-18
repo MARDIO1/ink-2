@@ -2,7 +2,7 @@ extends SceneTree
 ## Hands-on acceptance for the self-contained manual crossbow blueprint.
 const Store := preload("res://blueprint/src/blueprint_store.gd")
 const Format := preload("res://blueprint/src/blueprint_format.gd")
-const Place := preload("res://blueprint/src/blueprint_place.gd")
+const Place := preload("res://actor/canvas/blueprint/src/blueprint_place.gd")
 const PJoint := preload("res://addons/pixel_destruction/physics/joint.gd")
 const Rail := preload("res://ink/yellow/src/rail.gd")
 const SliderPin := preload("res://ink/yellow/src/slider_pin.gd")

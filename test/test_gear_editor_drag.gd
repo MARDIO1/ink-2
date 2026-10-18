@@ -67,6 +67,7 @@ func _run() -> void:
 	canvas.surface.ink_free = true
 	canvas.set_map_editor_mode(true)
 	creative._ensure_editor_resources()
+	var palette = creative.editor_palette()
 	var camera = level.get_node("Camera2D")
 	camera.set_process(false)
 	camera.set_physics_process(false)
@@ -80,10 +81,10 @@ func _run() -> void:
 			canvas.surface.write_pixel(Vector2i(x, y), Palette.BLACK.color)
 	canvas.surface.write_pixel(Vector2i(185, 185), canvas.surface.nail_color())
 	canvas.generate(false)
-	creative._gear8_button.pressed.emit()
+	palette.gear_tool_button(8).pressed.emit()
 	canvas.surface.selected_ink = 0
 	check("eight-tooth button has exclusive selected state", canvas.surface.tool == Surface.Tool.GEAR_8
-		and creative._gear8_button.button_pressed and not creative._gear_button.button_pressed)
+		and palette.gear_tool_button(8).button_pressed and not palette.gear_tool_button(12).button_pressed)
 	var tool = canvas.surface.gear_tool
 	tool.begin(Vector2(80, 80), 8)
 	var eight = tool.finish(Vector2(112.5, 80.5))
@@ -92,9 +93,9 @@ func _run() -> void:
 	check("black eight-tooth tool produces eight actual tooth lobes", eight.teeth == 8
 		and eight.gear_material == Palette.BLACK.id
 		and teeth_on_ring(eight.yellow_anchor.body, 32.0 * 0.9, Palette.BLACK.id) == 8)
-	creative._gear_button.pressed.emit()
+	palette.gear_tool_button(12).pressed.emit()
 	check("twelve-tooth button switches away from eight", canvas.surface.tool == Surface.Tool.GEAR
-		and creative._gear_button.button_pressed and not creative._gear8_button.button_pressed)
+		and palette.gear_tool_button(12).button_pressed and not palette.gear_tool_button(8).button_pressed)
 	canvas.surface.selected_ink = 1
 	tool.begin(Vector2(450, 80), 12)
 	var twelve = tool.finish(Vector2(482.5, 80.5))
@@ -112,8 +113,8 @@ func _run() -> void:
 	var hit: Vector2 = canvas.surface.to_global(Vector2(88.5, 80.5))
 	check("control picking detects visible gear pixels", creative._pick_control_target(hit) == eight)
 	check("control picking does not use empty bounding corners", creative._pick_gear(canvas.surface.to_global(Vector2(110, 110))) == null)
-	var history_count: int = creative._history.undo_stack.size()
-	var surface_history: int = canvas.surface._undo_steps.size()
+	var history_count: int = creative.editor_history_depth()
+	var surface_history: int = canvas.surface.undo_depth()
 	mouse(creative, hit, true)
 	check("left press detaches axle and freezes gear", eight.editor_dragging and eight.joint == null
 		and body.frozen and body.tags.get("editor_physics_paused", false) and creative._monster_drag_view_locked)
@@ -133,8 +134,8 @@ func _run() -> void:
 	check("release connects new support and restores physics", not eight.editor_dragging and not body.frozen
 		and not body.tags.has("editor_physics_paused") and not eight.fixed_to_world and eight.joint != null
 		and not eight.joint.contacts_enabled and eight.black_anchor.body.is_static)
-	check("drag records exactly one undo step", creative._history.undo_stack.size() == history_count + 1
-		and canvas.surface._undo_steps.size() == surface_history + 1)
+	check("drag records exactly one undo step", creative.editor_history_depth() == history_count + 1
+		and canvas.surface.undo_depth() == surface_history + 1)
 	check("drag preserves shape material radius angle and tooth count", body.shapes[0] == old_shape
 		and old_shape.pixel_count() == old_pixels and eight.teeth == 8 and is_equal_approx(body.rotation, 0.35)
 		and eight.gear_material == Palette.BLACK.id and Bearing.has_pixel(body, Vector2i.ZERO, Palette.BLACK.id))
@@ -161,17 +162,17 @@ func _run() -> void:
 	mouse(creative, empty, false)
 	check("moving off support repins wheel to world only", eight.fixed_to_world and eight.joint.body_a == null
 		and support.position == support_position)
-	history_count = creative._history.undo_stack.size()
+	history_count = creative.editor_history_depth()
 	mouse(creative, empty, true)
 	mouse(creative, empty, false)
 	check("click without movement keeps connection and adds no history", eight.fixed_to_world and eight.joint != null
-		and creative._history.undo_stack.size() == history_count)
+		and creative.editor_history_depth() == history_count)
 	mouse(creative, empty, true)
 	motion(creative, empty + Vector2(20, 15))
 	canvas.set_tool(Surface.Tool.BRUSH)
 	check("tool switch cancels movement without leaving a loose gear", not eight.editor_dragging
 		and eight.global_position.is_equal_approx(empty) and eight.joint != null
-		and not creative._monster_drag_view_locked and creative._history.undo_stack.size() == history_count)
+		and not creative._monster_drag_view_locked and creative.editor_history_depth() == history_count)
 	creative.select_control_tool()
 	# 新位置下是未固化黑墨，松手时要形成真实支座，并把固化纳入同一次撤销。
 	for y in range(330, 371):

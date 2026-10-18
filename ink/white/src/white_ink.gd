@@ -451,7 +451,7 @@ static func _clear_undo(context: Dictionary) -> void:
 	for child in context.pixel_world.get_children():
 		var surface = child.get("surface")
 		if surface != null:
-			surface._undo_steps.clear()
+			surface.clear_history()
 			surface._cancel_undo_step()
 #endregion
 

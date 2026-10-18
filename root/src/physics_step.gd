@@ -18,6 +18,8 @@ const BACKGROUND_MASK_TAG: String = "background_original_mask"
 const BACKGROUND_IMMUNE_TAG: String = "background_original_no_impact_damage"
 const BACKGROUND_WHITE_TAG: String = "background_original_white_ink"
 const BACKGROUND_SWEEP_TAG: String = "background_original_white_sweep"
+## 活动关节链可声明稳定求解所需的最低时间子步，预算不能降低此精度。
+const MIN_SUBSTEPS_TAG: String = "physics_min_substeps"
 #endregion
 
 #region 配置
@@ -26,7 +28,8 @@ const BACKGROUND_SWEEP_TAG: String = "background_original_white_sweep"
 
 ## 游戏侧子步时间预算（微秒），0 表示不限制。
 ## 它在引擎计算后再次压低子步数；矩形较多时可能把固定 3 子步降到 1，
-## 从而改变约束刚度和碰撞结果。公式使用 PWorld.CCD_RECT_COST_US。
+## 从而改变约束刚度和碰撞结果。活动刚体声明的最低精度优先于此预算。
+## 公式使用 PWorld.CCD_RECT_COST_US。
 @export var ccd_substep_budget_us: float = 6000.0
 
 ## 全局表面速度上限（px/s），0 表示关闭。
@@ -164,8 +167,9 @@ func prepare_fixed(delta: float) -> int:
 	if culled > 0 or not fading.is_empty():
 		_drop_culled_nodes()
 	last_speed_clamped = _clamp_speeds(physics)
-	var requested: int = physics._compute_substeps(delta)
-	var count: int = _apply_substep_budget(physics, requested)
+	var minimum := _minimum_substeps(physics)
+	var requested: int = maxi(physics._compute_substeps(delta), minimum)
+	var count: int = maxi(_apply_substep_budget(physics, requested), minimum)
 	last_substeps_capped = requested - count
 	physics.last_substeps = count
 	if profile_enabled:
@@ -330,7 +334,16 @@ func _clamp_speeds(physics) -> int:
 	return clamped
 
 
-## 按总矩形数和估算单价限制实际子步数；逐体固定子步模式也会经过此限制。
+## 离屏冻结或静态物体不应继续提高整个世界的求解精度。
+func _minimum_substeps(physics) -> int:
+	var minimum := 1
+	for body in physics.bodies:
+		if not body.is_static and not body.frozen:
+			minimum = maxi(minimum, clampi(int(body.tags.get(MIN_SUBSTEPS_TAG, 1)), 1, 4))
+	return minimum
+
+
+## 按总矩形数和估算单价限制候选子步数；调用者再应用稳定性下限。
 func _apply_substep_budget(physics, count: int) -> int:
 	if ccd_substep_budget_us <= 0.0:
 		return count

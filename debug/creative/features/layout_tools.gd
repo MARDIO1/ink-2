@@ -10,6 +10,7 @@ const RESPAWN_PREFIX := "RespawnPoint"
 const RESPAWN_GROUP := &"respawn_point"
 const PORTAL_PREFIX := "Portal"
 const FOUNTAIN_PREFIX := "InkFountain"
+const RespawnPoint := preload("res://map/src/respawn_point.gd")
 
 const MapPortalScene := preload("res://actor/portal/map_portal.tscn")
 const MapPortalScript := preload("res://actor/portal/src/map_portal.gd")
@@ -47,6 +48,8 @@ static func respawn_points(level, spawn_point) -> Array:
 		and (node.is_in_group(RESPAWN_GROUP) or String(node.name).begins_with(RESPAWN_PREFIX)):
 			if not node.is_in_group(RESPAWN_GROUP):
 				node.add_to_group(RESPAWN_GROUP, true)
+			if node.get_script() == null:
+				node.set_script(RespawnPoint)
 			result.append(node)
 	return result
 
@@ -74,13 +77,29 @@ static func ink_fountains(level) -> Array:
 static func create_respawn_point(level, world_position: Vector2) -> Marker2D:
 	if level == null:
 		return null
-	var point := Marker2D.new()
+	var point := RespawnPoint.new()
 	point.name = unique_name(level, RESPAWN_PREFIX)
 	level.add_child(point)
 	point.global_position = world_position
 	point.add_to_group(RESPAWN_GROUP, true)
 	point.owner = level
 	return point
+
+
+## 删除恢复和放置重做共用完整配置，不能丢失独立的触发区域。
+static func capture_respawn_point(point: Marker2D) -> Dictionary:
+	return {"rotation": point.global_rotation, "scale": point.scale,
+		"activation_size": point.activation_size if point is RespawnPoint else RespawnPoint.DEFAULT_ACTIVATION_SIZE,
+		"activation_offset": point.activation_offset if point is RespawnPoint else Vector2.ZERO}
+
+
+static func restore_respawn_point(point: Marker2D, settings: Dictionary) -> void:
+	if settings.is_empty():
+		return
+	point.global_rotation = settings.rotation
+	point.scale = settings.scale
+	point.activation_size = settings.activation_size
+	point.activation_offset = settings.activation_offset
 
 
 static func create_portal(level, world_position: Vector2, destination := "") -> Node2D:

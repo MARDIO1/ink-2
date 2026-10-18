@@ -422,8 +422,7 @@ func rasterize(surface, world, preserved: Dictionary = {}) -> void:
 		push_error("CanvasSolid.rasterize: 参数无效")
 		return
 	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
-	if preserved.is_empty():
-		_restore_rail_devices_to_surface(surface, world, canvas_rect)
+	_restore_rail_devices_to_surface(surface, world, canvas_rect, preserved)
 	GearBearings.reclaim(surface, world, Rect2i(Vector2i.ZERO, surface.canvas_size), {}, preserved)
 	var targets: Array = []
 	for child in world.get_children():
@@ -475,11 +474,14 @@ func rasterize(surface, world, preserved: Dictionary = {}) -> void:
 
 ## 导轨和滑块销的功能不在黄色像素里，而在独立节点中。实体回收到画布前先把
 ## 这些节点的当前世界姿态转回草稿元数据，否则 F2 后只剩普通黄墨。
-func _restore_rail_devices_to_surface(surface, world, canvas_rect: Rect2) -> void:
+func _restore_rail_devices_to_surface(surface, world, canvas_rect: Rect2,
+		preserved: Dictionary = {}) -> void:
 	for child in world.get_children():
 		if child.is_queued_for_deletion():
 			continue
 		if child is Rail:
+			if preserved.has(child.body):
+				continue
 			var endpoints: PackedVector2Array = child.endpoints_world()
 			if endpoints.size() != 2 or not canvas_rect.has_point(endpoints[0]) \
 			or not canvas_rect.has_point(endpoints[1]):
@@ -491,6 +493,8 @@ func _restore_rail_devices_to_surface(surface, world, canvas_rect: Rect2) -> voi
 			if not duplicate:
 				surface.rod_layer.rails.append({"a": a, "b": b, "width": child.rail_width})
 		elif child is SliderPin and not child.black_anchor.is_empty():
+			if preserved.has(child.black_anchor.body):
+				continue
 			var source_world: Vector2 = Stroke.anchor_world(child.black_anchor)
 			var pin_world: Vector2 = child.pin_world()
 			if not canvas_rect.has_point(source_world) or not canvas_rect.has_point(pin_world):

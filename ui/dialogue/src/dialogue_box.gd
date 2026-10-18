@@ -156,6 +156,11 @@ func _input(event: InputEvent) -> void:
 	if log_root.visible and event.is_action_pressed("escape"):
 		hide_log()
 		get_viewport().set_input_as_handled()
+		return
+	if root.visible and event.is_action_pressed("escape"):
+		# 剧情播放时 Esc 与单击同义：先补全当前句，再进入下一句；最后一句后关闭。
+		advance()
+		get_viewport().set_input_as_handled()
 
 
 func _exit_tree() -> void:

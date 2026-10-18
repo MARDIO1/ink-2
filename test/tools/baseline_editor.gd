@@ -17,7 +17,7 @@ extends SceneTree
 const LEVEL := "res://test/fixtures/maps/base_level.tscn"
 const EXPORT := "user://baseline_export.tscn"
 const Palette := preload("res://ink/general/src/ink_palette.gd")
-const Place := preload("res://blueprint/src/blueprint_place.gd")
+const Place := preload("res://actor/canvas/blueprint/src/blueprint_place.gd")
 const Axle := preload("res://ink/yellow/src/axle.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")

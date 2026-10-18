@@ -44,7 +44,7 @@ func _run() -> void:
 	canvas.generate()
 	check("manual bearing installs before autosave", surface.rod_layer.place_anchor(Vector2(120.5, 120.5)))
 	var bodies_before: int = level.world.bodies.size()
-	var undo_before: int = surface._undo_steps.size()
+	var undo_before: int = surface.undo_depth()
 	creative._auto_save_revision += 1
 	creative._queue_edit_auto_save()
 	await create_timer(0.4).timeout
@@ -52,7 +52,7 @@ func _run() -> void:
 	check("autosave keeps editor player hidden", not level.get_node("Player").visible)
 	check("autosave inkifies the live editor world", level.world.bodies.size() < bodies_before
 		and surface.material_at(40, 40) == Palette.BLACK.id)
-	check("autosave does not add an undo step", surface._undo_steps.size() == undo_before)
+	check("autosave does not add an undo step", surface.undo_depth() == undo_before)
 	var saved := ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
 	check("autosave snapshot loads", saved != null)
 	if saved != null:

@@ -52,18 +52,19 @@ func _run() -> void:
 	canvas.set_map_editor_mode(true)
 	creative.active = true
 	creative._ensure_editor_resources()
+	var palette = creative.editor_palette()
 	canvas._on_shape_picked(Surface.Tool.GEAR)
 	check("editor shape menu contains only rectangle circle line", canvas._shape_popup.item_count == 3
 		and canvas._shape_popup.get_item_index(Surface.Tool.GEAR) < 0 and surface.tool != Surface.Tool.GEAR)
-	check("dedicated gear button belongs to right mechanism tools", creative._gear_button.get_parent().name == "MechanismGrid"
-		and creative._monster_palette.is_ancestor_of(creative._gear_button))
-	creative._gear_button.pressed.emit()
+	check("dedicated gear button belongs to right mechanism tools", palette.gear_tool_button(12).get_parent().name == "MechanismGrid"
+		and palette.is_ancestor_of(palette.gear_tool_button(12)))
+	palette.gear_tool_button(12).pressed.emit()
 	check("right gear tool activates independently of shape button", surface.tool == Surface.Tool.GEAR
-		and creative._gear_button.button_pressed and not canvas.tool_grid.get_node("Shape").button_pressed)
-	creative._gear_button.pressed.emit()
-	check("clicking gear again deactivates it", surface.tool == Surface.Tool.HAND and not creative._gear_button.button_pressed)
+		and palette.gear_tool_button(12).button_pressed and not canvas.tool_grid.get_node("Shape").button_pressed)
+	palette.gear_tool_button(12).pressed.emit()
+	check("clicking gear again deactivates it", surface.tool == Surface.Tool.HAND and not palette.gear_tool_button(12).button_pressed)
 	creative.select_monster_tool(0)
-	creative._gear_button.pressed.emit()
+	palette.gear_tool_button(12).pressed.emit()
 	check("gear and monster placement are mutually exclusive", creative._monster_mode == creative.MONSTER_MODE_NONE
 		and surface.tool == Surface.Tool.GEAR)
 	tool.begin(Vector2(60, 60))
@@ -73,16 +74,16 @@ func _run() -> void:
 	canvas._apply_tool(Surface.Tool.BRUSH)
 	check("switching tools cancels gear without changing blueprint", not tool.dragging
 		and bearings(level).is_empty() and surface.black_image.get_used_rect().size == Vector2i.ZERO
-		and not creative._gear_button.button_pressed)
-	creative._gear_button.pressed.emit()
+		and not palette.gear_tool_button(12).button_pressed)
+	palette.gear_tool_button(12).pressed.emit()
 	tool.begin(Vector2(60, 60))
 	creative.select_control_tool()
 	check("control tool cancels gear preview and highlight", not tool.dragging
-		and surface.tool == Surface.Tool.HAND and not creative._gear_button.button_pressed)
-	creative._gear_button.pressed.emit()
+		and surface.tool == Surface.Tool.HAND and not palette.gear_tool_button(12).button_pressed)
+	palette.gear_tool_button(12).pressed.emit()
 	creative.select_monster_tool(creative.MONSTER_MODE_NONE)
-	check("stop placement also exits gear tool", surface.tool == Surface.Tool.HAND and not creative._gear_button.button_pressed)
-	creative._gear_button.pressed.emit()
+	check("stop placement also exits gear tool", surface.tool == Surface.Tool.HAND and not palette.gear_tool_button(12).button_pressed)
+	palette.gear_tool_button(12).pressed.emit()
 	tool.begin(Vector2(60, 60))
 	check("tiny drags do not create degenerate gear", tool.finish(Vector2(61, 60)) == null)
 	surface.selected_ink = 1

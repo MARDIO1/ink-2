@@ -12,8 +12,8 @@ const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
-const SolidSnapshots := preload("res://actor/canvas/src/solid_snapshot_cache.gd")
 const InkBrush := preload("res://actor/canvas/src/ink_brush.gd")
+const SolidSnapshots := preload("res://actor/canvas/src/solid_snapshot_cache.gd")
 ## CanvasSurface.Tool.CIRCLE；rod_layer 被 surface 预加载，不能反向 preload 它。
 const TOOL_CIRCLE := 5
 @export var pixels: Image

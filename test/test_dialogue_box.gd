@@ -16,6 +16,14 @@ func _check(condition: bool, message: String) -> void:
 	printerr("[DialogueBox] FAIL: ", message)
 
 
+func _escape_event() -> InputEventKey:
+	var event := InputEventKey.new()
+	event.keycode = KEY_ESCAPE
+	event.physical_keycode = KEY_ESCAPE
+	event.pressed = true
+	return event
+
+
 func _run() -> void:
 	var game_ui_scene: PackedScene = load("res://ui/game_ui.tscn")
 	var game_ui: Node = game_ui_scene.instantiate()
@@ -107,6 +115,19 @@ func _run() -> void:
 	dialogue.advance()
 	_check(dialogue.current_line == 1, "再次单击应进入下一句")
 	_check(dialogue.dialogue_label.visible_characters == 0, "新句应重新逐字显示")
+
+	# Esc 与单击同义：第一次补全本句，第二次进入下一句，最后一句再按关闭。
+	dialogue.start_dialogue(PackedStringArray(["甲", "乙"]))
+	_check(dialogue.current_line == 0 and dialogue._typing, "Esc 测试从第一句打字开始")
+	dialogue._input(_escape_event())
+	_check(dialogue.dialogue_label.visible_characters == -1 and dialogue.next_hint.visible,
+		"Esc 第一次应补全当前句")
+	dialogue._input(_escape_event())
+	_check(dialogue.current_line == 1 and dialogue._typing,
+		"Esc 第二次应跳转下一句")
+	dialogue._input(_escape_event())
+	dialogue._input(_escape_event())
+	_check(not dialogue.root.visible, "最后一句按 Esc 后应关闭文本框")
 
 	dialogue.set_lines(PackedStringArray(["甲", "乙"]))
 	dialogue.advance()

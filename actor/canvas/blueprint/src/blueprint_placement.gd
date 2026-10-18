@@ -5,7 +5,7 @@ extends RefCounted
 ## 提交只经过 `blueprint_place.gd`，所以"检查 → 提交"仍然只有一个入口。
 
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
-const Place := preload("res://blueprint/src/blueprint_place.gd")
+const Place := preload("res://actor/canvas/blueprint/src/blueprint_place.gd")
 const Ghost := preload("res://actor/canvas/blueprint/blueprint_ghost.tscn")
 
 var canvas

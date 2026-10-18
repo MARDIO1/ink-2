@@ -1,6 +1,12 @@
 extends SceneTree
 
+const RespawnPoint := preload("res://map/src/respawn_point.gd")
 var failures := 0
+var recovery: Node
+var player_input: Node
+var body
+var support
+var notices := 0
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -10,66 +16,118 @@ func _check(label: String, okay: bool) -> void:
 	if not okay:
 		failures += 1
 
-func _move(body, center: Vector2) -> void:
-	body.position = center - body.local_com.rotated(body.rotation)
+## 注入物理控制器已结算的真实接触接口，单独验证复活点策略。
+func _foot(position: Vector2, grounded := true) -> void:
+	body.position = position - recovery._spawn_foot_offset()
 	body.refresh_com()
 	body.update_aabb()
+	player_input.support = support if grounded else null
+	player_input.contact_point = position
+	recovery._update_visited_points()
+
+func _visit(point: Marker2D, grounded := true, offset := Vector2.ZERO) -> void:
+	_foot(point.position + recovery._spawn_foot_offset() + offset, grounded)
+
+func _point(level: Node, name: String, position: Vector2) -> Marker2D:
+	var point := RespawnPoint.new()
+	point.name = name
+	point.position = position
+	level.add_child(point)
+	point.owner = level
+	return point
 
 func _run() -> void:
 	var level = load("res://test/fixtures/maps/base_level.tscn").instantiate()
 	level.auto_step = false
 	root.add_child(level)
 	current_scene = level
+	level.process_mode = Node.PROCESS_MODE_DISABLED
 	var creative = level.get_node("Creative")
 	creative.auto_save_on_exit = false
 	creative.auto_save_edits = false
 	var player = level.get_node("Player")
-	var recovery = player.get_node("FallDeath")
-	var body = player.body
+	recovery = player.get_node("FallDeath")
+	player_input = player.get_node("PlayerInput")
+	body = player.body
+	support = level.get_node("Ground").body
 	var spawn := Marker2D.new()
 	spawn.name = "PlayerSpawn"
 	spawn.position = Vector2(-10000, -10000)
 	level.add_child(spawn)
-	var visited := Marker2D.new()
-	visited.name = "RespawnPointVisitTest"
-	visited.position = Vector2(10000, -10000)
-	level.add_child(visited)
-	var future := Marker2D.new()
-	future.name = "RespawnPointFutureTest"
-	future.position = Vector2(12000, -10000)
-	level.add_child(future)
+	var lower := _point(level, "RespawnPointLower", Vector2(10000, -10000))
+	var upper := _point(level, "RespawnPointUpper", lower.position - Vector2(0, 80))
+	var future := _point(level, "RespawnPointFuture", Vector2(12000, -10000))
 	recovery._checkpoints_initialized = false
-	var half_size: Vector2 = recovery.checkpoint_visit_size.abs() * 0.5
-	_move(body, visited.position + Vector2(half_size.x + 0.1, 0))
-	recovery._update_visited_points()
-	_check("outside horizontal visit bounds stays locked", not recovery._visited_points.has(visited))
-	_move(body, visited.position + Vector2(0, half_size.y + 0.1))
-	recovery._update_visited_points()
-	_check("outside vertical visit bounds stays locked", not recovery._visited_points.has(visited))
-	_move(body, visited.position + Vector2(half_size.x - 1.0, 0))
-	recovery._update_visited_points()
-	_check("inside visit bounds unlocks checkpoint", recovery._visited_points.has(visited))
-	_move(body, future.position + Vector2(half_size.x + 1.0, 0))
-	_check("nearest unvisited checkpoint cannot be respawn target", recovery._find_respawn_target() == visited)
+	recovery.checkpoint_activated.connect(func(_point): notices += 1)
+	_check("spawn is initial fallback", recovery._find_respawn_target() == spawn)
+	_visit(lower, false)
+	_check("airborne crossing does not activate", not recovery._visited_points.has(lower))
+	_visit(lower, true, Vector2(60.1, 0))
+	_check("outside horizontal strip does not activate", not recovery._visited_points.has(lower))
+	_visit(lower, true, Vector2(0, 16.1))
+	_check("outside vertical strip does not activate", not recovery._visited_points.has(lower))
+	_visit(lower)
+	_check("grounded feet activate lower floor only", recovery._find_respawn_target() == lower and not recovery._visited_points.has(upper))
+	_check("activation shows feedback once", notices == 1 and recovery._checkpoint_notice.visible)
+	_visit(lower)
+	_check("standing inside does not retrigger", notices == 1)
+	_visit(future)
+	_visit(lower, true, Vector2(61, 0))
+	_check("nearest old point cannot replace last activation", recovery._find_respawn_target() == future)
+	# 查找目标本身不能变成触发入口。
+	body.position = upper.position
+	body.refresh_com()
+	_check("query does not activate a new point", recovery._find_respawn_target() == future and not recovery._visited_points.has(upper))
+	_visit(lower)
+	_check("backtracking reactivates previously visited point", recovery._find_respawn_target() == lower and notices == 3)
+	_visit(upper, false)
+	_check("falling past another floor keeps active point", recovery._find_respawn_target() == lower)
 	creative.active = true
-	_move(body, future.position)
-	recovery._update_visited_points()
-	_check("editor movement does not unlock checkpoint", not recovery._visited_points.has(future))
+	_visit(future)
+	_check("editor movement cannot switch active point", recovery._find_respawn_target() == lower)
 	creative.active = false
 	recovery._dead = true
+	_visit(upper)
 	recovery._respawn()
-	_check("movement while dead does not unlock future checkpoint", not recovery._visited_points.has(future) and body.position.is_equal_approx(visited.position))
+	_check("death cannot activate point and respawns at last activation", body.position.is_equal_approx(lower.position) and not recovery._visited_points.has(upper))
+	# 偏移后的区域独立于出生标记；变换后的关卡仍按本关物理坐标判断。
+	future.activation_size = Vector2(40, 12)
+	future.activation_offset = Vector2(45, -12)
 	level.position = Vector2(300, 160)
 	level.rotation = 0.3
-	_move(body, future.position + Vector2(half_size.x - 1.0, 0))
-	recovery._update_visited_points()
-	_check("visit bounds use level coordinates even when transformed", recovery._visited_points.has(future))
+	_visit(future)
+	_check("custom offset excludes unshifted feet", recovery._find_respawn_target() == lower)
+	_visit(future, true, future.activation_offset)
+	_check("custom zone works in transformed level", recovery._find_respawn_target() == future)
+	var packed := PackedScene.new()
+	packed.pack(future)
+	var restored = packed.instantiate()
+	_check("size and offset persist in scene", restored.activation_size == future.activation_size and restored.activation_offset == future.activation_offset)
+	restored.free()
+	recovery._dead = true
 	recovery._respawn()
-	_check("ordinary respawn uses visited checkpoint", body.position.is_equal_approx(future.position))
+	_check("respawn uses marker, not activation offset", body.position.is_equal_approx(future.position))
 	future.queue_free()
-	_check("queued checkpoint is excluded immediately", recovery._find_respawn_target() == visited)
-	visited.free()
-	_check("deleted checkpoints fall back to level spawn", recovery._find_respawn_target() == spawn)
+	_check("queued active point falls back by activation history", recovery._find_respawn_target() == lower)
+	lower.free()
+	_check("deleted history falls back to spawn", recovery._find_respawn_target() == spawn)
+	var legacy := Marker2D.new()
+	legacy.name = "RespawnPointLegacy"
+	legacy.position = Vector2(14000,-10000)
+	level.add_child(legacy)
+	recovery._checkpoints_initialized = false
+	_visit(legacy)
+	_check("legacy bare markers use grounded default strip", recovery._find_respawn_target() == legacy and legacy.get_script() == null)
+	var overlap_a := _point(level,"RespawnPointOverlapA",Vector2(16000,-10000))
+	var overlap_b := _point(level,"RespawnPointOverlapB",Vector2(16060,-10000))
+	recovery._checkpoints_initialized = false
+	_visit(overlap_a,true,Vector2(-40,0))
+	_check("non-overlap side activates first zone", recovery._find_respawn_target() == overlap_a)
+	_visit(overlap_a,true,Vector2(20,0))
+	_check("entering overlapping second zone switches once", recovery._find_respawn_target() == overlap_b)
+	var before_notice := notices
+	_visit(overlap_a,true,Vector2(25,0))
+	_check("remaining in overlap cannot oscillate", recovery._find_respawn_target() == overlap_b and notices == before_notice)
 	level.queue_free()
 	await process_frame
 	quit(1 if failures else 0)

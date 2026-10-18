@@ -21,6 +21,8 @@ func run() -> void:
 	level.get_node("SimulationRuntime/ImpactDamage").min_approach = 1.0e12
 	# 玩家移到远处只为隔离干扰，不能让镜头范围剔除把被测怪物冻结。
 	level.get_node("SimulationRuntime/PhysicsStep").freeze_view_scale = 32.0
+	# 即使性能预算只容许一步，活动大盾仍须保留关节稳定性所需的四步。
+	level.get_node("SimulationRuntime/PhysicsStep").ccd_substep_budget_us = 1.0
 	creative.set_active(true)
 	var kind := 1 if "--little" in OS.get_cmdline_user_args() else 3
 	if "--bomb" in OS.get_cmdline_user_args():
@@ -38,11 +40,28 @@ func run() -> void:
 	for frame in 180:
 		await physics_frame
 	var rag = monster._ragdoll
+	if kind == 3:
+		failed = failed or level.world.last_substeps != 4
 	print("BASE kind=", kind, " torso=", monster.body.rotation, " arm=", rag.joints[0].movement())
 	if "--tip" in OS.get_cmdline_user_args():
 		# 整体倾倒但不塞进地形；验证大角度回正，而不只验证小幅站立扰动。
 		monster.global_position += Vector2(0, -70)
 		monster.global_rotation = 0.75
+		monster.sync_physics_from_node()
+		# 镜像时盾在下倾一侧，固定抬高 70 仍可能把盾瞬移进地面。
+		# 按真实碰撞范围留出空隙，让测试从合法的空中姿态落地。
+		var bottom := -INF
+		var bodies: Array = [monster.body, rag.shield_body]
+		for part in rag.parts:
+			bodies.append(part.body)
+		for body in bodies:
+			if body != null:
+				body.update_aabb()
+				bottom = maxf(bottom, body.aabb.end.y)
+		var ground_y: float = level.get_node("Ground").body.aabb.position.y
+		var lift := maxf(0.0, bottom - ground_y + 10.0)
+		print("TIP clearance correction=", lift)
+		monster.global_position.y -= lift
 		monster.sync_physics_from_node()
 	monster.body.angular_velocity = 4.0
 	monster.body.awake = true

@@ -26,6 +26,8 @@ func _run() -> void:
 	level.get_node("Ground").position.x = -800.0
 	level.get_node("Ground/Shape").rect_size.x = 1600
 	root.add_child(level)
+	# 远处玩家仅用于隔离碰撞，不能让镜头剔除冻结被测盾兵。
+	level.get_node("SimulationRuntime/PhysicsStep").freeze_view_scale = 32.0
 	await process_frame
 	var creative = level.get_node("Creative")
 	creative.auto_save_edits = false

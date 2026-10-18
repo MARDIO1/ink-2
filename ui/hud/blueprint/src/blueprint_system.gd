@@ -1,7 +1,7 @@
 extends CanvasLayer
 ## 跨关卡的蓝图库。只在窗口打开时暂停；放置仍使用当前关卡的真实画布。
 const Store := preload("res://blueprint/src/blueprint_store.gd")
-const Place := preload("res://blueprint/src/blueprint_place.gd")
+const Place := preload("res://actor/canvas/blueprint/src/blueprint_place.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const Placement := preload("res://actor/canvas/blueprint/src/blueprint_placement.gd")
 const Preview := preload("res://ui/hud/blueprint/blueprint_preview.tscn")

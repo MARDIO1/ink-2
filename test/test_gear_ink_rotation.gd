@@ -107,8 +107,8 @@ func _run() -> void:
 		bearings(level).size() == 1 and bearings(level)[0].fixed_to_world)
 	canvas.return_to_canvas()
 	surface.clear()
-	surface._undo_steps.clear()
-	surface._redo_steps.clear()
+	surface.clear_history()
+	surface.clear_history()
 	for x in range(90, 111):
 		surface._set_pixel_raw(Vector2i(x, 100), Palette.RED.color)
 	surface._set_pixel_raw(Vector2i(60, 60), Palette.BLUE.color)

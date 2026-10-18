@@ -70,7 +70,7 @@ func _run() -> void:
 	creative.editor_drag_finish()
 	_check("corner drag resizes image", is_equal_approx(image.scale.x, 2.0))
 	_check("corner resize undo", creative.undo_last_edit() and image.scale == Vector2.ONE)
-	var before_corner_click: int = creative._history.undo_stack.size()
+	var before_corner_click: int = creative.editor_history_depth()
 	var corner_click := image.to_global(Vector2(image.texture.get_size())) + Vector2(6, 3)
 	creative.editor_drag_begin(image, corner_click)
 	creative._layout_drag_resizing = true
@@ -78,7 +78,7 @@ func _run() -> void:
 	still_motion.position = creative.get_viewport().get_canvas_transform() * corner_click
 	creative.editor_mouse_motion(still_motion)
 	creative.editor_drag_finish()
-	_check("clicking near resize handle does not jump or add undo", image.scale == Vector2.ONE and creative._history.undo_stack.size() == before_corner_click)
+	_check("clicking near resize handle does not jump or add undo", image.scale == Vector2.ONE and creative.editor_history_depth() == before_corner_click)
 	creative.editor_drag_begin(image, image.global_position + Vector2(2, 2))
 	var move_motion := InputEventMouseMotion.new()
 	move_motion.position = creative.get_viewport().get_canvas_transform() * Vector2(120, 220)

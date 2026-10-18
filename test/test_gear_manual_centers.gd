@@ -4,7 +4,7 @@ const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Axle := preload("res://ink/yellow/src/axle.gd")
 const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
-const Place := preload("res://blueprint/src/blueprint_place.gd")
+const Place := preload("res://actor/canvas/blueprint/src/blueprint_place.gd")
 
 var failures := 0
 var checks := 0

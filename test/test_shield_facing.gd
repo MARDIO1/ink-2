@@ -52,7 +52,7 @@ func _run() -> void:
 	valid = valid and absf(level.to_global(shield_left).x - (palm.global_position + inward).x) < 0.01
 	valid = valid and is_equal_approx(monster.shield_grip_inset, 8.0)
 	valid = valid and is_equal_approx(monster.shield_scale, 0.45 * 1.5)
-	valid = valid and is_equal_approx(monster.shield_scale * monster.shield_height_scale, 0.9)
+	valid = valid and is_equal_approx(monster.shield_scale * monster.shield_height_scale, 0.81)
 	valid = valid and _shield_above_feet(monster)
 	var initial_rotation: float = monster.global_rotation
 	var initial_count: int = monster._ragdoll.shield_initial_pixels

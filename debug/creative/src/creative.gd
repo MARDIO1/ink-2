@@ -672,8 +672,7 @@ func _enter() -> void:
 	if _map_canvas != null:
 		var edit_surface = _map_canvas.get_node_or_null("CanvasSurface")
 		if edit_surface != null:
-			edit_surface._undo_steps.clear()
-			edit_surface._redo_steps.clear()
+			edit_surface.clear_history()
 	# 只有没有标准蓝图的旧地图允许转换一次；之后只加载蓝图。
 	_set_ink_free(true)
 	if _map_canvas != null and editor_draft.is_empty():
@@ -2967,7 +2966,7 @@ func _configure_history() -> void:
 
 func _on_history_recorded(edit: Dictionary) -> void:
 	if edit.get("type", &"") != &"canvas" and _map_canvas != null:
-		_map_canvas.surface._redo_steps.clear()
+		_map_canvas.surface.clear_history()
 
 func _ensure_save_view() -> void:
 	if is_instance_valid(_save_view):

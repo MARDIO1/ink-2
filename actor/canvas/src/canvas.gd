@@ -232,7 +232,7 @@ func generate(record_undo := true) -> void:
 	# 激活白墨即不可撤销；它随后会修改别的实体，旧事务不能跨过这条边界。
 	if surface.ink_px_of(preload("res://ink/general/src/ink_palette.gd").WHITE.id) > 0:
 		record_undo = false
-		surface._undo_steps.clear()
+		surface.clear_history()
 	# 补线会修改已有活动导线，撤销需保存电路；无需逐像素打包已有轮体/地形。
 	var state: Dictionary = History.capture(self, false, Rect2(), {}, true) if record_undo else {}
 	var nail_state: Dictionary = surface.nail_layer.snapshot()

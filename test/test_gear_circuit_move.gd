@@ -70,7 +70,7 @@ func _run() -> void:
 	var start: Vector2 = gear.global_position
 	var arrow_start: Vector2 = rule.objects(Motor)[0].global_position
 	creative.select_control_tool()
-	var count: int = surface._undo_steps.size()
+	var count: int = surface.undo_depth()
 	creative.editor_drag_begin(gear, start)
 	motion(creative, start + Vector2(80, 40))
 	check("control drag carries draft wire", surface.blue_layer.mask.has(Vector2i(195, 152))
@@ -83,11 +83,11 @@ func _run() -> void:
 	creative.editor_drag_cancel()
 	check("cancel restores draft wire exactly", surface.blue_layer.mask == original_cells)
 	check("cancel restores arrow and history", rule.objects(Motor)[0].global_position.is_equal_approx(arrow_start)
-		and surface._undo_steps.size() == count)
+		and surface.undo_depth() == count)
 	creative.editor_drag_begin(gear, start)
 	motion(creative, start + Vector2(80, 40))
 	creative.editor_drag_finish()
-	check("circuit drag commits one transaction", surface._undo_steps.size() == count + 1)
+	check("circuit drag commits one transaction", surface.undo_depth() == count + 1)
 	check("draft circuit movement undo succeeds", creative.undo_last_edit())
 	await process_frame
 	await process_frame

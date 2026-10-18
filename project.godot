@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="INT FFF"
-config/version="0.0.1"
+config/version="0.10"
 run/main_scene="res://root/root.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://ui/icon/int_fff.png"
