@@ -225,30 +225,6 @@ var _monster_status_label: Label:
 	get:
 		return _palette._monster_status_label if is_instance_valid(_palette) else null
 @warning_ignore("unused_private_class_variable")
-var _save_directory_dialog: FileDialog:
-	get:
-		return _save_view._save_directory_dialog if is_instance_valid(_save_view) else null
-@warning_ignore("unused_private_class_variable")
-var _map_save_window: PopupPanel:
-	get:
-		return _save_view._map_save_window if is_instance_valid(_save_view) else null
-@warning_ignore("unused_private_class_variable")
-var _save_name_input: LineEdit:
-	get:
-		return _save_view._save_name_input if is_instance_valid(_save_view) else null
-@warning_ignore("unused_private_class_variable")
-var _save_directory_input: LineEdit:
-	get:
-		return _save_view._save_directory_input if is_instance_valid(_save_view) else null
-@warning_ignore("unused_private_class_variable")
-var _save_preview: TextureRect:
-	get:
-		return _save_view._save_preview if is_instance_valid(_save_view) else null
-@warning_ignore("unused_private_class_variable")
-var _save_status: Label:
-	get:
-		return _save_view._save_status if is_instance_valid(_save_view) else null
-@warning_ignore("unused_private_class_variable")
 var _editor_nail_visibility: Button:
 	get:
 		return _palette._editor_nail_visibility if is_instance_valid(_palette) else null
@@ -257,14 +233,6 @@ var _auto_save_revision := 0
 var _syncing_canvas_tool := false
 var _history = preload("res://debug/creative/application/editor_history.gd").new()
 var _commands = preload("res://debug/creative/application/editor_commands.gd").new()
-@warning_ignore("unused_private_class_variable")
-var _edit_history: Array[Dictionary]:
-	get:
-		return _history.undo_stack
-@warning_ignore("unused_private_class_variable")
-var _redo_history: Array[Dictionary]:
-	get:
-		return _history.redo_stack
 var _next_monster_id := 1
 var _dialogue_container: Node2D = null
 var _place_dialogue_button: Button:

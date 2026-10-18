@@ -44,7 +44,7 @@ func _run() -> void:
 				if state.get_node_property_name(i, j) == "scale":
 					saved = state.get_node_property_value(i, j).is_equal_approx(restored.scale)
 	_check("save preserves custom scale", saved)
-	creative._edit_history.clear()
+	creative._history.undo_stack.clear()
 	creative._resize_control_target(restored, 1.0)
 	_check("wheel scale undo", creative.undo_last_edit() and restored.scale.is_equal_approx(Vector2.ONE * 1.4))
 	_check("delete scaled monster", creative.remove_monster_at(restored.global_position))
