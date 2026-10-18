@@ -12,6 +12,7 @@ const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 const GearBearings := preload("res://actor/canvas/src/gear_bearings.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
+const InkBrush := preload("res://actor/canvas/src/ink_brush.gd")
 ## CanvasSurface.Tool.CIRCLE；rod_layer 被 surface 预加载，不能反向 preload 它。
 const TOOL_CIRCLE := 5
 @export var pixels: Image
@@ -193,7 +194,7 @@ func begin(point: Vector2, erase := false) -> void:
 
 func extend(point: Vector2) -> void:
 	var out := {}
-	source_surface._brush_line(out, last_point, point)
+	InkBrush.line(out, last_point, point, source_surface.brush_size, source_surface.canvas_size)
 	var health = source_surface._health_node()
 	var room: int = int(source_surface._drawable_ink_room(Palette.YELLOW.id))
 	var visual_changed := false

@@ -18,6 +18,7 @@ const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 const GearCenterMarkers := preload("res://actor/canvas/src/gear_center_markers.gd")
 const InkBrush := preload("res://actor/canvas/src/ink_brush.gd")
 const InkBucket := preload("res://actor/canvas/src/ink_bucket.gd")
+const InkSnapshot := preload("res://actor/canvas/src/ink_snapshot.gd")
 const Nail := preload("res://actor/nail/src/nail.gd")
 const NAIL_COST := 10
 var gear_tool: Node2D
@@ -92,9 +93,7 @@ func add_draft_bearing(point: Vector2, fixed_to_world: bool, support_position: V
 # ⚠️ 后台写盘任务必须等回来：它的 Callable 是 static、只带一份 Image 副本，
 #    但节点先被释放而任务还在写文件时，退出过程会读到写了一半的快照。
 func _exit_tree() -> void:
-	if _snapshot_task != -1:
-		WorkerThreadPool.wait_for_task_completion(_snapshot_task)
-		_snapshot_task = -1
+	_snapshot.cancel_wait()
 #endregion
 
 
@@ -1752,74 +1751,21 @@ func _refund_all_ink() -> void:
 ## 自动保存的 .edit.snapshot 是整张画布的 PNG（PNG 没有增量接口，只能整图编码）。
 ## 4352x1328 实测编码 120~160 ms —— 放主线程就是每笔卡十帧，所以拷一份整图
 ## 交给 WorkerThreadPool，主线程只付一次内存拷贝（约 3 ms）。
-var _snapshot_task := -1
-var _snapshot_path := ""
-var _snapshot_again := false
+var _snapshot = InkSnapshot.new()
 
 
 ## 请后台把当前画布写进快照；上一个任务没写完时，新请求合并成一次补写。
 func request_snapshot(path: String) -> void:
-	if black_image == null:
-		return
-	_snapshot_path = path
-	_snapshot_again = true
-	_start_snapshot()
-
-
-func _start_snapshot() -> void:
-	if _snapshot_task != -1 or not _snapshot_again:
-		return
-	_snapshot_again = false
-	var copy := Image.new()
-	copy.copy_from(black_image)
-	_snapshot_task = WorkerThreadPool.add_task(
-		_write_snapshot.bind(copy, _snapshot_path, _snapshot_metadata()), false, "canvas snapshot")
+	_snapshot.request(self, path)
 
 
 func _poll_snapshot() -> void:
-	if _snapshot_task == -1 or not WorkerThreadPool.is_task_completed(_snapshot_task):
-		return
-	WorkerThreadPool.wait_for_task_completion(_snapshot_task)
-	_snapshot_task = -1
-	_start_snapshot()
-
-
-## 线程只操作捕获的图像/元数据副本；后台快照也保留轴心与机关信息。
-static func _write_snapshot(image: Image, path: String, metadata: Dictionary) -> void:
-	var absolute := ProjectSettings.globalize_path(path)
-	var temporary := absolute + ".tmp"
-	DirAccess.make_dir_recursive_absolute(absolute.get_base_dir())
-	var file := FileAccess.open(temporary, FileAccess.WRITE)
-	if file == null:
-		push_error("Canvas snapshot open failed: %s (%d)" % [path, FileAccess.get_open_error()])
-		return
-	metadata["black"] = image.save_png_to_buffer()
-	metadata["rod"] = metadata.rod.save_png_to_buffer()
-	file.store_buffer("INK2".to_ascii_buffer())
-	file.store_var(metadata)
-	file.flush()
-	file.close()
-	if FileAccess.file_exists(path) and DirAccess.remove_absolute(absolute) != OK:
-		DirAccess.remove_absolute(temporary)
-		return
-	DirAccess.rename_absolute(temporary, absolute)
-
-
-## 主线程只捕获副本；PNG 编码交由后台任务完成。
-func _snapshot_metadata() -> Dictionary:
-	var rule = yellow_rule()
-	return {"rod": rod_layer.pixels.duplicate(), "anchors": rod_layer.anchor_points.duplicate(),
-		"gear_centers": gear_centers.duplicate(true), "draft_bearings": draft_bearings.duplicate(true),
-		"rails": rod_layer.rails.duplicate(true),
-		"slider_pins": rod_layer.slider_pins.duplicate(true),
-		"springs": rule.draft_data(self).duplicate(true) if rule != null else [],
-		"blue": blue_layer.cells.duplicate(),
-		"motors": blue_rule().draft_data(self).duplicate(true) if blue_rule() != null else []}
+	_snapshot.poll(self)
 
 
 ## 内嵌文档使用无损 PNG，包含空草稿（避免旧快照重新覆盖已清空的画布）。
 func capture_document() -> Dictionary:
-	var data := _snapshot_metadata()
+	var data := InkSnapshot.metadata(self)
 	data["version"] = 1
 	data["black"] = black_image.save_png_to_buffer()
 	data["rod"] = rod_layer.pixels.save_png_to_buffer()

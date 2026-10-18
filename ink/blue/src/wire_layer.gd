@@ -5,6 +5,7 @@ extends Node2D
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
+const InkBrush := preload("res://actor/canvas/src/ink_brush.gd")
 const DIRS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 
 #region 数据与显示
@@ -364,7 +365,7 @@ func begin(point: Vector2) -> void:
 
 func extend(point: Vector2) -> void:
 	var pixels := {}
-	source_surface._brush_line(pixels, last_point, point)
+	InkBrush.line(pixels, last_point, point, source_surface.brush_size, source_surface.canvas_size)
 	var room: int = source_surface._ink_room(Palette.BLUE.id)
 	for at: Vector2i in pixels:
 		if mask.has(at) or room <= 0:
