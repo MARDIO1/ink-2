@@ -138,6 +138,24 @@ func _run() -> void:
 	var active_mechanism := Codec.capture(canvas, Rect2i(10, 10, 40, 40))
 	check("active spring captured before deferred joint restore", not active_mechanism.has("error")
 		and active_mechanism.springs.size() == 1)
+	var spring_path: PackedVector2Array = spring.path
+	spring.activated = false
+	spring.path = PackedVector2Array()
+	var inactive_stub := Codec.capture(canvas, Rect2i(10, 10, 40, 40))
+	check("empty-path inactive stroke is ignored",
+		not inactive_stub.has("error") and inactive_stub.springs.is_empty())
+	spring.activated = true
+	spring.saved_anchor_a = spring_path[0]
+	spring.saved_anchor_b = spring_path[-1]
+	spring.path = PackedVector2Array()
+	var legacy_mechanism := Codec.capture(canvas, Rect2i(10, 10, 40, 40))
+	check("empty-path saved spring captures without errors or source mutation",
+		not legacy_mechanism.has("error") and legacy_mechanism.springs.size() == 1 and spring.path.is_empty())
+	spring.path = PackedVector2Array([spring_path[0]])
+	var partial_mechanism := Codec.capture(canvas, Rect2i(10, 10, 40, 40))
+	check("one-point saved spring falls back to saved anchors",
+		not partial_mechanism.has("error") and partial_mechanism.springs.size() == 1)
+	spring.path = spring_path
 	surface.yellow_rule().reclaim(surface, true)
 	check("F2 rediscovers and restores active spring as editable draft",
 		surface.yellow_rule().strokes.has(spring) and spring.state == Stroke.State.EDITING

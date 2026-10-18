@@ -54,6 +54,13 @@ func _run() -> void:
 	var detached := saved.instantiate()
 	check("saved file contains embedded blueprint", not detached.get_node("Creative").editor_draft.is_empty())
 	check("saved blueprint has no ink entity nodes in canvas", detached.get_children().filter(func(node): return node.is_in_group("ink_item")).is_empty())
+	# 旧地图只有外置快照：未按 F2 就必须能正常游玩。
+	var legacy_path := "res://.codex-tmp/legacy_editor_document.snapshot"
+	check("legacy fixture snapshot saves", surface.save_ink(legacy_path) == OK)
+	detached.get_node("Creative").editor_draft = {}
+	detached.get_node("Creative").edit_snapshot_path = legacy_path
+	var legacy := PackedScene.new()
+	check("legacy fixture packs", legacy.pack(detached) == OK)
 	detached.free()
 	editor.map_path = "res://.codex-tmp/f2_blueprint_must_not_write.tscn"
 	var forbidden: String = editor.map_path
@@ -93,6 +100,14 @@ func _run() -> void:
 	canvas = level.get_node("MapCanvas")
 	editor._activate_restored_editor()
 	check("disk reload restores blueprint pixels and blue", canvas.surface.black_image.get_data() == raw and canvas.surface.blue_layer.cells == blue)
+	level = await app.load_level(legacy, false)
+	canvas = level.get_node("MapCanvas")
+	check("legacy map is playable before any F2", level.world.bodies.size() > draft_count and canvas.surface.black_image.get_used_rect().size == Vector2i.ZERO)
+	level = await app.load_level(legacy, true)
+	editor = setup(level)
+	editor._activate_restored_editor()
+	check("legacy map F2 loads the same blueprint", level.get_node("MapCanvas").surface.black_image.get_data() == raw)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(legacy_path))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	app.queue_free()
 	await process_frame

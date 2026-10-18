@@ -314,12 +314,21 @@ func _prepare_document_after_ready() -> void:
 
 ## 游戏实例只固化自己的草稿；编辑实例保持草稿与实体的分离。
 func prepare_loaded_document(editing: bool) -> void:
-	if _document_restored or editor_draft.is_empty() or _map_canvas == null:
+	if _document_restored or _map_canvas == null:
 		return
-	_document_restored = true
 	var previous_free: bool = _map_canvas.surface.ink_free
 	_map_canvas.surface.ink_free = true
-	var error: Error = _map_canvas.surface.restore_document(editor_draft)
+	var error: Error = OK
+	if editor_draft.is_empty():
+		# 旧地图的内容在外置快照里；普通游玩也要读取，不能等第一次 F2。
+		_load_edit_snapshot_if_needed()
+		if not _edit_snapshot_loaded:
+			_map_canvas.surface.ink_free = previous_free
+			return
+		editor_draft = _map_canvas.surface.capture_document()
+	else:
+		error = _map_canvas.surface.restore_document(editor_draft)
+	_document_restored = error == OK
 	if error == OK and not editing:
 		_map_canvas.generate(false)
 	_map_canvas.surface.ink_free = previous_free
