@@ -60,6 +60,13 @@ const MapImportedImageScript := preload("res://debug/creative/src/map_imported_i
 const PlayCanvasScene := preload("res://actor/canvas/canvas.tscn")
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const CanvasSurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
+const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
+const YellowHinge := preload("res://ink/yellow/src/hinge.gd")
+const YellowStroke := preload("res://ink/yellow/src/stroke.gd")
+const YellowRail := preload("res://ink/yellow/src/rail.gd")
+const YellowSliderPin := preload("res://ink/yellow/src/slider_pin.gd")
+const BlueMotor := preload("res://ink/blue/src/motor.gd")
+const BlueWire := preload("res://ink/blue/src/wire_layer.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
 var _editor_ink_buttons: Array[Button]:
 	get:
@@ -108,11 +115,10 @@ const MAX_EDIT_HISTORY := 128
 ## 场景内嵌的草稿数据；实体仍由原来的节点保存，不经过画布重采样。
 @export_storage var editor_draft: Dictionary = {}
 var _document_restored := false
-## 旧场景兼容字段；F2 只切换试玩，不再触发磁盘保存。
-@export var auto_save_on_exit := false
+## 退出编辑器时：把非机关实体墨化回画布，再保存“墨水为主”的快照。
+@export var auto_save_on_exit := true
 ## 每次完成绘图、小怪编辑或撤销后，覆盖保存当前地图。
 @export var auto_save_edits := true
-@export_range(0.05, 2.0, 0.05) var auto_save_delay := 0.3
 ## 用户停止操作后再提交完整混合文档，避免连续编辑反复打包整关。
 @export_range(0.1, 30.0, 0.1) var full_auto_save_delay := 5.0
 ## 烘焙图目前只作参考、运行时没有节点读取。按需开启，默认避免保存时再次遍历整张地图。
@@ -159,6 +165,7 @@ var _saved_layer := 1
 var _saved_mask := 0xFFFFFFFF
 var _saved_gravity := 1.0
 var _saved_player_visible := true
+var _player_visibility_saved := false
 var _editor_player_states: Array[Dictionary] = []
 var _editor_input_mode := Node.PROCESS_MODE_INHERIT
 var _editor_arm_mode := Node.PROCESS_MODE_INHERIT
@@ -262,6 +269,8 @@ var _text_input_status: Label = null
 var _pending_text_position := Vector2.ZERO
 var _next_text_id := 1
 var _editor_ui_ready := false
+var _editor_runtime: Node = null
+var _editor_runtime_was_processing := true
 var _edit_snapshot_loaded := false
 var _map_text_font: Font = null
 var _outside_cleanup_elapsed := 0.0
@@ -271,6 +280,7 @@ var _map_reload_in_progress := false
 
 #region 生命周期
 func _ready() -> void:
+	add_to_group(&"creative_editor")
 	process_physics_priority = 15      # 世界步进(10)之后、相机(20)之前
 	get_window().focus_exited.connect(_on_drag_focus_lost)
 	set_physics_process(false)
@@ -627,6 +637,13 @@ func set_active(value: bool) -> void:
 
 
 func _enter() -> void:
+	# 先隐藏玩家，再尝试恢复/重载编辑文档。
+	# 第二页等大关卡进入编辑器时会走异步重载；旧实现要等重载分支返回后才隐藏玩家，
+	# 重载稍慢或失败时就会把上一个游玩实例的墨水瓶留在画面里。
+	if _player != null and not _player_visibility_saved:
+		_saved_player_visible = _player.visible
+		_player_visibility_saved = true
+		_player.visible = false
 	# 游玩中的破坏/碎片不能反写编辑文档。优先恢复内存试玩快照；
 	# 首次打开编辑器时才从磁盘载入文档。
 	if not _skip_restore_on_enter and _restore_editor_document():
@@ -643,6 +660,7 @@ func _enter() -> void:
 	# 进入编辑器不再把实体栅格化；只有显式“墨化”才执行重采样。
 	_set_ink_free(true)
 	_set_monster_physics_paused(true)
+	_pause_editor_simulation()
 	if _player == null:
 		push_error("Creative: 找不到 Player")
 		return
@@ -655,7 +673,6 @@ func _enter() -> void:
 	_saved_layer = _body.collision_layer
 	_saved_mask = _body.collision_mask
 	_saved_gravity = _body.gravity_scale
-	_saved_player_visible = _player.visible
 	_player.visible = false
 	_suspend_player_entity()
 	_hide_health_ui()
@@ -732,8 +749,12 @@ func _exit() -> void:
 		_body.awake = true
 		_body.sleep_timer = 0.0
 	_reset_player_to_spawn()
-	# F2 是内存中的试玩事务：先留存混合文档，再仅对试玩实例固化草稿。
-	# 即使旧地图保存了 auto_save_on_exit=true，也不能让模式切换覆盖文件。
+	# 退出编辑器：先把非机关实体墨化回画布，再保存“墨水为主”的快照。
+	# 保存必须发生在 checkpoint / generate 之前；否则存下去的是试玩实体版。
+	var save_error := save_editor_snapshot_before_leave(true)
+	if save_error != OK and auto_save_on_exit:
+		push_error("Creative: 退出时保存地图失败 (%d)" % save_error)
+	# F2 是内存中的试玩事务：先留存同一份混合文档，再仅对试玩实例固化草稿。
 	var router := get_tree().current_scene
 	if router != null and router.has_method("restore_editor_level"):
 		var checkpoint := PackedScene.new()
@@ -743,6 +764,7 @@ func _exit() -> void:
 	if _map_canvas != null:
 		_map_canvas.set_map_editor_mode(false)
 		_map_canvas.generate(false)
+	_resume_editor_simulation()
 	_set_monster_physics_paused(false)
 	_show_canvas(_map_canvas, false)
 	for play_canvas in _play_canvases():
@@ -762,11 +784,97 @@ func _exit() -> void:
 	_set_ink_free(false)
 	if _player != null:
 		_player.visible = _saved_player_visible
+		_player_visibility_saved = false
 		var health = _player.get_node_or_null("InkHealth")
 		if health != null:
 			health.damage_enabled = true
 	_restore_health_ui()
 	print("CREATIVE off")
+
+
+## 编辑器内暂停 SimulationRuntime 的物理推进；不修改容器上的 auto_step，
+## 避免保存时把“编辑暂停”写进地图。退出时恢复原处理状态。
+func _pause_editor_simulation() -> void:
+	var level := _level_root()
+	if level == null:
+		return
+	var runtime := level.get_node_or_null("SimulationRuntime")
+	if _editor_runtime != runtime:
+		_editor_runtime = runtime
+		if runtime != null:
+			_editor_runtime_was_processing = runtime.is_physics_processing()
+	if _editor_runtime != null:
+		_editor_runtime.set_physics_process(false)
+	if level.world == null:
+		return
+	for body in level.world.bodies:
+		if body == null or body.is_static or body.tags.has("living"):
+			continue
+		body.linear_velocity = Vector2.ZERO
+		body.angular_velocity = 0.0
+
+
+func _resume_editor_simulation() -> void:
+	if is_instance_valid(_editor_runtime):
+		_editor_runtime.set_physics_process(_editor_runtime_was_processing)
+	_editor_runtime = null
+
+
+## 退出编辑器/离开关卡前调用：非机关实体墨化回画布，保存“墨水为主”的快照。
+## 再次进入编辑器直接恢复这份快照，不做二次墨化。
+func save_editor_snapshot_before_leave(force := false) -> Error:
+	if not force and not active:
+		return OK
+	if not auto_save_on_exit:
+		return OK
+	if map_path.is_empty():
+		push_warning("Creative: 地图没有保存路径，无法写回快照")
+		return ERR_INVALID_PARAMETER
+	_inkify_non_mechanism_bodies()
+	return export_map_to(map_path)
+
+
+## 保留齿轮/轴承/弹簧/导轨/滑块/蓝墨机构所在刚体；其余实体全部回画布。
+func _editor_preserved_bodies() -> Dictionary:
+	var keep: Dictionary = {}
+	var level := _level_root()
+	if level == null or level.world == null:
+		return keep
+	for body in level.world.bodies:
+		if body == null or body.tags.has("living"):
+			continue
+		if not GearCenters.body_records(body).is_empty():
+			keep[body] = true
+	for child in level.get_children():
+		if child is YellowHinge:
+			_keep_anchor(keep, child.yellow_anchor)
+			_keep_anchor(keep, child.black_anchor)
+		elif child is YellowStroke:
+			for anchor: Dictionary in child.anchors:
+				_keep_anchor(keep, anchor)
+		elif child is YellowRail:
+			if child.body != null:
+				keep[child.body] = true
+		elif child is YellowSliderPin:
+			_keep_anchor(keep, child.black_anchor)
+		elif child is BlueMotor or child is BlueWire:
+			if child.body != null:
+				keep[child.body] = true
+	return keep
+
+
+func _keep_anchor(keep: Dictionary, anchor: Dictionary) -> void:
+	if anchor.is_empty():
+		return
+	var body = anchor.get("body")
+	if is_instance_valid(body):
+		keep[body] = true
+
+
+func _inkify_non_mechanism_bodies() -> void:
+	if _map_canvas == null:
+		return
+	_map_canvas.return_to_canvas(false, true, _editor_preserved_bodies())
 
 
 ## 编辑时只保留无几何的相机锚点，身体、手臂和手均不再参与任何实体查询。
@@ -2537,6 +2645,10 @@ func _ensure_monster_container() -> Node2D:
 
 #region 上帝位移
 func _physics_process(delta: float) -> void:
+	# 保存/自动保存会为了打包临时把玩家设为可见；这里在渲染前再兜底一次，
+	# 避免任何异步路径把上一个游玩实例的墨水瓶留在编辑器画面里。
+	if _player != null:
+		_player.visible = false
 	_flush_monster_drag_move()
 	if _session.monster_drag_view_locked:
 		return
@@ -2618,10 +2730,19 @@ func _save_current_map_overwrite() -> Error:
 	if map_path.is_empty():
 		return ERR_INVALID_PARAMETER
 	baked_map_path = map_path.get_basename() + ".png"
-	return export_map_to(map_path)
+	return _save_editor_snapshot_to(map_path)
 
 
-## 编辑中的自动保存只打包当前状态，不固化画布，保证下一步仍然可以撤销和继续绘制。
+## 手动保存/自动保存统一写“墨水为主”的快照；
+## 否则会把当前编辑世界中临时存在/旧地图遗留的固化实体原样写回去。
+func _save_editor_snapshot_to(save_path: String) -> Error:
+	if active:
+		_inkify_non_mechanism_bodies()
+	return export_map_to(save_path)
+
+
+## 编辑中的自动保存也只写“墨水为主”的快照：
+## 先选择性墨化非机关实体，再打包；机关实体保持可玩，其余进入 editor_draft。
 ## 具体节流与回调在 `editor_save.gd`；这里只提供当前编辑状态。
 func _queue_edit_auto_save() -> void:
 	if not active or not auto_save_edits or map_path.is_empty():
@@ -2633,7 +2754,7 @@ func _queue_edit_auto_save() -> void:
 		"map_path": map_path,
 		"full_delay": full_auto_save_delay,
 		"is_current": _auto_save_is_current,
-		"export_scene": export_map_to,
+		"export_scene": _save_editor_snapshot_to,
 	})
 
 
@@ -2806,7 +2927,7 @@ func _save_scene_from_form(path: String) -> Error:
 	var previous_bake := baked_map_path
 	map_path = path
 	baked_map_path = path.get_basename() + ".png"
-	var error := export_map_to(path)
+	var error := _save_editor_snapshot_to(path)
 	if error != OK:
 		map_path = previous_map
 		baked_map_path = previous_bake

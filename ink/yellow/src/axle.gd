@@ -23,9 +23,10 @@ func _ready() -> void:
 	world = get_parent().world
 	restore.call_deferred()
 
-## 黄墨已经承担轴杆的外观。旧地图/蓝图即使没有 hide_bearing 字段也不应叠图。
+## 黄墨已经承担轴杆的外观，但玩家明确安装的轴承仍应显示；
+## 只有旧地图/旧资源显式保存了 hide_bearing 时才不叠图。
 func _sync_bearing() -> void:
-	texture = null if hide_bearing or (not fixed_to_world and support_material == Palette.YELLOW.id) else BEARING
+	texture = null if hide_bearing else BEARING
 
 static func find_material(physics, point: Vector2, material: int, except = null,
 		skip: Dictionary = {}) -> Dictionary:

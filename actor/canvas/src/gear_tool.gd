@@ -54,15 +54,16 @@ func _draw() -> void:
 	var border := polygon.duplicate()
 	border.append(polygon[0])
 	draw_polyline(border, Color(0.95, 0.72, 0.08), 1.0)
-	# 预览与放置后一致：小黄色十字只是中心提示，不是轴承。
+	# 预览与放置后一致：中心是一个视觉上的透明十字孔，不是黄色轴点。
 	_draw_center_cross(Vector2.ZERO)
 
 
 func _draw_center_cross(point: Vector2) -> void:
-	draw_line(point + Vector2(-3, 0), point + Vector2(3, 0), Color(0.08, 0.07, 0.02, 1.0), 3.0)
-	draw_line(point + Vector2(0, -3), point + Vector2(0, 3), Color(0.08, 0.07, 0.02, 1.0), 3.0)
-	draw_line(point + Vector2(-3, 0), point + Vector2(3, 0), Palette.YELLOW.color, 1.0)
-	draw_line(point + Vector2(0, -3), point + Vector2(0, 3), Palette.YELLOW.color, 1.0)
+	# 预览中心将来会被挖成透明孔；这里用纸底颜色示意，不画黄色轴点。
+	var surface = get_parent()
+	var color: Color = surface.background_color if surface != null else Color.WHITE
+	draw_line(point + Vector2(-3, 0), point + Vector2(3, 0), color, 1.0)
+	draw_line(point + Vector2(0, -3), point + Vector2(0, 3), color, 1.0)
 
 func finish(point: Vector2):
 	if not dragging:

@@ -170,12 +170,17 @@ static func existing_at(host, wheel, local: Vector2):
 
 
 ## 回收画布矩形内的轴承为草稿记录；不碰中心、轮体或黄杆。
-static func reclaim(surface, host, rect: Rect2i, mask: Dictionary = {}) -> Array:
+static func reclaim(surface, host, rect: Rect2i, mask: Dictionary = {},
+		preserved: Dictionary = {}) -> Array:
 	var out: Array = []
 	if host == null:
 		return out
 	for child in host.get_children().duplicate():
 		if not child is Axle or child.is_queued_for_deletion() or child.yellow_anchor.is_empty():
+			continue
+		if preserved.has(child.yellow_anchor.body):
+			continue
+		if not child.black_anchor.is_empty() and preserved.has(child.black_anchor.body):
 			continue
 		var wheel_point: Vector2 = surface.to_local(host.to_global(
 			Stroke.anchor_world(child.yellow_anchor)))
@@ -315,8 +320,8 @@ static func _spawn(surface, host, canvas_point: Vector2, wheel_local: Vector2, w
 	axle.yellow_anchor = {"body": wheel, "cell": Vector2i(wheel_local.floor()),
 		"local": wheel_local}
 	axle.fixed_to_world = fixed_to_world
-	# 黄墨本身已经承担轴杆外观；真实轴承连接仍然存在，只是不再叠一张贴图。
-	axle.hide_bearing = support != null and support_material == Palette.YELLOW.id
+	# 手动安装的轴承必须可见，即使它连接的是黄墨支座。
+	axle.hide_bearing = false
 	var wheel_node = GearCenters.node_for_body(host, wheel)
 	if not fixed_to_world and support != null:
 		axle.support_material = support_material

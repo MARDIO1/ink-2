@@ -71,6 +71,11 @@ func _draw() -> void:
 	for point in anchor_points:
 		if _black(point) and pixels.get_pixelv(Vector2i(point.floor())).a > 0:
 			draw_texture(Hinge.BEARING, point - Vector2(5.5, 5.5))
+	# 草稿里已经明确放置的轴承也要立即显示，而不是等固化后才出现。
+	for record in source_surface.draft_bearings:
+		var point := Vector2(record.get("position", Vector2.ZERO))
+		if source_surface._inside(point):
+			draw_texture(Hinge.BEARING, point - Vector2(5.5, 5.5))
 	_draw_bearing_preview()
 	for rail in rails:
 		_draw_centerline(Vector2(rail.a), Vector2(rail.b))

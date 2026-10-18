@@ -81,26 +81,8 @@ func _run() -> void:
 		check("save preserves solid identity and original shape %d" % index,
 			node.body.shapes[0].pixel_count() == solid_pixels and level.world.bodies.size() == body_count)
 		check("save preserves tool and undo %d" % index, surface.tool == tool and surface._undo_steps.size() == undo_count)
-	# 自动保存和手动保存使用同一份混合文档；过期定时任务不得覆盖新版。
-	var auto_path := "res://.codex-tmp/auto_mixed_editor_document.tscn"
-	if FileAccess.file_exists(auto_path):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(auto_path))
-	var previous_path: String = creative.map_path
-	creative.map_path = auto_path
-	creative.auto_save_edits = true
-	creative.auto_save_delay = 0.05
-	creative.full_auto_save_delay = 0.1
-	creative._queue_edit_auto_save()
-	creative._auto_save_revision += 1
-	await create_timer(0.2).timeout
-	check("stale autosave task cannot write", not FileAccess.file_exists(auto_path))
-	creative._queue_edit_auto_save()
-	await create_timer(0.2).timeout
-	check("autosave writes current mixed document", FileAccess.file_exists(auto_path))
-	check("autosave preserves draft and undo", surface.black_image.get_data() == raw and surface.blue_layer.cells == blue and surface._undo_steps.size() == undo_count)
-	creative.auto_save_edits = false
-	creative.map_path = previous_path
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(auto_path))
+	# 自动保存的墨水快照由 test_editor_autosave_snapshot.gd 单独覆盖；
+	# 这里保持纯手动保存，避免自动保存的墨化改变后续 F2 检查的实体状态。
 	var preview_path := "user://document_preview.png"
 	check("preview bake succeeds", canvas.bake_png(preview_path) == OK)
 	check("preview leaves drafts, tool and history untouched", surface.black_image.get_data() == raw and surface.blue_layer.cells == blue and surface.tool == tool and surface._undo_steps.size() == undo_count)
@@ -109,8 +91,8 @@ func _run() -> void:
 	var unmounted := saved.instantiate()
 	check("scene contains authoritative embedded draft", not unmounted.get_node("Creative").editor_draft.is_empty())
 	unmounted.free()
-	# F2 has no disk write even for legacy scenes exporting auto_save_on_exit=true.
-	creative.auto_save_on_exit = true
+	# 关闭退出写盘，单独验证 F2 的内存检查点往返；退出快照由独立测试覆盖。
+	creative.auto_save_on_exit = false
 	creative.map_path = "res://.codex-tmp/f2_must_not_save.tscn"
 	var forbidden := ProjectSettings.globalize_path(creative.map_path)
 	if FileAccess.file_exists(forbidden):

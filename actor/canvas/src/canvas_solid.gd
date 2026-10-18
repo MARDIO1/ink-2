@@ -389,14 +389,13 @@ func preview_image(surface, world) -> Image:
 ## 只算画布内的部分：画布外的那半留在世界里继续当刚体，不再跟着一起消失。
 ## 跳过带 LIVING_TAG 的生物实体（玩家、手、NPC）。
 ## 钉子随实体返回画布，保留锚点位置，供再次固化使用。
-## `keep_bodies = true` 只采样、不摘像素 —— 存保底 PNG 用（存图不能顺手删关卡）。
-func rasterize(surface, world, keep_bodies := false) -> void:
+## `preserved` 中的刚体保持实体形态（齿轮/机构），其余全部墨化。
+func rasterize(surface, world, preserved: Dictionary = {}) -> void:
 	if world == null or surface == null:
 		push_error("CanvasSolid.rasterize: 参数无效")
 		return
 	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
-	if not keep_bodies:
-		GearBearings.reclaim(surface, world, Rect2i(Vector2i.ZERO, surface.canvas_size))
+	GearBearings.reclaim(surface, world, Rect2i(Vector2i.ZERO, surface.canvas_size), {}, preserved)
 	var targets: Array = []
 	for child in world.get_children():
 		#⚠️ 只认刚体节点本身：Nail 这种外观节点也带 body 属性，
@@ -404,7 +403,7 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		if not child is PixelBody2D:
 			continue
 		var body = child.get("body")
-		if body == null or body.tags.has(LIVING_TAG):
+		if body == null or body.tags.has(LIVING_TAG) or preserved.has(body):
 			continue
 		if body.aabb.intersects(canvas_rect):
 			targets.append(child)
@@ -417,15 +416,12 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 		var plan: Dictionary = {}
 		var anchors: Dictionary = {}
 		var fully_inside := canvas_rect.encloses(body.aabb)
-		var needs_plan := not keep_bodies and not fully_inside
+		var needs_plan := not fully_inside
 		if needs_plan:
 			_collect_nail_anchors(world, body, anchors)
-		if not keep_bodies:
-			_restore_body_nails_to_surface(surface, body)
-			GearCenters.reclaim_body(surface, body)
-		pixels += _sample_body(surface, body, plan, needs_plan, not keep_bodies)
-		if keep_bodies:
-			continue
+		_restore_body_nails_to_surface(surface, body)
+		GearCenters.reclaim_body(surface, body)
+		pixels += _sample_body(surface, body, plan, needs_plan, true)
 		# 完整落在画布内的刚体无需走昂贵的 fracture/split；采样后整体移除即可。
 		if fully_inside:
 			_remove_all_nails(world, body)
@@ -444,8 +440,8 @@ func rasterize(surface, world, keep_bodies := false) -> void:
 			world.remove_child(node)
 			node.queue_free()
 	surface.refresh()
-	print("RESTORE bodies=%d pixels=%d fragments=%d kept=%s" % [
-		targets.size(), pixels, fragments, str(keep_bodies)])
+	print("RESTORE bodies=%d pixels=%d fragments=%d preserved=%s" % [
+		targets.size(), pixels, fragments, preserved.size()])
 
 
 ## 把框内的固化像素采样回画布并从世界实体中摘除。

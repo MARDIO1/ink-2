@@ -258,12 +258,16 @@ func generate(record_undo := true) -> void:
 
 
 ## 画布范围内的实体重采样回墨水。
-func return_to_canvas(record_undo := true, keep_yellow_drafts := false) -> void:
+## `preserved` 中的刚体保持实体；用于退出编辑器时只保留齿轮/机构。
+func return_to_canvas(record_undo := true, keep_yellow_drafts := false,
+		preserved: Dictionary = {}) -> void:
 	var state: Dictionary = History.capture(self, true) if record_undo else {}
 	if keep_yellow_drafts or _map_editor_mode:
 		# 黄墨连杆转回蓝图时，保存轴点并移除旧关节；下次固化重新创建。
 		for child in world.get_children().duplicate():
 			if not child is YellowHinge or child is YellowAxle:
+				continue
+			if not child.yellow_anchor.is_empty() and preserved.has(child.yellow_anchor.body):
 				continue
 			var point: Vector2 = surface.to_local(world.to_global(child.yellow_position))
 			if not surface._inside(point):
@@ -275,10 +279,10 @@ func return_to_canvas(record_undo := true, keep_yellow_drafts := false) -> void:
 			child.queue_free()
 	var yellow = surface.yellow_rule()
 	if yellow != null:
-		yellow.reclaim(surface, keep_yellow_drafts or _map_editor_mode)
+		yellow.reclaim(surface, keep_yellow_drafts or _map_editor_mode, preserved)
 	if surface.blue_rule() != null:
-		surface.blue_rule().reclaim(surface)
-	solid.rasterize(surface, world)
+		surface.blue_rule().reclaim(surface, Rect2i(), preserved)
+	solid.rasterize(surface, world, preserved)
 	if record_undo:
 		History.commit(self, state)
 

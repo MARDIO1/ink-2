@@ -220,6 +220,8 @@ func show_recovery_status(message: String) -> void:
 func _on_menu_button_pressed() -> void:
 	if _recovery_busy:
 		return
+	if not _save_editor_before_leave():
+		return
 	_set_open(false)
 	get_tree().paused = false
 	get_tree().change_scene_to_file(ROOT_SCENE)
@@ -228,5 +230,20 @@ func _on_menu_button_pressed() -> void:
 func _on_quit_button_pressed() -> void:
 	if _recovery_busy:
 		return
+	if not _save_editor_before_leave():
+		return
 	_set_open(false)
 	get_tree().quit()
+
+
+## 仍在地图编辑器里直接回标题/退出游戏时，先把最新地图写盘，避免丢修改。
+func _save_editor_before_leave() -> bool:
+	var creative := get_tree().get_first_node_in_group(&"creative_editor")
+	if creative == null or not creative.has_method("save_editor_snapshot_before_leave"):
+		return true
+	var error: Error = creative.save_editor_snapshot_before_leave()
+	if error != OK:
+		push_error("ESC: 地图保存失败，已取消离开 (%d)" % error)
+		show_recovery_status("地图保存失败，已取消离开")
+		return false
+	return true

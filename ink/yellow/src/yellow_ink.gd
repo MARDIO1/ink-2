@@ -288,12 +288,20 @@ func clear_drafts(surface) -> void:
 			strokes.erase(stroke)
 			stroke.queue_free()
 
-func reclaim(surface, keep_drafts := false) -> void:
+func reclaim(surface, keep_drafts := false, preserved: Dictionary = {}) -> void:
 	for stroke in strokes.duplicate():
 		if stroke.get_meta(&"corroded", false):
 			continue
 		if stroke.state == Stroke.State.EDITING:
 			continue
+		if not preserved.is_empty() and not stroke.anchors.is_empty():
+			var kept := false
+			for anchor: Dictionary in stroke.anchors:
+				if preserved.has(anchor.get("body")):
+					kept = true
+					break
+			if kept:
+				continue
 		var selected: Array[Vector2i] = []
 		for cell: Vector2i in stroke.cells:
 			if surface._inside(surface.to_local(stroke.pixel_world(Vector2(cell) + Vector2.ONE * 0.5))):
