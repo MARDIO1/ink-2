@@ -49,6 +49,14 @@ func _run() -> void:
 	var level = await app.load_level(packed, false)
 	var feet: Node = level.get_node("Player/PlayerInput")
 	var hand: Node = level.get_node("Player/Arm/Hand/HandControl")
+	var inspect_static := OS.get_cmdline_user_args().has("--inspect")
+	if inspect_static:
+		print("INITIAL root=", level.get_node("Player").position,
+			" com=", feet.player.body.com_world(), " frozen=", feet.player.body.frozen,
+			" awake=", feet.player.body.awake,
+			" input_process=", feet.is_physics_processing(),
+			" runtime_process=", level.get_node("SimulationRuntime").is_physics_processing(),
+			" bodies=", level.world.bodies.size(), " support=", feet.support != null)
 	for frame in 60:
 		await physics_frame
 	hand.set_grip(false)
@@ -65,7 +73,6 @@ func _run() -> void:
 	_key(KEY_D, false)
 	var walked: Vector2 = feet.player.body.com_world() - start
 	var walk_ok: bool = absf(walked.x) > 20.0 and active > 0
-	var inspect_static := OS.get_cmdline_user_args().has("--inspect")
 	if not walk_ok or inspect_static:
 		for body in level.world.bodies:
 			if body.is_static and body.aabb.position.x <= start.x + 260.0 \

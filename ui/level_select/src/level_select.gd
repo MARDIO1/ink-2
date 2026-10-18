@@ -24,7 +24,6 @@ const HIDDEN_LEVELS := {
 	"res://map/asset/imported/第二关（制作中）.tscn": true,
 	"res://map/asset/imported/第二关（小怪关）.tscn": true,
 	"res://map/asset/imported/黄色.tscn": true,
-	"res://map/second/第三关·墨泉边.tscn": true,
 	"res://map/test/空白大地图.tscn": true,
 }
 

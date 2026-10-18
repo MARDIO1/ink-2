@@ -41,7 +41,6 @@ func _run() -> void:
 		"res://map/asset/imported/第二关（制作中）.tscn",
 		"res://map/asset/imported/第二关（小怪关）.tscn",
 		"res://map/asset/imported/黄色.tscn",
-		"res://map/second/第三关·墨泉边.tscn",
 		"res://map/test/空白大地图.tscn",
 	])
 	for path in hidden_levels:
@@ -52,6 +51,7 @@ func _run() -> void:
 		"res://map/asset/imported/第二关（基本完成）.tscn",
 		"res://map/asset/imported/蓝色攀升.tscn",
 		"res://map/asset/imported/黄色2.tscn",
+		"res://map/second/第三关·墨泉边.tscn",
 	])
 	for path in playable_extras:
 		valid = valid and paths.has(path)
