@@ -1,9 +1,10 @@
 extends CanvasLayer
 ## 跨关卡的蓝图库。只在窗口打开时暂停；放置仍使用当前关卡的真实画布。
-const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
+const Store := preload("res://blueprint/src/blueprint_store.gd")
+const Place := preload("res://blueprint/src/blueprint_place.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
+const Placement := preload("res://actor/canvas/blueprint/src/blueprint_placement.gd")
 const Preview := preload("res://ui/hud/blueprint/blueprint_preview.tscn")
-const Ghost := preload("res://actor/canvas/blueprint/blueprint_ghost.tscn")
 const InkTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const PAGE_SIZE := 12
@@ -19,13 +20,9 @@ var _mode := ""
 var _items: Array = []
 var _selected: Dictionary = {}
 var _save_data: Dictionary = {}
-var _placing_data: Dictionary = {}
-var _amounts: Dictionary = {}
-var _footprint: Dictionary = {}
-var _ghost: Node2D
-var _offset := Vector2i.ZERO
+## 当前的放置会话（幽灵、落点、合法性）；机制在 blueprint_placement.gd，这里只管界面。
+var _placement: RefCounted
 var _last_error := ""
-var _check_elapsed := 0.0
 var _page := 0
 var _confirm_delete := false
 var _images := {}
@@ -620,22 +617,16 @@ func begin_placement(data: Dictionary) -> bool:
 	if not Store.validate(data):
 		return false
 	close()
+	_placement = Placement.new()
+	if not _placement.begin(canvas, data):
+		_placement = null
+		return false
 	placing = true
 	_canvas = canvas
 	_level = _current_level()
-	_placing_data = data.duplicate(true)
-	_amounts = Codec.costs(data)
-	_footprint = Codec.footprint(data)
 	_old_tool = canvas.surface.tool
 	canvas.set_tool(canvas.SurfaceScript.Tool.SELECT_DELETE)
 	canvas.surface.clear_selected_area()
-	_ghost = Ghost.instantiate()
-	_ghost.texture = ImageTexture.create_from_image(Codec.preview(data))
-	_ghost.extent = Codec.vec(data.size)
-	_ghost.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_ghost.z_index = 50
-	canvas.surface.add_child(_ghost)
-	_check_elapsed = 1.0
 	placement_hint.show()
 	_update_placement(1.0)
 	return true
@@ -644,39 +635,28 @@ func cancel_placement() -> void:
 	if not placing:
 		return
 	placing = false
-	if is_instance_valid(_ghost):
-		_ghost.queue_free()
-	_ghost = null
+	if _placement != null:
+		_placement.cancel()
+		_placement = null
 	if is_instance_valid(_canvas) and _canvas.is_inside_tree():
 		_canvas.set_tool(_old_tool)
 	_canvas = null
 	placement_hint.hide()
-	_placing_data = {}
-	_amounts = {}
-	_footprint = {}
 
 func _update_placement(delta: float, screen_point := Vector2.INF) -> void:
-	if not is_instance_valid(_canvas) or not is_instance_valid(_ghost) or not _available_canvases().has(_canvas):
+	if _placement == null or not _available_canvases().has(_canvas) or not _placement.is_active():
 		cancel_placement()
 		notify_user("已取消放置：目标画布不可用或已离开画布")
 		return
 	var mouse: Vector2 = get_viewport().get_mouse_position() if screen_point == Vector2.INF else screen_point
-	var point: Vector2 = _canvas.surface.get_global_transform_with_canvas().affine_inverse() * mouse
-	_offset = Vector2i((point - Codec.vec(_placing_data.size) * 0.5).round())
-	_ghost.position = Vector2(_offset)
-	_check_elapsed += delta
-	# 大蓝图只以约 8 Hz 校验预览；点击提交仍同步完整复查。
-	if _check_elapsed >= 0.12:
-		_last_error = Codec.placement_error(_canvas, _placing_data, _offset, _amounts, _footprint)
-		_check_elapsed = 0
-	_ghost.allowed = _last_error.is_empty()
-	_ghost.queue_redraw()
+	_placement.update(delta, mouse)
+	_last_error = _placement.error
 	var controls := "左键放置 · Shift＋左键连续放置 · 右键 / Esc 取消"
-	placement_hint.text = (controls + "\n" + _cost_text(_amounts, _canvas)) if _last_error.is_empty() \
+	placement_hint.text = (controls + "\n" + _cost_text(_placement.amounts, _canvas)) if _last_error.is_empty() \
 		else "无法放置：" + _last_error + "\n" + controls
 	placement_hint.reset_size()
 	var size := get_viewport().get_visible_rect().size
-	var preview_corner: Vector2 = _ghost.get_global_transform_with_canvas() * Vector2.ZERO
+	var preview_corner: Vector2 = _placement.ghost_corner_screen()
 	placement_hint.position = Vector2(
 		clampf(preview_corner.x, 12, maxf(12, size.x - placement_hint.size.x - 12)),
 		clampf(preview_corner.y - placement_hint.size.y - 8, 12, maxf(12, size.y - placement_hint.size.y - 12)))
@@ -701,13 +681,13 @@ func _input(event: InputEvent) -> void:
 		_update_placement(1.0, event.position)
 		if not placing:
 			return
-		var error := Codec.place(_canvas, _placing_data, _offset)
+		var error: String = _placement.commit()
 		if not error.is_empty():
 			notify_user(error)
 		elif not event.shift_pressed:
 			cancel_placement()
 		else:
-			_check_elapsed = 1.0
+			_placement.check_elapsed = 1.0
 
 func notify_user(message: String) -> void:
 	toast.text = message

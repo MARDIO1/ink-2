@@ -16,6 +16,8 @@ const YellowAxle := preload("res://ink/yellow/src/axle.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const InkSelectionIndicator := preload("res://ui/theme/ink_selection_indicator.gd")
+const InkPanel := preload("res://actor/canvas/panel/src/ink_panel.gd")
+const ToolbarBuilder := preload("res://actor/canvas/toolbar/src/toolbar_builder.gd")
 const EditorTheme := preload("res://ui/theme/asset/ink_attack_theme.tres")
 const ExpandCanvasIconSource := preload("res://actor/canvas/asset/expand_canvas.png")
 const EditorControlIconSource := preload("res://actor/canvas/asset/editor_control.png")
@@ -514,100 +516,18 @@ var _side_brush_slider: VSlider = null
 var _selected_ink_label: Label
 
 
-#右侧面板由色表生成：加一种墨水这里不用改。
+#右侧面板由色表生成：加一种墨水这里不用改。构建逻辑见 `panel/src/ink_panel.gd`。
 func _build_side_panel() -> void:
-	var panel := VBoxContainer.new()
-	panel.name = "SidePanel"
-	panel.z_index = 100
-	panel.theme = buttons.theme
-	panel.add_theme_constant_override("separation", 4)
-	add_child(panel)
-	_side_panel = panel
-	var screen_layer := preload("res://actor/canvas/toolbar/toolbar.tscn").instantiate()
-	screen_layer.name = "SidePanelLayer"
-	screen_layer.canvas = self
-	screen_layer.panel = panel
-	add_child(screen_layer)
-	var title_slot := Control.new()
-	title_slot.name = "TitleSlot"
-	title_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(title_slot)
-	var title := Label.new()
-	title.name = "Title"
-	title.text = "色盘"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 12)
-	title_slot.add_child(title)
-	# 保留原标题的布局高度，只移动文字，避免色块和滑条随容器重新排布。
-	title_slot.custom_minimum_size = title.get_combined_minimum_size()
-	title.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	title.position.y = -4.0
-	var controls := HBoxContainer.new()
-	controls.name = "Controls"
-	controls.add_theme_constant_override("separation", 8)
-	panel.add_child(controls)
-	var colors := VBoxContainer.new()
-	colors.name = "Colors"
-	colors.add_theme_constant_override("separation", 10)
-	controls.add_child(colors)
-	for i in InkPalette.ink_count():
-		var color: Color = InkPalette.color_at(i)
-		var style := StyleBoxFlat.new()
-		style.bg_color = color
-		style.corner_radius_top_left = 17
-		style.corner_radius_top_right = 17
-		style.corner_radius_bottom_left = 17
-		style.corner_radius_bottom_right = 17
-		style.border_width_left = 1
-		style.border_width_top = 1
-		style.border_width_right = 1
-		style.border_width_bottom = 1
-		style.border_color = Color(0.035, 0.031, 0.024, 1.0)
-		var button := Button.new()
-		button.name = "Ink%dButton" % i
-		button.toggle_mode = true
-		button.focus_mode = Control.FOCUS_NONE
-		button.custom_minimum_size = Vector2(34.0, 34.0)
-		button.tooltip_text = "%s（材质 %d）" % [
-			InkPalette.ink_name(i), InkPalette.material_id_of(InkPalette.ink_at(i))]
-		button.add_theme_color_override(
-			"font_color", Color.WHITE if color.get_luminance() < 0.5 else Color.BLACK)
-		button.add_theme_stylebox_override("normal", style)
-		button.add_theme_stylebox_override("hover", style)
-		button.add_theme_stylebox_override("pressed", style)
-		button.add_theme_stylebox_override("focus", style)
-		button.pressed.connect(select_ink.bind(i))
-		colors.add_child(button)
-		_ink_buttons.append(button)
-		InkSelectionIndicator.install(button, color)
-	_selected_ink_label = Label.new()
-	_selected_ink_label.name = "SelectedInkLabel"
-	_selected_ink_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_selected_ink_label.add_theme_font_size_override("font_size", 10)
-	panel.add_child(_selected_ink_label)
-	var history := preload("res://actor/canvas/src/history_actions.gd").new()
-	history.name = "HistoryActions"
-	history.canvas = self
-	history.compact = true
-	panel.add_child(history)
-	var source_pen := brush_panel.get_node("PenSlider") as HSlider
-	source_pen.min_value = 1.0
-	source_pen.max_value = float(brush_size_max)
-	source_pen.step = 1.0
-	source_pen.tick_count = brush_size_max
-	source_pen.value = clampf(source_pen.value, 1.0, float(brush_size_max))
-	_side_brush_slider = VSlider.new()
-	_side_brush_slider.name = "BrushSizeSlider"
-	_side_brush_slider.custom_minimum_size = Vector2(18.0, 166.0)
-	_side_brush_slider.min_value = source_pen.min_value
-	_side_brush_slider.max_value = source_pen.max_value
-	_side_brush_slider.step = source_pen.step
-	_side_brush_slider.tick_count = source_pen.tick_count
-	_side_brush_slider.value = source_pen.value
-	_side_brush_slider.tooltip_text = source_pen.tooltip_text
-	_side_brush_slider.theme = buttons.theme
-	_side_brush_slider.value_changed.connect(_on_pen_slider_changed)
-	controls.add_child(_side_brush_slider)
+	var built: Dictionary = InkPanel.build(self, buttons.theme,
+		brush_panel.get_node("PenSlider") as HSlider, {
+			"select_ink": select_ink,
+			"pen_changed": _on_pen_slider_changed,
+			"brush_max": brush_size_max,
+		})
+	_side_panel = built.panel
+	_ink_buttons = built.buttons
+	_side_brush_slider = built.slider
+	_selected_ink_label = built.label
 	set_brush_size(int(round(_side_brush_slider.value)))
 	select_ink(surface.selected_ink)
 	_place_side_panel()
@@ -680,151 +600,39 @@ func set_map_editor_mode(on: bool) -> void:
 
 
 func _prepare_workbench_structure() -> void:
-	var order := TOOL_SHORTCUT_ORDER
-	var captions := {
-		"Brush": "画笔", "Eraser": "橡皮", "Shape": "形状", "Bucket": "填充",
-		"Redraw": "清空", "SelectDelete": "框选", "Generate": "固化",
-		"ReturnToCanvas": "墨化", "Nail": "钉子", "ExpandCanvas": "扩展",
-	}
-	for index in order.size():
-		var button := tool_grid.get_node_or_null(NodePath(order[index])) as Button
-		if button != null:
-			if button.name == &"ExpandCanvas":
-				button.icon = _atlas_icon(ExpandCanvasIconSource, EXPAND_CANVAS_ICON_REGION)
-			_add_tool_button_contents(button, str(captions[order[index]]))
-			if button.name == &"InfiniteNail":
-				var icon_view := button.get_node("ToolIcon") as TextureRect
-				icon_view.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			tool_grid.move_child(button, index)
-	hand_button.reparent(buttons)
-	hand_button.icon = _atlas_icon(EditorControlIconSource, EDITOR_CONTROL_ICON_REGION)
-	var hand_icon := TextureRect.new()
-	hand_icon.name = "ToolIcon"
-	hand_icon.texture = hand_button.icon
-	hand_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	hand_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	hand_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hand_icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hand_button.add_child(hand_icon)
-	hand_button.icon = null
-	hand_button.text = ""
-	hand_button.expand_icon = true
-	hand_button.add_theme_constant_override("icon_max_width", 92)
-	var hand_caption := Label.new()
-	hand_caption.name = "Caption"
-	hand_caption.text = "放下画笔"
-	hand_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hand_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hand_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hand_caption.anchor_top = 1.0
-	hand_caption.anchor_bottom = 1.0
-	hand_caption.anchor_right = 1.0
-	hand_button.add_child(hand_caption)
+	ToolbarBuilder.prepare_structure(tool_grid, hand_button, buttons,
+		ExpandCanvasIconSource, EXPAND_CANVAS_ICON_REGION,
+		EditorControlIconSource, EDITOR_CONTROL_ICON_REGION)
 
 
 func _atlas_icon(source: Texture2D, region: Rect2) -> AtlasTexture:
-	var icon := AtlasTexture.new()
-	icon.atlas = source
-	icon.region = region
-	return icon
+	return ToolbarBuilder.atlas_icon(source, region)
 
 
 func _add_tool_button_contents(button: Button, caption_text: String) -> void:
-	var icon_texture := button.icon
-	button.icon = null
-	button.text = ""
-	button.expand_icon = false
-	var icon_view := TextureRect.new()
-	icon_view.name = "ToolIcon"
-	icon_view.texture = icon_texture
-	icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	icon_view.offset_left = 8.0
-	icon_view.offset_top = 6.0
-	icon_view.offset_right = -8.0
-	icon_view.offset_bottom = -28.0
-	button.add_child(icon_view)
-	var caption := Label.new()
-	caption.name = "Caption"
-	caption.text = caption_text
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	caption.anchor_left = 0.0
-	caption.anchor_top = 1.0
-	caption.anchor_right = 1.0
-	caption.anchor_bottom = 1.0
-	caption.offset_top = -28.0
-	caption.offset_bottom = -2.0
-	caption.add_theme_font_size_override("font_size", 16)
-	button.add_child(caption)
+	ToolbarBuilder.add_button_contents(button, caption_text)
 
 
 func _apply_tool_button_metrics(button: Button, width: float, height: float,
 		caption_height: float, font_size: int) -> void:
-	button.custom_minimum_size = Vector2(width, height)
-	var icon_view := button.get_node("ToolIcon") as TextureRect
-	icon_view.offset_left = 4.0 if _map_editor_mode else 3.0
-	icon_view.offset_top = 3.0 if _map_editor_mode else 2.0
-	icon_view.offset_right = -4.0 if _map_editor_mode else -3.0
-	icon_view.offset_bottom = -caption_height
-	var caption := button.get_node("Caption") as Label
-	caption.offset_top = -caption_height
-	caption.offset_bottom = 0.0
-	caption.add_theme_font_size_override("font_size", font_size)
+	ToolbarBuilder.apply_button_metrics(button, width, height, caption_height, font_size,
+		_map_editor_mode)
 
 
 ## 两种模式均按 PPT 使用两列；操纵按钮独占最下方一行。
 func _apply_workbench_column_layout() -> void:
-	var columns: int = EDITOR_TOOL_COLUMNS if _map_editor_mode else PLAY_TOOL_COLUMNS
-	var button_width := EDITOR_TOOL_BUTTON_WIDTH if _map_editor_mode else PLAY_TOOL_BUTTON_WIDTH
-	var button_height := EDITOR_TOOL_BUTTON_HEIGHT if _map_editor_mode else PLAY_TOOL_BUTTON_HEIGHT
-	var h_gap := EDITOR_TOOL_BUTTON_H_GAP if _map_editor_mode else PLAY_TOOL_BUTTON_H_GAP
-	var v_gap := EDITOR_TOOL_BUTTON_V_GAP if _map_editor_mode else PLAY_TOOL_BUTTON_V_GAP
-	var hand_size := EDITOR_HAND_BUTTON_SIZE if _map_editor_mode else PLAY_HAND_BUTTON_SIZE
-	var caption_height := 14.0 if _map_editor_mode else 12.0
-	var width := columns * button_width + (columns - 1) * h_gap
-	tool_grid.columns = columns
-	tool_grid.add_theme_constant_override("h_separation", int(h_gap))
-	tool_grid.add_theme_constant_override("v_separation", int(v_gap))
-	tool_grid.offset_right = width
-	var visible_count := 0
-	for child in tool_grid.get_children():
-		if child is Control and child.visible:
-			_apply_tool_button_metrics(child as Button, button_width, button_height,
-				caption_height, 10 if _map_editor_mode else 8)
-			visible_count += 1
-	var rows := ceili(float(visible_count) / float(columns))
-	var grid_height := rows * button_height + maxi(rows - 1, 0) * v_gap
-	tool_grid.offset_bottom = grid_height
-	var hand_gap := 12.0 if _map_editor_mode else 8.0
-	hand_button.custom_minimum_size = Vector2.ONE * hand_size
-	hand_button.add_theme_constant_override("icon_max_width", 58 if _map_editor_mode else 42)
-	hand_button.position = Vector2((width - hand_size) * 0.5, grid_height + hand_gap)
-	hand_button.size = Vector2.ONE * hand_size
-	var hand_caption := hand_button.get_node("Caption") as Label
-	hand_caption.offset_top = 2.0
-	hand_caption.offset_bottom = 2.0 + caption_height
-	hand_caption.add_theme_font_size_override("font_size", 10 if _map_editor_mode else 8)
-	if _map_editor_mode:
-		buttons.offset_left = -186.0
-		buttons.offset_top = 116.0
-		toggle_button.offset_left = -186.0
-		toggle_button.offset_top = 56.0
-		toggle_button.offset_bottom = 84.0
-		toggle_button.add_theme_font_size_override("font_size", 16)
-	else:
-		buttons.offset_left = -42.0 - PLAY_TOOLBAR_X_OFFSET
-		buttons.offset_top = 160.0 + PLAY_TOOLBAR_Y_OFFSET
-		toggle_button.offset_left = -22.0 - PLAY_TOOLBAR_X_OFFSET
-		toggle_button.offset_top = 136.0 + PLAY_TOOLBAR_Y_OFFSET
-		toggle_button.offset_bottom = 154.0 + PLAY_TOOLBAR_Y_OFFSET
-		toggle_button.add_theme_font_size_override("font_size", 10)
-	buttons.offset_right = buttons.offset_left + width
-	buttons.offset_bottom = buttons.offset_top + grid_height + hand_size + hand_gap + caption_height + 2.0
-	toggle_button.offset_right = toggle_button.offset_left + (width if _map_editor_mode else 36.0)
+	ToolbarBuilder.apply_column_layout(tool_grid, hand_button, buttons, toggle_button,
+		_map_editor_mode, {
+			"columns": EDITOR_TOOL_COLUMNS if _map_editor_mode else PLAY_TOOL_COLUMNS,
+			"button_width": EDITOR_TOOL_BUTTON_WIDTH if _map_editor_mode else PLAY_TOOL_BUTTON_WIDTH,
+			"button_height": EDITOR_TOOL_BUTTON_HEIGHT if _map_editor_mode else PLAY_TOOL_BUTTON_HEIGHT,
+			"h_gap": EDITOR_TOOL_BUTTON_H_GAP if _map_editor_mode else PLAY_TOOL_BUTTON_H_GAP,
+			"v_gap": EDITOR_TOOL_BUTTON_V_GAP if _map_editor_mode else PLAY_TOOL_BUTTON_V_GAP,
+			"hand_size": EDITOR_HAND_BUTTON_SIZE if _map_editor_mode else PLAY_HAND_BUTTON_SIZE,
+			"caption_height": 14.0 if _map_editor_mode else 12.0,
+			"toolbar_x_offset": PLAY_TOOLBAR_X_OFFSET,
+			"toolbar_y_offset": PLAY_TOOLBAR_Y_OFFSET,
+		})
 
 
 func _update_screen_fixed_position() -> void:
@@ -851,7 +659,7 @@ func _refresh_workbench_visibility() -> void:
 	if not Engine.is_editor_hint() and not _map_editor_mode and _side_panel == null:
 		return # 动态色盘装配完成后再参与归属交接。
 	var creative := get_parent().get_node_or_null("Creative")
-	if not _map_editor_mode and creative != null and creative.active:
+	if not _map_editor_mode and creative != null and creative.get("active") == true:
 		_set_workbench_visible(false, false)
 		return
 	# 单独预览或编辑地图时，工具栏保持可见。

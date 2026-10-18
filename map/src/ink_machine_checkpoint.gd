@@ -46,7 +46,7 @@ func _physics_process(delta: float) -> void:
 	if not is_instance_valid(_moving) or _moving.body == null:
 		return
 	var creative := get_parent().get_node_or_null("Creative")
-	if creative != null and creative.active:
+	if creative != null and creative.get("active") == true:
 		return
 	var motor := get_node_or_null(motor_path) if not motor_path.is_empty() else null
 	if not _powered and motor != null and motor.used_power > 0:

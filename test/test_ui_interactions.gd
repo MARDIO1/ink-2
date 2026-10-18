@@ -1,6 +1,6 @@
 extends SceneTree
 ## 真实 Viewport 点击与键盘回归。地图不写盘，声音偏好使用独立测试路径。
-const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
+const Store := preload("res://blueprint/src/blueprint_store.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 var checks := 0

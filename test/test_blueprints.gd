@@ -1,6 +1,7 @@
 extends SceneTree
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
-const Store := preload("res://ui/hud/blueprint/src/blueprint_store.gd")
+const Store := preload("res://blueprint/src/blueprint_store.gd")
+const Place := preload("res://blueprint/src/blueprint_place.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Bearing := preload("res://ink/yellow/src/axle.gd")
 const Stroke := preload("res://ink/yellow/src/stroke.gd")
@@ -45,22 +46,22 @@ func _run() -> void:
 	check("capture is read-only and does not create undo", surface.black_image.get_data() == before and surface._undo_steps.size() == undo_count)
 	check("preview retains original colors and transparent corners", Codec.preview(data).get_pixel(4, 4) == Palette.BLACK.color and Codec.preview(data).get_pixel(0, 0).a == 0)
 	check("empty selection rejected", Codec.capture(canvas, Rect2i(100, 100, 8, 8)).has("error"))
-	check("placement outside bounds rejected", not Codec.place(canvas, data, Vector2i(254, 254)).is_empty())
-	check("overlap rejected without altering source", not Codec.place(canvas, data, Vector2i(16, 16)).is_empty() and surface.black_image.get_data() == before)
-	check("editor can paste original colors", Codec.place(canvas, data, Vector2i(80, 80)).is_empty() and surface.material_at(84, 84) == Palette.BLACK.id and surface.material_at(85, 84) == Palette.GREY.id)
+	check("placement outside bounds rejected", not Place.place(canvas, data, Vector2i(254, 254)).is_empty())
+	check("overlap rejected without altering source", not Place.place(canvas, data, Vector2i(16, 16)).is_empty() and surface.black_image.get_data() == before)
+	check("editor can paste original colors", Place.place(canvas, data, Vector2i(80, 80)).is_empty() and surface.material_at(84, 84) == Palette.BLACK.id and surface.material_at(85, 84) == Palette.GREY.id)
 	check("one placement adds one transaction", surface._undo_steps.size() == undo_count + 1)
 	check("undo removes entire placement", surface.undo_last_edit() and surface.material_at(84, 84) == 0)
 	check("redo restores entire placement", surface.redo_last_edit() and surface.material_at(85, 84) == Palette.GREY.id)
 	surface.undo_last_edit()
 	canvas.set_map_editor_mode(false)
 	canvas._workbench_nearby = false
-	check("gameplay rejects paste away from workbench", Codec.place(canvas, data, Vector2i(80, 80)) == "请靠近画布使用")
+	check("gameplay rejects paste away from workbench", Place.place(canvas, data, Vector2i(80, 80)) == "请靠近画布使用")
 	canvas._workbench_nearby = true
 	surface.ink_free = false
 	var health = surface._health_node()
 	var black_before: float = health.ink_of(Palette.BLACK.id)
 	var grey_before: float = health.ink_of(Palette.GREY.id)
-	check("gameplay placement succeeds near canvas", Codec.place(canvas, data, Vector2i(80, 80)).is_empty())
+	check("gameplay placement succeeds near canvas", Place.place(canvas, data, Vector2i(80, 80)).is_empty())
 	check("each ink billed independently", health.ink_of(Palette.BLACK.id) == black_before - 1 and health.ink_of(Palette.GREY.id) == grey_before - 1)
 	surface.undo_last_edit()
 	check("undo refunds exactly once", health.ink_of(Palette.BLACK.id) == black_before and health.ink_of(Palette.GREY.id) == grey_before)
@@ -69,7 +70,7 @@ func _run() -> void:
 	surface.undo_last_edit()
 	health.reduce(Palette.GREY.id, grey_before - 999)
 	before = surface.black_image.get_data()
-	check("one deficient color rejects atomic paste", not Codec.place(canvas, data, Vector2i(80, 80)).is_empty() and surface.black_image.get_data() == before and health.ink_of(Palette.BLACK.id) == black_before)
+	check("one deficient color rejects atomic paste", not Place.place(canvas, data, Vector2i(80, 80)).is_empty() and surface.black_image.get_data() == before and health.ink_of(Palette.BLACK.id) == black_before)
 	health.add(Palette.GREY.id, grey_before - 999)
 	surface.ink_free = true
 	canvas.set_map_editor_mode(true)
@@ -124,7 +125,7 @@ func _run() -> void:
 	var mechanism := Codec.capture(canvas, Rect2i(10, 10, 40, 40))
 	check("multilayer mechanisms captured", not mechanism.has("error") and mechanism.rods.size() == 1 and mechanism.blue.size() == 1 and mechanism.springs.size() == 1 and mechanism.motors.size() == 1)
 	check("partial spring rejected", Codec.capture(canvas, Rect2i(18, 18, 8, 8)).has("error"))
-	check("mechanism placement restores drafts", Codec.place(canvas, mechanism, Vector2i(140, 140)).is_empty() and surface.rod_layer.pixels.get_pixel(154, 150).a > 0.5 and surface.blue_layer.mask.has(Vector2i(150, 150)))
+	check("mechanism placement restores drafts", Place.place(canvas, mechanism, Vector2i(140, 140)).is_empty() and surface.rod_layer.pixels.get_pixel(154, 150).a > 0.5 and surface.blue_layer.mask.has(Vector2i(150, 150)))
 	check("mechanism placement undo succeeds", surface.undo_last_edit())
 	mechanism.name = "多层机关"
 	check("spring and motor metadata survive JSON", store.save(mechanism) and not store.read(mechanism.id).is_empty())
@@ -135,7 +136,7 @@ func _run() -> void:
 	for ink in Palette.INKS:
 		balances[ink.material.id] = health.ink_of(ink.material.id)
 	var required := Codec.costs(mechanism)
-	check("multilayer gameplay paste succeeds", Codec.place(canvas, store.read(mechanism.id), Vector2i(140, 140)).is_empty())
+	check("multilayer gameplay paste succeeds", Place.place(canvas, store.read(mechanism.id), Vector2i(140, 140)).is_empty())
 	var billed_correctly := true
 	for material in balances:
 		billed_correctly = billed_correctly and health.ink_of(material) == balances[material] - required.get(material, 0)
@@ -174,7 +175,7 @@ func _run() -> void:
 	check("rail blueprint survives JSON", store.save(rail_data)
 		and store.read(rail_data.id).get("rails", []).size() == 1
 		and store.read(rail_data.id).get("slider_pins", []).size() == 1)
-	var placed := Codec.place(canvas, store.read(rail_data.id), Vector2i(100, 100))
+	var placed := Place.place(canvas, store.read(rail_data.id), Vector2i(100, 100))
 	check("rail placement restores rail and pin", placed.is_empty()
 		and surface.rod_layer.rails.size() == rails_before + 1
 		and Vector2(surface.rod_layer.rails[-1].a) == Vector2(102.5, 108.5)
@@ -182,6 +183,10 @@ func _run() -> void:
 		and surface.rod_layer.slider_pins.size() == pins_before + 1
 		and Vector2(surface.rod_layer.slider_pins[-1].source) == Vector2(104.5, 104.5)
 		and Vector2(surface.rod_layer.slider_pins[-1].position) == Vector2(104.5, 108.5))
+	# 放置是复制数据，不是共享引用：改新导轨不能影响原导轨。
+	check("rail placement creates independent entries",
+		surface.rod_layer.rails[-1] != surface.rod_layer.rails[0]
+		and surface.rod_layer.slider_pins[-1] != surface.rod_layer.slider_pins[0])
 	check("rail placement undo restores metadata", surface.undo_last_edit()
 		and surface.rod_layer.rails.size() == rails_before
 		and surface.rod_layer.slider_pins.size() == pins_before)
@@ -194,14 +199,14 @@ func _run() -> void:
 	var gear_data := Codec.capture(canvas, Rect2i(45, 55, 52, 52))
 	check("ink gear blueprint retains axle without editor-only restriction", not gear_data.has("error") and gear_data.gear_centers.size() == 1 and gear_data.gears.is_empty() and not gear_data.editor_only)
 	var count_before: int = level.world.bodies.size()
-	check("gear paste stays ink until solidified", Codec.place(canvas, gear_data, Vector2i(110, 55)).is_empty() and level.world.bodies.size() == count_before and surface.gear_centers.size() == 2)
+	check("gear paste stays ink until solidified", Place.place(canvas, gear_data, Vector2i(110, 55)).is_empty() and level.world.bodies.size() == count_before and surface.gear_centers.size() == 2)
 	check("gear paste undo restores draft axle count", surface.undo_last_edit() and surface.gear_centers.size() == 1)
 	check("gear paste redo restores draft axle", surface.redo_last_edit() and surface.gear_centers.size() == 2)
 	gear_data.name = "墨水齿轮"
 	check("gear draft persists as safe JSON", store.save(gear_data) and store.read(gear_data.id).gear_centers == gear_data.gear_centers)
 	canvas.set_map_editor_mode(false)
 	canvas._workbench_nearby = true
-	check("ordinary ink gear blueprint works near gameplay canvas", Codec.place(canvas, gear_data, Vector2i(180, 55)).is_empty())
+	check("ordinary ink gear blueprint works near gameplay canvas", Place.place(canvas, gear_data, Vector2i(180, 55)).is_empty())
 	canvas.set_map_editor_mode(true)
 	canvas.generate(false)
 	var axles: Array = level.get_children().filter(func(node): return node is Bearing and not node.is_queued_for_deletion())

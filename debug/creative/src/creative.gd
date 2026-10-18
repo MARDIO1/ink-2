@@ -12,8 +12,8 @@ const HEALTH_UI_GROUP := &"health_ui"
 const MONSTER_CONTAINER_NAME := &"Monsters"
 const PLAYER_SPAWN_NAME := &"PlayerSpawn"
 const PLAYER_SPAWN_GROUP := &"player_spawn"
-const RESPAWN_POINT_PREFIX := "RespawnPoint"
-const RESPAWN_POINT_GROUP := &"respawn_point"
+const RESPAWN_POINT_PREFIX := LayoutTools.RESPAWN_PREFIX
+const RESPAWN_POINT_GROUP := LayoutTools.RESPAWN_GROUP
 const PLAY_CANVAS_GROUP := &"play_canvas"
 ## 模式常量只在 `application/editor_modes.gd` 定义一处；这里保留同名常量是为了
 ## 不破坏既有引用（测试和外部都直接写 `creative.LAYOUT_MODE_*`）。
@@ -38,6 +38,12 @@ const LAYOUT_MODE_DELETE_CANVAS := Modes.LAYOUT_MODE_DELETE_CANVAS
 const LAYOUT_MODE_DELETE_RESPAWN := Modes.LAYOUT_MODE_DELETE_RESPAWN
 const LAYOUT_MODES := Modes.LAYOUT_MODES
 const EditorSession := preload("res://debug/creative/application/editor_session.gd")
+## 保存/导出的纯逻辑；`creative` 只保留状态与调用顺序。
+const EditorSave := preload("res://debug/creative/application/editor_save.gd")
+## 布局物件的文档操作（找/建/删），不碰撤销与界面。
+const LayoutTools := preload("res://debug/creative/features/layout_tools.gd")
+## 小怪的文档操作（查找/计数/编辑器物理暂停）。
+const MonsterTools := preload("res://debug/creative/features/monster_tools.gd")
 const MONSTER_SCALE_STEP := 0.1
 ## 只保留非零正尺寸，避免退化碰撞体；不设玩法缩放上限。
 const MONSTER_MIN_SCALE := 0.01
@@ -48,9 +54,7 @@ const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
 const DialogueTriggerScript := preload("res://debug/creative/src/map_dialogue_trigger.gd")
 const MapTextScript := preload("res://ui/map_text/src/map_text_label.gd")
 const MapPortalScript := preload("res://actor/portal/src/map_portal.gd")
-const MapPortalScene := preload("res://actor/portal/map_portal.tscn")
 const InkFountainScript := preload("res://actor/fountain/src/ink_fountain.gd")
-const InkFountainScene := preload("res://actor/fountain/ink_fountain.tscn")
 const MapPlacementOverlayScript := preload("res://debug/creative/src/map_placement_overlay.gd")
 const MapImportedImageScript := preload("res://debug/creative/src/map_imported_image.gd")
 const PlayCanvasScene := preload("res://actor/canvas/canvas.tscn")
@@ -972,37 +976,15 @@ func _update_layout_status() -> void:
 
 
 func _collect_nodes_recursive(root: Node) -> Array:
-	var result: Array = []
-	for child in root.get_children():
-		result.append(child)
-		result.append_array(_collect_nodes_recursive(child))
-	return result
+	return LayoutTools.collect(root)
 
 
 func _unique_level_node_name(prefix: String) -> String:
-	var level := _level_root()
-	if level == null:
-		return prefix
-	var suffix := 1
-	var candidate := prefix
-	while level.get_node_or_null(NodePath(candidate)) != null:
-		suffix += 1
-		candidate = "%s%d" % [prefix, suffix]
-	return candidate
+	return LayoutTools.unique_name(_level_root(), prefix)
 
 
 func _respawn_points() -> Array:
-	var result: Array = []
-	var level := _level_root()
-	if level == null:
-		return result
-	for node in _collect_nodes_recursive(level):
-		if node is Marker2D and node != _spawn_point \
-		and (node.is_in_group(RESPAWN_POINT_GROUP) or String(node.name).begins_with(RESPAWN_POINT_PREFIX)):
-			if not node.is_in_group(RESPAWN_POINT_GROUP):
-				node.add_to_group(RESPAWN_POINT_GROUP, true)
-			result.append(node)
-	return result
+	return LayoutTools.respawn_points(_level_root(), _spawn_point)
 
 
 func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
@@ -1045,72 +1027,113 @@ func _handle_layout_mouse_button(event: InputEventMouseButton) -> bool:
 		return false
 	if event.pressed:
 		var world_position := _event_world_position(event)
-		match _session.mode:
-			CONTROL_MODE:
-				_session.selected_control_target = _pick_control_target(world_position)
-				if event.double_click and is_instance_valid(_session.selected_control_target) \
-				and _session.selected_control_target.is_in_group(MapPortalScript.GROUP):
-					_open_portal_menu(_session.selected_control_target)
-					return true
-				_begin_layout_drag(_session.selected_control_target, world_position)
-				_session.layout_drag_resizing = is_instance_valid(_session.selected_control_target) \
-					and _session.selected_control_target.is_in_group(MapImportedImageScript.GROUP) \
-					and _session.selected_control_target.resize_handle_hit(world_position)
-			LAYOUT_MODE_PLACE_RESPAWN:
-				# 放置类工具统一：按在已有对象上是移动它，按在空地上才是新增。
-				var picked_respawn := _pick_respawn_point(world_position)
-				if picked_respawn != null:
-					_begin_layout_drag(picked_respawn, world_position)
-				else:
-					place_respawn_point(world_position)
-				return true
-			LAYOUT_MODE_DELETE_RESPAWN:
-				delete_respawn_point(_pick_respawn_point(world_position))
-				return true
-			LAYOUT_MODE_PLACE_CANVAS:
-				var picked_canvas := _pick_play_canvas(world_position)
-				if picked_canvas != null:
-					_begin_layout_drag(picked_canvas, world_position)
-				else:
-					place_play_canvas(world_position)
-				return true
-			LAYOUT_MODE_PLACE_PORTAL:
-				var picked_portal := _pick_portal(world_position)
-				if picked_portal != null:
-					_begin_layout_drag(picked_portal, world_position)
-					return true
-				var placed_portal := place_portal(world_position, _portal_choice())
-				if is_instance_valid(placed_portal):
-					select_control_tool()
-					_session.selected_control_target = placed_portal
-					_select_portal(placed_portal)
-					_update_layout_status()
-				return true
-			LAYOUT_MODE_FOUNTAIN:
-				var picked_fountain := _pick_ink_fountain(world_position)
-				if picked_fountain != null:
-					_begin_layout_drag(picked_fountain, world_position)
-				else:
-					place_ink_fountain(world_position)
-				return true
-			LAYOUT_MODE_DELETE_PORTAL:
-				delete_portal(_pick_portal(world_position))
-				return true
-			LAYOUT_MODE_DELETE_CANVAS:
-				delete_play_canvas(_pick_play_canvas(world_position))
-				return true
-			LAYOUT_MODE_MOVE_SPAWN:
-				_begin_layout_drag(_pick_spawn_point(world_position), world_position)
-			LAYOUT_MODE_MOVE_RESPAWN:
-				_begin_layout_drag(_pick_respawn_point(world_position), world_position)
-			LAYOUT_MODE_MOVE_CANVAS:
-				_begin_layout_drag(_pick_play_canvas(world_position), world_position)
+		# 模式分发表：新增布局工具 = 加一行映射 + 一个处理函数，不再往 match 里塞分支。
+		if _layout_click.is_empty():
+			_configure_layout_actions()
+		var handler: Callable = _layout_click.get(_session.mode)
+		if handler.is_valid():
+			handler.call(world_position, event)
 		return true
 	if _session.layout_drag_target != null:
 		_handle_layout_mouse_motion(event)
 		_finish_layout_drag()
 		return true
 	return false
+
+
+## 布局模式 → 左键处理函数。键是 `editor_modes` 里的负数常量。
+## 只在第一次用到时构建：类体里直接写方法名会被当成未定义标识符。
+var _layout_click: Dictionary = {}
+
+
+func _configure_layout_actions() -> void:
+	_layout_click = {
+		CONTROL_MODE: _click_control,
+		LAYOUT_MODE_PLACE_RESPAWN: _click_place_respawn,
+		LAYOUT_MODE_DELETE_RESPAWN: _click_delete_respawn,
+		LAYOUT_MODE_MOVE_RESPAWN: _click_move_respawn,
+		LAYOUT_MODE_PLACE_CANVAS: _click_place_canvas,
+		LAYOUT_MODE_DELETE_CANVAS: _click_delete_canvas,
+		LAYOUT_MODE_MOVE_CANVAS: _click_move_canvas,
+		LAYOUT_MODE_PLACE_PORTAL: _click_place_portal,
+		LAYOUT_MODE_DELETE_PORTAL: _click_delete_portal,
+		LAYOUT_MODE_FOUNTAIN: _click_fountain,
+		LAYOUT_MODE_MOVE_SPAWN: _click_move_spawn,
+	}
+
+
+func _click_control(world_position: Vector2, event: InputEventMouseButton) -> void:
+	_session.selected_control_target = _pick_control_target(world_position)
+	if event.double_click and is_instance_valid(_session.selected_control_target) \
+	and _session.selected_control_target.is_in_group(MapPortalScript.GROUP):
+		_open_portal_menu(_session.selected_control_target)
+		return
+	_begin_layout_drag(_session.selected_control_target, world_position)
+	_session.layout_drag_resizing = is_instance_valid(_session.selected_control_target) \
+		and _session.selected_control_target.is_in_group(MapImportedImageScript.GROUP) \
+		and _session.selected_control_target.resize_handle_hit(world_position)
+
+
+## 放置类工具统一：按在已有对象上是移动它，按在空地上才是新增。
+func _click_place_respawn(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	var picked := _pick_respawn_point(world_position)
+	if picked != null:
+		_begin_layout_drag(picked, world_position)
+	else:
+		place_respawn_point(world_position)
+
+
+func _click_delete_respawn(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	delete_respawn_point(_pick_respawn_point(world_position))
+
+
+func _click_move_respawn(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	_begin_layout_drag(_pick_respawn_point(world_position), world_position)
+
+
+func _click_place_canvas(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	var picked := _pick_play_canvas(world_position)
+	if picked != null:
+		_begin_layout_drag(picked, world_position)
+	else:
+		place_play_canvas(world_position)
+
+
+func _click_delete_canvas(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	delete_play_canvas(_pick_play_canvas(world_position))
+
+
+func _click_move_canvas(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	_begin_layout_drag(_pick_play_canvas(world_position), world_position)
+
+
+func _click_place_portal(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	var picked := _pick_portal(world_position)
+	if picked != null:
+		_begin_layout_drag(picked, world_position)
+		return
+	var placed := place_portal(world_position, _portal_choice())
+	if is_instance_valid(placed):
+		select_control_tool()
+		_session.selected_control_target = placed
+		_select_portal(placed)
+		_update_layout_status()
+
+
+func _click_delete_portal(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	delete_portal(_pick_portal(world_position))
+
+
+func _click_fountain(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	var picked := _pick_ink_fountain(world_position)
+	if picked != null:
+		_begin_layout_drag(picked, world_position)
+	else:
+		place_ink_fountain(world_position)
+
+
+func _click_move_spawn(world_position: Vector2, _event: InputEventMouseButton) -> void:
+	_begin_layout_drag(_pick_spawn_point(world_position), world_position)
 
 
 func _handle_layout_mouse_motion(event: InputEventMouse) -> bool:
@@ -1149,11 +1172,7 @@ func _begin_layout_drag(target, world_position: Vector2) -> void:
 	if target == null:
 		_refresh_layout_overlay()
 		return
-	_session.layout_drag_target = target
-	_session.layout_drag_offset = target.global_position - world_position
-	_session.layout_drag_start = target.global_position
-	_session.layout_drag_start_scale = target.scale
-	_session.layout_drag_resizing = false
+	LayoutTools.begin_drag(_session, target, world_position)
 	if target.is_in_group(&"map_monster"):
 		_lock_monster_drag_view()
 	_refresh_layout_overlay(target)
@@ -1165,28 +1184,16 @@ func _begin_layout_drag(target, world_position: Vector2) -> void:
 func _finish_layout_drag() -> void:
 	_flush_monster_drag_move()
 	_unlock_monster_drag_view()
-	var target = _session.layout_drag_target
-	_session.layout_drag_target = null
-	if is_instance_valid(target) and (not target.global_position.is_equal_approx(_session.layout_drag_start)
-		or not target.scale.is_equal_approx(_session.layout_drag_start_scale)):
-		_record_edit({
-			"type": &"object_transform",
-			"target": target,
-			"old_position": _session.layout_drag_start,
-			"old_scale": _session.layout_drag_start_scale,
-		})
+	var edit: Dictionary = LayoutTools.finish_drag(_session)
+	if not edit.is_empty():
+		_record_edit(edit)
 	_refresh_layout_overlay(_session.selected_control_target if _session.mode == CONTROL_MODE else null)
-	_session.layout_drag_resizing = false
 
 
 func _cancel_layout_drag() -> void:
 	_flush_monster_drag_move()
 	_unlock_monster_drag_view()
-	_session.layout_drag_target = null
-	_session.layout_drag_offset = Vector2.ZERO
-	_session.layout_drag_start = Vector2.ZERO
-	_session.layout_drag_start_scale = Vector2.ONE
-	_session.layout_drag_resizing = false
+	LayoutTools.cancel_drag(_session)
 
 
 func _pick_control_target(world_position: Vector2, resizable_only := false):
@@ -1336,35 +1343,18 @@ func _pick_spawn_point(world_position: Vector2) -> Marker2D:
 
 
 func _pick_respawn_point(world_position: Vector2) -> Marker2D:
-	var nearest: Marker2D = null
-	var nearest_distance := _layout_pick_radius()
-	for point in _respawn_points():
-		var distance: float = point.global_position.distance_to(world_position)
-		if distance <= nearest_distance:
-			nearest = point
-			nearest_distance = distance
-	return nearest
+	return LayoutTools.pick_respawn_point(_respawn_points(), world_position, _layout_pick_radius())
 
 
 func _pick_play_canvas(world_position: Vector2) -> Node2D:
-	var canvases := _play_canvases()
-	for index in range(canvases.size() - 1, -1, -1):
-		var canvas = canvases[index]
-		if Rect2(Vector2.ZERO, Vector2(canvas.get("canvas_size"))).has_point(canvas.to_local(world_position)):
-			return canvas
-	return null
+	return LayoutTools.pick_play_canvas(_play_canvases(), world_position)
 
 
 func place_respawn_point(world_position: Vector2, record_undo := true) -> Marker2D:
 	var level := _level_root()
-	if level == null:
+	var point: Marker2D = LayoutTools.create_respawn_point(level, world_position)
+	if point == null:
 		return null
-	var point := Marker2D.new()
-	point.name = _unique_level_node_name(RESPAWN_POINT_PREFIX)
-	level.add_child(point)
-	point.global_position = world_position
-	point.add_to_group(RESPAWN_POINT_GROUP, true)
-	point.owner = level
 	if record_undo:
 		_record_edit({"type": &"respawn_place", "target": point})
 	_refresh_layout_overlay(point)
@@ -1384,53 +1374,25 @@ func delete_respawn_point(point: Marker2D) -> bool:
 
 
 func _portals() -> Array:
-	var result: Array = []
-	var level := _level_root()
-	if level != null:
-		for child in level.get_children():
-			if child.is_in_group(MapPortalScript.GROUP):
-				result.append(child)
-	return result
+	return LayoutTools.portals(_level_root())
 
 
 func _pick_portal(world_position: Vector2) -> Node2D:
-	var portals := _portals()
-	for index in range(portals.size() - 1, -1, -1):
-		if portals[index].contains_world_point(world_position):
-			return portals[index]
-	return null
+	return LayoutTools.pick_portal(_portals(), world_position)
 
 
 func _ink_fountains() -> Array:
-	var result: Array = []
-	var level := _level_root()
-	if level == null:
-		return result
-	for node in _collect_nodes_recursive(level):
-		if node.is_in_group(InkFountainScript.GROUP):
-			result.append(node)
-	return result
+	return LayoutTools.ink_fountains(_level_root())
 
 
 func _pick_ink_fountain(world_position: Vector2) -> Node2D:
-	var fountains := _ink_fountains()
-	for index in range(fountains.size() - 1, -1, -1):
-		if fountains[index].contains_world_point(world_position):
-			return fountains[index]
-	return null
+	return LayoutTools.pick_ink_fountain(_ink_fountains(), world_position)
 
 
 func place_ink_fountain(world_position: Vector2, record_undo := true) -> Node2D:
-	var level := _level_root()
-	if level == null:
+	var fountain: Node2D = LayoutTools.create_ink_fountain(_level_root(), world_position)
+	if fountain == null:
 		return null
-	var fountain := InkFountainScene.instantiate() as Node2D
-	fountain.name = _unique_level_node_name("InkFountain")
-	level.add_child(fountain)
-	fountain.global_position = world_position
-	# 固定尺寸只存在于打包场景内部，编辑器永远不修改根节点 scale。
-	fountain.scale = Vector2.ONE
-	fountain.owner = level
 	if record_undo:
 		_record_edit({"type": &"fountain_place", "target": fountain})
 	_update_layout_status()
@@ -1448,15 +1410,9 @@ func delete_ink_fountain(fountain: Node2D) -> bool:
 
 
 func place_portal(world_position: Vector2, destination := "", record_undo := true) -> Node2D:
-	var level := _level_root()
-	if level == null:
+	var portal: Node2D = LayoutTools.create_portal(_level_root(), world_position, destination)
+	if portal == null:
 		return null
-	var portal := MapPortalScene.instantiate() as Node2D
-	portal.name = _unique_level_node_name("Portal")
-	portal.target_map = destination
-	level.add_child(portal)
-	portal.global_position = world_position
-	portal.owner = level
 	if record_undo:
 		_record_edit({"type": &"portal_place", "target": portal})
 	_refresh_layout_overlay(portal)
@@ -1881,17 +1837,13 @@ func place_monster(
 	var container := _ensure_monster_container()
 	if container == null:
 		return null
-	var monster := MONSTER_SCENES[scene_index].instantiate() as Node2D
-	if monster == null:
-		return null
-	monster.name = MONSTER_NODE_NAMES[scene_index]
 	var fixed_scale_value: float = MONSTER_FIXED_SCALES.get(kind, 1.0)
 	# 无指定尺寸时采用默认值；删除撤销/恢复必须保留用户缩放。
-	monster.scale = Vector2.ONE * fixed_scale_value if monster_scale == Vector2.ZERO else monster_scale
-	container.add_child(monster, true)
-	monster.global_position = world_position
-	if monster.has_method("sync_physics_from_node"):
-		monster.sync_physics_from_node(true)
+	var scale := Vector2.ONE * fixed_scale_value if monster_scale == Vector2.ZERO else monster_scale
+	var monster: Node2D = MonsterTools.create(container, MONSTER_SCENES[scene_index],
+		MONSTER_NODE_NAMES[scene_index], world_position, scale)
+	if monster == null:
+		return null
 	if monster_id.is_empty():
 		monster_id = _new_monster_id()
 	monster.set("editor_id", monster_id)
@@ -1919,34 +1871,18 @@ func remove_monster_at(world_position: Vector2) -> bool:
 	}
 	if nearest == _session.selected_monster:
 		_set_selected_monster(null)
-	container.remove_child(nearest)
-	nearest.queue_free()
+	MonsterTools.remove(container, nearest)
 	_record_edit(removed)
 	return true
 
 
 func _set_monster_physics_paused(paused: bool) -> void:
-	var container := _ensure_monster_container()
-	if container == null:
-		return
-	for child in container.get_children():
-		if child.has_method("set_editor_physics_paused"):
-			child.set_editor_physics_paused(paused)
+	MonsterTools.set_physics_paused(_ensure_monster_container(), paused)
 
 
 func _find_monster_at(world_position: Vector2) -> Node2D:
-	var container := _ensure_monster_container()
-	if container == null:
-		return null
-	var children := container.get_children()
-	var margin := _layout_pick_radius() * (8.0 / 28.0)
-	for index in range(children.size() - 1, -1, -1):
-		var child = children[index]
-		if not child is Node2D or not child.is_in_group(MapMonsterScript.GROUP):
-			continue
-		if child.editor_contains_point(world_position, margin):
-			return child
-	return null
+	return MonsterTools.find_at(_ensure_monster_container(), world_position,
+		_layout_pick_radius() * (8.0 / 28.0))
 
 
 func _set_selected_monster(monster: Node2D) -> void:
@@ -2014,8 +1950,7 @@ func _record_monster_transform(monster: Node2D, old_position: Vector2, old_scale
 
 
 func monster_count() -> int:
-	var container := _ensure_monster_container()
-	return container.get_child_count() if container != null else 0
+	return MonsterTools.count(_ensure_monster_container())
 
 
 ## 对话输入窗口：每句一个文本栏，Enter 自动建立并聚焦下一句。
@@ -2530,6 +2465,12 @@ func _record_edit(edit: Dictionary) -> void:
 func _dispose_history_edit(edit: Dictionary) -> void:
 	_commands._dispose_history_edit(edit)
 
+
+## 撤销重放要靠 `editor_id` 找回被恢复的节点；实现已搬进 `editor_commands`，
+## 这里保留转发是因为 `test_editor_record_redo` 仍按旧入口调用（P7 随测试一起改）。
+func _find_editor_node(container: Node, editor_id: String) -> Node:
+	return _commands._find_editor_node(container, editor_id)
+
 func _clear_edit_history() -> void:
 	_history.clear()
 
@@ -2561,19 +2502,10 @@ func _remove_monster_by_id(monster_id: String) -> bool:
 
 
 func _apply_monster_transform(monster_id: String, position: Vector2, scale: Vector2) -> bool:
-	var container := _ensure_monster_container()
-	if container == null or monster_id.is_empty():
-		return false
-	for child in container.get_children():
-		if not child is Node2D or str(child.get("editor_id")) != monster_id:
-			continue
-		child.global_position = position
-		child.scale = scale
-		if child.has_method("sync_physics_from_node"):
-			child.sync_physics_from_node(true)
+	var applied := MonsterTools.apply_transform(_ensure_monster_container(), monster_id, position, scale)
+	if applied:
 		_update_monster_status()
-		return true
-	return false
+	return applied
 
 
 func _new_monster_id() -> String:
@@ -2707,34 +2639,35 @@ func _save_current_map_overwrite() -> Error:
 
 
 ## 编辑中的自动保存只打包当前状态，不固化画布，保证下一步仍然可以撤销和继续绘制。
+## 具体节流与回调在 `editor_save.gd`；这里只提供当前编辑状态。
 func _queue_edit_auto_save() -> void:
 	if not active or not auto_save_edits or map_path.is_empty():
 		return
 	_auto_save_revision += 1
-	var revision := _auto_save_revision
-	get_tree().create_timer(auto_save_delay).timeout.connect(_run_edit_auto_save.bind(revision))
-	get_tree().create_timer(maxf(full_auto_save_delay, auto_save_delay)).timeout.connect(
-		_run_full_edit_auto_save.bind(revision)
-	)
+	EditorSave.schedule_auto_save({
+		"host": self,
+		"revision": _auto_save_revision,
+		"map_path": map_path,
+		"snapshot_delay": auto_save_delay,
+		"full_delay": full_auto_save_delay,
+		"map_canvas": _map_canvas,
+		"is_current": _auto_save_is_current,
+		"on_snapshot": _snapshot_written,
+		"export_scene": export_map_to,
+	})
 
 
-func _run_edit_auto_save(revision: int) -> void:
-	if revision != _auto_save_revision or not active or not auto_save_edits:
-		return
+## 只有这次编辑仍然是最新的、且还在编辑态，才允许落盘。
+func _auto_save_is_current(revision: int) -> bool:
+	return revision == _auto_save_revision and active and auto_save_edits
+
+
+## 快照是后台写的；这里只登记路径，退出/重进时据此恢复。
+func _snapshot_written(path: String) -> void:
+	edit_snapshot_path = path
 	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface") if _map_canvas != null else null
-	if surface != null and surface.has_method("request_snapshot"):
-		# 内容仍是 PNG 压缩数据，但 .snapshot 不会和编辑器的 PNG 导入线程争抢文件；
-		# 整图编码走后台线程，主线程不为它停帧。
-		var snapshot_path := map_path.get_basename() + ".edit.snapshot"
-		surface.request_snapshot(snapshot_path)
-		edit_snapshot_path = snapshot_path
-		surface.saved_ink_path = snapshot_path
-
-
-func _run_full_edit_auto_save(revision: int) -> void:
-	if revision != _auto_save_revision or not active or not auto_save_edits:
-		return
-	export_map_to(map_path, false)
+	if surface != null:
+		surface.saved_ink_path = path
 
 
 func _reload_saved_map_for_editor() -> bool:
@@ -2787,79 +2720,46 @@ func _activate_restored_editor() -> void:
 
 ## 保存入口始终写出可直接运行的 `.tscn`。prepare_canvas=false 仅供自动测试或只打包当前状态使用。
 func export_map_to(save_path: String, prepare_canvas := true) -> Error:
-	var scene := _level_root()
-	if scene == null:
-		push_error("Creative: 找不到关卡根")
-		return ERR_DOES_NOT_EXIST
-	save_path = _normalize_scene_path(save_path)
-	if save_path.is_empty():
-		push_error("Creative: 场景保存路径为空")
-		return ERR_INVALID_PARAMETER
-	if prepare_canvas and _map_canvas != null:
-		_map_canvas.generate(false)       # 保存不是用户编辑操作，不追加撤销步骤。
-		if save_preview_on_export:
-			var bake_error: Error = _map_canvas.bake_png(baked_map_path)
-			if bake_error != OK:
-				push_error("Map preview save failed: %s (%d)" % [baked_map_path, bake_error])
-				return bake_error
-		var surface: Node = _map_canvas.get_node_or_null("CanvasSurface")
-		if surface != null:
-			surface.saved_ink_path = ""
-		edit_snapshot_path = ""
-	_sync_node_transforms(scene)
-	var packed := PackedScene.new()
-	var error := _pack_as_playable_scene(packed, scene)
+	var error := EditorSave.export_scene({
+		"level_root": _level_root(),
+		"map_canvas": _map_canvas,
+		"player": _player,
+		"player_visible": _saved_player_visible,
+		"play_canvases": _play_canvases(),
+		"editing": active,
+		"solidify": prepare_canvas,
+		"bake_preview": save_preview_on_export,
+		"baked_map_path": baked_map_path,
+		"on_solidified": _clear_snapshot_links,
+	}, save_path)
 	if error == OK:
-		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(save_path).get_base_dir())
-		error = ResourceSaver.save(packed, save_path)
-	if error == OK:
-		print("MAP scene saved: %s" % ProjectSettings.globalize_path(save_path))
 		map_saved.emit(save_path)
-	else:
-		push_error("Map scene save failed: %s (%d)" % [save_path, error])
 	return error
 
 
+## 固化之后地图就是"一次成型"的可运行场景，快照链接要断掉，否则下次进编辑器会
+## 拿草稿快照覆盖已固化的地图。
+func _clear_snapshot_links() -> void:
+	var surface: Node = _map_canvas.get_node_or_null("CanvasSurface") if _map_canvas != null else null
+	if surface != null:
+		surface.saved_ink_path = ""
+	edit_snapshot_path = ""
+
+
 func _normalize_scene_path(path: String) -> String:
-	path = path.strip_edges()
-	if path.is_empty():
-		return ""
-	if path.get_extension().to_lower() == "tscn":
-		return path
-	if path.get_extension().is_empty():
-		return path + ".tscn"
-	return path.get_basename() + ".tscn"
+	return EditorSave.normalize_scene_path(path)
 
 
 ## 编辑中角色、普通画布和工具栏的状态不应被写进关卡。
 ## 打包瞬间恢复正常游玩布局，pack 完成后立刻回到编辑布局。
 func _pack_as_playable_scene(packed: PackedScene, scene: Node) -> Error:
-	var player_visible: bool = _player.visible if _player != null else true
-	var play_canvas_states: Dictionary = {}
-	for play_canvas in _play_canvases():
-		play_canvas_states[play_canvas] = [play_canvas.visible, play_canvas.active]
-	var map_visible: bool = _map_canvas.visible if _map_canvas != null else false
-	var map_active: bool = _map_canvas.active if _map_canvas != null else false
-	if _map_canvas != null:
-		_map_canvas.set_map_editor_mode(false)
-	if _player != null:
-		_player.visible = _saved_player_visible
-	for play_canvas in _play_canvases():
-		_show_canvas(play_canvas, true)
-	_show_canvas(_map_canvas, false)
-	var error: Error = packed.pack(scene)
-	for play_canvas in play_canvas_states:
-		if is_instance_valid(play_canvas):
-			play_canvas.visible = bool(play_canvas_states[play_canvas][0])
-			play_canvas.active = bool(play_canvas_states[play_canvas][1])
-	if _map_canvas != null:
-		_map_canvas.visible = map_visible
-		_map_canvas.active = map_active
-	if _player != null:
-		_player.visible = player_visible
-	if _map_canvas != null and active:
-		_map_canvas.set_map_editor_mode(true)
-	return error
+	return EditorSave.pack_playable(packed, scene, {
+		"player": _player,
+		"player_visible": _saved_player_visible,
+		"map_canvas": _map_canvas,
+		"play_canvases": _play_canvases(),
+		"editing": active,
+	})
 
 
 ## 要存的关卡根 = 装着画布的那个节点。
@@ -2876,18 +2776,7 @@ func _level_root() -> Node:
 ## 把每个像素刚体的 PBody 位形写回它的节点。
 ## ⚠️ 节点自己不跟物理走（每帧跟的是视觉精灵），不写回去就会把玩家存回出生点。
 func _sync_node_transforms(root: Node) -> void:
-	for node in root.find_children("*", "", true, false):
-		if not node.has_method("bake"):
-			continue
-		var body = node.get("body")
-		if body == null:
-			continue
-		# 玩家、手与小怪的运行时姿态不是地图编辑结果；尤其不能把上帝模式
-		# 飞行位置写成出生位置。
-		if body.tags.has(&"living"):
-			continue
-		node.position = body.position
-		node.rotation = body.rotation
+	EditorSave.sync_node_transforms(root)
 #endregion
 
 ## 视图只提交已知动作；不允许通过反射任意调用编辑器。

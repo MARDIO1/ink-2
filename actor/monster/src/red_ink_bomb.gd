@@ -95,7 +95,7 @@ func bake():
 
 func _physics_process(_delta: float) -> void:
 	var creative := level.get_node_or_null("Creative")
-	if creative != null and creative.active:
+	if creative != null and creative.get("active") == true:
 		queue_free()
 		return
 	if _disposed or _body == null or not level.world.bodies.has(_body):

@@ -538,7 +538,7 @@ func _update_legacy_bones(delta: float) -> void:
 func apply_damage(amount: float, hit_body = null) -> float:
 	var level := _find_physics_world()
 	var creative := level.get_node_or_null("Creative") if level != null else null
-	if _dead or _editor_physics_paused or (creative != null and creative.active) \
+	if _dead or _editor_physics_paused or (creative != null and creative.get("active") == true) \
 			or not is_finite(amount) or amount <= 0.0:
 		return 0.0
 	if hit_body != null and str(hit_body.tags.get("monster_part", "")) == "Shield":
