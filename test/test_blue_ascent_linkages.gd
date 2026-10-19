@@ -34,19 +34,21 @@ func remaining() -> void:
 	feet.hand_control.set_grip(false)
 	runtime.get_node("PhysicsStep").freeze_view_scale=100.0
 	await frames(90)
+	if OS.get_cmdline_user_args().has("--push-proof"):
+		await anti_push()
 	check(level.get_meta("blue_ascent_compound_ink",false),"compound ink scene")
 	check(not level.has_node("BG05_Reset"),"no dedicated reset button")
 	print("LINK_PLAYER_MASS ",player.body.mass," arm=",player.get_node("Arm").body.mass," hand=",player.get_node("Arm/Hand").body.mass)
-	for title in ["BG04_Tall_Pin","BG04_Short_Pin","BG05_Pin","BG05_PedalAxle","BG05_MountA","BG05_MountB","BG05_SeatA","BG05_SeatB","BG05_OpenA","BG05_OpenB","BG06_Axle","BG06_Gate_Pin","BG06_LinkBridge","BG06_LinkGate"]:
+	for title in ["BG04_Tall_Pin","BG04_Short_Pin","BG05_Pin","BG05_PedalAxle","BG05_MountA","BG05_MountB","BG05_SeatA","BG05_SeatB","BG05_OpenA","BG05_OpenB","BG06_Axle","BG06_Gate_Pin"]:
 		var fixture=level.get_node_or_null(title)
 		var joint=fixture.joint if fixture!=null else null
 		check(joint!=null and not joint.limits_enabled,title+" ordinary ink joint without travel/angle limits")
-	for title in ["BG05_LeftSpring","BG05_RightSpring","BG05_PedalReturn"]:
+	for title in ["BG05_LeftSpring","BG05_RightSpring","BG05_PedalReturn","BG06_ConnectingSpring"]:
 		var fixture=level.get_node_or_null(title)
 		check(fixture!=null and fixture.joint!=null,title+" actual yellow spring bound")
 		if fixture!=null:
 			print("LINK_SPRING ",title," rest=",fixture.rest_length," anchors=",fixture.anchors)
-	for title in ["BG04_Tall","BG04_Short","BG05_Platform","BG05_Pedal","BG06_Flap","BG06_Gate","BG06_ConnectingRod"]:
+	for title in ["BG04_Tall","BG04_Short","BG05_Platform","BG05_Pedal","BG06_Flap","BG06_Gate"]:
 		var b=level.get_node(title).body
 		print("LINK_INITIAL ",title," p=",b.position," r=",b.rotation," m=",b.mass)
 	if DisplayServer.get_name()!="headless" and not OS.get_cmdline_user_args().has("--mechanics"):
@@ -59,22 +61,27 @@ func remaining() -> void:
 		var bridge=level.get_node("BG06_Flap").body
 		await ui("FinalLessonCanvas",[Vector2(960,480),bridge.to_world(Vector2(-80,16)),bridge.to_world(Vector2(250,160)),bridge.to_world(Vector2(250,20))],Vector2(1270,520))
 		player.teleport_to(Vector2(180,3605),0)
-	yellow_link("CrateLessonCanvas",Vector2(1252,1740),Vector2(1270,1740),7)
+	yellow_link("CrateLessonCanvas",Vector2(1252,1740),Vector2(1270,1740),12)
 	var flap=level.get_node("BG06_Flap").body
 	yellow_link("FinalLessonCanvas",Vector2(960,480),flap.to_world(Vector2(-80,16)),12)
 	arrow("CrateLessonCanvas","BG04_Tall",Vector2(126,104),Vector2(20,104),7)
 	arrow("LiftLessonCanvas","BG05_Platform",Vector2(278,48),Vector2(278,188),24)
 	arrow("FinalLessonCanvas","BG06_Flap",Vector2(250,160),Vector2(250,20),20)
+	if OS.get_cmdline_user_args().has("--push-proof"):
+		arrow("BridgeLessonCanvas","BG02_Bridge",Vector2(414,20),Vector2(270,20),7)
 	check(motor_for("BG04_Tall")!=null and motor_for("BG04_Short")==null,"only tall crate has an actuator")
 	check(motor_for("BG05_Platform")!=null,"player-drawn charging arrow is supported")
 	check(motor_for("BG06_Flap")!=null and motor_for("BG06_Gate")==null,"only bridge lever has an actuator")
-	for i in 18:
+	for i in (30 if OS.get_cmdline_user_args().has("--push-proof") else 18):
 		await frames(30)
 		if i%3==2: print_state(i)
 	check(level.get_node("BG04_Tall").body.position.x<745,"powered tall crate reaches left stop")
 	check(level.get_node("BG04_Short").body.position.x<980,"yellow spring pulls unpowered short crate")
 	check(absf(level.get_node("BG06_Flap").body.rotation)<0.07,"bridge docks on physical support")
-	check(level.get_node("BG06_Gate").body.position.y<65,"connecting rod lifts unpowered gate")
+	check(level.get_node("BG06_Gate").body.position.y<65,"normal yellow compression spring lifts unpowered gate")
+	if OS.get_cmdline_user_args().has("--push-proof"):
+		check(level.get_node("BG02_Bridge").body.position.x<870,"blue arrow releases bridge ink seal and extends bridge")
+		check(not level.has_node("BG06_ConnectingRod"),"old black rotating rod removed")
 	var platform=level.get_node("BG05_Platform").body
 	check(platform.position.y>1240,"down arrow stores visible compression in main springs")
 	for title in ["BG05_TopStop","BG05_BottomStop","BG05_SpringBase"]:
@@ -112,7 +119,23 @@ func remaining() -> void:
 		check(await walk_ramp_to(1180,1050),"player enters black return ramp from capture landing")
 		check(await walk_ramp_to(950,900),"player walks middle of black return ramp")
 		check(await walk_ramp_to(680,742),"capture landing reconnects to original exit by walking up black ramp")
+	if OS.get_cmdline_user_args().has("--push-proof"):
+		player.teleport_to(Vector2(1216,340),0)
+		await frames(30)
+		check(await walk_ramp_to(1530,500),"player passes yellow compression spring and raised gate")
 	check(feet.hand_control.grip_joint==null,"all mechanism and route checks use no grabbing")
+
+func anti_push() -> void:
+	for title in ["BG02_Bridge","BG04_Tall","BG04_Short"]:
+		var body=level.get_node(title).body
+		var start_x:float=body.position.x
+		for frame in 180:
+			# 等效于脚部最大持续推力；只作用于机关，是角色推力的保守上界。
+			body.apply_central_impulse(Vector2(-6000000.0*DT,0))
+			await frames(1)
+		print("PUSH_PROBE ",title," movement=",body.position.x-start_x)
+		check(body.position.x>start_x-8,title+" resists full continuous foot push without blue ink")
+	await frames(30)
 
 func walk_ramp_to(x: float, ceiling_y: float) -> bool:
 	# 斜坡上接触点与角色倾角会改变重心高度，检查到达横向出口及实际爬升。

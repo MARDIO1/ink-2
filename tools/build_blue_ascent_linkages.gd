@@ -3,7 +3,7 @@ extends "res://tools/build_blue_ascent_machines.gd"
 const Spring := preload("res://ink/yellow/src/stroke.gd")
 
 func _lesson_width(title: String) -> int:
-	return 24 if title=="LiftLessonCanvas" else (20 if title=="FinalLessonCanvas" else 7)
+	return 24 if title=="LiftLessonCanvas" else (20 if title=="FinalLessonCanvas" else (12 if title=="CrateLessonCanvas" else 7))
 
 func _clear_upper_turn() -> void:
 	super._clear_upper_turn()
@@ -36,6 +36,24 @@ func _reinforce(item: Node, point: Vector2) -> void:
 	item.infinite_nails = PackedVector2Array([point])
 	item.infinite_nail_body = true
 
+func _ink_seal(title:String, carrier:Node, local:Vector2, anchor:Vector2, width:int) -> void:
+	# 预拉黄墨保险簧抵住脚部推力；蓝墨继续拉伸后按现有弹簧过载规则断开。
+	var fixture:=_rect(title+"_Anchor",anchor-Vector2(12,12),Vector2i(24,24),true)
+	_reinforce(fixture,Vector2(12,12))
+	_spring(title,anchor,carrier.position+local,width)
+	var seal=level.get_node(title)
+	seal.rest_length-=180.0
+	# 实际预磨损窄颈使保险簧在过载后快速断开，不更改全局磨损或强度规则。
+	var cut_x:=floori(anchor.distance_to(carrier.position+local)*0.5/14.0)*14+4
+	for x in range(cut_x-1,cut_x+2):
+		for y in range(-width,width+1):
+			if y!=0: seal.worn.append(Vector2(x,y))
+
+func _bridge() -> void:
+	super._bridge()
+	_ink_seal("BG02_Seal",level.get_node("BG02_Bridge"),Vector2(472,20),Vector2(1900,2951),12)
+	level.get_node("MachineNote_Bridge").text+="\n蓝墨动力拉断黄墨保险簧后伸桥；小人不能直接推走"
+
 func _crates() -> void:
 	_guide("BG04_Shared",Vector2(720,1778),Vector2i(840,10),Vector2(724,1783),Vector2(1555,1783))
 	for spec in [["Tall",Vector2(1100,1578),208],["Short",Vector2(1262,1682),104]]:
@@ -46,8 +64,8 @@ func _crates() -> void:
 		var mount_x := 144 if spec[0]=="Tall" else 0
 		_fill(image,Rect2i(mount_x,1728-int(spec[1].y),16,24))
 		if spec[0]=="Tall":
-			_fill(image,Rect2i(12,96,146,16))
-			_fill(image,Rect2i(140,96,18,16),Palette.RED.id)
+			_fill(image,Rect2i(12,88,146,32))
+			_fill(image,Rect2i(140,88,18,32),Palette.RED.id)
 		var box := _body(title,spec[1],image,false)
 		_reinforce(box,Vector2(5,5))
 		if spec[0]=="Tall":
@@ -57,8 +75,10 @@ func _crates() -> void:
 	_rect("BG04_TallStop",Vector2(718,1586),Vector2i(12,56),true,Palette.YELLOW.id)
 	_rect("BG04_TallStart",Vector2(1262,1586),Vector2i(12,56),true,Palette.YELLOW.id)
 	_rect("BG04_ShortStart",Vector2(1424,1690),Vector2i(12,56),true,Palette.YELLOW.id)
+	_ink_seal("BG04_TallSeal",level.get_node("BG04_Tall"),Vector2(152,12),Vector2(1540,1590),12)
+	_ink_seal("BG04_ShortSeal",level.get_node("BG04_Short"),Vector2(152,18),Vector2(1680,1700),9)
 	_canvas("CrateLessonCanvas",Rect2(1070,1580,460,290))
-	_note("Crates",Vector2(1050,1520),"④ 黄墨画笔 7px：连接两箱内侧加厚黑座\n蓝墨矩形：在红墨左侧画向左箭头，固化\n高箱先走，弹簧牵引矮箱；停稳后从右往左跳")
+	_note("Crates",Vector2(1050,1500),"④ 黄墨画笔 12px：连接两箱内侧加厚黑座\n蓝墨矩形 7–12px：在红墨左侧画向左箭头，固化\n蓝墨拉断保险簧，高箱牵引矮箱；停稳后从右往左跳")
 	_note("CrateSpring",Vector2(1150,1760),"黄墨连接两座 ↑")
 	_note("CrateArrow",Vector2(1100,1635),"← 蓝箭头，接红墨端子")
 	level.get_node("Reserved_04_CrateSteps").set_meta("mechanism_installed",true)
@@ -95,8 +115,6 @@ func _lift() -> void:
 	_fill(pedal_image,Rect2i(52,0,10,68))
 	_fill(pedal_image,Rect2i(52,56,88,12))
 	_fill(pedal_image,Rect2i(140,60,100,7))
-	_fill(pedal_image,Rect2i(140,40,32,3))
-	_fill(pedal_image,Rect2i(140,40,3,26))
 	_fill(pedal_image,Rect2i(166,60,4,80))
 	_fill(pedal_image,Rect2i(166,140,10,15),Palette.RED.id)
 	# 踏板位于轴左侧，按下时向左倾斜，回位时向左上推送。
@@ -159,17 +177,6 @@ func _lift() -> void:
 	_rect("BG05_Approach",Vector2(1054,1265),Vector2i(400,20),true)
 	level.get_node("Reserved_05_ShortLift").set_meta("mechanism_installed",true)
 
-func _bar(title: String, a: Vector2, b: Vector2) -> Node2D:
-	var vector := b-a
-	var size_ := Vector2i(ceili(vector.length())+20,20)
-	var image := _image(size_)
-	_fill(image,Rect2i(0,7,size_.x,6))
-	_fill(image,Rect2i(0,0,20,20))
-	_fill(image,Rect2i(size_.x-20,0,20,20))
-	var bar := _body(title,a-Vector2(10,10).rotated(vector.angle()),image,false)
-	bar.rotation = vector.angle()
-	return bar
-
 func _finale() -> void:
 	var feed_image := _image(Vector2i(100,110))
 	_fill(feed_image,Rect2i(0,50,100,40))
@@ -214,15 +221,12 @@ func _finale() -> void:
 	_rect("BG06_GateTop",Vector2(1470,16),Vector2i(32,13),true,Palette.YELLOW.id)
 	var crank := bridge.position+Vector2(300,80).rotated(angle)
 	var gate_point := Vector2(1486,215)
-	var rod := _bar("BG06_ConnectingRod",crank,gate_point)
-	# 用真实背景钉把连杆置于后层：仍有质量和关节传力，行人不会被杆身挡住。
-	rod.background_nails = PackedVector2Array([Vector2(10,10)])
-	_reinforce(rod,Vector2(10,10))
-	_axle("BG06_LinkBridge",rod,bridge,crank,Palette.BLACK.id)
-	_axle("BG06_LinkGate",rod,door,gate_point,Palette.BLACK.id)
+	# 正常黄墨压簧无碰撞，桥抬起时受压推门；无动力时初始压力小于门重。
+	_spring("BG06_ConnectingSpring",crank,gate_point,50)
+	level.get_node("BG06_ConnectingSpring").rest_length+=18.0
 	_rect("BG06_ArrivalLanding",Vector2(1470,481),Vector2i(100,16),true)
 	_canvas("FinalLessonCanvas",Rect2(900,300,630,480))
-	_note("Finale",Vector2(890,275),"⑥ 黄墨 12px：左岸座连接桥后臂，做回位弹簧\n蓝墨矩形 20px：走到桥中段，顺黑臂朝桥面画箭头，接红墨端子\n一处动力抬桥，后层连杆同步提门；停稳后通过")
+	_note("Finale",Vector2(890,275),"⑥ 黄墨 12px：左岸座连接桥后臂，做回位弹簧\n蓝墨矩形 20px：走到桥中段，顺黑臂朝桥面画箭头，接红墨端子\n一处动力抬桥，黄色压簧同步提门；停稳后通过")
 	var finish := Node2D.new()
 	finish.name = "BG06_Finish"
 	finish.set_script(load("res://map/src/blue_ascent_finish.gd"))
