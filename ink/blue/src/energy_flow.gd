@@ -103,7 +103,15 @@ func _vectors(buffer: StreamPeerBuffer, count: int) -> PackedVector2Array:
 	encoded.append_array(buffer.get_data(count * 8)[1])
 	return bytes_to_var(encoded)
 
+static func live_consumer(motor) -> bool:
+	return is_instance_valid(motor) and not (motor is Node and motor.is_queued_for_deletion())
+
 func advance(wires: Array, delta: float) -> void:
+	# 删除/撤销可能先于下一次接触重建；原生槽号仍需保持一致，先使接触缓存失效。
+	for motor in _native_motors:
+		if not live_consumer(motor):
+			_binary_contact_key.clear()
+			break
 	# 先确定 DLL 协议版本，再决定是否发送回收字段；否则首帧会少写 8 字节。
 	_ensure()
 	var commands := StreamPeerBuffer.new()
@@ -155,6 +163,8 @@ func advance(wires: Array, delta: float) -> void:
 			var id: int = _ids[wire]
 			for at: Vector2i in consumers.get(wire, {}):
 				for motor in consumers[wire][at]:
+					if not live_consumer(motor):
+						continue
 					if not _native_motors.has(motor):
 						_native_motors.append(motor)
 					commands.put_32(5)
@@ -201,7 +211,9 @@ func advance(wires: Array, delta: float) -> void:
 	commands.put_32(steps)
 	commands.put_32(_native_motors.size())
 	for motor in _native_motors:
-		var room: float = motor.available_room() if motor.has_method("available_room") else 1.0e100
+		var room := 0.0
+		if live_consumer(motor):
+			room = motor.available_room() if motor.has_method("available_room") else 1.0e100
 		commands.put_double(room)
 	var phase_start := Time.get_ticks_usec()
 	var result := _call(commands.data_array)
@@ -219,10 +231,13 @@ func advance(wires: Array, delta: float) -> void:
 	for i in result.get_32():
 		var energy := result.get_double()
 		var bio := result.get_double()
-		if _native_motors[i].has_method("available_room"):
-			_native_motors[i].receive_energy(energy, bio)
+		var motor = _native_motors[i]
+		if not live_consumer(motor):
+			continue # 仍已读取该槽位的返回数据，保持后续协议游标一致。
+		if motor.has_method("available_room"):
+			motor.receive_energy(energy, bio)
 		else:
-			_native_motors[i].receive_energy(energy)
+			motor.receive_energy(energy)
 	_active = 0
 	for i in result.get_32():
 		var wire = by_id[result.get_32()]
@@ -770,7 +785,7 @@ func _refresh_consumers(wires: Array, motors: Array) -> void:
 	for wire in wires:
 		var targets: Dictionary = consumers.get(wire, {})
 		for motor in motors:
-			var key := Vector2i(wire.get_instance_id(), motor.get_instance_id())
+			var key := [wire.get_instance_id(), motor.get_instance_id()] # ObjectID 为 64 位，不能截成 Vector2i。
 			live_keys[key] = true
 			var pair_stamp := _motor_pair_stamp(wire, motor)
 			var cached: Dictionary = motor_cache.get(key, {})
@@ -802,7 +817,7 @@ func _refresh_consumers(wires: Array, motors: Array) -> void:
 			# 电机已经消失：把它的旧投影从所有导线上摘掉，否则还会继续被供电。
 			motor_cache.erase(key)
 			changed = true
-			var dead: int = key.y
+			var dead: int = key[1]
 			for wire in consumers.keys():
 				var targets: Dictionary = consumers[wire]
 				for at in targets.keys():

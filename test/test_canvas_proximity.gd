@@ -35,13 +35,19 @@ func _run() -> void:
 	camera._update_canvas_zoom(1.0)
 	var near_zoom: Vector2 = camera.zoom
 	_check("near canvas smoothly magnifies", camera._canvas_zoom_weight > 0.9)
+	# 先完成入场动画，再检查离场中间帧；否则会从未展开的缩放值直接收起。
+	await create_timer(canvas.toolbar_transition_seconds + 0.05).timeout
 	_position_player(body, near_position + Vector2(2000, 0))
 	canvas._refresh_workbench_visibility()
 	_check("departure starts closing animation", canvas.buttons.visible and not canvas.buttons.get_meta("toolbar_wanted"))
 	_check("departure returns hand and tool", hand.enabled and canvas.surface.tool == canvas.SurfaceScript.Tool.HAND)
 	_check("fading buttons cannot be clicked", canvas.tool_grid.get_node("Brush").disabled)
-	await create_timer(0.1).timeout
+	# 手动推进中间帧，避免启动时慢帧让墙钟计时直接越过整个动画。
+	var closing_tween: Tween = canvas.buttons.get_meta("toolbar_tween")
+	closing_tween.pause()
+	closing_tween.custom_step(canvas.toolbar_transition_seconds * 0.5)
 	_check("closing gently interpolates scale and opacity", canvas.buttons.scale.x > 0.96 and canvas.buttons.scale.x < 1.0 and canvas.buttons.modulate.a > 0.0 and canvas.buttons.modulate.a < 1.0)
+	closing_tween.play()
 	await create_timer(0.25).timeout
 	_check("toolbar finishes gentle fade without collapsing", not canvas.buttons.visible and is_equal_approx(canvas.buttons.scale.x, 0.96) and canvas._side_panel.modulate.a == 0.0)
 	camera._update_canvas_zoom(1.0)

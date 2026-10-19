@@ -5,6 +5,8 @@ extends Node2D
 signal tool_changed(tool: int)
 signal ink_selected(index: int)
 signal map_changed
+signal brush_changed(px: int)
+signal nails_visibility_changed(show_nails: bool)
 signal editor_control_requested
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
@@ -30,8 +32,9 @@ const EXPAND_CANVAS_ICON_REGION := Rect2(228, 128, 116, 116)
 const EDITOR_CONTROL_ICON_REGION := Rect2(340, 340, 116, 116)
 const PLAY_TOOL_COLUMNS := 2
 const TOOLBAR_TEXT_COLOR := Color("414141")
-## 工具栏所在的 CanvasLayer：高于 HUD(1) 与右侧色盘(2)，低于 ESC(20)。
+## 编辑模式的屏幕工具栏；游玩时使用世界画布，让人物显示在工具栏前面。
 const TOOLBAR_LAYER := 3
+const PLAY_TOOLBAR_Z_INDEX := 500
 const EDITOR_TOOL_COLUMNS := 2
 const PLAY_TOOL_BUTTON_WIDTH := 32.0
 const PLAY_TOOL_BUTTON_HEIGHT := 43.0
@@ -45,7 +48,7 @@ const EDITOR_TOOL_BUTTON_HEIGHT := 60.0
 const EDITOR_TOOL_BUTTON_H_GAP := 16.0
 const EDITOR_TOOL_BUTTON_V_GAP := 10.0
 const EDITOR_HAND_BUTTON_SIZE := 72.0
-## 工具栏按行排列；前十个按钮使用数字键 1～0。无限钉子不在工具栏，入口在创造模式
+## 工具栏按行排列；前十个按钮使用数字键 1～0。无限标签不在工具栏，入口在创造模式
 ## 右侧「机关部件」栏（它参与机关，和齿轮放一起）。
 const TOOL_SHORTCUT_ORDER := [
 	"Brush", "Eraser", "Shape", "Bucket", "Redraw", "SelectDelete",
@@ -448,12 +451,24 @@ func activate_hand_tool() -> void:
 	set_tool(SurfaceScript.Tool.HAND)
 
 
+## 笔刷量程和当前值，供色盘初始化显示。
+func brush_range() -> Dictionary:
+	var pen: HSlider = brush_panel.get_node("PenSlider")
+	return {"min": pen.min_value, "max": pen.max_value, "step": pen.step, "value": surface.brush_size}
+
+
 ## 直接按 px 设定笔触直径。
 func set_brush_size(px: int) -> void:
 	surface.brush_size = px
-	brush_panel.get_node("PenSlider").tooltip_text = "笔触大小：%d px" % px
+	# 两个滑条（工具栏画笔面板、右侧色盘）都是这个值的显示端，由画布统一同步；
+	# 用 no_signal 避免回环。
+	var pen: HSlider = brush_panel.get_node("PenSlider")
+	pen.set_value_no_signal(float(px))
+	pen.tooltip_text = "笔触大小：%d px" % px
 	if _side_brush_slider != null:
+		_side_brush_slider.set_value_no_signal(float(px))
 		_side_brush_slider.tooltip_text = "笔触大小：%d px" % px
+	brush_changed.emit(px)
 
 
 ## 免墨水：创造模式里画图不该花瓶子里的墨（"重绘"也就不会再凭空生墨）。
@@ -543,17 +558,47 @@ var _syncing_preserved_resize := false
 var _nails_visible := true
 
 
-## 工具栏原本是世界物件，会被 HUD 的 CanvasLayer 压住（血条正好在上方）。
-## 把它搬进一个高于 HUD(1) 和右侧色盘(2) 的 CanvasLayer，坐标也随之变成屏幕坐标：
-## 所有写 workbench 变换的地方都用 `screen_transform`，不再乘逆视口矩阵。
+## 控件仍按屏幕坐标布局；游玩时挂载节点抵消相机变换，人物可用正常 z 顺序覆盖工具栏。
 func _lift_workbench_to_screen_layer() -> void:
 	if Engine.is_editor_hint():
 		return
-	var layer := CanvasLayer.new()
-	layer.name = "ToolbarLayer"
-	layer.layer = TOOLBAR_LAYER
-	add_child(layer)
-	workbench.reparent(layer, false)
+	_set_toolbar_render_mode(_screen_fixed)
+
+
+func _set_toolbar_render_mode(screen_fixed: bool) -> void:
+	var previous := get_node_or_null("ToolbarLayer")
+	if previous != null and (previous is CanvasLayer) == screen_fixed:
+		_sync_play_toolbar_transform()
+		return
+	if previous != null:
+		previous.name = "PreviousToolbarLayer"
+	var mount: Node
+	if screen_fixed:
+		var screen := CanvasLayer.new()
+		screen.layer = TOOLBAR_LAYER
+		mount = screen
+	else:
+		var world_mount := Node2D.new()
+		world_mount.top_level = true
+		world_mount.z_as_relative = false
+		world_mount.z_index = PLAY_TOOLBAR_Z_INDEX
+		mount = world_mount
+	mount.name = "ToolbarLayer"
+	add_child(mount)
+	workbench.reparent(mount, false)
+	# 色盘挂点也要先迁出旧节点，再清理旧节点。
+	var side_layout := get_node_or_null("SidePanelLayer")
+	if side_layout != null:
+		side_layout.sync_mount_parent()
+	if previous != null:
+		previous.queue_free()
+	_sync_play_toolbar_transform()
+
+
+func _sync_play_toolbar_transform() -> void:
+	var mount := get_node_or_null("ToolbarLayer") as Node2D
+	if mount != null:
+		mount.global_transform = get_viewport().get_canvas_transform().affine_inverse()
 
 
 func _place_controls() -> void:
@@ -564,7 +609,7 @@ func _place_controls() -> void:
 
 #region 右侧面板：墨水选择 + 笔刷粗细
 ## 右侧面板离画布右边缘多远。
-@export var side_panel_gap := 14.0
+@export var side_panel_gap := 32.0
 ## 笔刷粗细条最大直径（步长 1，任意直径都铺得准，见 canvas_surface）。
 @export_range(1, 65, 1) var brush_size_max := 33
 
@@ -617,6 +662,8 @@ func _place_side_panel() -> void:
 ## 工具栏固定在视口左侧，不受相机移动、旋转或缩放影响。
 func set_screen_fixed(on: bool) -> void:
 	_screen_fixed = on
+	if not Engine.is_editor_hint():
+		_set_toolbar_render_mode(on)
 	if on:
 		_update_screen_fixed_position()
 	else:
@@ -931,6 +978,8 @@ func _set_workbench_visible(nearby: bool, owned := true) -> void:
 
 
 func _distance_from_player_to_canvas() -> float:
+	if not is_instance_valid(player):
+		return INF
 	var canvas_rect := Rect2(surface.global_position, Vector2(surface.canvas_size))
 	var player_rect := Rect2(player.global_position, Vector2.ONE)
 	var player_body = player.get("body")
@@ -945,6 +994,14 @@ func _distance_from_player_to_canvas() -> float:
 
 
 #region 按钮
+func _on_return_to_canvas_pressed() -> void:
+	var creative := get_parent().get_node_or_null("Creative")
+	if _map_editor_mode and creative != null and creative.has_method("inkify_editor_preserved"):
+		creative.inkify_editor_preserved()
+	else:
+		return_to_canvas()
+
+
 func _bind_buttons() -> void:
 	for button in tool_grid.get_children() + [hand_button]:
 		if button is Button:
@@ -963,9 +1020,9 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("SelectDelete").gui_input.connect(_on_selection_button_input)
 	tool_grid.get_node("Redraw").pressed.connect(clear_canvas)
 	tool_grid.get_node("Generate").pressed.connect(generate)
-	tool_grid.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
+	tool_grid.get_node("ReturnToCanvas").pressed.connect(_on_return_to_canvas_pressed)
 	tool_grid.get_node("ExpandCanvas").pressed.connect(_open_expand_canvas_window)
-	resize_panel.get_node("Grid/NailVisibility").toggled.connect(_on_nail_visibility_toggled)
+	resize_panel.get_node("Grid/NailVisibility").toggled.connect(set_nails_visible)
 	toggle_button.pressed.connect(_toggle_workbench)
 	brush_panel.get_node("PenSlider").value_changed.connect(_on_pen_slider_changed)
 
@@ -1011,12 +1068,23 @@ func _toggle_workbench() -> void:
 	_refresh_workbench_visibility()
 
 
-func _on_nail_visibility_toggled(show_nails: bool) -> void:
+func set_nails_visible(show_nails: bool) -> void:
 	if not _map_editor_mode:
 		return
 	_nails_visible = show_nails
+	resize_panel.get_node("Grid/NailVisibility").set_pressed_no_signal(show_nails)
 	_apply_nail_visuals(show_nails)
 	_update_nail_visibility_tooltip(show_nails)
+	nails_visibility_changed.emit(show_nails)
+
+
+## 钉子在编辑态是否可见（给视图初始化用）。
+func nails_visible() -> bool:
+	return _nails_visible
+
+
+func _on_nail_visibility_toggled(show_nails: bool) -> void:
+	set_nails_visible(show_nails)
 
 
 func _apply_nail_visuals(show_nails: bool) -> void:

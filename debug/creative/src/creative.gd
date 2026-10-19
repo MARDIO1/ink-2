@@ -4,6 +4,7 @@
 
 #region 依赖
 extends Node
+const UiHitTest := preload("res://ui/input/src/ui_hit_test.gd")
 
 signal map_saved(path: String)
 signal mode_changed(editing: bool)
@@ -327,12 +328,14 @@ func prepare_loaded_document(editing: bool) -> void:
 		return
 	var previous_free: bool = _map_canvas.surface.ink_free
 	_map_canvas.surface.ink_free = true
+	_map_canvas.surface.defer_load_metadata = not editing
 	var error: Error = OK
 	if editor_draft.is_empty():
 		# 旧地图的内容在外置快照里；普通游玩也要读取，不能等第一次 F2。
 		_load_edit_snapshot_if_needed()
 		if not _edit_snapshot_loaded:
 			_map_canvas.surface.ink_free = previous_free
+			_map_canvas.surface.defer_load_metadata = false
 			return
 		editor_draft = _map_canvas.surface.capture_document()
 	else:
@@ -341,6 +344,7 @@ func prepare_loaded_document(editing: bool) -> void:
 	if error == OK and not editing:
 		_map_canvas.generate(false)
 	_map_canvas.surface.ink_free = previous_free
+	_map_canvas.surface.defer_load_metadata = false
 	if error != OK:
 		push_error("Creative: 无法恢复内嵌草稿 (%d)" % error)
 
@@ -482,24 +486,7 @@ func _event_world_position(event: InputEventMouse) -> Vector2:
 
 ## 全局输入早于 GUI 更新；用本次事件的位置判断，避免沿用上一帧的悬停控件。
 func _pointer_over_editor_ui(screen_position: Vector2) -> bool:
-	for control: Control in get_tree().root.find_children("*", "Control", true, false):
-		if control.get_viewport() != get_viewport() or not control.is_visible_in_tree() \
-		or control.mouse_filter == Control.MOUSE_FILTER_IGNORE:
-			continue
-		if not Rect2(Vector2.ZERO, control.size).has_point(control.get_global_transform_with_canvas().affine_inverse() * screen_position):
-			continue
-		var clipped := false
-		var parent := control.get_parent()
-		while parent != null:
-			if parent is Control and parent.clip_contents \
-			and not Rect2(Vector2.ZERO, parent.size).has_point(parent.get_global_transform_with_canvas().affine_inverse() * screen_position):
-				clipped = true
-				break
-			parent = parent.get_parent()
-		if not clipped:
-			return true
-	return false
-
+	return UiHitTest.blocks_world_input(get_viewport(), screen_position)
 
 func _handle_monster_adjust_button(event: InputEventMouseButton) -> bool:
 	if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -898,6 +885,15 @@ func _keep_anchor(keep: Dictionary, anchor: Dictionary) -> void:
 	var body = anchor.get("body")
 	if is_instance_valid(body):
 		keep[body] = true
+
+
+func inkify_editor_preserved() -> void:
+	if _map_canvas == null:
+		return
+	_map_canvas.return_to_canvas(true, true, _editor_preserved_bodies())
+
+
+## 编辑时只保留无几何的相机锚点，身体、手臂和手均不再参与任何实体查询。
 
 
 func _inkify_non_mechanism_bodies() -> void:
@@ -1776,7 +1772,12 @@ func _build_monster_palette() -> void:
 	_palette.query_ink_quota = ink_quota_of
 	_palette.action_requested.connect(_dispatch_palette_action)
 	add_child(_palette)
-	_palette.bind_canvas(_map_canvas)
+	var brush: Dictionary = _map_canvas.brush_range()
+	_palette.bind_canvas(_map_canvas, {
+		"brush_min": brush.min, "brush_max": brush.max, "brush_step": brush.step,
+		"brush_size": brush.value, "selected_ink": _map_canvas.surface.selected_ink,
+		"nails_visible": _map_canvas.nails_visible(),
+	})
 
 func ink_quota_of(material_id: int) -> float:
 	var override := _ink_quota_overrides()
@@ -1903,7 +1904,7 @@ func _sync_gear_button() -> void:
 		tool == CanvasSurfaceScript.Tool.GEAR_8)
 
 
-## 无限钉子是机关部件（钉在红墨上供给无尽能源），入口在右侧「机关部件」栏。
+## 无限标签是机关部件（钉在红墨上供给无尽能源），入口在右侧「机关部件」栏。
 ## 再点一次回到手，和齿轮按钮同一套开关语义。
 func select_infinite_nail_tool() -> void:
 	if not active or _map_canvas == null or not _map_canvas._map_editor_mode:
@@ -2916,6 +2917,8 @@ func _level_root() -> Node:
 ## 视图只提交已知动作；不允许通过反射任意调用编辑器。
 func _dispatch_palette_action(action: StringName, arguments: Array) -> void:
 	var actions := {
+		&"set_brush_size": _map_canvas.set_brush_size,
+		&"set_nails_visible": _map_canvas.set_nails_visible,
 		&"select_monster_tool": select_monster_tool,
 		&"select_gear_tool": select_gear_tool,
 		&"select_infinite_nail_tool": select_infinite_nail_tool,

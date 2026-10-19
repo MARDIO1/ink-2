@@ -144,7 +144,7 @@ func solidify(surface, world, editor_placed_nails := false) -> void:
 		if blue != null:
 			blue.attach_wires(surface, world.world.bodies, blue_pixels)
 		if ink_pixels > 0 or not blue_pixels.is_empty():
-			surface.clear(false)
+			surface.clear(false, true) # 蓝图主体可能已独立恢复；黄墨导轨与销仍需在下一步固化。
 		print("SOLID bodies=0 pixels=0 rejected=%d" % rejected_pixels)
 		return
 

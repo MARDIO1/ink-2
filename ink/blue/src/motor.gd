@@ -171,7 +171,7 @@ func _window_power(instant: float, delta: float) -> float:
 func drive(available: float, delta: float, force_per_length: float, idle_power: float,
 		force_limit: float = INF, exponent := 2.0, minimum := 0.0) -> float:
 	applied_force = 0.0
-	if available <= 0.0:
+	if body == null or body.frozen or available <= 0.0:
 		return 0.0
 	var base := minf(available, idle_power)
 	var budget := maxf(0.0, available - base)
@@ -189,6 +189,10 @@ func drive(available: float, delta: float, force_per_length: float, idle_power: 
 	force *= scale
 	applied_force = force
 	body.apply_impulse(direction * force * delta, position)
+	if force > 0.0:
+		# 与其他持续执行器一致，真实受力必须唤醒静置的刚体。
+		body.awake = true
+		body.sleep_timer = 0.0
 	return base + a * scale * scale + b * scale
 
 func _draw() -> void:

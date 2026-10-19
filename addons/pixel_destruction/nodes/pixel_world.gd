@@ -868,10 +868,22 @@ func realign_body_nodes() -> void:
 
 
 func sync_world_bodies() -> void:
+	_sync_world_bodies(null)
+
+
+## 已知变化集时只同步受影响的贴图；节点、渲染回收和关节清理仍覆盖整个世界。
+func sync_changed_world_bodies(changed: Array) -> void:
+	var targets := {}
+	for body in changed:
+		targets[body] = true
+	_sync_world_bodies(targets)
+
+
+func _sync_world_bodies(targets: Variant) -> void:
 	# ① 节点数组按下标重建：能对上的节点保留，对不上的（碎片/未节点化）用 null 占位
 	realign_body_nodes()
 
-	# ② 渲染：全量 sync（含静态地形）+ 清理已经不存在的刚体
+	# ② 渲染：全量或变化集 sync（含静态地形）+ 清理已经不存在的刚体
 	#
 	# ⚠️⚠️ 自带视觉 / internal_render=false 的刚体**不画**，而且要把**以前画出来的那张回收**
 	#    （forget）—— 否则"破坏之后同步一次"就会给它们补出一张矩形残影，而那张残影
@@ -879,6 +891,8 @@ func sync_world_bodies() -> void:
 	#    ⚠️ 必须在 ① 之后做：① 刚把 _body_nodes 按身份重建好，下标才是对的。
 	for i in world.bodies.size():
 		var b = world.bodies[i]
+		if targets != null and not targets.has(b):
+			continue
 		if i < _body_nodes.size() and not uses_internal_render(_body_nodes[i]):
 			renderer.forget(b.id)
 			continue

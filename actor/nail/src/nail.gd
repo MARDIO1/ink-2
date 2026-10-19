@@ -9,13 +9,14 @@ const BACKGROUND_TEXTURE := preload("res://actor/nail/asset/nail.png")
 const FIXED_TEXTURE := preload("res://actor/nail/asset/fixed_nail.png")
 const INFINITE_TEXTURE := preload("res://actor/nail/asset/infinite_nail.png")
 const NAIL_TEXTURE := FIXED_TEXTURE
-## 固定/背景钉子为 11×11，无限钉子为 16×16；固定点都位于纹理中心。
+## 固定/背景钉子为 11×11，无限标签源图为 24×24；固定点都位于纹理中心。
 const ANCHOR_CENTER := Vector2(5.5, 5.5)
 const VISUAL_SCALE := 1.0
+const INFINITE_VISUAL_SCALE := 0.75
 enum Kind { FIXED, BACKGROUND, INFINITE }
 const FIXED_TAG := "static_anchor_points"
 const BACKGROUND_TAG := "background_anchor_points"
-## 无限钉子也保存实际锚点坐标；body 级不可破坏/无限燃料标记在 ink_traits.gd。
+## 无限标签也保存实际锚点坐标；body 级不可破坏/无限燃料标记在 ink_traits.gd。
 const INFINITE_TAG := "infinite_nail_points"
 
 ## 所有运行时钉子外观都进入这个组，地图编辑器只切显示，不改物理锚点。
@@ -48,6 +49,10 @@ static func anchor_center_for(target_kind: Kind) -> Vector2:
 	return Vector2(texture_for(target_kind).get_size()) * 0.5
 
 
+static func visual_scale_for(target_kind: Kind) -> float:
+	return VISUAL_SCALE * (INFINITE_VISUAL_SCALE if target_kind == Kind.INFINITE else 1.0)
+
+
 static func tag_for(target_kind: Kind) -> String:
 	if target_kind == Kind.BACKGROUND:
 		return BACKGROUND_TAG
@@ -57,8 +62,9 @@ static func tag_for(target_kind: Kind) -> String:
 
 
 static func visual_rect(pixel: Vector2i, target_kind: Kind = Kind.FIXED) -> Rect2:
-	return Rect2(Vector2(pixel) + Vector2(0.5, 0.5) - anchor_center_for(target_kind) * VISUAL_SCALE,
-		Vector2(texture_for(target_kind).get_size()) * VISUAL_SCALE)
+	var display_scale := visual_scale_for(target_kind)
+	return Rect2(Vector2(pixel) + Vector2(0.5, 0.5) - anchor_center_for(target_kind) * display_scale,
+		Vector2(texture_for(target_kind).get_size()) * display_scale)
 
 
 func _enter_tree() -> void:
@@ -77,7 +83,7 @@ func setup(target_body, target_pixel: Vector2i, editor_placed := false,
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	centered = false
 	offset = -anchor_center_for(kind)        # 固定点落在节点原点
-	scale = Vector2.ONE * VISUAL_SCALE
+	scale = Vector2.ONE * visual_scale_for(kind)
 	process_physics_priority = 20  # 和 pbody_visual 一样，等世界走完再读位置
 	refresh_visibility()
 	_follow()

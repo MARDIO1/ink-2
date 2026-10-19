@@ -188,6 +188,13 @@ func load_level(scene: PackedScene, editing := false, source_path := "") -> Node
 	if level_player != null:
 		level_player.visible = not editing
 		level_player.modulate = Color.WHITE
+	# 地图里的 Player 可能停在上次试玩/编辑的位置；初次进入游戏必须回到出生标记。
+	# 在入树前改好，FallDeath 记录到的初始位置也会是出生点。
+	if not editing and level_player != null:
+		var spawn := level.get_node_or_null("PlayerSpawn")
+		if spawn is Node2D:
+			level_player.position = spawn.position
+			level_player.rotation = spawn.rotation
 	var staged := _detach_unbaked_bodies(level)
 	if not staged.is_empty():
 		level.body_bake_pending = true

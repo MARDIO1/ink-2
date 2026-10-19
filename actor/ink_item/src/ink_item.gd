@@ -24,7 +24,7 @@ const GearCenters := preload("res://actor/canvas/src/gear_centers.gd")
 @export var hide_nails_in_play := true
 @export var fixed_nails := PackedVector2Array()
 @export var background_nails := PackedVector2Array()
-## 无限钉子在同岛分块上由 CanvasSolid 分别写入；局部队列只负责可见外观。
+## 无限标签在同岛分块上由 CanvasSolid 分别写入；局部队列只负责可见外观。
 @export var infinite_nails := PackedVector2Array()
 @export var infinite_nail_body := false
 @export var infinite_fuel_body := false

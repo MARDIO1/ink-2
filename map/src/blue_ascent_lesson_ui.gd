@@ -3,8 +3,9 @@ extends Node
 var _plates := {}
 
 func _process(_delta: float) -> void:
-	for title in ["SmallCanvas", "BridgeLessonCanvas"]:
-		var canvas := get_parent().get_node_or_null(NodePath(title))
+	for canvas in get_tree().get_nodes_in_group(&"canvas_workbench"):
+		if canvas.get_parent() != get_parent(): continue
+		var title = canvas.get_instance_id()
 		if canvas == null or canvas._side_panel == null: continue
 		if not _plates.has(title):
 			var left := _plate(canvas.workbench)
@@ -25,6 +26,7 @@ func _plate(parent: Node) -> ColorRect:
 	var plate := ColorRect.new()
 	plate.name = "LessonToolPaper"
 	plate.color = Color("eeeadd")
+	plate.color.a = 0.5
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	plate.z_index = -1
 	parent.add_child(plate)

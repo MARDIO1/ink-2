@@ -45,6 +45,17 @@ func _run() -> void:
 	var layout: CanvasLayer = canvas.get_node("SidePanelLayer")
 	var initial_size: Vector2i = canvas.canvas_size
 	var original_transform := root.canvas_transform
+	# 邻近的上一张画布不能把当前工具栏推到两张画布的外侧。
+	var neighbor = load("res://actor/canvas/canvas.tscn").instantiate()
+	neighbor.position = canvas.position + Vector2(213, -561)
+	neighbor.canvas_size = Vector2i(600, 500)
+	level.add_child(neighbor)
+	neighbor.player = null
+	await settle()
+	var own_bounds: Rect2 = canvas.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, Vector2(canvas.canvas_size))
+	check("nearby canvas does not expand current toolbar bounds", layout._canvas_screen_bounds().is_equal_approx(own_bounds))
+	neighbor.free()
+	await settle()
 	for zoom in [0.5, 1.0, 3.0]:
 		for screen_anchor in [Vector2(940, -50), Vector2(950, 520), Vector2(-100, 200), Vector2(500, 100)]:
 			var transform := Transform2D(0.2, Vector2.ONE * zoom, 0.0, Vector2.ZERO)
@@ -52,16 +63,15 @@ func _run() -> void:
 			transform.origin = screen_anchor - transform * (canvas.global_transform * anchor)
 			root.canvas_transform = transform
 			await settle()
-			var panel_rect := Rect2(panel.get_global_transform_with_canvas().origin, panel.size)
+			var panel_rect := panel.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, panel.size)
 			check("panel stays horizontally in viewport zoom=%s anchor=%s" % [zoom, screen_anchor], panel_rect.position.x >= 11 and panel_rect.end.x <= root.get_visible_rect().end.x - 11)
-			var group_bounds: Rect2 = layout._group_screen_bounds()
-			check("panel height follows canvas without vertical avoidance", is_equal_approx(panel_rect.position.y, group_bounds.position.y + 2.0))
+			check("panel remains vertically visible", panel_rect.position.y >= 181 and panel_rect.end.y <= root.get_visible_rect().end.y - 11)
 			var left: Control = canvas.buttons
-			var left_rect := Rect2(left.get_global_transform_with_canvas().origin, left.size)
+			var left_rect := left.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, left.size)
 			check("left toolbar stays horizontally in viewport", left_rect.position.x >= 11 and left_rect.end.x <= root.get_visible_rect().end.x - 11)
 			var swatch: Control = canvas._ink_buttons[0]
 			check("swatch stays 34 screen pixels despite rotated camera zoom", is_equal_approx(swatch.get_global_transform_with_canvas().x.length() * swatch.size.x, 34.0))
-	# 点击验证使用完整可见的画布高度；上下越界现在按设计不再吸附回屏幕。
+	# 点击验证使用经过边界调整后的可见工具栏。
 	root.canvas_transform = Transform2D(0.0, Vector2(400, 160) - canvas.global_position)
 	await settle()
 	canvas.toolbar_transition_seconds = 0.22
@@ -71,7 +81,8 @@ func _run() -> void:
 	root.canvas_transform.origin += Vector2(4, 3)
 	await process_frame
 	layout.update_layout(1.0 / 60.0)
-	check("visible toolbar stays attached without interpolation lag", layout._mount.position.is_equal_approx(still_position + Vector2(4, 3)))
+	var expected_y := clampf(layout._canvas_screen_bounds().position.y + 2.0, 182.0, maxf(182.0, root.get_visible_rect().end.y - panel.size.y * layout._mount.scale.y - 12.0))
+	check("visible toolbar follows camera within screen bounds", layout._mount.position.is_equal_approx(Vector2(still_position.x + 4, expected_y)))
 	await click(canvas._ink_buttons[2])
 	check("screen-space color button changes selected ink", canvas.surface.selected_ink == 2)
 	canvas._side_brush_slider.value = 13

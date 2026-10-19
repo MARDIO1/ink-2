@@ -1,10 +1,9 @@
 extends CanvasLayer
-## 两侧工具贴合连续画布整体边缘，仅横向越界时调整；高度始终跟随画布。
+## 两侧工具贴合当前画布边缘，越界时收回屏幕，避免工具被视野裁切。
 @export var canvas: Node2D
 @export var panel: Control
 const EDGE := 12.0
 const FOLLOW_SPEED := 14.0
-const GROUP_GAP := 96.0
 var _mount: Node2D
 var _left_position := Vector2.ZERO
 var _initialized := false
@@ -25,6 +24,13 @@ func _process(delta: float) -> void:
 	visible = canvas.is_visible_in_tree()
 	update_layout(delta)
 
+func sync_mount_parent() -> void:
+	if _mount == null:
+		return
+	var target: Node = self if canvas._screen_fixed else canvas.get_node("ToolbarLayer")
+	if _mount.get_parent() != target:
+		_mount.reparent(target, false)
+
 func adopt_positions(previous: CanvasLayer) -> void:
 	if previous._initialized:
 		_mount.position = previous._mount.position
@@ -35,27 +41,9 @@ func _fit(size: Vector2, viewport_size: Vector2) -> float:
 	return clampf(minf((viewport_size.x - EDGE * 2.0) / maxf(size.x, 1.0),
 		(viewport_size.y - 182.0 - EDGE) / maxf(size.y, 1.0)), 0.1, 1.0)
 
-func _group_screen_bounds() -> Rect2:
-	var connected: Array = [canvas]
-	var candidates: Array = []
-	for item in get_tree().get_nodes_in_group(&"canvas_workbench"):
-		if item != canvas and item.get_parent() == canvas.get_parent() and item.active \
-		and item.is_visible_in_tree() and not item._map_editor_mode and not item._screen_fixed:
-			candidates.append(item)
-	var index := 0
-	while index < connected.size():
-		var current = connected[index]
-		var bounds: Rect2 = current.global_transform * Rect2(Vector2.ZERO, Vector2(current.canvas_size))
-		for item in candidates:
-			if not connected.has(item):
-				var other: Rect2 = item.global_transform * Rect2(Vector2.ZERO, Vector2(item.canvas_size))
-				if bounds.grow(GROUP_GAP).intersects(other):
-					connected.append(item)
-		index += 1
-	var result: Rect2 = canvas.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, Vector2(canvas.canvas_size))
-	for item in connected:
-		result = result.merge(item.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, Vector2(item.canvas_size)))
-	return result
+func _canvas_screen_bounds() -> Rect2:
+	# 归属由画布的靠近/交接逻辑决定；附近其他画布不扩张当前工具栏的定位范围。
+	return canvas.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, Vector2(canvas.canvas_size))
 
 func _horizontal_position(preferred: float, current: float, width: float, viewport_rect: Rect2, weight: float) -> float:
 	var minimum := viewport_rect.position.x + EDGE
@@ -65,7 +53,11 @@ func _horizontal_position(preferred: float, current: float, width: float, viewpo
 	return clampf(lerpf(current, clampf(preferred, minimum, maximum), weight), minimum, maximum)
 
 func update_layout(delta := 0.0) -> void:
-	if _mount == null or not is_instance_valid(panel) or canvas._map_editor_mode or canvas._screen_fixed:
+	if _mount == null or not is_instance_valid(panel):
+		return
+	sync_mount_parent()
+	canvas._sync_play_toolbar_transform()
+	if canvas._map_editor_mode or canvas._screen_fixed:
 		_initialized = false
 		return
 	var viewport_rect := canvas.get_viewport_rect()
@@ -73,13 +65,20 @@ func update_layout(delta := 0.0) -> void:
 	var right_fit := _fit(right_size, viewport_rect.size)
 	_mount.scale = Vector2.ONE * right_fit
 	right_size *= right_fit
-	var bounds := _group_screen_bounds()
-	var right_target := Vector2(bounds.end.x + canvas.side_panel_gap + canvas.PLAY_TOOLBAR_X_OFFSET, bounds.position.y + 2.0)
+	var bounds := _canvas_screen_bounds()
+	var canvas_transform := canvas.get_global_transform_with_canvas()
+	var frame_padding := 14.0 * (absf(canvas_transform.x.x) + absf(canvas_transform.y.x))
+	# 画框随相机放大，工具栏间距也要让出画框和纸色底板的边缘。
+	var gap := maxf(canvas.side_panel_gap, frame_padding + 18.0)
+	var right_target := Vector2(bounds.end.x + gap + canvas.PLAY_TOOLBAR_X_OFFSET, bounds.position.y + 2.0)
 	var left_rect: Rect2 = canvas.buttons.get_rect().merge(canvas.toggle_button.get_rect())
 	var left_fit := _fit(left_rect.size, viewport_rect.size)
 	var left_size := left_rect.size * left_fit
-	var left_target := Vector2(bounds.position.x - left_size.x - canvas.side_panel_gap,
+	var left_target := Vector2(bounds.position.x - left_size.x - gap,
 		bounds.position.y + 2.0)
+	var top := viewport_rect.position.y + 182.0
+	right_target.y = clampf(right_target.y, top, maxf(top, viewport_rect.end.y - right_size.y - EDGE))
+	left_target.y = clampf(left_target.y, top, maxf(top, viewport_rect.end.y - left_size.y - EDGE))
 	var immediate: bool = not _initialized or canvas.toolbar_transition_seconds <= 0.0
 	var weight := 1.0 if immediate else 1.0 - exp(-FOLLOW_SPEED * delta)
 	_mount.position = Vector2(_horizontal_position(right_target.x, _mount.position.x, right_size.x, viewport_rect, weight), right_target.y)
@@ -90,5 +89,5 @@ func update_layout(delta := 0.0) -> void:
 	panel.position = Vector2.ZERO
 	var screen_transform := Transform2D(0.0, Vector2.ONE * left_fit, 0.0,
 		_left_position - left_rect.position * left_fit)
-	# workbench 已经搬进 CanvasLayer，transform 就是屏幕坐标，不要再乘逆视口矩阵。
+	# 共同挂点负责抵消相机变换，控件继续使用屏幕坐标。
 	canvas.workbench.transform = screen_transform

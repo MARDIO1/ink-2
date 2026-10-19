@@ -224,8 +224,10 @@ var _shape_shortage_notified := false
 var _paint_shortage_notified := false
 var _low_ink_announced := false
 const MIN_PAINT_INK := 1000
-## 无限钉子只在创造模式允许放置；普通游玩即使脚本误设工具也会被这里拒绝。
+## 无限标签只在创造模式允许放置；普通游玩即使脚本误设工具也会被这里拒绝。
 var map_editor_mode := false
+## 进游戏后立即固化的地图草稿不重建即将被清空的贴图和统计；编辑模式仍完整恢复。
+var defer_load_metadata := false
 ## 当前工具；切换时中断正在进行的笔画或形状。
 @export var tool: Tool = Tool.HAND:
 	set(value):
@@ -965,7 +967,7 @@ func _place_nail(point: Vector2, kind: int = Nail.Kind.FIXED) -> bool:
 	if not _inside(point):
 		return false
 	if kind == Nail.Kind.INFINITE and not map_editor_mode:
-		notice_requested.emit("无限钉子只能在创造模式使用")
+		notice_requested.emit("无限标签只能在创造模式使用")
 		return false
 	var pixel := Vector2i(point.floor())
 	if kind == Nail.Kind.BACKGROUND and not _has_nailable_pixel(pixel):

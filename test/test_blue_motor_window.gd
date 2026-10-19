@@ -12,6 +12,9 @@ class FakeBody:
 	var inv_inertia := 1.0
 	var linear_velocity := Vector2.ZERO
 	var mass := 1.0
+	var frozen := false
+	var awake := true
+	var sleep_timer := 0.0
 
 	func com_world() -> Vector2:
 		return Vector2.ZERO

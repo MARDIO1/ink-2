@@ -126,6 +126,24 @@ static func capture(canvas, rect: Rect2i, mask: Dictionary = {}) -> Dictionary:
 		gears.append({"node": child, "wheel": wheel, "support": support, "at": at,
 			"support_at": support_at, "support_material": support_material,
 			"world": bool(child.fixed_to_world), "legacy": not bool(child.explicit)})
+	# 滑块和弹簧的主体也必须独立保存。摊平到像素层会把贴着固定底座的
+	# 闸门/桥梁粘成静态连通块，导致普通墨水机关另存蓝图后无法运动。
+	for child in canvas.world.get_children():
+		if child.is_queued_for_deletion():
+			continue
+		var attached: Array = []
+		if child is SliderPin and not child.black_anchor.is_empty():
+			attached.append(child.black_anchor)
+		elif child is Hinge and not child is Bearing:
+			attached = [child.yellow_anchor, child.black_anchor]
+		elif child is Stroke and child.state == Stroke.State.ACTIVE:
+			attached = child.anchors
+		for anchor in attached:
+			if anchor.is_empty():
+				continue
+			var point := Vector2i(local_point(canvas, Stroke.anchor_world(anchor)).floor())
+			if inside(point, rect, mask) and not required.has(anchor.body):
+				required.append(anchor.body)
 	# 逐像素读取草稿，不调用会移走原实体的 rasterize/return_to_canvas。
 	var scan := rect.intersection(Rect2i(Vector2i.ZERO, surface.canvas_size))
 	var black_bytes := PackedByteArray()

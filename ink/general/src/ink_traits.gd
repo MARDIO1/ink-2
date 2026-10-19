@@ -1,5 +1,5 @@
 extends RefCounted
-## 无限钉子写入 PBody 的跨颜色规则标记。
+## 无限标签写入 PBody 的跨颜色规则标记。
 ##
 ## 钉子外观与锚点仍归 actor/nail 管理；红、白、蓝规则只依赖这里，
 ## 避免 ink/* 反向依赖 actor/nail。
