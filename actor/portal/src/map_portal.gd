@@ -3,7 +3,8 @@ extends Node2D
 ## 仅观察自定义 PixelWorld 玩家碰撞壳，不使用 Godot Area2D 的另一套物理世界。
 
 const GROUP := &"map_portal"
-const LevelCatalog := preload("res://map/src/level_catalog.gd")
+const LevelList := preload("res://ui/level_select/src/level_select.gd")
+const ContentPaths := preload("res://map/src/content_paths.gd")
 const TEXTURE_PATH := "res://actor/portal/asset/torn_paper_portal.png"
 const OVERLAP_SECONDS := 2.0
 const COMPLETION_PULSE_SECONDS := 0.45
@@ -252,12 +253,14 @@ func _physics_process(delta: float) -> void:
 
 func resolve_destination() -> String:
 	if not target_map.is_empty():
-		return target_map if target_map.ends_with(".tscn") and LevelCatalog.is_level(target_map) else ""
+		return target_map if target_map.ends_with(".tscn") \
+			and ContentPaths.resource_exists(target_map, "PackedScene") \
+			and LevelList._has_player(target_map) else ""
 	var current := _level().scene_file_path if _level() != null else ""
 	var creative := _level().get_node_or_null("Creative") if _level() != null else null
 	if creative != null and not str(creative.get("map_path")).is_empty():
 		current = str(creative.get("map_path"))
-	return LevelCatalog.next_level(current)
+	return LevelList.next_level(current)
 
 
 func _activate() -> void:
@@ -275,12 +278,13 @@ func _activate() -> void:
 		succeeded = await router.request_level_change(destination)
 	else:
 		# F6 直接运行单关时也能使用传送门。
-		var error := ResourceLoader.load_threaded_request(destination, "PackedScene", false)
+		var load_path := ContentPaths.resolve(destination)
+		var error := ResourceLoader.load_threaded_request(load_path, "PackedScene", false)
 		if error == OK:
-			while ResourceLoader.load_threaded_get_status(destination) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			while ResourceLoader.load_threaded_get_status(load_path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 				await get_tree().process_frame
-			if ResourceLoader.load_threaded_get_status(destination) == ResourceLoader.THREAD_LOAD_LOADED:
-				var scene := ResourceLoader.load_threaded_get(destination) as PackedScene
+			if ResourceLoader.load_threaded_get_status(load_path) == ResourceLoader.THREAD_LOAD_LOADED:
+				var scene := ResourceLoader.load_threaded_get(load_path) as PackedScene
 				succeeded = get_tree().change_scene_to_packed(scene) == OK
 	if not is_inside_tree():
 		return

@@ -2,9 +2,9 @@ extends Resource
 ## 各颜色运行规则的共享默认值；Gym 修改运行节点，保存时写回本资源。
 
 @export_group("蓝墨")
-@export var blue_force_per_length := 900000.0
+@export var blue_force_per_length := 300000.0
 @export var blue_power_per_width := 300000000.0
-@export var blue_source_power_per_pixel := 900000000.0
+@export var blue_source_power_per_pixel := 300000000.0
 @export var blue_idle_power := 10000000.0
 @export var blue_energy_per_red_pixel := 600000000.0
 @export var blue_fuel_interval := 0.1

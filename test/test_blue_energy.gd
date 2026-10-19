@@ -231,5 +231,44 @@ func run() -> void:
 	flow.advance([large], 1.0 / flow.speed)
 	check("snapshot grows by live data without repeating simulation", flow.active_cells() == 6000 and flow.clock == 1 and flow.stats.injected == 600000.0)
 	check("large fracture readback grows without advancing or dropping directions", flow.state(large).front.size() == 6000 and flow.clock == 1)
+	test_source_face()
 	print("BLUE_ENERGY_RESULT checks=%d failures=%d" % [checks, failures])
 	quit(1 if failures else 0)
+
+
+func test_source_face() -> void:
+	var wire = wire_rects([Rect2i(0, 0, 16, 480)])
+	var flow := Flow.new()
+	var sink = connect_sink(flow, wire, Rect2i(0, 1, 16, 1))
+	for x in 16:
+		flow._queue_source(wire, Vector2i(x, 479), 2, 1000.0 / 16.0, 1, true)
+	flow._flush_source_batch()
+	advance(flow, wire, 480)
+	check("end-face source seeds full 16px cross-section",
+		is_equal_approx(sink.energy, 1000.0)
+		and is_equal_approx(flow.stats.injected, flow.stats.consumed + flow.stats.lost + flow.stored_energy()))
+	wire.queue_free()
+
+	wire = wire_rects([Rect2i(0, 0, 16, 480)])
+	flow = Flow.new()
+	sink = connect_sink(flow, wire, Rect2i(0, 1, 16, 1))
+	flow._queue_source(wire, Vector2i(0, 240), 1, 1000.0, 1, true)
+	flow._flush_source_batch()
+	advance(flow, wire, 480)
+	check("side source injects full cross-section without lateral loss",
+		is_equal_approx(sink.energy, 1000.0)
+		and is_equal_approx(flow.stats.lost, 0.0)
+		and is_equal_approx(flow.stats.injected, flow.stats.consumed + flow.stats.lost + flow.stored_energy()))
+	wire.queue_free()
+
+	wire = wire_rects([Rect2i(0, 0, 16, 240), Rect2i(0, 224, 240, 16)])
+	flow = Flow.new()
+	sink = connect_sink(flow, wire, Rect2i(239, 224, 1, 16))
+	for x in 16:
+		flow._queue_source(wire, Vector2i(x, 0), 3, 1000.0 / 16.0, 1, true)
+	flow._flush_source_batch()
+	advance(flow, wire, 480)
+	check("full-face source keeps 90-degree turn lossless",
+		is_equal_approx(sink.energy, 1000.0)
+		and is_equal_approx(flow.stats.lost, 0.0))
+	wire.queue_free()

@@ -33,7 +33,8 @@ func _run() -> void:
 	creative.auto_save_edits = false
 	creative.auto_save_on_exit = false
 	creative.set_active(true)
-	creative._layout_view.set_canvas_size(Vector2i(320, 192))
+	creative._canvas_width_input.value = 320
+	creative._canvas_height_input.value = 192
 	creative._confirm_canvas_size()
 	_check("canvas size dialog starts placement with chosen dimensions",
 		creative._new_canvas_size == Vector2i(320, 192) and creative._monster_mode == -11)
@@ -200,11 +201,7 @@ func _run() -> void:
 	_check("saved record can be loaded", restored != null)
 	if restored != null:
 		restored.auto_step = false
-		# 模拟"被编辑器打开"：Root 加载关卡时会带这个 meta。
-		# 不带的话 Creative 会按游玩实例处理——把草稿就地固化成实体、清空画布。
-		restored.set_meta(&"editor_document_load", true)
 		root.add_child(restored)
-		await process_frame
 		await process_frame
 		var restored_editor = restored.get_node("Creative")
 		restored_editor.auto_save_edits = false

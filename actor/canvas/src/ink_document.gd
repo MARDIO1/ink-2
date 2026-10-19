@@ -123,9 +123,8 @@ static func restore_pixels(surface, image: Image, rod_data: Dictionary) -> Error
 	surface.get_parent().canvas_size = image.get_size()
 	surface.black_image = image
 	surface.black_image.convert(Image.FORMAT_RGBA8)
-	if not surface.defer_load_metadata:
-		surface.rebuild_ink_tiles()
-		rebuild_metadata(surface)
+	surface.rebuild_ink_tiles()
+	rebuild_metadata(surface)
 	surface.gear_centers = GearCenters.normalize(rod_data.get("gear_centers", []))
 	var pending = rod_data.get("draft_bearings", [])
 	surface.draft_bearings = pending.duplicate(true) if pending is Array else []

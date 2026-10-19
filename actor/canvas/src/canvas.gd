@@ -6,8 +6,6 @@ signal tool_changed(tool: int)
 signal ink_selected(index: int)
 signal map_changed
 signal editor_control_requested
-signal brush_changed(px: int)
-signal nails_visibility_changed(show_nails: bool)
 
 const SurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
 const History := preload("res://actor/canvas/src/canvas_history.gd")
@@ -94,15 +92,12 @@ var _ink_warning_token := 0
 @export var player_path: NodePath = ^"../Player"
 @export_range(0.0, 1024.0, 1.0) var toolbar_show_distance := 190.0
 @export_range(0.0, 1024.0, 1.0) var toolbar_hide_distance := 214.0
-## 大地形可加大固化块，减少静态刚体数量；默认 256。
-@export_range(128, 2048, 128) var solid_block_size := 256
 
 
 func _ready() -> void:
 	if not Engine.is_editor_hint():
 		add_to_group(&"canvas_workbench")
 	process_physics_priority = 18 # 世界步进后更新玩家与工作台的距离。
-	solid.block_size = solid_block_size
 	_workbench_home_transform = workbench.transform
 	_lift_workbench_to_screen_layer()
 	var rod_pixels: Image = surface.rod_layer.pixels.duplicate() if surface.rod_layer.pixels != null else null
@@ -292,15 +287,6 @@ func return_to_canvas(record_undo := true, keep_yellow_drafts := false,
 		History.commit(self, state)
 
 
-## 工具栏“墨化”：地图编辑器里不能把机关载体和关节一起回画布。
-func _on_return_to_canvas_pressed() -> void:
-	var creative := get_parent().get_node_or_null("Creative")
-	if _map_editor_mode and creative != null and creative.has_method("inkify_editor_preserved"):
-		creative.inkify_editor_preserved()
-	else:
-		return_to_canvas()
-
-
 ## 地图编辑模式清理已经整体掉出画布的固化墨水。
 ## 原始 InkItem 由节点组识别；破坏产生的碎片没有节点，用 null 占位识别。
 ## 静态地形、生物以及仍有任意部分碰到画布的实体都保留。
@@ -462,24 +448,12 @@ func activate_hand_tool() -> void:
 	set_tool(SurfaceScript.Tool.HAND)
 
 
-## 笔刷量程与当前值：给色盘初始化显示用。
-func brush_range() -> Dictionary:
-	var pen: HSlider = brush_panel.get_node("PenSlider")
-	return {"min": pen.min_value, "max": pen.max_value, "step": pen.step, "value": surface.brush_size}
-
-
 ## 直接按 px 设定笔触直径。
 func set_brush_size(px: int) -> void:
 	surface.brush_size = px
-	# 两个滑条（工具栏画笔面板、右侧色盘）都是这个值的显示端，由画布统一同步；
-	# 用 no_signal 避免回环。
-	var pen: HSlider = brush_panel.get_node("PenSlider")
-	pen.set_value_no_signal(float(px))
-	pen.tooltip_text = "笔触大小：%d px" % px
+	brush_panel.get_node("PenSlider").tooltip_text = "笔触大小：%d px" % px
 	if _side_brush_slider != null:
-		_side_brush_slider.set_value_no_signal(float(px))
 		_side_brush_slider.tooltip_text = "笔触大小：%d px" % px
-	brush_changed.emit(px)
 
 
 ## 免墨水：创造模式里画图不该花瓶子里的墨（"重绘"也就不会再凭空生墨）。
@@ -989,9 +963,9 @@ func _bind_buttons() -> void:
 	tool_grid.get_node("SelectDelete").gui_input.connect(_on_selection_button_input)
 	tool_grid.get_node("Redraw").pressed.connect(clear_canvas)
 	tool_grid.get_node("Generate").pressed.connect(generate)
-	tool_grid.get_node("ReturnToCanvas").pressed.connect(_on_return_to_canvas_pressed)
+	tool_grid.get_node("ReturnToCanvas").pressed.connect(return_to_canvas)
 	tool_grid.get_node("ExpandCanvas").pressed.connect(_open_expand_canvas_window)
-	resize_panel.get_node("Grid/NailVisibility").toggled.connect(set_nails_visible)
+	resize_panel.get_node("Grid/NailVisibility").toggled.connect(_on_nail_visibility_toggled)
 	toggle_button.pressed.connect(_toggle_workbench)
 	brush_panel.get_node("PenSlider").value_changed.connect(_on_pen_slider_changed)
 
@@ -1037,19 +1011,12 @@ func _toggle_workbench() -> void:
 	_refresh_workbench_visibility()
 
 
-## 只切换钉子外观，保留固定点；色盘与工具栏共用这一个入口。
-func set_nails_visible(show_nails: bool) -> void:
+func _on_nail_visibility_toggled(show_nails: bool) -> void:
 	if not _map_editor_mode:
 		return
 	_nails_visible = show_nails
 	_apply_nail_visuals(show_nails)
 	_update_nail_visibility_tooltip(show_nails)
-	nails_visibility_changed.emit(show_nails)
-
-
-## 钉子在编辑态是否可见（给视图初始化用）。
-func nails_visible() -> bool:
-	return _nails_visible
 
 
 func _apply_nail_visuals(show_nails: bool) -> void:

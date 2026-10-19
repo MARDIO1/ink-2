@@ -5,6 +5,7 @@ const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Traits := preload("res://ink/general/src/ink_traits.gd")
 const DIRS: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
+const MAX_SOURCE_RUN := 64
 var speed := 600.0
 var interval := 0.1
 var lifetime := 20.0
@@ -38,6 +39,8 @@ var _ids: Dictionary = {}
 var _layouts: Dictionary = {}
 var _serial := 0
 var _pending: Array = []
+var _source_batch: Dictionary = {}
+var _source_geometry: Dictionary = {}
 var _stored := 0.0
 var _active := 0
 var _template := PackedByteArray()
@@ -472,7 +475,17 @@ func _source_contacts(wire, body) -> Dictionary:
 	pairs[body] = {"stamp": stamp, "cells": cells}
 	return cells
 
+## 供能入口：把同一横截面的端口先合并，再按导线局部轴向整面注入。
+## 这样 16px 宽导线从单侧/端面接触都能得到完整波前，而不是单格扇形扩散。
 func _emit(rule, context: Dictionary, wires: Array) -> void:
+	_source_batch.clear()
+	_source_geometry.clear()
+	_emit_sources(rule, context, wires)
+	_flush_source_batch()
+	_source_geometry.clear()
+
+
+func _emit_sources(rule, context: Dictionary, wires: Array) -> void:
 	var player = context.get("player_node")
 	var player_bodies: Array = []
 	if player != null:
@@ -510,7 +523,8 @@ func _emit(rule, context: Dictionary, wires: Array) -> void:
 			for cell: Vector2i in contacts:
 				var ports: Array = contacts[cell]
 				for port: Array in ports:
-					inject(port[0], port[1], port[2], infinite_share / ports.size(), body.get_instance_id())
+					_queue_source(port[0], port[1], port[2], infinite_share / ports.size(),
+						body.get_instance_id(), _is_end_face(port[0], port[1], port[2]))
 			continue
 		if body.tags.has("living"):
 			var group: Dictionary = groups.get_or_add(body, {"body": body, "ports": []})
@@ -524,14 +538,15 @@ func _emit(rule, context: Dictionary, wires: Array) -> void:
 			for cell: Vector2i in contacts:
 				var ports: Array = contacts[cell]
 				for port: Array in ports:
-					inject(port[0], port[1], port[2], share / ports.size(), body.get_instance_id())
+					_queue_source(port[0], port[1], port[2], share / ports.size(),
+						body.get_instance_id(), _is_end_face(port[0], port[1], port[2]))
 				account.contacts[cell] = true
 			account.credit += energy / maxf(rule.energy_per_red_pixel, 0.001)
 	for group: Dictionary in groups.values():
 		var power: float = maxf(0.0, float(group.body.tags.get(
 			"supply_power", rule.biological_default_power)))
 		for port: Array in group.ports:
-			inject(port[0], port[1], port[2], power * interval / group.ports.size(), group.body.get_instance_id())
+			_queue_source(port[0], port[1], port[2], power * interval / group.ports.size(), group.body.get_instance_id())
 	if player == null:
 		return
 	var hand = player.get_node("Arm/Hand/HandControl")
@@ -550,10 +565,141 @@ func _emit(rule, context: Dictionary, wires: Array) -> void:
 	var feet = player.get_node("PlayerInput")
 	var power: float = maxf(0.0, feet.max_power - feet.debug_active_power) + maxf(0.0, hand.max_power - hand.debug_active_power)
 	for port: Array in ports:
-		inject(port[0], port[1], -1, power * interval / ports.size(), biological_producer)
+		_queue_source(port[0], port[1], -1, power * interval / ports.size(), biological_producer)
 
 ## 三类连接各自失效：导线邻居、电机接触、轴承桥接。
 ## 齿轮转动只会让真正相关的那一份失效，不会连带重算全部导电接触。
+func _queue_source(wire, at: Vector2i, direction: int, energy: float, producer: int,
+		spread := false) -> void:
+	if energy <= 0.0 or not wire.mask.has(at):
+		return
+	if not spread:
+		inject(wire, at, direction, energy, producer)
+		return
+	var geometry := _source_geometry_for(wire, at)
+	var directions := _source_directions(wire, at, geometry.axis, direction)
+	if directions.is_empty():
+		return
+	var by_wire: Dictionary = _source_batch.get_or_add(wire, {})
+	var key := Vector3i(geometry.axis.x, geometry.axis.y,
+		at.x * geometry.axis.x + at.y * geometry.axis.y)
+	var entry: Dictionary = by_wire.get(key, {})
+	if entry.is_empty():
+		entry = {"cells": {}, "directions": {}, "energy": 0.0, "producer": producer}
+		by_wire[key] = entry
+	for cell in geometry.cells:
+		entry.cells[cell] = true
+	for d in directions:
+		entry.directions[d] = true
+	entry.energy += energy
+	if entry.producer != producer:
+		entry.producer = 0
+
+
+func _flush_source_batch() -> void:
+	for wire in _source_batch:
+		for entry: Dictionary in _source_batch[wire].values():
+			var cells: Array = entry.cells.keys()
+			var directions: Array = entry.directions.keys()
+			if cells.is_empty() or directions.is_empty():
+				continue
+			var share: float = entry.energy / float(cells.size() * directions.size())
+			var primary: int = int(directions[0])
+			var secondary := primary ^ 1
+			if directions.size() == 2 and directions.has(secondary):
+				# 同一横截面的正反两股错开一格起步，避免被当成迎面电流抵消。
+				for cell in cells:
+					var at: Vector2i = cell
+					inject(wire, at, primary, share, int(entry.producer))
+					var behind: Vector2i = at + DIRS[secondary]
+					inject(wire, behind if wire.mask.has(behind) else at, secondary,
+						share, int(entry.producer))
+			else:
+				for cell in cells:
+					var at: Vector2i = cell
+					for d in directions:
+						inject(wire, at, int(d), share, int(entry.producer))
+	_source_batch.clear()
+
+
+func _source_geometry_for(wire, at: Vector2i) -> Dictionary:
+	var by_cell: Dictionary = _source_geometry.get_or_add(wire, {})
+	var cached: Dictionary = by_cell.get(at, {})
+	if not cached.is_empty():
+		return cached
+	var horizontal := _source_run(wire, at, Vector2i.RIGHT) + _source_run(wire, at, Vector2i.LEFT) + 1
+	var vertical := _source_run(wire, at, Vector2i.DOWN) + _source_run(wire, at, Vector2i.UP) + 1
+	var axis := Vector2i.RIGHT if horizontal > vertical else Vector2i.UP
+	var cross := Vector2i.DOWN if axis == Vector2i.RIGHT else Vector2i.RIGHT
+	var cells: Array = [at]
+	var point: Vector2i = at + cross
+	while wire.mask.has(point):
+		cells.append(point)
+		point += cross
+	point = at - cross
+	while wire.mask.has(point):
+		cells.append(point)
+		point -= cross
+	cached = {"axis": axis, "cells": cells}
+	by_cell[at] = cached
+	return cached
+
+
+func _source_run(wire, at: Vector2i, direction: Vector2i) -> int:
+	var count := 0
+	var point: Vector2i = at + direction
+	while count < MAX_SOURCE_RUN and wire.mask.has(point):
+		count += 1
+		point += direction
+	return count
+
+
+func _source_directions(wire, at: Vector2i, axis: Vector2i, direction: int) -> Array:
+	var result: Array = []
+	var axis_index := _direction_index(axis)
+	var opposite := _direction_index(-axis)
+	if direction >= 0 and (direction == axis_index or direction == opposite):
+		# 端面接触：沿导线轴向把能量送进线内。
+		if wire.mask.has(at + DIRS[direction]):
+			result.append(direction)
+		elif opposite >= 0 and wire.mask.has(at + DIRS[opposite]):
+			result.append(opposite)
+		else:
+			result.append(direction)
+		return result
+	# 侧面或抓握：沿导线两个方向铺开，不横穿线宽。
+	if axis_index >= 0 and wire.mask.has(at + DIRS[axis_index]):
+		result.append(axis_index)
+	if opposite >= 0 and wire.mask.has(at + DIRS[opposite]):
+		result.append(opposite)
+	if result.is_empty():
+		if direction >= 0:
+			result.append(direction)
+		else:
+			for d in 4:
+				if wire.mask.has(at + DIRS[d]):
+					result.append(d)
+	return result
+
+
+func _direction_index(direction: Vector2i) -> int:
+	for index in 4:
+		if DIRS[index] == direction:
+			return index
+	return -1
+
+
+func _is_end_face(wire, at: Vector2i, direction: int) -> bool:
+	if direction < 0:
+		return false
+	var geometry := _source_geometry_for(wire, at)
+	var axis_index := _direction_index(geometry.axis)
+	var opposite := _direction_index(-geometry.axis)
+	if direction != axis_index and direction != opposite:
+		return false
+	return wire.mask.has(at + DIRS[direction]) and not wire.mask.has(at + DIRS[opposite])
+
+
 func _rebuild_local_contacts(rule, wires: Array, motors: Array) -> void:
 	var phase_start := Time.get_ticks_usec()
 	_refresh_neighbours(wires)
@@ -621,58 +767,51 @@ func _motor_pair_stamp(wire, motor) -> Array:
 func _refresh_consumers(wires: Array, motors: Array) -> void:
 	var live_keys := {}
 	var changed := false
-	var wire_by_id := {}
-	var motor_bounds := {}
-	for motor in motors:
-		# 箭头完整足迹的保守世界范围；排除跨楼层、无接触可能的配对。
-		# 不能用载体刚体范围代替，否则大型地形会把远处的箭头全部纳入。
-		motor_bounds[motor] = Rect2(motor.position,Vector2.ZERO).expand(
-			motor.position+motor.tip.rotated(motor.rotation)).grow(motor.brush_width+2.0)
 	for wire in wires:
-		wire_by_id[wire.get_instance_id()] = wire
-		var bounds := _rect_world(wire.body,wire.local_bounds()).grow(2.0)
 		var targets: Dictionary = consumers.get(wire, {})
 		for motor in motors:
-			if not bounds.intersects(motor_bounds[motor]):
-				continue
-			var key: Array = [wire.get_instance_id(), motor.get_instance_id()]
+			var key := Vector2i(wire.get_instance_id(), motor.get_instance_id())
 			live_keys[key] = true
 			var pair_stamp := _motor_pair_stamp(wire, motor)
 			var cached: Dictionary = motor_cache.get(key, {})
 			if cached.get("stamp", []) == pair_stamp:
 				continue
+			changed = true
+			# 只撤销这一对的旧投影，其他配对保持不动。
+			for at: Vector2i in cached.get("cells", []):
+				var list: Array = targets.get(at, [])
+				if not list.is_empty():
+					list.erase(motor)
+					if list.is_empty():
+						targets.erase(at)
 			var cells: Array = []
 			for support in motor.support_cells:
 				var at := Vector2i(support) if wire.body == motor.body \
 					else Vector2i(wire.body.to_local(motor.body.to_world(support + Vector2.ONE * 0.5)).floor())
 				if wire.mask.has(at):
 					cells.append(at)
-			# 位姿变化但实际接触格相同，不重发整份 native 接触表。
-			if cells != cached.get("cells", []):
-				changed = true
-				for at: Vector2i in cached.get("cells", []):
-					var list: Array = targets.get(at, [])
-					list.erase(motor)
-					if list.is_empty(): targets.erase(at)
-				for at: Vector2i in cells:
-					var list: Array = targets.get(at, [])
-					if not list.has(motor): list.append(motor)
+			for at: Vector2i in cells:
+				var list: Array = targets.get(at, [])
+				if not list.has(motor):
+					list.append(motor)
 					targets[at] = list
 			motor_cache[key] = {"stamp": pair_stamp, "cells": cells}
 		consumers[wire] = targets
 	for key in motor_cache.keys():
-		if live_keys.has(key): continue
-		var cached: Dictionary = motor_cache[key]
-		var wire = wire_by_id.get(key[0])
-		# 只清理退出接触范围的这一对，不能误删此电机在其他导线上的供电。
-		if wire != null:
-			var targets: Dictionary = consumers.get(wire,{})
-			for at: Vector2i in cached.get("cells",[]):
-				var kept := drop_dead_entries(targets.get(at,[]),key[1])
-				if kept.is_empty(): targets.erase(at)
-				else: targets[at] = kept
-		if not cached.get("cells",[]).is_empty(): changed = true
-		motor_cache.erase(key)
+		if not live_keys.has(key):
+			# 电机已经消失：把它的旧投影从所有导线上摘掉，否则还会继续被供电。
+			motor_cache.erase(key)
+			changed = true
+			var dead: int = key.y
+			for wire in consumers.keys():
+				var targets: Dictionary = consumers[wire]
+				for at in targets.keys():
+					# 电机可能已被释放（烧毁/碎裂）：对已释放对象取 id 会直接崩。
+					var kept := drop_dead_entries(targets[at], dead)
+					if kept.is_empty():
+						targets.erase(at)
+					else:
+						targets[at] = kept
 	for wire in consumers.keys():
 		if not wires.has(wire):
 			consumers.erase(wire)

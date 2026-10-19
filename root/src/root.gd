@@ -21,6 +21,7 @@ signal level_changed(level: Node)
 @export_range(1, 32, 1) var bake_bodies_per_frame := 1
 
 const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
+const ContentPaths := preload("res://map/src/content_paths.gd")
 
 @onready var level_root: Node = $Level
 @onready var ui_root: Node = $UI
@@ -105,6 +106,8 @@ func finish_current_level() -> void:
 func request_level_change(path: String) -> bool:
 	if _loading_level or _transition.busy:
 		return false
+	var logical_path := ContentPaths.to_res_path(path)
+	path = ContentPaths.resolve(path)
 	_loading_level = true
 	# Do not fan scene dependencies out to worker sub-threads. Several levels depend
 	# on native/custom resources that are safe to load in the background loader but
@@ -112,7 +115,7 @@ func request_level_change(path: String) -> bool:
 	var request_error := ResourceLoader.load_threaded_request(path, "PackedScene", false)
 	if request_error != OK:
 		_loading_level = false
-		_restore_level_select_after_failure(path)
+		_restore_level_select_after_failure(logical_path)
 		push_error("Root: 无法开始加载关卡 %s (%d)" % [path, request_error])
 		return false
 	var transition_style: int = _transition.Style.TEAR if level_root.get_child_count() > 0 else _transition.Style.INK
@@ -124,13 +127,18 @@ func request_level_change(path: String) -> bool:
 	var scene := ResourceLoader.load_threaded_get(path) as PackedScene \
 		if status == ResourceLoader.THREAD_LOAD_LOADED else null
 	if scene == null:
-		_restore_level_select_after_failure(path)
+		_restore_level_select_after_failure(logical_path)
 		push_error("Root: 加载关卡失败 %s" % path)
 		await _transition.finish()
 		_loading_level = false
 		return false
 	# 关卡是逐帧烘焙的，必须 await 到底再揭幕，否则会露出半成品。
-	await load_level(scene)
+	var loaded_level: Node = await load_level(scene, false, path)
+	if loaded_level == null:
+		_restore_level_select_after_failure(logical_path)
+		await _transition.finish()
+		_loading_level = false
+		return false
 	# 让加载层先出一帧，再挂成品 UI：不然实例化关卡 + 实例化 UI 会挤在同一帧里。
 	await get_tree().process_frame
 	_set_screen(ui_scene.instantiate())
@@ -161,12 +169,18 @@ func _set_screen(screen: Node) -> void:
 ## 实测第二页 69 个刚体要 3.1 秒，这一帧里加载动画和鼠标都是死的。
 ## 做法：先把直接子级的刚体节点摘下来，让 `rebuild()` 只造一个空世界（毫秒级），
 ## 再逐帧放回并 `bake_node()`。关卡此刻在遮罩后面，玩家看不到中间状态。
-func load_level(scene: PackedScene, editing := false) -> Node:
+func load_level(scene: PackedScene, editing := false, source_path := "") -> Node:
+	var level := scene.instantiate()
+	if not source_path.is_empty():
+		var validation_error := _validate_level_scene(level)
+		if not validation_error.is_empty():
+			level.free()
+			push_error("Root: 关卡结构无效 %s：%s" % [source_path, validation_error])
+			return null
 	_save_active_editor_before_unload()
 	for child in level_root.get_children():
 		level_root.remove_child(child)
 		child.queue_free()
-	var level := scene.instantiate()
 	level.set_meta(&"editor_document_load", editing)
 	# 编辑器文档会以隐藏状态保存玩家，进游戏时必须恢复可见；
 	# 进编辑器则在入树前就隐藏，避免保存/重载期间闪出墨水瓶。
@@ -182,19 +196,65 @@ func load_level(scene: PackedScene, editing := false) -> Node:
 	if level.has_method(&"rebuild") and level.get("world") == null:
 		level.call(&"rebuild")
 	level_root.add_child(level)
+	var player_body = level_player.get("body") if level_player != null else null
+	var player_input: Node = level_player.get_node_or_null("PlayerInput") if level_player != null else null
+	var input_was_processing := player_input.is_physics_processing() if player_input != null else false
+	var pause_tag_had := false
+	var pause_tag_value = false
+	if player_body != null:
+		pause_tag_had = player_body.tags.has("editor_physics_paused")
+		pause_tag_value = player_body.tags.get("editor_physics_paused", false)
+		player_body.tags["editor_physics_paused"] = true
+		if player_input != null:
+			player_input.set_physics_process(false)
 	_play_music(level_music)
 	await _bake_staged_bodies(level, staged)
+	if player_body != null:
+		if editing and pause_tag_had:
+			player_body.tags["editor_physics_paused"] = pause_tag_value
+		else:
+			player_body.tags.erase("editor_physics_paused")
+		if level.world != null:
+			level.world.unfreeze(player_body)
+		if not editing:
+			player_body.frozen = false
+			player_body.awake = true
+			player_body.sleep_timer = 0.0
+	if player_input != null:
+		player_input.set_physics_process(input_was_processing if editing else true)
 	var editor := level.get_node_or_null("Creative")
 	if editor != null and editor.has_method("prepare_loaded_document"):
 		editor.prepare_loaded_document(editing)
+	if not editing:
+		_restore_exported_static_collisions(level)
 	level_changed.emit(level)
 	return level
+
+
+## 外部地图是可替换内容；结构不完整时必须明确失败，不能把半成品挂进游戏。
+func _validate_level_scene(level: Node) -> String:
+	if level == null:
+		return "场景无法实例化"
+	if not level.has_method(&"bake_node"):
+		return "根节点不是 PixelWorld"
+	if level.get_node_or_null("Player") == null:
+		return "缺少 Player"
+	if level.get_node_or_null("Player/PlayerInput") == null:
+		return "缺少 Player/PlayerInput"
+	if level.get_node_or_null("SimulationRuntime") == null:
+		return "缺少 SimulationRuntime"
+	return ""
 
 
 ## 恢复事务由常驻 Root 等待；旧 Creative 会在 load_level 中释放，不能持有续执行点。
 func restore_editor_level(scene: PackedScene, finish_transition: bool) -> void:
 	_loading_level = true
 	var level: Node = await load_level(scene, true)
+	if level == null:
+		_loading_level = false
+		if finish_transition:
+			await _transition.finish()
+		return
 	var replacement := level.get_node_or_null(^"Creative")
 	if replacement != null:
 		replacement._activate_restored_editor()
@@ -249,6 +309,26 @@ func _bake_staged_bodies(level: Node, staged: Array) -> void:
 		level.call(&"_bake_joints")
 	level.body_bake_pending = false
 	level.body_bake_completed.emit()
+
+
+## 导出场景可能保留背景禁用标记；正常游玩时恢复静态地形原始碰撞层。
+func _restore_exported_static_collisions(level: Node) -> void:
+	var world = level.get("world")
+	if world == null:
+		return
+	for body in world.bodies:
+		if not body.is_static or not body.tags.has("background_original_layer"):
+			continue
+		var layer := int(body.tags.get("background_original_layer", 0))
+		var mask := int(body.tags.get("background_original_mask", 0))
+		if layer == 0 and mask == 0:
+			continue
+		body.collision_layer = layer
+		body.collision_mask = mask
+		for tag in ["background_original_layer", "background_original_mask",
+				"background_original_no_impact_damage", "background_original_white_ink",
+				"background_original_white_sweep", "background_original"]:
+			body.tags.erase(tag)
 
 
 ## 音乐由全局根持有，换 UI 不会重复创建；进入关卡时只切换一次曲目。

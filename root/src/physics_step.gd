@@ -214,10 +214,7 @@ func contacts(world) -> Array:
 func sync_after_commit(previous_nodes: Array, changed: Variant = null) -> void:
 	var start: int = Time.get_ticks_usec() if profile_enabled else 0
 	var world_start: int = Time.get_ticks_usec() if profile_enabled else 0
-	if changed != null and not changed.is_empty() and _main.has_method("sync_changed_world_bodies"):
-		_main.sync_changed_world_bodies(changed)
-	else:
-		_main.sync_world_bodies()
+	_main.sync_world_bodies()
 	if profile_enabled:
 		_profile.sync_world_us = _profile.get("sync_world_us", 0) + Time.get_ticks_usec() - world_start
 	var live: Dictionary = {}

@@ -129,10 +129,10 @@ func _uses_ring(canvas: Node) -> bool:
 	if surface.tool in [Tool.NAIL, Tool.INFINITE_NAIL, Tool.GEAR, Tool.GEAR_8]:
 		return false
 	var creative := canvas.get_parent().get_node_or_null("Creative")
-	if creative != null and creative.get("active") == true \
-	and creative.has_method("editor_object_tool_active") \
-	and creative.editor_object_tool_active():
-		return false
+	if creative != null and creative.get("active") == true:
+		if creative._monster_mode != creative.MONSTER_MODE_NONE \
+		or creative._dragging_monster or creative._layout_drag_target != null:
+			return false
 	# 蓝图幽灵也是部件放置，不能误表现成画笔。
 	var blueprints := get_node_or_null("/root/Blueprints")
 	return blueprints == null or not blueprints.placing

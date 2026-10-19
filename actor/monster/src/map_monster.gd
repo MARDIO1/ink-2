@@ -537,7 +537,6 @@ func _update_legacy_bones(delta: float) -> void:
 		_bone_last_applied[bone] = angle
 
 
-#region 死亡与生命
 ## 盾牌受击不会扣本体血；地面承重不作为攻击。编辑时完全禁用伤害。
 func apply_damage(amount: float, hit_body = null) -> float:
 	var level := _find_physics_world()
@@ -562,46 +561,19 @@ func apply_damage(amount: float, hit_body = null) -> float:
 func _finish_death() -> void:
 	var world := _find_physics_world() as Node2D
 	if world != null and _visual != null:
+		var sprites := DeathEffect.visible_sprites(_visual)
+		if is_instance_valid(_shield_visual) and _shield_visual.visible:
+			sprites.append(_shield_visual)
 		var effect_style := DeathEffect.Style.SOLDIER
 		if kind == Kind.SHIELD_SOLDIER:
 			effect_style = DeathEffect.Style.SHIELD
 		elif kind == Kind.BOMB_SIDE:
 			effect_style = DeathEffect.Style.BOMB
-		var records := _death_records()
-		var foot := DeathEffect.records_foot_position(records, global_position)
-		DeathEffect.spawn(world, records, effect_style, foot, last_contact_impulse.x)
+		var foot := DeathEffect.sprites_foot_position(sprites, global_position)
+		DeathEffect.spawn(world, sprites, effect_style, foot, last_contact_impulse.x)
 	# 先解除角色物理，再保留独立残影播放，不留下尸体碰撞或回正马达。
 	_release_physics_body()
 	queue_free()
-
-
-## 把可见部件整理成死亡表现记录；角色结构判断留在本模块，通用效果只接收记录。
-func _death_records() -> Array[Dictionary]:
-	var records: Array[Dictionary] = []
-	if _visual == null:
-		return records
-	for source: Sprite2D in DeathEffect.visible_sprites(_visual):
-		if source.name == "BombArt":
-			# 手持炸弹是独立实心图，不套手臂线稿遮罩。
-			records.append(DeathEffect.record(source, "Bomb"))
-			continue
-		var bone := source.get_parent()
-		var role := str(bone.name)
-		records.append(DeathEffect.record(source, role, _occlusion_mask(bone, role)))
-	if is_instance_valid(_shield_visual) and _shield_visual.is_visible_in_tree():
-		# 盾牌不参与脚底包围盒，避免大面积盾面把落地锚点拉偏。
-		records.append(DeathEffect.record(_shield_visual, "Shield", null, false, false, true))
-	return records
-
-
-## 读取本角色骨骼自带的线稿遮罩；命名规则属于角色自己的骨骼树，不放进通用效果。
-func _occlusion_mask(bone: Node, role: String) -> Texture2D:
-	var mask := bone.get_node_or_null("OcclusionMask") as Sprite2D
-	if mask == null:
-		mask = bone.get_node_or_null(role + "OcclusionMask") as Sprite2D
-	if role == "BodyBone":
-		mask = bone.get_node_or_null("BodyOcclusionMask") as Sprite2D
-	return mask.texture if mask != null else null
 
 
 func _update_health_bar() -> void:
@@ -614,9 +586,6 @@ func _update_health_bar() -> void:
 		position = world.to_global(Vector2(_body.com_world().x, _body.aabb.position.y - 14.0))
 	_health_bar.global_position = position
 	_health_bar.update_health(health, max_health, width)
-
-
-#endregion
 
 
 func _configure_imported_visual() -> void:

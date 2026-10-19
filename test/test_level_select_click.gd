@@ -6,6 +6,10 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	var target_path := "res://map/asset/imported/第一页.tscn"
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--level="):
+			target_path = argument.trim_prefix("--level=")
 	var root_scene := load("res://root/root.tscn") as PackedScene
 	var app := root_scene.instantiate()
 	root.add_child(app)
@@ -22,15 +26,14 @@ func _run() -> void:
 	var buttons := selector.get_node("Center/Panel/Scroll/List").get_children()
 	var target: Button
 	for candidate in buttons:
-		if candidate.tooltip_text == "res://map/asset/imported/第一页.tscn":
+		if candidate.tooltip_text == target_path:
 			target = candidate as Button
 			break
 	if target == null:
-		printerr("[LevelSelectClick] target button missing: FAIL")
+		printerr("[LevelSelectClick] target button missing: %s FAIL" % target_path)
 		quit(1)
 		return
 	var result := {"chosen_path": ""}
-	var target_path: String = target.tooltip_text
 	selector.level_chosen.connect(func(path: String) -> void: result.chosen_path = path)
 	target.pressed.emit()
 	var showed_loading := target.disabled and target.text.contains("加载中")
@@ -43,12 +46,9 @@ func _run() -> void:
 		printerr("[LevelSelectClick] loading feedback missing: FAIL")
 		quit(1)
 		return
-	# headless 的 process_frame 每秒能跑几百帧，按帧数等等于只等几百毫秒；
-	# 真实地图要读几 MB，按时间预算才可靠。
-	var deadline := Time.get_ticks_msec() + 30000
-	while Time.get_ticks_msec() < deadline:
+	for frame in 300:
 		if app.get_node("Level").get_child_count() > 0:
-			print("[LevelSelectClick] click loads selected level: PASS (%d ms)" % (30000 - (deadline - Time.get_ticks_msec())))
+			print("[LevelSelectClick] click loads %s: PASS (%d frames)" % [target_path, frame])
 			quit()
 			return
 		await process_frame

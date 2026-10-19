@@ -27,7 +27,7 @@
 [ext_resource type="Resource" path="res://ink/general/asset/ink_tuning.tres" id="24_fx4af"]
 [ext_resource type="FontFile" path="res://ui/map_text/asset/Muyao-Softbrush.ttf" id="28_kti44"]
 [ext_resource type="Script" path="res://ui/map_text/src/map_text_label.gd" id="29_4jwo4"]
-[ext_resource type="Script" path="res://map/src/map_dialogue_trigger.gd" id="30_bw5qd"]
+[ext_resource type="Script" path="res://debug/creative/src/map_dialogue_trigger.gd" id="30_bw5qd"]
 [ext_resource type="Script" path="res://map/src/respawn_point.gd" id="32_qp64p"]
 [ext_resource type="Script" path="res://map/src/workshop_gate.gd" id="33_2epby"]
 [ext_resource type="Script" path="res://ink/blue/src/motor.gd" id="34_1bb2q"]
@@ -51,7 +51,7 @@ metadata/editor_document_load = true
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=322813976]
 process_physics_priority = 20
-position = Vector2(363.98523, 330.52155)
+position = Vector2(603.9852, 310.52155)
 process_callback = 0
 script = ExtResource("12_joc00")
 
@@ -101,7 +101,7 @@ editor_draft = {
 "draft_bearings": [],
 "fixed_nails": [Vector2i(5831, 329), Vector2i(5836, 344), Vector2i(6116, 344), Vector2i(4244, 464), Vector2i(4757, 465), Vector2i(4497, 479), Vector2i(5496, 627), Vector2i(243, 638), Vector2i(433, 885), Vector2i(593, 617)],
 "gear_centers": [],
-"infinite_nails": [Vector2i(755, 479)],
+"infinite_nails": [],
 "motors": [{
 "area": 3199,
 "position": Vector2(655.5, 408.5),
@@ -242,7 +242,7 @@ target_map = "res://map/asset/imported/第三页.tscn"
 position = Vector2(-27.375534, 335.13184)
 script = ExtResource("32_qp64p")
 
-[node name="@Node2D@1356" type="Node2D" parent="." unique_id=332850695]
+[node name="@Node2D@2032" type="Node2D" parent="." unique_id=1069413694]
 z_index = 9
 position = Vector2(655.5, 408.5)
 script = ExtResource("34_1bb2q")
@@ -250,9 +250,9 @@ tip = Vector2(2.2352295, -279.72845)
 brush_width = 11
 area = 3199
 source_canvas = NodePath("MapCanvas/CanvasSurface")
-metadata/canvas_undo_identity = 1981573784418
+metadata/canvas_undo_identity = 2370637421381
 
-[node name="@Node2D@1357" type="Node2D" parent="." unique_id=851183053]
+[node name="@Node2D@2033" type="Node2D" parent="." unique_id=1332664419]
 z_index = 9
 position = Vector2(716.5, 406.5)
 script = ExtResource("34_1bb2q")
@@ -260,4 +260,4 @@ tip = Vector2(-0.23690009, -281.3108)
 brush_width = 11
 area = 3216
 source_canvas = NodePath("MapCanvas/CanvasSurface")
-metadata/canvas_undo_identity = 1981590561635
+metadata/canvas_undo_identity = 2370654198598

@@ -31,7 +31,7 @@
 [ext_resource type="Script" path="res://actor/fountain/src/ink_fountain.gd" id="29_yijq7"]
 [ext_resource type="FontFile" path="res://ui/map_text/asset/Muyao-Softbrush.ttf" id="30_4k425"]
 [ext_resource type="Script" path="res://ui/map_text/src/map_text_label.gd" id="31_f2xm5"]
-[ext_resource type="Script" path="res://map/src/map_dialogue_trigger.gd" id="32_4y0n6"]
+[ext_resource type="Script" path="res://debug/creative/src/map_dialogue_trigger.gd" id="32_4y0n6"]
 [ext_resource type="Script" path="res://ink/yellow/src/stroke.gd" id="33_e0iol"]
 
 [node name="Main" type="Node2D" unique_id=816289034]

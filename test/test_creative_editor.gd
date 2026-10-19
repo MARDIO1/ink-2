@@ -141,13 +141,13 @@ func _run() -> void:
 	var dialogue_window := creative.get_node_or_null("DialogueTriggerInput") as Window
 	dialogue_valid = dialogue_valid and dialogue_window != null
 	creative._open_dialogue_input(Vector2(760, 260))
-	# 输入控件由 `editor_dialogue_view.gd` 管；测试只通过视图的公开接口驱动。
-	var dialogue_view = creative.get("_dialogue_window")
-	# open_at 已经建好第一行；这里填第一行、再加一行。
-	var first_line: LineEdit = dialogue_view.line_input(0)
+	var dialogue_lines_box: VBoxContainer = creative.get("_dialogue_lines_box")
+	var first_line := dialogue_lines_box.get_child(0) as LineEdit
 	first_line.text = "第一句"
-	dialogue_view.add_line("第二句")
-	dialogue_valid = dialogue_valid and dialogue_view.line_count() == 2
+	creative._on_dialogue_line_submitted(first_line.text, first_line)
+	dialogue_valid = dialogue_valid and dialogue_lines_box.get_child_count() == 2
+	var second_line := dialogue_lines_box.get_child(1) as LineEdit
+	second_line.text = "第二句"
 	creative._confirm_dialogue_input()
 	var dialogue_triggers: Node = scene.get_node_or_null("DialogueTriggers")
 	dialogue_valid = dialogue_valid and dialogue_triggers != null and dialogue_triggers.get_child_count() == 1

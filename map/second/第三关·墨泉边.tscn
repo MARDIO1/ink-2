@@ -19,7 +19,7 @@
 [ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="17_runtime"]
 [ext_resource type="Script" uid="uid://dvtycwuj0keul" path="res://debug/creative/src/creative.gd" id="18_creative"]
 [ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="19_debug"]
-[ext_resource type="Script" uid="uid://clt3jhbihx276" path="res://map/src/map_dialogue_trigger.gd" id="21_dialogue"]
+[ext_resource type="Script" uid="uid://clt3jhbihx276" path="res://debug/creative/src/map_dialogue_trigger.gd" id="21_dialogue"]
 [ext_resource type="Texture2D" uid="uid://775v3eocluh4" path="res://map/second/asset/house.svg" id="22_house"]
 [ext_resource type="PackedScene" path="res://actor/monster/bomb_side.tscn" id="22_q7lou"]
 [ext_resource type="PackedScene" path="res://actor/fountain/ink_fountain.tscn" id="23_fountain"]

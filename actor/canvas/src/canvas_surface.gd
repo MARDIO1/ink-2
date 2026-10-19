@@ -226,8 +226,6 @@ var _low_ink_announced := false
 const MIN_PAINT_INK := 1000
 ## 无限钉子只在创造模式允许放置；普通游玩即使脚本误设工具也会被这里拒绝。
 var map_editor_mode := false
-## 游戏进关马上要固化草稿时跳过元数据/贴图重建，避免扫描整张大图。
-var defer_load_metadata := false
 ## 当前工具；切换时中断正在进行的笔画或形状。
 @export var tool: Tool = Tool.HAND:
 	set(value):
@@ -1132,7 +1130,6 @@ func _bucket_fill(point: Vector2) -> bool:
 			return false
 	var targets: PackedInt32Array = region.cells
 	var w := canvas_size.x
-
 	# 黄墨属于独立的杆层；填充只生成普通黄色实体，不凭空附加导轨、弹簧或轴点。
 	# 撤销沿用 RodLayer 的稀疏像素步骤，绝不能把黄色伪装进 black_image。
 	if material_id == InkPalette.YELLOW.id:

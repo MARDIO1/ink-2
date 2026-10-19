@@ -8,7 +8,6 @@ extends RefCounted
 ##   level_root: Node        要打包的关卡根
 ##   map_canvas: Node        主画布
 ##   play_canvases: Array    普通游玩画布
-##   draft_owner: Node       草稿承载节点（编辑器自身）；不传就不写内嵌草稿
 ##   bake_preview: bool      额外导出只读参考图。
 ##   baked_map_path: String  参考图路径。
 
@@ -91,11 +90,11 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	var player = ctx.get("player")
 	var player_saved: Array = []
 	if is_instance_valid(player):
-		player_saved = [player.visible, player.process_mode]
+		player_saved = [player.visible, player.process_mode, player.modulate]
 		player.visible = bool(ctx.get("player_visible", true))
+		player.modulate = ctx.get("player_modulate", Color.WHITE)
 	# 草稿和实体分别序列化；保存不能生成、回收或改变撤销栈。
-	# 承载节点由调用方显式给出：保存模块不猜场景里谁叫 "Creative"。
-	var editor = ctx.get("draft_owner")
+	var editor := scene.get_node_or_null("Creative")
 	var old_document: Dictionary = editor.editor_draft if editor != null else {}
 	var old_snapshot: String = editor.edit_snapshot_path if editor != null else ""
 	if editor != null and map_canvas != null:
@@ -108,6 +107,7 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 	if is_instance_valid(player) and not player_saved.is_empty():
 		player.visible = bool(player_saved[0])
 		player.process_mode = int(player_saved[1])
+		player.modulate = player_saved[2]
 	for item in saved:
 		if is_instance_valid(item):
 			item.visible = bool(saved[item][0])

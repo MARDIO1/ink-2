@@ -9,13 +9,18 @@ const MAX_SIDE := Format.MAX_SIDE
 const MAX_FILE_BYTES := Format.MAX_FILE_BYTES
 const MAX_CELLS := Format.MAX_CELLS
 
-const PROJECT_DIRECTORY := "res://blueprints"
 const FALLBACK_DIRECTORY := "user://blueprints"
 
-var directory := PROJECT_DIRECTORY
+var directory := _default_directory()
 var used_fallback := false
 var error := ""
 var _cache := {}
+
+
+static func _default_directory() -> String:
+	if OS.has_feature("editor") and not OS.get_cmdline_user_args().has("--external-content"):
+		return "res://blueprints"
+	return OS.get_executable_path().get_base_dir().path_join("blueprints")
 
 func cache_key(id: String) -> String:
 	var path := directory.path_join(id + ".inkbp")
@@ -73,16 +78,17 @@ func read(id: String) -> Dictionary:
 	_cache[path] = {"signature": signature, "data": data.duplicate(true)}
 	return data
 
-## 确保目标目录存在；项目内目录不可写（导出后 res:// 只读）时回退到用户目录。
+## 确保目标目录存在；exe 旁目录不可写时回退到用户目录。
 func ensure_directory() -> bool:
 	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory)) == OK:
 		return true
-	if directory == PROJECT_DIRECTORY:
-		directory = FALLBACK_DIRECTORY
-		used_fallback = true
-		push_warning("蓝图目录 res:// 不可写，已改用 %s" % directory)
-		return DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory)) == OK
-	return false
+	if directory == FALLBACK_DIRECTORY:
+		return false
+	var rejected := directory
+	directory = FALLBACK_DIRECTORY
+	used_fallback = true
+	push_warning("蓝图目录 %s 不可写，已改用 %s" % [rejected, directory])
+	return DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory)) == OK
 
 
 func save(data: Dictionary, keep_id := false) -> bool:

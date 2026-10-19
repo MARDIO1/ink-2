@@ -12,9 +12,6 @@ class FakeBody:
 	var inv_inertia := 1.0
 	var linear_velocity := Vector2.ZERO
 	var mass := 1.0
-	var awake := false
-	var sleep_timer := 10.0
-	var frozen := false
 
 	func com_world() -> Vector2:
 		return Vector2.ZERO
@@ -76,11 +73,6 @@ func run() -> void:
 		variance += pow(value - mean, 2.0)
 	variance /= steady.size()
 	check("constant supply reaches steady power", mean > 0.0 and sqrt(variance) / mean < 0.01)
-	check("real powered impulse wakes a settled mechanism",motor.body.awake and motor.body.sleep_timer==0.0)
-	motor.body.frozen=true
-	motor.body.awake=false
-	motor.consume(1.0/60.0,300000.0,1.0e12,1.0e7)
-	check("offscreen frozen body receives no accumulated impulse",motor.applied_force==0 and motor.used_power==0 and not motor.body.awake)
 	motor.queue_free()
 
 	motor = make_motor()

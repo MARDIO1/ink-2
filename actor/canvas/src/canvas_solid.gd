@@ -42,8 +42,6 @@ const BACKGROUND_TAG := "background_anchor_points"
 ## 不要再调大：块的 AABB 越大，单次命中的最坏耗时越长、掉下来的碎片越夸张。
 ## 也不要为了块数调小：矩形数够多时引擎改用凸多边形拟合，碰撞体反而更少。
 const BLOCK_SIZE := 256
-## 单张画布可覆盖；大地形用更大的块减少刚体数量，代价是单块破坏更贵。
-var block_size := BLOCK_SIZE
 #endregion
 
 
@@ -170,11 +168,11 @@ func _block_rects(surface, size: Vector2i) -> Array[Rect2i]:
 	var used: Rect2i = surface.black_image.get_used_rect().intersection(full)
 	if not used.has_area():
 		return out
-	var first := used.position / block_size
-	var last := (used.end - Vector2i.ONE) / block_size
+	var first := used.position / BLOCK_SIZE
+	var last := (used.end - Vector2i.ONE) / BLOCK_SIZE
 	for by in range(first.y, last.y + 1):
 		for bx in range(first.x, last.x + 1):
-			var block := Rect2i(bx * block_size, by * block_size, block_size, block_size)
+			var block := Rect2i(bx * BLOCK_SIZE, by * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
 			block = block.intersection(full)
 			if block.has_area():
 				out.append(block)
@@ -201,10 +199,9 @@ func _infinite_fuel_for(surface, anchors: Dictionary) -> bool:
 ## 搬的是 PixelChunk 对象本身，不复制像素，也不重建位图。
 func _block_pieces(island) -> Array:
 	var pieces: Dictionary = {}
-	var shift := int(round(log(float(block_size) / 8.0) / log(2.0)))
 	for key: int in island.chunks:
-		var block_key: int = ((PixelShape.key_x(key) >> shift) << 32) \
-			| (PixelShape.key_y(key) >> shift & 0xFFFFFFFF)
+		var block_key: int = ((PixelShape.key_x(key) >> 5) << 32) \
+			| (PixelShape.key_y(key) >> 5 & 0xFFFFFFFF)
 		var piece = pieces.get(block_key)
 		if piece == null:
 			piece = PixelShape.new()

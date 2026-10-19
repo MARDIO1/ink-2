@@ -10,9 +10,9 @@ const Shape := preload("res://addons/pixel_destruction/core/pixel_shape.gd")
 const SelectionMask := preload("res://actor/canvas/src/selection_mask.gd")
 
 #region 配置与状态
-@export var force_per_length := 900000.0
+@export var force_per_length := 300000.0
 @export var power_per_width := 300000000.0
-@export var source_power_per_pixel := 900000000.0
+@export var source_power_per_pixel := 300000000.0
 @export var idle_power := 10000000.0
 ## 红墨作为蓝色电源时的 J/像素；爆炸参数仍由 red_ink.gd 管理。
 @export var energy_per_red_pixel := 600000000.0

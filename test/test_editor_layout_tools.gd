@@ -65,12 +65,11 @@ func _run() -> void:
 
 	# 独立设置激活区域，不能改变出生标记；修改、删除恢复、放置重做均保留配置。
 	creative._open_respawn_area_dialog()
-	var view: Node = creative._layout_view
 	var values := [96.0, 20.0, 32.0, -4.0]
 	for index in 4:
-		view._respawn_fields[index].value = values[index]
+		creative._respawn_area_fields[index].value = values[index]
 	creative._confirm_respawn_area()
-	view._respawn_dialog.hide()
+	creative._respawn_area_dialog.hide()
 	check("activation settings do not move spawn", first.global_position == empty and first.activation_size == Vector2(96,20) and first.activation_offset == Vector2(32,-4))
 	check("activation settings undo", creative.undo_last_edit() and first.activation_size == Vector2(120,32) and first.activation_offset == Vector2.ZERO)
 	check("activation settings redo", creative.redo_last_edit() and first.activation_size == Vector2(96,20) and first.activation_offset == Vector2(32,-4))

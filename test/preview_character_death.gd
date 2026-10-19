@@ -44,19 +44,17 @@ func _run() -> void:
 	for column in 4:
 		var actor: Node2D = actors[column]
 		var visual: Node2D = actor.get_node("Visual")
-		var records: Array[Dictionary] = []
-		if column == 0:
-			records = actor.get_node("FallDeath")._death_records(Effect.Style.PLAYER)
-		else:
-			records = actor._death_records()
+		var sprites := Effect.visible_sprites(actor if column == 0 else visual)
+		if column == 2:
+			sprites.append(actor.get_node("ShieldArt"))
 		for row in 3:
 			var foot := Vector2(160 + column * 320, 260 + row * 295)
 			var original_foot := actor.global_position
 			if column == 0:
 				original_foot = Effect.foot_position(visual)
 			else:
-				original_foot = Effect.records_foot_position(records, original_foot)
-			var effect = Effect.spawn(stage, records, styles[column], original_foot)
+				original_foot = Effect.sprites_foot_position(sprites, original_foot)
+			var effect = Effect.spawn(stage, sprites, styles[column], original_foot)
 			effect._origin = foot
 			effect.set_process(false)
 			var factor: float = 160.0 / effect._height
