@@ -83,6 +83,16 @@ func _ready() -> void:
 	_build_death_ui()
 
 
+## 初次进关在整套玩家传送完成后建立本次坠落基线；不更改伤害阈值。
+func reset_after_level_load() -> void:
+	_body = _player.get("body")
+	_initial_position = _player.global_position
+	_initial_rotation = _player.global_rotation
+	_peak_y = _body.com_world().y if _body != null else INF
+	_checkpoints_initialized = false
+	_checkpoint_contacts.clear()
+
+
 func _physics_process(_delta: float) -> void:
 	_update_hit_flash(_delta)
 	_checkpoint_notice_time = maxf(0.0, _checkpoint_notice_time - _delta)

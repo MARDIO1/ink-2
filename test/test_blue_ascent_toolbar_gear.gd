@@ -139,8 +139,7 @@ func toolbar_check():
         layout.update_layout()
         check(canvas.buttons.is_visible_in_tree(),"fourth recreated canvas has visible toolbar")
         check(canvas._side_panel.is_visible_in_tree(),"fourth recreated canvas has visible palette")
-        for control in [canvas.buttons,canvas._side_panel]:
-            var rect=control.get_global_transform_with_canvas()*Rect2(Vector2.ZERO,control.size)
-            check(rect.position.y>=181 and rect.end.y<=root.get_visible_rect().end.y,"fourth tools remain vertically visible zoom="+str(zoom))
+        var attached_y=layout._canvas_screen_bounds().position.y+2.0
+        check(is_equal_approx(layout._mount.position.y,attached_y) and is_equal_approx(layout._left_position.y,attached_y),"fourth tools stay at canvas height zoom="+str(zoom))
         check(canvas.workbench.has_node("LessonToolPaper"),"renamed canvas receives half transparent backing")
     camera.zoom=Vector2.ONE

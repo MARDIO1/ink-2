@@ -39,7 +39,7 @@
 [ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="47_o116d"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="48_ikqb4"]
 [ext_resource type="Script" path="res://ink/yellow/src/rail.gd" id="49_ce7w6"]
-[ext_resource type="Script" path="res://map/src/blue_ascent_slide.gd" id="50_niif3"]
+[ext_resource type="Script" path="res://ink/yellow/src/slider_pin.gd" id="50_niif3"]
 [ext_resource type="Script" path="res://ink/blue/src/motor.gd" id="51_kbb6h"]
 [ext_resource type="Script" path="res://map/src/blue_ascent_lesson_ui.gd" id="52_04opf"]
 
@@ -407,11 +407,9 @@ saved_b = Vector2(516, 3470)
 rail_width = 28
 
 [node name="BG01_Slide" type="Node2D" parent="." unique_id=1494516120]
-z_index = 10
 script = ExtResource("50_niif3")
-moving_path = NodePath("../BG01_Gate")
-guide_path = NodePath("../BG01_Guide")
-pin_position = Vector2(516, 3440)
+saved_source = Vector2(516, 3440)
+saved_position = Vector2(516, 3440)
 
 [node name="BG01_Wire" type="Node2D" parent="." unique_id=2088467664]
 top_level = true
@@ -469,14 +467,9 @@ saved_b = Vector2(1542, 2969)
 rail_width = 12
 
 [node name="BG02_Slide" type="Node2D" parent="." unique_id=389919972]
-z_index = 10
 script = ExtResource("50_niif3")
-moving_path = NodePath("../BG02_Bridge")
-guide_path = NodePath("../BG02_Guide")
-axis = Vector2(-1, 0)
-pin_position = Vector2(1506, 2969)
-travel = 334.0
-power_lock = true
+saved_source = Vector2(1506, 2969)
+saved_position = Vector2(1506, 2969)
 
 [node name="BG02_Wire" type="Node2D" parent="." unique_id=1068289617]
 top_level = true

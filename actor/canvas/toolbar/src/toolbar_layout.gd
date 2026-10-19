@@ -1,5 +1,5 @@
 extends CanvasLayer
-## 两侧工具贴合当前画布边缘，越界时收回屏幕，避免工具被视野裁切。
+## 工具栏固定贴在当前画布左右两侧；仅横向越界时调整，不做上下避让。
 @export var canvas: Node2D
 @export var panel: Control
 const EDGE := 12.0
@@ -76,9 +76,7 @@ func update_layout(delta := 0.0) -> void:
 	var left_size := left_rect.size * left_fit
 	var left_target := Vector2(bounds.position.x - left_size.x - gap,
 		bounds.position.y + 2.0)
-	var top := viewport_rect.position.y + 182.0
-	right_target.y = clampf(right_target.y, top, maxf(top, viewport_rect.end.y - right_size.y - EDGE))
-	left_target.y = clampf(left_target.y, top, maxf(top, viewport_rect.end.y - left_size.y - EDGE))
+	# 左右共用画布顶部锚点，屏幕上下边界不改变工具栏相对画布的高度。
 	var immediate: bool = not _initialized or canvas.toolbar_transition_seconds <= 0.0
 	var weight := 1.0 if immediate else 1.0 - exp(-FOLLOW_SPEED * delta)
 	_mount.position = Vector2(_horizontal_position(right_target.x, _mount.position.x, right_size.x, viewport_rect, weight), right_target.y)

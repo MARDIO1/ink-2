@@ -65,7 +65,8 @@ func _run() -> void:
 			await settle()
 			var panel_rect := panel.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, panel.size)
 			check("panel stays horizontally in viewport zoom=%s anchor=%s" % [zoom, screen_anchor], panel_rect.position.x >= 11 and panel_rect.end.x <= root.get_visible_rect().end.x - 11)
-			check("panel remains vertically visible", panel_rect.position.y >= 181 and panel_rect.end.y <= root.get_visible_rect().end.y - 11)
+			var attached_y: float = layout._canvas_screen_bounds().position.y + 2.0
+			check("both toolbars retain canvas height even past vertical screen edges", is_equal_approx(layout._mount.position.y, attached_y) and is_equal_approx(layout._left_position.y, attached_y))
 			var left: Control = canvas.buttons
 			var left_rect := left.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, left.size)
 			check("left toolbar stays horizontally in viewport", left_rect.position.x >= 11 and left_rect.end.x <= root.get_visible_rect().end.x - 11)
@@ -81,8 +82,8 @@ func _run() -> void:
 	root.canvas_transform.origin += Vector2(4, 3)
 	await process_frame
 	layout.update_layout(1.0 / 60.0)
-	var expected_y := clampf(layout._canvas_screen_bounds().position.y + 2.0, 182.0, maxf(182.0, root.get_visible_rect().end.y - panel.size.y * layout._mount.scale.y - 12.0))
-	check("visible toolbar follows camera within screen bounds", layout._mount.position.is_equal_approx(Vector2(still_position.x + 4, expected_y)))
+	var expected_y: float = layout._canvas_screen_bounds().position.y + 2.0
+	check("visible toolbar follows canvas with no vertical drift", layout._mount.position.is_equal_approx(Vector2(still_position.x + 4, expected_y)))
 	await click(canvas._ink_buttons[2])
 	check("screen-space color button changes selected ink", canvas.surface.selected_ink == 2)
 	canvas._side_brush_slider.value = 13

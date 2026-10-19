@@ -181,6 +181,9 @@ func load_level(scene: PackedScene, editing := false, source_path := "") -> Node
 	for child in level_root.get_children():
 		level_root.remove_child(child)
 		child.queue_free()
+	var level_process_mode := level.process_mode
+	# 暂停整个关卡，防止分帧烘焙/草稿恢复期间手臂、伤害和死亡先行运行。
+	level.process_mode = Node.PROCESS_MODE_DISABLED
 	level.set_meta(&"editor_document_load", editing)
 	# 编辑器文档会以隐藏状态保存玩家，进游戏时必须恢复可见；
 	# 进编辑器则在入树前就隐藏，避免保存/重载期间闪出墨水瓶。
@@ -234,8 +237,33 @@ func load_level(scene: PackedScene, editing := false, source_path := "") -> Node
 		editor.prepare_loaded_document(editing)
 	if not editing:
 		_restore_exported_static_collisions(level)
+		_prepare_player_for_play(level, level_player)
+	level.process_mode = level_process_mode
 	level_changed.emit(level)
 	return level
+
+
+## 碰撞和草稿全部就绪后，统一重置整套玩家，而不只修改节点位置。
+func _prepare_player_for_play(level: Node, player: Node2D) -> void:
+	if player == null:
+		return
+	for part in [player, player.get_node_or_null("PlayerInput"), player.get_node_or_null("Arm"),
+			player.get_node_or_null("Arm/Hand"), player.get_node_or_null("Arm/Hand/HandControl")]:
+		if part != null and part.process_mode == Node.PROCESS_MODE_DISABLED:
+			part.process_mode = Node.PROCESS_MODE_INHERIT
+	var spawn := level.get_node_or_null("PlayerSpawn") as Node2D
+	if player.has_method("teleport_to"):
+		player.teleport_to(spawn.global_position if spawn != null else player.global_position,
+			spawn.global_rotation if spawn != null else player.global_rotation)
+	var fall := player.get_node_or_null("FallDeath")
+	if fall != null and fall.has_method("reset_after_level_load"):
+		fall.reset_after_level_load()
+	var camera := level.get_node_or_null("Camera2D") as Camera2D
+	if camera != null and player.get("body") != null:
+		camera.global_position = level.to_global(player.body.com_world())
+		camera.reset_smoothing()
+		camera.reset_physics_interpolation()
+		camera.force_update_scroll()
 
 
 ## 外部地图是可替换内容；结构不完整时必须明确失败，不能把半成品挂进游戏。
