@@ -1,0 +1,84 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_nytbl"]
+[ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_rkfwu"]
+[ext_resource type="Resource" path="res://ink/black/asset/black.tres" id="3_r70dl"]
+[ext_resource type="Resource" path="res://actor/player/asset/player_body.tres" id="4_at8es"]
+[ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="5_2h1oj"]
+[ext_resource type="Resource" path="res://ink/grey/asset/grey1.tres" id="6_eo52x"]
+[ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="7_t1pw4"]
+[ext_resource type="Resource" path="res://ink/invisible/asset/invisible.tres" id="8_vys33"]
+[ext_resource type="Script" path="res://actor/player/src/player_camera.gd" id="9_kr46w"]
+[ext_resource type="Resource" path="res://ink/red/asset/red.tres" id="9_tg03s"]
+[ext_resource type="PackedScene" path="res://actor/canvas/canvas.tscn" id="10_5sqrm"]
+[ext_resource type="Resource" path="res://ink/yellow/asset/yellow.tres" id="10_p627g"]
+[ext_resource type="Resource" path="res://ink/white/asset/white.tres" id="11_dthhi"]
+[ext_resource type="Resource" path="res://ink/blue/asset/blue.tres" id="12_mq3ij"]
+[ext_resource type="PackedScene" path="res://actor/player/player.tscn" id="13_t6skx"]
+[ext_resource type="Resource" path="res://actor/nail/asset/nail.tres" id="13_vr3hb"]
+[ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="14_ej35m"]
+[ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="15_nsobx"]
+[ext_resource type="Script" path="res://actor/canvas/src/canvas.gd" id="16_8f51k"]
+[ext_resource type="Script" path="res://debug/creative/src/creative.gd" id="16_kld8j"]
+[ext_resource type="Script" path="res://actor/player/src/player_physics.gd" id="18_0cbuj"]
+[ext_resource type="Resource" path="res://actor/player/asset/player_controller_config.tres" id="19_4o3g1"]
+[ext_resource type="Script" path="res://debug/hud/src/debug_hud.gd" id="21_ub73e"]
+[ext_resource type="Script" path="res://root/src/simulation_runtime.gd" id="23_ohvge"]
+[ext_resource type="Resource" path="res://ink/general/asset/ink_tuning.tres" id="24_fwri4"]
+
+[node name="Main" type="Node2D" unique_id=1986120347]
+process_priority = 10
+script = ExtResource("1_nytbl")
+max_linear_velocity = 1000.0
+max_angular_velocity = 60.0
+ccd_ignore_mass = 100.0
+min_fragment_pixels = 5
+debris_max_mass = 20.0
+debris_min_speed = 20.0
+materials = Array[ExtResource("2_rkfwu")]([ExtResource("3_r70dl"), ExtResource("4_at8es"), ExtResource("5_2h1oj"), ExtResource("6_eo52x"), ExtResource("7_t1pw4"), ExtResource("8_vys33"), ExtResource("9_tg03s"), ExtResource("10_p627g"), ExtResource("11_dthhi"), ExtResource("12_mq3ij"), ExtResource("13_vr3hb")])
+densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0, 0.0, 1.0])
+voxel_size = 1.0
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1852305069]
+process_physics_priority = 20
+position = Vector2(-332.61475, 605.2864)
+process_callback = 0
+script = ExtResource("9_kr46w")
+
+[node name="MapCanvas" type="Node2D" parent="." unique_id=408426064 instance=ExtResource("10_5sqrm")]
+process_physics_priority = 18
+visible = false
+z_index = -1
+position = Vector2(-512, -256)
+script = ExtResource("16_8f51k")
+canvas_size = Vector2i(2048, 1024)
+active = false
+
+[node name="Player" type="Node2D" parent="." unique_id=1439102296 groups=["player"] instance=ExtResource("13_t6skx")]
+position = Vector2(-366.61475, 562.04614)
+script = ExtResource("18_0cbuj")
+controller_config = ExtResource("19_4o3g1")
+can_sleep = false
+metadata/canvas_undo_identity = 1096038747767
+
+[node name="Monsters" type="Node2D" parent="." unique_id=103560794]
+
+[node name="debugHUD" type="CanvasLayer" parent="." unique_id=850229604 groups=["debug_hud"] instance=ExtResource("14_ej35m")]
+visible = false
+script = ExtResource("21_ub73e")
+
+[node name="SimulationRuntime" type="Node" parent="." unique_id=134839302 instance=ExtResource("15_nsobx")]
+process_physics_priority = 1
+script = ExtResource("23_ohvge")
+tuning_config = ExtResource("24_fwri4")
+
+[node name="Creative" type="Node" parent="." unique_id=1022248697]
+process_physics_priority = 15
+script = ExtResource("16_kld8j")
+canvas_path = NodePath("")
+map_path = "res://map/asset/imported/新地图2.tscn"
+baked_map_path = "res://map/asset/imported/新地图2.png"
+edit_snapshot_path = "res://map/asset/imported/新地图2.edit.snapshot"
+
+[node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1660057603 groups=["player_spawn"]]
+position = Vector2(-128, 90)

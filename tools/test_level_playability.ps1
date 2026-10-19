@@ -3,6 +3,7 @@ param(
     [switch]$Packaged,
     [string]$Pack = "",
     [switch]$Inspect,
+    [switch]$ExternalContent,
     [string]$LevelsCsv = "",
     [string[]]$Levels = @(
         "res://map/asset/imported/扉页.tscn",
@@ -46,9 +47,15 @@ foreach ($level in $Levels) {
     if ($Inspect) {
         $arguments += "--inspect"
     }
+    if ($ExternalContent) {
+        $arguments += "--external-content"
+    }
 
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     $output = & $Godot @arguments 2>&1
     $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorAction
     $detail = ($output | Select-String "\[LevelPlayability\] walk=" | Select-Object -Last 1).Line
     $results += [pscustomobject]@{
         Level = $level

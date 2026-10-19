@@ -1,0 +1,70 @@
+[gd_scene format=3]
+
+
+[ext_resource type="Script" uid="uid://bxeqry66jsq28" path="res://addons/pixel_destruction/nodes/pixel_world.gd" id="1_nytbl"]
+[ext_resource type="Script" uid="uid://chdh46srdqdtn" path="res://addons/pixel_destruction/nodes/pixel_material.gd" id="2_rkfwu"]
+[ext_resource type="Resource" uid="uid://5e73rqefu12n" path="res://ink/black/asset/black.tres" id="3_r70dl"]
+[ext_resource type="Resource" uid="uid://dop00w2n0gy4f" path="res://actor/player/asset/player_body.tres" id="4_at8es"]
+[ext_resource type="Resource" path="res://actor/player/asset/hand.tres" id="5_2h1oj"]
+[ext_resource type="Resource" uid="uid://c5na6wvehllwb" path="res://ink/grey/asset/grey1.tres" id="6_eo52x"]
+[ext_resource type="Resource" path="res://actor/player/asset/highlight.tres" id="7_t1pw4"]
+[ext_resource type="Resource" uid="uid://b2t1po83jfw4e" path="res://ink/invisible/asset/invisible.tres" id="8_vys33"]
+[ext_resource type="Script" uid="uid://dcqnoa67srpgu" path="res://actor/player/src/player_camera.gd" id="9_kr46w"]
+[ext_resource type="PackedScene" uid="uid://2raldosbm8v8" path="res://actor/canvas/canvas.tscn" id="10_5sqrm"]
+[ext_resource type="Script" uid="uid://cjoigmrhvvtvx" path="res://addons/pixel_destruction/nodes/pixel_body_2d.gd" id="11_52iqb"]
+[ext_resource type="Script" uid="uid://x40v3fmcjbnm" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="12_ttf1g"]
+[ext_resource type="PackedScene" uid="uid://1n64fxhxd3hf" path="res://actor/player/player.tscn" id="13_t6skx"]
+[ext_resource type="PackedScene" path="res://debug/hud/debug_hud.tscn" id="14_ej35m"]
+[ext_resource type="PackedScene" path="res://root/simulation_runtime.tscn" id="15_nsobx"]
+[ext_resource type="Script" uid="uid://dvtycwuj0keul" path="res://debug/creative/src/creative.gd" id="16_kld8j"]
+
+[node name="Main" type="Node2D"]
+process_priority = 10
+script = ExtResource("1_nytbl")
+max_linear_velocity = 1000.0
+max_angular_velocity = 60.0
+ccd_ignore_mass = 100.0
+min_fragment_pixels = 5
+debris_max_mass = 20.0
+debris_min_speed = 20.0
+materials = Array[ExtResource("2_rkfwu")]([ExtResource("3_r70dl"), ExtResource("4_at8es"), ExtResource("5_2h1oj"), ExtResource("6_eo52x"), ExtResource("7_t1pw4"), ExtResource("8_vys33")])
+densities_fallback = Array[float]([0.0, 1.0, 1.40338, 0.1344, 2.0, 0.0, 1.0])
+voxel_size = 1.0
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(-116, 212)
+process_callback = 0
+script = ExtResource("9_kr46w")
+
+[node name="SmallCanvas" parent="." instance=ExtResource("10_5sqrm")]
+process_physics_priority = 18
+position = Vector2(41, -42)
+
+[node name="MapCanvas" parent="." instance=ExtResource("10_5sqrm")]
+process_physics_priority = 18
+visible = false
+position = Vector2(-512, -256)
+canvas_size = Vector2i(2048, 1024)
+active = false
+
+[node name="Ground" type="Node2D" parent="."]
+position = Vector2(-133, 231)
+script = ExtResource("11_52iqb")
+is_static = true
+
+[node name="Shape" type="Node2D" parent="Ground"]
+visible = false
+script = ExtResource("12_ttf1g")
+rect_size = Vector2i(800, 40)
+
+[node name="Player" parent="." groups=["player"] instance=ExtResource("13_t6skx")]
+position = Vector2(-128, 90)
+
+[node name="Monsters" type="Node2D" parent="."]
+
+[node name="debugHUD" parent="." instance=ExtResource("14_ej35m")]
+
+[node name="SimulationRuntime" parent="." instance=ExtResource("15_nsobx")]
+
+[node name="Creative" type="Node" parent="."]
+script = ExtResource("16_kld8j")

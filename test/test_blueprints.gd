@@ -75,9 +75,9 @@ func _run() -> void:
 	health.add(Palette.GREY.id, grey_before - 999)
 	surface.ink_free = true
 	canvas.set_map_editor_mode(true)
-	# 保存到测试独立目录，不触碰玩家蓝图库；使用项目内可写目录以兼容受限运行环境。
+	# 保存到测试独立目录，不触碰玩家蓝图库；user:// 在编辑器和导出包中都可写。
 	var store := Store.new()
-	store.directory = "res://blueprints/test_%d_%d" % [Time.get_ticks_usec(), randi()]
+	store.directory = "user://blueprints/test_%d_%d" % [Time.get_ticks_usec(), randi()]
 	data.name = "桥梁测试"
 	check("save versioned blueprint", store.save(data))
 	if store.error != "":

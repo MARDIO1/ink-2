@@ -1,4 +1,5 @@
 extends SceneTree
+const ContentPaths := preload("res://map/src/content_paths.gd")
 ## 以真实按键事件运行单张关卡；每个关卡用独立进程，避免上一张图刚体的释放时序干扰。
 
 
@@ -34,9 +35,10 @@ func _run() -> void:
 		printerr("usage: -- --level=res://map/...tscn")
 		quit(2)
 		return
-	var packed := load(level_path) as PackedScene
+	var resolved_path := ContentPaths.resolve(level_path)
+	var packed := load(resolved_path) as PackedScene
 	if packed == null:
-		printerr("cannot load level: ", level_path)
+		printerr("cannot load level: ", resolved_path)
 		quit(2)
 		return
 	var app = load("res://root/root.tscn").instantiate()
@@ -46,19 +48,57 @@ func _run() -> void:
 	current_scene = app
 	await process_frame
 	app._transition.duration = 0.01
-	var level = await app.load_level(packed, false)
+	var level = await app.load_level(packed, false, resolved_path)
+	if level == null:
+		printerr("level validation failed: ", resolved_path)
+		quit(2)
+		return
 	var feet: Node = level.get_node("Player/PlayerInput")
 	var hand: Node = level.get_node("Player/Arm/Hand/HandControl")
 	var inspect_static := OS.get_cmdline_user_args().has("--inspect")
 	if inspect_static:
+		var runtime: Node = level.get_node("SimulationRuntime")
 		print("INITIAL root=", level.get_node("Player").position,
 			" com=", feet.player.body.com_world(), " frozen=", feet.player.body.frozen,
 			" awake=", feet.player.body.awake,
 			" input_process=", feet.is_physics_processing(),
 			" runtime_process=", level.get_node("SimulationRuntime").is_physics_processing(),
-			" bodies=", level.world.bodies.size(), " support=", feet.support != null)
+			" bodies=", level.world.bodies.size(), " support=", feet.support != null,
+			" auto_step=", level.auto_step, " paused=", paused,
+			" tags=", feet.player.body.tags,
+			" layer=", feet.player.body.collision_layer,
+			" mask=", feet.player.body.collision_mask,
+			" gravity=", level.world.gravity,
+			" runtime_main_ok=", runtime.get("_main") == level,
+			" runtime_player_ok=", runtime.get("_player") == level.get_node("Player"),
+			" physics_process=", level.get_node("SimulationRuntime/PhysicsStep").is_physics_processing(),
+			" runtime_in_tree=", runtime.is_inside_tree(), " level_in_tree=", level.is_inside_tree(),
+			" runtime_can_process=", runtime.can_process(),
+			" process_mode=", runtime.process_mode,
+			" runtime_script=", runtime.get_script().resource_path if runtime.get_script() != null else "",
+			" has_physics=", runtime.has_method("_physics_process"),
+			" player_in_world=", level.world.bodies.has(feet.player.body),
+			" runtime_body_same=", runtime.get("_player").get("body") == feet.player.body,
+			" rapier_id=", feet.player.body.rapier_id,
+			" native_world=", level.world._rp != null,
+			" physics_frames=", Engine.get_physics_frames())
 	for frame in 60:
 		await physics_frame
+		if inspect_static and (frame + 1) % 30 == 0:
+			print("FRAME ", frame + 1, " com=", feet.player.body.com_world(),
+				" velocity=", feet.player.body.linear_velocity,
+				" support=", feet.support != null,
+				" force=", feet.debug_force,
+				" awake=", feet.player.body.awake,
+				" frozen=", feet.player.body.frozen,
+				" gravity_scale=", feet.player.body.gravity_scale,
+				" mass=", feet.player.body.mass,
+				" rapier_id=", feet.player.body.rapier_id,
+				" native_world=", level.world._rp != null,
+				" elapsed=", level.get_node("SimulationRuntime").get("_elapsed"),
+				" fixed_dt=", level.fixed_dt,
+				" max_substeps=", level.max_substeps,
+				" physics_frames=", Engine.get_physics_frames())
 	hand.set_grip(false)
 	var jump: Dictionary = await _jump_probe(feet)
 	for frame in 90:
