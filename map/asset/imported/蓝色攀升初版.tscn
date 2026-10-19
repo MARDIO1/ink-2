@@ -54,7 +54,7 @@
 [ext_resource type="Script" path="res://ink/blue/src/motor.gd" id="52_keabt"]
 [ext_resource type="Script" path="res://ink/yellow/src/stroke.gd" id="53_a7e5k"]
 [ext_resource type="Script" path="res://ink/yellow/src/axle.gd" id="54_i5ep4"]
-[ext_resource type="Script" path="res://map/src/blue_ascent_finish.gd" id="55_r6tbn"]
+[ext_resource type="Script" path="res://actor/portal/src/map_portal.gd" id="55_r6tbn"]
 [ext_resource type="Script" path="res://map/src/blue_ascent_lesson_ui.gd" id="56_wx2dy"]
 
 [sub_resource type="Resource" id="Resource_2smrj"]
@@ -4062,7 +4062,7 @@ script = ExtResource("26_73tfm")
 [node name="BG06_Finish" type="Node2D" parent="." unique_id=354159947]
 position = Vector2(1840, 202)
 script = ExtResource("55_r6tbn")
-metadata/blue_ascent_finish = true
+target_map = "res://map/asset/imported/扉页.tscn"
 
 [node name="BG05_TurnStepA" type="Node2D" parent="." unique_id=688978114 groups=["ink_item"]]
 position = Vector2(200, 655)

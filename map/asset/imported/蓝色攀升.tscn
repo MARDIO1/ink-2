@@ -38,7 +38,7 @@
 [ext_resource type="Script" path="res://actor/canvas/src/canvas_solid.gd" id="36_brjrh"]
 [ext_resource type="Script" path="res://map/src/respawn_point.gd" id="47_56jjw"]
 [ext_resource type="Script" path="res://ink/blue/src/motor.gd" id="48_qljai"]
-[ext_resource type="Script" path="res://map/src/blue_ascent_finish.gd" id="49_p0sy8"]
+[ext_resource type="Script" path="res://actor/portal/src/map_portal.gd" id="49_p0sy8"]
 [ext_resource type="Script" path="res://map/src/blue_ascent_lesson_ui.gd" id="50_r1h4h"]
 [ext_resource type="Script" path="res://actor/ink_item/src/ink_item.gd" id="51_brxju"]
 [ext_resource type="Script" path="res://addons/pixel_destruction/nodes/pixel_shape_2d.gd" id="52_w8qp5"]
@@ -1323,7 +1323,7 @@ z_index = 4092
 z_as_relative = false
 position = Vector2(1840, 202)
 script = ExtResource("49_p0sy8")
-metadata/blue_ascent_finish = true
+target_map = "res://map/asset/imported/扉页.tscn"
 
 [node name="BG01_LessonUI" type="Node" parent="." unique_id=754529120]
 script = ExtResource("50_r1h4h")
