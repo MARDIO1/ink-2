@@ -621,51 +621,58 @@ func _motor_pair_stamp(wire, motor) -> Array:
 func _refresh_consumers(wires: Array, motors: Array) -> void:
 	var live_keys := {}
 	var changed := false
+	var wire_by_id := {}
+	var motor_bounds := {}
+	for motor in motors:
+		# 箭头完整足迹的保守世界范围；排除跨楼层、无接触可能的配对。
+		# 不能用载体刚体范围代替，否则大型地形会把远处的箭头全部纳入。
+		motor_bounds[motor] = Rect2(motor.position,Vector2.ZERO).expand(
+			motor.position+motor.tip.rotated(motor.rotation)).grow(motor.brush_width+2.0)
 	for wire in wires:
+		wire_by_id[wire.get_instance_id()] = wire
+		var bounds := _rect_world(wire.body,wire.local_bounds()).grow(2.0)
 		var targets: Dictionary = consumers.get(wire, {})
 		for motor in motors:
-			var key := Vector2i(wire.get_instance_id(), motor.get_instance_id())
+			if not bounds.intersects(motor_bounds[motor]):
+				continue
+			var key: Array = [wire.get_instance_id(), motor.get_instance_id()]
 			live_keys[key] = true
 			var pair_stamp := _motor_pair_stamp(wire, motor)
 			var cached: Dictionary = motor_cache.get(key, {})
 			if cached.get("stamp", []) == pair_stamp:
 				continue
-			changed = true
-			# 只撤销这一对的旧投影，其他配对保持不动。
-			for at: Vector2i in cached.get("cells", []):
-				var list: Array = targets.get(at, [])
-				if not list.is_empty():
-					list.erase(motor)
-					if list.is_empty():
-						targets.erase(at)
 			var cells: Array = []
 			for support in motor.support_cells:
 				var at := Vector2i(support) if wire.body == motor.body \
 					else Vector2i(wire.body.to_local(motor.body.to_world(support + Vector2.ONE * 0.5)).floor())
 				if wire.mask.has(at):
 					cells.append(at)
-			for at: Vector2i in cells:
-				var list: Array = targets.get(at, [])
-				if not list.has(motor):
-					list.append(motor)
+			# 位姿变化但实际接触格相同，不重发整份 native 接触表。
+			if cells != cached.get("cells", []):
+				changed = true
+				for at: Vector2i in cached.get("cells", []):
+					var list: Array = targets.get(at, [])
+					list.erase(motor)
+					if list.is_empty(): targets.erase(at)
+				for at: Vector2i in cells:
+					var list: Array = targets.get(at, [])
+					if not list.has(motor): list.append(motor)
 					targets[at] = list
 			motor_cache[key] = {"stamp": pair_stamp, "cells": cells}
 		consumers[wire] = targets
 	for key in motor_cache.keys():
-		if not live_keys.has(key):
-			# 电机已经消失：把它的旧投影从所有导线上摘掉，否则还会继续被供电。
-			motor_cache.erase(key)
-			changed = true
-			var dead: int = key.y
-			for wire in consumers.keys():
-				var targets: Dictionary = consumers[wire]
-				for at in targets.keys():
-					# 电机可能已被释放（烧毁/碎裂）：对已释放对象取 id 会直接崩。
-					var kept := drop_dead_entries(targets[at], dead)
-					if kept.is_empty():
-						targets.erase(at)
-					else:
-						targets[at] = kept
+		if live_keys.has(key): continue
+		var cached: Dictionary = motor_cache[key]
+		var wire = wire_by_id.get(key[0])
+		# 只清理退出接触范围的这一对，不能误删此电机在其他导线上的供电。
+		if wire != null:
+			var targets: Dictionary = consumers.get(wire,{})
+			for at: Vector2i in cached.get("cells",[]):
+				var kept := drop_dead_entries(targets.get(at,[]),key[1])
+				if kept.is_empty(): targets.erase(at)
+				else: targets[at] = kept
+		if not cached.get("cells",[]).is_empty(): changed = true
+		motor_cache.erase(key)
 	for wire in consumers.keys():
 		if not wires.has(wire):
 			consumers.erase(wire)

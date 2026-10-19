@@ -21,6 +21,10 @@ class EditorProbe extends Node:
 	var _dragging_monster := false
 	var _layout_drag_target: Node
 
+	## 光标只问这一个查询；替身按 Creative 的语义回答。
+	func editor_object_tool_active() -> bool:
+		return _monster_mode != MONSTER_MODE_NONE or _dragging_monster or _layout_drag_target != null
+
 func _initialize() -> void:
 	_run.call_deferred()
 

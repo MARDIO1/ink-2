@@ -1,6 +1,6 @@
 extends SceneTree
 
-const MapImage := preload("res://debug/creative/src/map_imported_image.gd")
+const MapImage := preload("res://map/src/map_imported_image.gd")
 var failures := 0
 
 

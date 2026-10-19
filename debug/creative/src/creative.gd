@@ -44,6 +44,14 @@ const EditorSave := preload("res://debug/creative/application/editor_save.gd")
 const LayoutTools := preload("res://debug/creative/features/layout_tools.gd")
 ## 小怪的文档操作（查找/计数/编辑器物理暂停）。
 const MonsterTools := preload("res://debug/creative/features/monster_tools.gd")
+const MapTextTools := preload("res://debug/creative/features/map_text_tools.gd")
+const LevelCatalog := preload("res://map/src/level_catalog.gd")
+const UiHitTest := preload("res://ui/input/src/ui_hit_test.gd")
+const LayoutView := preload("res://debug/creative/ui/src/editor_layout_view.gd")
+const DialogueTools := preload("res://debug/creative/features/dialogue_tools.gd")
+const ImageTools := preload("res://debug/creative/features/image_tools.gd")
+const DialogueView := preload("res://debug/creative/ui/src/editor_dialogue_view.gd")
+const TextView := preload("res://debug/creative/ui/src/editor_text_view.gd")
 const MONSTER_SCALE_STEP := 0.1
 ## 只保留非零正尺寸，避免退化碰撞体；不设玩法缩放上限。
 const MONSTER_MIN_SCALE := 0.01
@@ -51,12 +59,12 @@ const TEXT_SCALE_STEP := 0.1
 const TEXT_MIN_SCALE := 0.35
 const TEXT_MAX_SCALE := 3.0
 const MapMonsterScript := preload("res://actor/monster/src/map_monster.gd")
-const DialogueTriggerScript := preload("res://debug/creative/src/map_dialogue_trigger.gd")
+const DialogueTriggerScript := preload("res://map/src/map_dialogue_trigger.gd")
 const MapTextScript := preload("res://ui/map_text/src/map_text_label.gd")
 const MapPortalScript := preload("res://actor/portal/src/map_portal.gd")
 const InkFountainScript := preload("res://actor/fountain/src/ink_fountain.gd")
 const MapPlacementOverlayScript := preload("res://debug/creative/src/map_placement_overlay.gd")
-const MapImportedImageScript := preload("res://debug/creative/src/map_imported_image.gd")
+const MapImportedImageScript := preload("res://map/src/map_imported_image.gd")
 const PlayCanvasScene := preload("res://actor/canvas/canvas.tscn")
 const InkPalette := preload("res://ink/general/src/ink_palette.gd")
 const CanvasSurfaceScript := preload("res://actor/canvas/src/canvas_surface.gd")
@@ -134,9 +142,9 @@ var _player = null
 var _body = null
 var _spawn_point: Marker2D = null
 var _layout_overlay = null
-var _respawn_area_dialog: ConfirmationDialog
+## 布局表单视图（`ui/src/editor_layout_view.gd`）。
+var _layout_view: Node
 var _respawn_area_target: Marker2D
-var _respawn_area_fields: Array[SpinBox] = []
 var _layout_buttons: Dictionary:
 	get:
 		return _palette._layout_buttons if is_instance_valid(_palette) else {}
@@ -152,9 +160,6 @@ var _portal_destination: PopupMenu:
 		return _palette._portal_destination if is_instance_valid(_palette) else null
 var _portal_target_path := ""
 var _portal_menu_target: Node2D = null
-var _canvas_size_dialog: ConfirmationDialog = null
-var _canvas_width_input: SpinBox = null
-var _canvas_height_input: SpinBox = null
 var _new_canvas_size := Vector2i(400, 280)
 var _canvas = null
 var _map_canvas = null
@@ -329,12 +334,14 @@ func prepare_loaded_document(editing: bool) -> void:
 		return
 	var previous_free: bool = _map_canvas.surface.ink_free
 	_map_canvas.surface.ink_free = true
+	_map_canvas.surface.defer_load_metadata = not editing
 	var error: Error = OK
 	if editor_draft.is_empty():
 		# 旧地图的内容在外置快照里；普通游玩也要读取，不能等第一次 F2。
 		_load_edit_snapshot_if_needed()
 		if not _edit_snapshot_loaded:
 			_map_canvas.surface.ink_free = previous_free
+			_map_canvas.surface.defer_load_metadata = false
 			return
 		editor_draft = _map_canvas.surface.capture_document()
 	else:
@@ -343,6 +350,7 @@ func prepare_loaded_document(editing: bool) -> void:
 	if error == OK and not editing:
 		_map_canvas.generate(false)
 	_map_canvas.surface.ink_free = previous_free
+	_map_canvas.surface.defer_load_metadata = false
 	if error != OK:
 		push_error("Creative: 无法恢复内嵌草稿 (%d)" % error)
 
@@ -484,23 +492,11 @@ func _event_world_position(event: InputEventMouse) -> Vector2:
 
 ## 全局输入早于 GUI 更新；用本次事件的位置判断，避免沿用上一帧的悬停控件。
 func _pointer_over_editor_ui(screen_position: Vector2) -> bool:
-	for control: Control in get_tree().root.find_children("*", "Control", true, false):
-		if control.get_viewport() != get_viewport() or not control.is_visible_in_tree() \
-		or control.mouse_filter == Control.MOUSE_FILTER_IGNORE:
-			continue
-		if not Rect2(Vector2.ZERO, control.size).has_point(control.get_global_transform_with_canvas().affine_inverse() * screen_position):
-			continue
-		var clipped := false
-		var parent := control.get_parent()
-		while parent != null:
-			if parent is Control and parent.clip_contents \
-			and not Rect2(Vector2.ZERO, parent.size).has_point(parent.get_global_transform_with_canvas().affine_inverse() * screen_position):
-				clipped = true
-				break
-			parent = parent.get_parent()
-		if not clipped:
-			return true
-	return false
+	# 命中规则统一在 `ui/input/src/ui_hit_test.gd`；这里只管"编辑器现在是不是"
+	# 需要拦住世界输入（模态、放置、拖动），几何判定交给它。
+	return UiHitTest.blocks_world_input(get_viewport(), screen_position)
+
+
 
 
 func _handle_monster_adjust_button(event: InputEventMouseButton) -> bool:
@@ -526,25 +522,21 @@ func _handle_monster_adjust_button(event: InputEventMouseButton) -> bool:
 			# 默认模式下点击空白不拦截，让地图画布正常绘画。
 			return _session.mode == MONSTER_MODE_ADJUST
 		_lock_monster_drag_view()
-		_session.dragging_monster = true
-		_session.drag_offset = monster.global_position - _event_world_position(event)
-		_session.drag_start_position = monster.global_position
-		_session.drag_start_scale = monster.scale
+		MonsterTools.begin_drag(_session, monster, _event_world_position(event))
 		return true
 	if not _session.dragging_monster:
 		return false
 	_flush_monster_drag_move()
-	_session.dragging_monster = false
+	var record: Dictionary = MonsterTools.finish_drag(_session)
 	_unlock_monster_drag_view()
-	_record_monster_transform(_session.selected_monster, _session.drag_start_position, _session.drag_start_scale)
+	if not record.is_empty():
+		_record_monster_transform(record.monster, record.position, record.scale)
 	return true
 
 
 func _handle_monster_adjust_motion(event: InputEventMouseMotion) -> bool:
-	if not _session.dragging_monster or not is_instance_valid(_session.selected_monster):
+	if not MonsterTools.update_drag(_session, _session.selected_monster, _event_world_position(event)):
 		return false
-	_session.selected_monster.global_position = _event_world_position(event) + _session.drag_offset
-	_session.pending_monster_move = _session.selected_monster
 	return true
 
 
@@ -564,9 +556,10 @@ func _on_drag_focus_lost() -> void:
 		_finish_layout_drag()
 	else:
 		_flush_monster_drag_move()
-		_session.dragging_monster = false
+		var lost_record: Dictionary = MonsterTools.finish_drag(_session)
 		_unlock_monster_drag_view()
-		_record_monster_transform(_session.selected_monster, _session.drag_start_position, _session.drag_start_scale)
+		if not lost_record.is_empty():
+			_record_monster_transform(lost_record.monster, lost_record.position, lost_record.scale)
 
 
 func _lock_monster_drag_view() -> void:
@@ -761,8 +754,8 @@ func _exit() -> void:
 		_finish_layout_drag()
 	_cancel_dialogue_input()
 	_cancel_text_input()
-	if _canvas_size_dialog != null:
-		_canvas_size_dialog.hide()
+	if _layout_view != null:
+		_layout_view.close_forms()
 	_restore_player_entity()
 	if _body != null:
 		_body.collision_layer = _saved_layer
@@ -877,6 +870,9 @@ func _editor_preserved_bodies() -> Dictionary:
 		if not GearCenters.body_records(body).is_empty():
 			keep[body] = true
 	for child in level.get_children():
+		# 蓝色攀升等地图用节点元数据标出机关载体；墨化时必须连同导轨/止挡一起保留。
+		if child.has_meta("blue_ascent_machine") and child.get("body") != null:
+			keep[child.body] = true
 		if child is YellowHinge:
 			_keep_anchor(keep, child.yellow_anchor)
 			_keep_anchor(keep, child.black_anchor)
@@ -906,6 +902,13 @@ func _inkify_non_mechanism_bodies() -> void:
 	if _map_canvas == null:
 		return
 	_map_canvas.return_to_canvas(false, true, _editor_preserved_bodies())
+
+
+## 工具栏“墨化”入口：保留机关与关节，记录一步撤销。
+func inkify_editor_preserved() -> void:
+	if _map_canvas == null:
+		return
+	_map_canvas.return_to_canvas(true, true, _editor_preserved_bodies())
 
 
 ## 编辑时只保留无几何的相机锚点，身体、手臂和手均不再参与任何实体查询。
@@ -1521,46 +1524,20 @@ func _open_respawn_area_dialog() -> void:
 		_layout_status_label.text = "先用操纵工具选中橙色复活点，再设置激活区域"
 		return
 	_respawn_area_target = target
-	if _respawn_area_dialog == null:
-		_respawn_area_dialog = ConfirmationDialog.new()
-		_respawn_area_dialog.name = "RespawnAreaDialog"
-		_respawn_area_dialog.title = "复活点：脚底落地激活区域"
-		_respawn_area_dialog.theme = EDITOR_THEME
-		_respawn_area_dialog.get_ok_button().text = "应用"
-		_respawn_area_dialog.get_cancel_button().text = "取消"
-		_palette.get_node("Root").add_child(_respawn_area_dialog)
-		var column := VBoxContainer.new()
-		_respawn_area_dialog.add_child(column)
-		for index in 4:
-			var row := HBoxContainer.new()
-			column.add_child(row)
-			var label := Label.new()
-			label.text = ["宽度", "高度", "水平偏移", "垂直偏移"][index] + "（像素）"
-			label.add_theme_color_override("font_color", Color(0.95, 0.93, 0.85))
-			label.custom_minimum_size.x = 150
-			row.add_child(label)
-			var field := SpinBox.new()
-			field.min_value = 1 if index < 2 else -8192
-			field.max_value = 8192
-			field.custom_minimum_size.x = 160
-			row.add_child(field)
-			_respawn_area_fields.append(field)
-		_respawn_area_dialog.confirmed.connect(_confirm_respawn_area)
-	var size: Vector2 = target.activation_size
-	var offset: Vector2 = target.activation_offset
-	for index in 4:
-		_respawn_area_fields[index].value = [size.x, size.y, offset.x, offset.y][index]
-	_respawn_area_dialog.popup_centered(Vector2i(390, 240))
+	var view := _ensure_layout_view()
+	view.ensure_respawn_dialog(_palette.get_node("Root"), EDITOR_THEME)
+	var area: Dictionary = {"size": target.activation_size, "offset": target.activation_offset}
+	view.open_respawn(area.size, area.offset)
 
 
-## 提交区域配置，沿用统一编辑历史。
 func _confirm_respawn_area() -> void:
 	var point := _respawn_area_target
 	if not is_instance_valid(point) or point.is_queued_for_deletion() or not _level_root().is_ancestor_of(point):
 		return
 	var before := LayoutTools.capture_respawn_point(point)
-	point.activation_size = Vector2(_respawn_area_fields[0].value, _respawn_area_fields[1].value)
-	point.activation_offset = Vector2(_respawn_area_fields[2].value, _respawn_area_fields[3].value)
+	var area: Dictionary = _layout_view.respawn_area_values()
+	point.activation_size = area.size
+	point.activation_offset = area.offset
 	var after := LayoutTools.capture_respawn_point(point)
 	if before != after:
 		_record_edit({"type": &"respawn_area", "target": point, "before": before, "after": after})
@@ -1644,7 +1621,7 @@ func _refresh_portal_choices() -> void:
 	_portal_destination.clear()
 	_portal_destination.add_item("下一关（地图列表顺序）")
 	_portal_destination.set_item_metadata(0, "")
-	for path in MapPortalScript.LevelList.find_levels():
+	for path in LevelCatalog.find_levels():
 		var index := _portal_destination.item_count
 		_portal_destination.add_item(path.get_file().get_basename())
 		_portal_destination.set_item_metadata(index, path)
@@ -1662,7 +1639,7 @@ func _open_portal_menu(portal: Node2D = null) -> void:
 func set_portal_destination(portal: Node2D, destination: String) -> bool:
 	if not is_instance_valid(portal) or not portal.is_in_group(MapPortalScript.GROUP):
 		return false
-	if not destination.is_empty() and not MapPortalScript.LevelList.find_levels().has(destination):
+	if not destination.is_empty() and not LevelCatalog.find_levels().has(destination):
 		return false
 	if portal.target_map != destination:
 		_record_edit({"type": &"portal_destination", "target": portal, "old_destination": portal.target_map})
@@ -1682,47 +1659,20 @@ func _on_portal_destination_selected(index: int) -> void:
 
 
 func _build_canvas_size_dialog(parent: Control) -> void:
-	_canvas_size_dialog = ConfirmationDialog.new()
-	_canvas_size_dialog.name = "CanvasSizeDialog"
-	_canvas_size_dialog.title = "新增游玩画布"
-	_canvas_size_dialog.theme = EDITOR_THEME
-	_canvas_size_dialog.get_ok_button().text = "开始放置"
-	parent.add_child(_canvas_size_dialog)
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
-	_canvas_size_dialog.add_child(column)
-	for dimension in ["宽度", "高度"]:
-		var row := HBoxContainer.new()
-		column.add_child(row)
-		var label := Label.new()
-		label.text = dimension + "（像素）"
-		label.custom_minimum_size.x = 105.0
-		row.add_child(label)
-		var input := SpinBox.new()
-		input.min_value = 16.0
-		input.max_value = 4096.0
-		input.step = 1.0
-		input.custom_minimum_size.x = 170.0
-		input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(input)
-		if dimension == "宽度":
-			_canvas_width_input = input
-		else:
-			_canvas_height_input = input
-	_canvas_size_dialog.confirmed.connect(_confirm_canvas_size)
-	_canvas_size_dialog.canceled.connect(_update_monster_buttons)
+	# 表单在 `ui/src/editor_layout_view.gd`；这里只接"确认后进入放置"。
+	var view := _ensure_layout_view()
+	view.ensure_canvas_dialog(parent, EDITOR_THEME)
+	view.canvas_size_canceled.connect(_update_monster_buttons)
 
 
 func _open_canvas_size_dialog() -> void:
-	if _canvas_size_dialog == null:
-		return
-	_canvas_width_input.value = clampi(_new_canvas_size.x, 16, 4096)
-	_canvas_height_input.value = clampi(_new_canvas_size.y, 16, 4096)
-	_canvas_size_dialog.popup_centered(Vector2i(360, 180))
+	var view := _ensure_layout_view()
+	view.ensure_canvas_dialog(_palette.get_node("Root"), EDITOR_THEME)
+	view.open_canvas(_new_canvas_size)
 
 
 func _confirm_canvas_size() -> void:
-	_new_canvas_size = Vector2i(int(_canvas_width_input.value), int(_canvas_height_input.value))
+	_new_canvas_size = _layout_view.canvas_size_value()
 	if _session.mode == LAYOUT_MODE_PLACE_CANVAS:
 		select_monster_tool(MONSTER_MODE_NONE)
 	select_monster_tool(LAYOUT_MODE_PLACE_CANVAS)
@@ -1832,7 +1782,14 @@ func _build_monster_palette() -> void:
 	_palette.query_ink_quota = ink_quota_of
 	_palette.action_requested.connect(_dispatch_palette_action)
 	add_child(_palette)
-	_palette.bind_canvas(_map_canvas)
+	# 色盘只展示：装配点把显示值一次给全，之后靠画布信号回填。
+	var brush: Dictionary = _map_canvas.brush_range()
+	_palette.bind_canvas(_map_canvas, {
+		"brush_min": brush.min, "brush_max": brush.max,
+		"brush_step": brush.step, "brush_size": brush.value,
+		"selected_ink": _map_canvas.surface.selected_ink,
+		"nails_visible": _map_canvas.nails_visible(),
+	})
 
 func ink_quota_of(material_id: int) -> float:
 	var override := _ink_quota_overrides()
@@ -2106,31 +2063,18 @@ func _update_monster_status() -> void:
 
 
 func _resize_selected_monster(amount: float) -> void:
-	if not is_instance_valid(_session.selected_monster):
+	var record: Dictionary = MonsterTools.resize(_session.selected_monster, amount, MONSTER_MIN_SCALE)
+	if record.is_empty():
 		return
-	var old_position := _session.selected_monster.global_position
-	var old_scale := _session.selected_monster.scale
-	var next_scale := maxf(old_scale.x + amount, MONSTER_MIN_SCALE)
-	if not is_finite(next_scale) or is_equal_approx(next_scale, old_scale.x):
-		return
-	_session.selected_monster.scale = Vector2.ONE * next_scale
-	if _session.selected_monster.has_method("sync_physics_from_node"):
-		_session.selected_monster.sync_physics_from_node(true)
-	_record_monster_transform(_session.selected_monster, old_position, old_scale)
+	_record_monster_transform(record.monster, record.position, record.scale)
 
 
 func _reset_selected_monster_scale() -> void:
-	if not is_instance_valid(_session.selected_monster):
-		return
-	var old_position := _session.selected_monster.global_position
-	var old_scale := _session.selected_monster.scale
 	# 恢复到该种类的固定大小，与"平路"关卡一致。
-	var kind: int = int(_session.selected_monster.get("kind"))
-	var fixed_scale_value: float = MONSTER_FIXED_SCALES.get(kind, 1.0)
-	_session.selected_monster.scale = Vector2.ONE * fixed_scale_value
-	if _session.selected_monster.has_method("sync_physics_from_node"):
-		_session.selected_monster.sync_physics_from_node(true)
-	_record_monster_transform(_session.selected_monster, old_position, old_scale)
+	var record: Dictionary = MonsterTools.reset_scale(_session.selected_monster, MONSTER_FIXED_SCALES)
+	if record.is_empty():
+		return
+	_record_monster_transform(record.monster, record.position, record.scale)
 
 
 func _record_monster_transform(monster: Node2D, old_position: Vector2, old_scale: Vector2) -> void:
@@ -2157,111 +2101,28 @@ func monster_count() -> int:
 func _build_dialogue_input_window() -> void:
 	if _dialogue_window != null:
 		return
-	var window := Window.new()
-	window.name = "DialogueTriggerInput"
-	window.title = "设置对话触发点（100×100）"
-	window.size = Vector2i(560, 430)
-	window.min_size = Vector2i(440, 320)
-	window.transient = true
-	window.exclusive = true
-	window.unresizable = false
-	window.visible = false
-	window.theme = EDITOR_THEME
-	window.close_requested.connect(_cancel_dialogue_input)
-	add_child(window)
-	_dialogue_window = window
-
-	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 18)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_bottom", 16)
-	window.add_child(margin)
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
-	margin.add_child(column)
-
-	var help := Label.new()
-	help.text = "输入第一句，按 Enter 切换到下一句；播放时将按此顺序逐句输出。"
-	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(help)
-
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(scroll)
-	_dialogue_lines_box = VBoxContainer.new()
-	_dialogue_lines_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_dialogue_lines_box.add_theme_constant_override("separation", 8)
-	scroll.add_child(_dialogue_lines_box)
-
-	_dialogue_input_status = Label.new()
-	_dialogue_input_status.modulate = Color(0.75, 0.12, 0.08)
-	column.add_child(_dialogue_input_status)
-	var actions := HBoxContainer.new()
-	actions.alignment = BoxContainer.ALIGNMENT_END
-	column.add_child(actions)
-	var cancel := Button.new()
-	cancel.text = "取消"
-	cancel.pressed.connect(_cancel_dialogue_input)
-	actions.add_child(cancel)
-	var confirm := Button.new()
-	confirm.text = "放置触发点"
-	confirm.pressed.connect(_confirm_dialogue_input)
-	actions.add_child(confirm)
+	# 窗口结构与输入控件在 `ui/src/editor_dialogue_view.gd`；这里只接"确认后放置"。
+	_dialogue_window = DialogueView.new()
+	add_child(_dialogue_window)
+	_dialogue_window.confirmed.connect(func(lines: PackedStringArray, at: Vector2):
+		place_dialogue_trigger(at, lines)
+	)
 
 
 func _open_dialogue_input(world_position: Vector2) -> void:
 	if not active or _dialogue_window == null:
 		return
-	_pending_dialogue_position = world_position
-	for child in _dialogue_lines_box.get_children():
-		child.queue_free()
-	_dialogue_input_status.text = ""
-	var first := _add_dialogue_line_input()
-	_dialogue_window.popup_centered(Vector2i(560, 430))
-	first.call_deferred("grab_focus")
-
-
-func _add_dialogue_line_input(initial_text := "") -> LineEdit:
-	var input := LineEdit.new()
-	input.placeholder_text = "第 %d 句" % (_dialogue_lines_box.get_child_count() + 1)
-	input.text = initial_text
-	input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	input.text_submitted.connect(_on_dialogue_line_submitted.bind(input))
-	_dialogue_lines_box.add_child(input)
-	return input
-
-
-func _on_dialogue_line_submitted(_text: String, input: LineEdit) -> void:
-	var index := input.get_index()
-	var next: LineEdit = null
-	if index + 1 < _dialogue_lines_box.get_child_count():
-		next = _dialogue_lines_box.get_child(index + 1) as LineEdit
-	else:
-		next = _add_dialogue_line_input()
-	if next != null:
-		next.grab_focus()
+	_dialogue_window.open_at(world_position)
 
 
 func _confirm_dialogue_input() -> void:
-	var dialogue_lines := PackedStringArray()
-	for child in _dialogue_lines_box.get_children():
-		if not child is LineEdit:
-			continue
-		var sentence: String = child.text.strip_edges()
-		if not sentence.is_empty():
-			dialogue_lines.append(sentence)
-	if dialogue_lines.is_empty():
-		_dialogue_input_status.text = "请至少输入一句文案。"
-		return
-	place_dialogue_trigger(_pending_dialogue_position, dialogue_lines)
-	_dialogue_window.hide()
+	if _dialogue_window != null:
+		_dialogue_window.submit_now()
 
 
 func _cancel_dialogue_input() -> void:
 	if _dialogue_window != null:
-		_dialogue_window.hide()
+		_dialogue_window.close_view()
 
 
 func _ensure_dialogue_container() -> Node2D:
@@ -2290,14 +2151,11 @@ func place_dialogue_trigger(
 	var container := _ensure_dialogue_container()
 	if container == null:
 		return null
-	var trigger := DialogueTriggerScript.new() as Node2D
-	trigger.name = "DialogueTrigger"
-	trigger.set("lines", dialogue_lines.duplicate())
 	if trigger_id.is_empty():
 		trigger_id = _new_dialogue_id()
-	trigger.set("editor_id", trigger_id)
-	container.add_child(trigger, true)
-	trigger.global_position = world_position
+	var trigger: Node2D = DialogueTools.create(container, world_position, dialogue_lines, trigger_id)
+	if trigger == null:
+		return null
 	var level := _level_root()
 	if level != null:
 		trigger.owner = level
@@ -2325,50 +2183,17 @@ func remove_dialogue_trigger_at(world_position: Vector2) -> bool:
 
 
 func _find_dialogue_trigger_at(world_position: Vector2) -> Node2D:
-	var container := _ensure_dialogue_container()
-	if container == null:
-		return null
-	var nearest: Node2D = null
-	var nearest_distance: float = INF
-	for child in container.get_children():
-		if not child is Node2D or not child.is_in_group(DialogueTriggerScript.GROUP):
-			continue
-		if not child.trigger_rect().has_point(world_position):
-			continue
-		var distance: float = child.global_position.distance_to(world_position)
-		if distance < nearest_distance:
-			nearest = child
-			nearest_distance = distance
-	return nearest
+	return DialogueTools.find_at(_ensure_dialogue_container(), world_position)
 
 
 func _new_dialogue_id() -> String:
-	var container := _ensure_dialogue_container()
-	while true:
-		var candidate := "dialogue_%d" % _next_dialogue_id
-		_next_dialogue_id += 1
-		var used := false
-		if container != null:
-			for child in container.get_children():
-				if str(child.get("editor_id")) == candidate:
-					used = true
-					break
-		if not used:
-			return candidate
-	return ""
+	var allocated: Dictionary = DialogueTools.allocate_id(_ensure_dialogue_container(), _next_dialogue_id)
+	_next_dialogue_id = int(allocated.next)
+	return str(allocated.id)
 
 
 func _remove_dialogue_trigger_by_id(trigger_id: String) -> bool:
-	var container := _ensure_dialogue_container()
-	if container == null or trigger_id.is_empty():
-		return false
-	for child in container.get_children():
-		if str(child.get("editor_id")) != trigger_id:
-			continue
-		container.remove_child(child)
-		child.queue_free()
-		return true
-	return false
+	return DialogueTools.remove_by_id(_ensure_dialogue_container(), trigger_id)
 
 
 func _refresh_dialogue_trigger_visuals() -> void:
@@ -2386,78 +2211,28 @@ func _refresh_dialogue_trigger_visuals() -> void:
 func _build_text_input_window() -> void:
 	if _text_window != null:
 		return
-	var window := Window.new()
-	window.name = "MapTextInput"
-	window.title = "放置地图文本"
-	window.size = Vector2i(560, 330)
-	window.min_size = Vector2i(440, 280)
-	window.transient = true
-	window.visible = false
-	window.theme = EDITOR_THEME
-	window.close_requested.connect(_cancel_text_input)
-	add_child(window)
-	window.hide()
-	_text_window = window
-
-	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 18)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_bottom", 16)
-	window.add_child(margin)
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
-	margin.add_child(column)
-	var help := Label.new()
-	help.text = "输入要写在地图上的文字；支持换行，显示时使用沐瑶软笔手写体。"
-	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(help)
-	_text_input = TextEdit.new()
-	_text_input.name = "TextInput"
-	_text_input.placeholder_text = "输入地图文本……"
-	_text_input.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_text_input.custom_minimum_size = Vector2(0, 150)
-	column.add_child(_text_input)
-	_text_input_status = Label.new()
-	_text_input_status.modulate = Color(0.75, 0.12, 0.08)
-	column.add_child(_text_input_status)
-	var actions := HBoxContainer.new()
-	actions.alignment = BoxContainer.ALIGNMENT_END
-	actions.add_theme_constant_override("separation", 8)
-	column.add_child(actions)
-	var cancel := Button.new()
-	cancel.text = "取消"
-	cancel.pressed.connect(_cancel_text_input)
-	actions.add_child(cancel)
-	var confirm := Button.new()
-	confirm.text = "放置文本"
-	confirm.pressed.connect(_confirm_text_input)
-	actions.add_child(confirm)
+	# 窗口与表单在 `ui/src/editor_text_view.gd`；这里只接"确认后放置"。
+	_text_window = TextView.new()
+	add_child(_text_window)
+	_text_window.confirmed.connect(func(content: String, at: Vector2):
+		place_map_text(at, content)
+	)
 
 
 func _open_text_input(world_position: Vector2) -> void:
 	if not active or _text_window == null:
 		return
-	_pending_text_position = world_position
-	_text_input.text = ""
-	_text_input_status.text = ""
-	_text_window.popup_centered(Vector2i(560, 330))
-	_text_input.call_deferred("grab_focus")
+	_text_window.open_at(world_position)
 
 
 func _confirm_text_input() -> void:
-	var content := _text_input.text.strip_edges()
-	if content.is_empty():
-		_text_input_status.text = "请输入要放置的文字。"
-		return
-	place_map_text(_pending_text_position, content)
-	_text_window.hide()
+	if _text_window != null:
+		_text_window.submit_now()
 
 
 func _cancel_text_input() -> void:
 	if _text_window != null:
-		_text_window.hide()
+		_text_window.close_view()
 
 
 func _ensure_text_container() -> Node2D:
@@ -2487,25 +2262,13 @@ func place_map_text(
 	var container := _ensure_text_container()
 	if container == null:
 		return null
-	var label := MapTextScript.new() as Label
-	label.name = "MapText"
-	label.text = content
 	if _map_text_font == null:
 		_map_text_font = load(MAP_TEXT_FONT_PATH) as Font
-	if _map_text_font != null:
-		label.add_theme_font_override("font", _map_text_font)
-	label.add_theme_font_size_override("font_size", 48)
-	label.add_theme_color_override("font_color", Color(0.035, 0.031, 0.024, 1.0))
-	label.add_theme_color_override("font_shadow_color", Color.TRANSPARENT)
-	# 地图文字始终盖在地面和固化墨迹上，避免被关卡实体遮住。
-	label.z_index = 20
-	label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	if text_id.is_empty():
 		text_id = _new_text_id()
-	label.set("editor_id", text_id)
-	container.add_child(label, true)
-	label.global_position = world_position
-	label.reset_size()
+	var label: Label = MapTextTools.create(container, world_position, content, text_id, _map_text_font)
+	if label == null:
+		return null
 	var level := _level_root()
 	if level != null:
 		label.owner = level
@@ -2536,42 +2299,17 @@ func _find_map_text_at(world_position: Vector2) -> Label:
 	var container := _ensure_text_container()
 	if container == null:
 		return null
-	var children := container.get_children()
-	for index in range(children.size() - 1, -1, -1):
-		var child = children[index]
-		if child is Label and child.is_in_group(MapTextScript.GROUP) \
-		and child.contains_world_point(world_position, _layout_pick_radius() * (8.0 / 28.0)):
-			return child as Label
-	return null
+	return MapTextTools.find_at(container, world_position, _layout_pick_radius() * (8.0 / 28.0))
 
 
 func _new_text_id() -> String:
-	var container := _ensure_text_container()
-	while true:
-		var candidate := "text_%d" % _next_text_id
-		_next_text_id += 1
-		var used := false
-		if container != null:
-			for child in container.get_children():
-				if str(child.get("editor_id")) == candidate:
-					used = true
-					break
-		if not used:
-			return candidate
-	return ""
+	var allocated: Dictionary = MapTextTools.allocate_id(_ensure_text_container(), _next_text_id)
+	_next_text_id = int(allocated.next)
+	return str(allocated.id)
 
 
 func _remove_map_text_by_id(text_id: String) -> bool:
-	var container := _ensure_text_container()
-	if container == null or text_id.is_empty():
-		return false
-	for child in container.get_children():
-		if str(child.get("editor_id")) != text_id:
-			continue
-		container.remove_child(child)
-		child.queue_free()
-		return true
-	return false
+	return MapTextTools.remove_by_id(_ensure_text_container(), text_id)
 #endregion
 
 
@@ -2597,18 +2335,10 @@ func _restore_deleted_image(source_data: PackedByteArray, source_format: String,
 	var container := _ensure_image_container()
 	if container == null:
 		return null
-	var image := MapImportedImageScript.new() as Sprite2D
-	image.name = "ImportedImage"
-	image.source_data = source_data
-	image.source_format = source_format
-	image.original_filename = filename
-	container.add_child(image, true)
-	if image.texture == null:
-		container.remove_child(image)
-		image.queue_free()
+	var image: Sprite2D = ImageTools.restore(container, world_position, source_data,
+		source_format, filename, image_scale)
+	if image == null:
 		return null
-	image.global_position = world_position
-	image.scale = image_scale
 	image.owner = _level_root()
 	return image
 
@@ -2616,22 +2346,19 @@ func _restore_deleted_image(source_data: PackedByteArray, source_format: String,
 func _imported_images() -> Array:
 	var level := _level_root()
 	var container := level.get_node_or_null("MapImages") if level != null else null
-	return container.get_children() if container != null else []
+	return ImageTools.images_in(container)
 
 
 func _find_imported_image_at(world_position: Vector2) -> Sprite2D:
-	var images := _imported_images()
-	for index in range(images.size() - 1, -1, -1):
-		var image = images[index]
-		if image is Sprite2D and (image.resize_handle_hit(world_position)
-			or image.contains_world_point(world_position, _layout_pick_radius() * (8.0 / 28.0))):
-			return image
-	return null
+	var level := _level_root()
+	var container := level.get_node_or_null("MapImages") if level != null else null
+	return ImageTools.find_at(container, world_position, _layout_pick_radius() * (8.0 / 28.0))
 
 
 func _set_imported_image_selection(target) -> void:
-	for image in _imported_images():
-		image.editor_selected = image == target
+	var level := _level_root()
+	var container := level.get_node_or_null("MapImages") if level != null else null
+	ImageTools.set_selection(container, target)
 
 
 func delete_imported_image(image: Sprite2D) -> bool:
@@ -2676,6 +2403,9 @@ func _find_editor_node(container: Node, editor_id: String) -> Node:
 
 func _clear_edit_history() -> void:
 	_history.clear()
+	# 画布自己那份栈也要一起清，否则会留下编辑器时间线不知道的孤儿步骤。
+	if _map_canvas != null and _map_canvas.surface != null:
+		_map_canvas.surface.clear_history()
 
 func undo_last_edit() -> bool:
 	return _history.undo()
@@ -2932,6 +2662,7 @@ func export_map_to(save_path: String) -> Error:
 		# 否则存出来的关卡一开始就是"看不见的玩家"。
 		"player": _player,
 		"player_visible": _saved_player_visible,
+		"draft_owner": self,
 		"bake_preview": save_preview_on_export,
 		"baked_map_path": baked_map_path,
 	}, save_path)
@@ -2950,6 +2681,7 @@ func _pack_as_playable_scene(packed: PackedScene, scene: Node) -> Error:
 	return EditorSave.pack_playable(packed, scene, {
 		"player": _player,
 		"player_visible": _saved_player_visible,
+		"draft_owner": self,
 		"map_canvas": _map_canvas,
 		"play_canvases": _play_canvases(),
 	})
@@ -2983,6 +2715,10 @@ func _dispatch_palette_action(action: StringName, arguments: Array) -> void:
 		&"_open_respawn_area_dialog": _open_respawn_area_dialog,
 		&"_on_ink_quota_changed": _on_ink_quota_changed,
 		&"reset_ink_quota": reset_ink_quota,
+		# 色盘只发意图；真正改画布由这里统一执行。
+		&"set_brush_size": _map_canvas.set_brush_size,
+		&"select_ink": _map_canvas.select_ink,
+		&"set_nails_visible": _map_canvas.set_nails_visible,
 	}
 	if actions.has(action):
 		actions[action].callv(arguments)
@@ -3018,9 +2754,38 @@ func _configure_history() -> void:
 	_history.recorded.connect(_on_history_recorded)
 	_history.changed.connect(_queue_edit_auto_save)
 
+## 画布栈与编辑器时间线是 1:1 的：每次 `surface.edit_committed` 都会记一条 canvas 编辑。
+## 所以非画布编辑**不该**无条件清空画布栈——那会把用户刚画的笔画一起清掉，撤销回不去。
+## 只有当画布栈里剩下编辑器时间线完全不知道的孤儿步骤时才清理。
 func _on_history_recorded(edit: Dictionary) -> void:
-	if edit.get("type", &"") != &"canvas" and _map_canvas != null:
-		_map_canvas.surface.clear_history()
+	if edit.get("type", &"") == &"canvas" or _map_canvas == null:
+		return
+	var surface = _map_canvas.surface
+	if surface == null or not surface.undo_available():
+		return
+	if _editor_canvas_steps() == 0:
+		surface.clear_history()
+
+
+## 编辑器撤销栈里还有多少条画布步骤；为 0 说明画布栈是孤儿。
+func _editor_canvas_steps() -> int:
+	var count := 0
+	for item in _history.undo_stack:
+		if item.get("type", &"") == &"canvas":
+			count += 1
+	return count
+
+## 布局表单（画布尺寸、复活区）按需建一次，控件归视图所有。
+func _ensure_layout_view() -> Node:
+	if is_instance_valid(_layout_view):
+		return _layout_view
+	_layout_view = LayoutView.new()
+	_layout_view.name = "LayoutView"
+	_layout_view.canvas_size_confirmed.connect(func(_size: Vector2i): _confirm_canvas_size())
+	_layout_view.respawn_area_confirmed.connect(func(_size: Vector2, _offset: Vector2): _confirm_respawn_area())
+	add_child(_layout_view)
+	return _layout_view
+
 
 func _ensure_save_view() -> void:
 	if is_instance_valid(_save_view):
@@ -3069,6 +2834,14 @@ func editor_drag_finish() -> void:
 
 func editor_drag_cancel() -> void:
 	_cancel_layout_drag()
+
+
+## 光标是否该显示成"对象工具"（而不是画笔）。
+## 只回答编辑器当前是否在摆/拖某个对象，不暴露会话字段本身。
+func editor_object_tool_active() -> bool:
+	return _session.mode != MONSTER_MODE_NONE \
+		or _session.dragging_monster \
+		or _session.layout_drag_target != null
 
 
 func editor_portals() -> Array:

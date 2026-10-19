@@ -8,6 +8,7 @@ extends RefCounted
 ##   level_root: Node        要打包的关卡根
 ##   map_canvas: Node        主画布
 ##   play_canvases: Array    普通游玩画布
+##   draft_owner: Node       草稿承载节点（编辑器自身）；不传就不写内嵌草稿
 ##   bake_preview: bool      额外导出只读参考图。
 ##   baked_map_path: String  参考图路径。
 
@@ -93,7 +94,8 @@ static func pack_playable(packed: PackedScene, scene: Node, ctx: Dictionary) -> 
 		player_saved = [player.visible, player.process_mode]
 		player.visible = bool(ctx.get("player_visible", true))
 	# 草稿和实体分别序列化；保存不能生成、回收或改变撤销栈。
-	var editor := scene.get_node_or_null("Creative")
+	# 承载节点由调用方显式给出：保存模块不猜场景里谁叫 "Creative"。
+	var editor = ctx.get("draft_owner")
 	var old_document: Dictionary = editor.editor_draft if editor != null else {}
 	var old_snapshot: String = editor.edit_snapshot_path if editor != null else ""
 	if editor != null and map_canvas != null:

@@ -30,8 +30,8 @@ func _run() -> void:
 		ordered = ordered and paths[index] == Levels.LEVEL_PATHS[index]
 	check("official pages keep requested order at the front", ordered)
 	check("blank template never lists as a level", not paths.has(Levels.BLANK_TEMPLATE))
-	check("third page cannot auto-route to Peak", Levels.next_level(Levels.LEVEL_PATHS[3]).is_empty())
-	check("Peak has no automatic destination", Levels.next_level(Levels.LEVEL_PATHS[4]).is_empty())
+	check("third page cannot auto-route to Peak", Levels.next_level(Levels.LEVEL_PATHS[2]).is_empty())
+	check("Peak has no automatic destination", Levels.next_level(Levels.LEVEL_PATHS[3]).is_empty())
 	var app = load("res://root/root.tscn").instantiate()
 	app.menu_music = null
 	app.level_music = null
@@ -39,7 +39,7 @@ func _run() -> void:
 	current_scene = app
 	app._transition.duration = 0.01
 	check("replacement title loads through real router", await app.request_level_change(paths[0]))
-	for index in 3:
+	for index in 2:
 		var level: Node = app.level_root.get_child(0)
 		level.auto_step = false
 		var creative = level.get_node("Creative")
@@ -60,7 +60,7 @@ func _run() -> void:
 		portal._activate()
 		check("actual portal transition reaches " + paths[index + 1].get_file(), await _wait_for_route(app, paths[index + 1]))
 	var last: Node = app.level_root.get_child(0)
-	check("route ends on third page", last.scene_file_path == paths[3])
+	check("route ends on third page", last.scene_file_path == paths[2])
 	var exit_portal = last.get_node("PageExit")
 	check("third page exit returns to directory", exit_portal.final_page)
 	for machine in last.find_children("*", "Node2D", true, false):
@@ -73,12 +73,12 @@ func _run() -> void:
 			break
 	check("third-page completion never enters Peak", app.level_root.get_child_count() == 0
 		and app.ui_root.get_child(0).has_method("show_load_failed"))
-	check("Peak can be loaded independently", await app.request_level_change(paths[4]))
+	check("Peak can be loaded independently", await app.request_level_change(paths[3]))
 	var peak: Node = app.level_root.get_child(0)
 	peak.auto_step = false
 	var peak_portals := peak.find_children("*", "Node2D", true, false).filter(func(node): return node.has_method("resolve_destination"))
 	check("Peak contains no inter-level portals", peak_portals.is_empty())
-	check("Peak saves to its own scene", peak.get_node("Creative").map_path == paths[4])
+	check("Peak saves to its own scene", peak.get_node("Creative").map_path == paths[3])
 	app.queue_free()
 	await process_frame
 	print("[MapSequence] %d checks, %d failures" % [checks, failures])

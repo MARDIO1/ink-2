@@ -223,7 +223,7 @@ func _start_death_visual(only_dissolve: bool) -> void:
 	var bodies: Array = [_body, _player.get_node("Arm").body, _player.get_node("Arm/Hand").body]
 	var visual := _player.get_node("Visual") as Sprite2D
 	var foot := DeathEffect.foot_position(visual)
-	_death_effect = DeathEffect.spawn(level, DeathEffect.visible_sprites(_player),
+	_death_effect = DeathEffect.spawn(level, _death_records(DeathEffect.Style.PLAYER),
 		DeathEffect.Style.PLAYER, foot, _body.linear_velocity.x, only_dissolve)
 	var hand := _player.get_node_or_null("Arm/Hand/HandControl")
 	if hand != null:
@@ -250,6 +250,22 @@ func _start_death_visual(only_dissolve: bool) -> void:
 		node.process_mode = Node.PROCESS_MODE_DISABLED
 		if node is CanvasItem:
 			node.visible = false
+
+
+## 把玩家可见部件整理成表现记录；面部与瓶盖切分只在死亡残影启用，复活残影不重复。
+func _death_records(effect_style: int) -> Array[Dictionary]:
+	var records: Array[Dictionary] = []
+	var body_visual := _player.get_node_or_null("Visual") as Sprite2D
+	var hand_visual := _player.get_node_or_null("Arm/Hand/Visual") as Sprite2D
+	var arm := _player.get_node_or_null("Arm")
+	for sprite: Sprite2D in DeathEffect.visible_sprites(_player):
+		var is_arm := arm != null and arm.is_ancestor_of(sprite)
+		var is_body := sprite == body_visual
+		# 死亡残影的“面部”参数同时作用于瓶身和手部主图，与旧表现一致。
+		var face := effect_style == DeathEffect.Style.PLAYER and (is_body or sprite == hand_visual)
+		var cut_cap := effect_style == DeathEffect.Style.PLAYER and is_body
+		records.append(DeathEffect.record(sprite, "Hand" if is_arm else "Bottle", null, face, cut_cap))
+	return records
 
 
 func _restore_death_state() -> void:
@@ -302,7 +318,7 @@ func _start_revive_visual() -> void:
 	visual._physics_process(0.0)
 	_player.get_node("BottledInk")._physics_process(0.0)
 	var foot := DeathEffect.foot_position(visual)
-	_revive_effect = DeathEffect.spawn(_level_root(), DeathEffect.visible_sprites(_player),
+	_revive_effect = DeathEffect.spawn(_level_root(), _death_records(DeathEffect.Style.REVIVE),
 		DeathEffect.Style.REVIVE, foot)
 	for path in ["Visual", "BottledInk", "Arm"]:
 		var node := _player.get_node(path) as Node2D

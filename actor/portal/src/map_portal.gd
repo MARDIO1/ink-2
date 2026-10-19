@@ -3,7 +3,7 @@ extends Node2D
 ## 仅观察自定义 PixelWorld 玩家碰撞壳，不使用 Godot Area2D 的另一套物理世界。
 
 const GROUP := &"map_portal"
-const LevelList := preload("res://ui/level_select/src/level_select.gd")
+const LevelCatalog := preload("res://map/src/level_catalog.gd")
 const TEXTURE_PATH := "res://actor/portal/asset/torn_paper_portal.png"
 const OVERLAP_SECONDS := 2.0
 const COMPLETION_PULSE_SECONDS := 0.45
@@ -252,12 +252,12 @@ func _physics_process(delta: float) -> void:
 
 func resolve_destination() -> String:
 	if not target_map.is_empty():
-		return target_map if target_map.ends_with(".tscn") and ResourceLoader.exists(target_map, "PackedScene") and LevelList._has_player(target_map) else ""
+		return target_map if target_map.ends_with(".tscn") and LevelCatalog.is_level(target_map) else ""
 	var current := _level().scene_file_path if _level() != null else ""
 	var creative := _level().get_node_or_null("Creative") if _level() != null else null
 	if creative != null and not str(creative.get("map_path")).is_empty():
 		current = str(creative.get("map_path"))
-	return LevelList.next_level(current)
+	return LevelCatalog.next_level(current)
 
 
 func _activate() -> void:

@@ -43,9 +43,12 @@ func _run() -> void:
 		printerr("[LevelSelectClick] loading feedback missing: FAIL")
 		quit(1)
 		return
-	for frame in 300:
+	# headless 的 process_frame 每秒能跑几百帧，按帧数等等于只等几百毫秒；
+	# 真实地图要读几 MB，按时间预算才可靠。
+	var deadline := Time.get_ticks_msec() + 30000
+	while Time.get_ticks_msec() < deadline:
 		if app.get_node("Level").get_child_count() > 0:
-			print("[LevelSelectClick] click loads selected level: PASS (%d frames)" % frame)
+			print("[LevelSelectClick] click loads selected level: PASS (%d ms)" % (30000 - (deadline - Time.get_ticks_msec())))
 			quit()
 			return
 		await process_frame

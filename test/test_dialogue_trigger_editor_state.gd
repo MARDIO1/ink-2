@@ -1,6 +1,6 @@
 extends SceneTree
 
-const Trigger := preload("res://debug/creative/src/map_dialogue_trigger.gd")
+const Trigger := preload("res://map/src/map_dialogue_trigger.gd")
 const Portal := preload("res://actor/portal/src/map_portal.gd")
 
 class CreativeProbe extends Node:

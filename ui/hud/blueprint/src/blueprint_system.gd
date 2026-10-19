@@ -2,6 +2,7 @@ extends CanvasLayer
 ## 跨关卡的蓝图库。只在窗口打开时暂停；放置仍使用当前关卡的真实画布。
 const Store := preload("res://blueprint/src/blueprint_store.gd")
 const Place := preload("res://actor/canvas/blueprint/src/blueprint_place.gd")
+const UiHitTest := preload("res://ui/input/src/ui_hit_test.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
 const Placement := preload("res://actor/canvas/blueprint/src/blueprint_placement.gd")
 const Preview := preload("res://ui/hud/blueprint/blueprint_preview.tscn")
@@ -78,26 +79,9 @@ func blocks_world_event(event: InputEvent) -> bool:
 	return false
 
 func _pointer_over_ui(point: Vector2) -> bool:
-	for control: Control in get_tree().root.find_children("*", "Control", true, false):
-		# 容器和仅传递鼠标的布局节点不是可点击界面。
-		if not (control is BaseButton or control is LineEdit or control is TextEdit or control is Range):
-			continue
-		if control.get_viewport() != get_viewport() or not control.is_visible_in_tree() or control.mouse_filter == Control.MOUSE_FILTER_IGNORE:
-			continue
-		if not Rect2(Vector2.ZERO, control.size).has_point(control.get_global_transform_with_canvas().affine_inverse() * point):
-			continue
-		# ScrollContainer 外的按钮仍是 visible，但其像素已被祖先裁掉，不能拦截世界输入。
-		var ancestor := control.get_parent()
-		var clipped := false
-		while ancestor != null and not ancestor is Viewport:
-			if ancestor is Control and ancestor.clip_contents \
-			and not Rect2(Vector2.ZERO, ancestor.size).has_point(ancestor.get_global_transform_with_canvas().affine_inverse() * point):
-				clipped = true
-				break
-			ancestor = ancestor.get_parent()
-		if not clipped:
-			return true
-	return false
+	# 与编辑器共用同一套命中规则（交互控件与可见面板阻挡，纯布局容器不阻挡）。
+	return UiHitTest.blocks_world_input(get_viewport(), point)
+
 
 func _button(text_value: String, callback: Callable, parent: Node) -> Button:
 	var button := Button.new()

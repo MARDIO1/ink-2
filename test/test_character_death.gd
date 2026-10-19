@@ -51,7 +51,7 @@ func _run() -> void:
 		if kind == 2:
 			var bomb_mask_valid := false
 			for piece in effect.pieces:
-				if piece.sprite.name == "BombArt":
+				if piece.role == "Bomb":
 					bomb_mask_valid = piece.mask == piece.sprite.texture
 			_check("held bomb uses its own solid mask", bomb_mask_valid)
 		_check("enemy death uses visible lower edge when rotated", effect._origin.distance_to(expected_foot) < 0.01)

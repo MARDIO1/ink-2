@@ -110,6 +110,13 @@ func power_limit(per_width: float, exponent := 2.0, minimum := 0.0) -> float:
 
 func consume(delta: float, force_per_length: float, power_per_width: float, idle_power: float,
 		force_limit: float = INF, exponent := 2.0, minimum := 0.0) -> void:
+	# 相机剔除冻结的是整个机械组件。不能往未积分的刚体累加冲量，
+	# 否则重新进入视野时会一次释放长时间积累的速度。
+	if body != null and body.frozen:
+		received_power = 0.0
+		used_power = 0.0
+		applied_force = 0.0
+		return
 	buffer_age += delta
 	biological_age += delta
 	var expired := false
@@ -189,6 +196,10 @@ func drive(available: float, delta: float, force_per_length: float, idle_power: 
 	force *= scale
 	applied_force = force
 	body.apply_impulse(direction * force * delta, position)
+	if force > 0.0:
+		# 与脚部执行器一致：通电后的真实冲量必须唤醒已静止的机关。
+		body.awake = true
+		body.sleep_timer = 0.0
 	return base + a * scale * scale + b * scale
 
 func _draw() -> void:

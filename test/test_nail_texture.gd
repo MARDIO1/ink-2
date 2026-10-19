@@ -1,5 +1,6 @@
 extends SceneTree
 const Nail := preload("res://actor/nail/src/nail.gd")
+const LevelCatalog := preload("res://map/src/level_catalog.gd")
 const NailLayer := preload("res://actor/nail/src/nail_layer.gd")
 const Palette := preload("res://ink/general/src/ink_palette.gd")
 const Codec := preload("res://actor/canvas/blueprint/src/blueprint_codec.gd")
@@ -92,7 +93,7 @@ func _run() -> void:
 	await process_frame
 	# 直接加载既有地图；不进入编辑保存流程，不写回地图或快照。
 	var restored_count := 0
-	var paths := LevelList.find_levels()
+	var paths := LevelCatalog.find_levels()
 	for existing_path in paths:
 		var before := FileAccess.get_sha256(existing_path)
 		var saved_level = load(existing_path).instantiate()

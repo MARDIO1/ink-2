@@ -30,7 +30,7 @@
 [ext_resource type="FontFile" path="res://ui/map_text/asset/Muyao-Softbrush.ttf" id="23_onjhl"]
 [ext_resource type="Script" path="res://ui/map_text/src/map_text_label.gd" id="24_mntuk"]
 [ext_resource type="Script" path="res://ink/yellow/src/stroke.gd" id="26_20d4m"]
-[ext_resource type="Script" path="res://debug/creative/src/map_dialogue_trigger.gd" id="26_e3fe1"]
+[ext_resource type="Script" path="res://map/src/map_dialogue_trigger.gd" id="26_e3fe1"]
 
 [sub_resource type="Image" id="Image_45wk4"]
 data = {

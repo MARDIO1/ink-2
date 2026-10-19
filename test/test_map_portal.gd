@@ -1,12 +1,23 @@
 extends SceneTree
 
 const Portal := preload("res://actor/portal/src/map_portal.gd")
+const LevelCatalog := preload("res://map/src/level_catalog.gd")
 const MAIN := preload("res://test/fixtures/maps/base_level.tscn")
 var failures := 0
 var checks := 0
 
+## 只接管"换关请求"的路由替身。
+## ⚠️ 它会进入 `level_router` 组，HUD 与其它模块会按组找到它，所以要提供 Root 的
+## 对外接口（`level_changed` 信号、`level_root` 容器），否则 HUD 读 `level_root` 会报错。
 class RouterProbe extends Node:
+	signal level_changed(level)
 	var requests: Array[String] = []
+	var level_root: Node = Node.new()
+
+	func _ready() -> void:
+		level_root.name = "Level"
+		add_child(level_root)
+
 	func request_level_change(path: String) -> bool:
 		requests.append(path)
 		return true
@@ -28,7 +39,7 @@ func _run() -> void:
 	creative.auto_save_edits = false
 	creative.auto_save_on_exit = false
 	creative.set_active(true)
-	var choices := Portal.LevelList.find_levels()
+	var choices := Portal.LevelCatalog.find_levels()
 	_check("target map choices", not choices.is_empty())
 	var destination := choices[0] if not choices.is_empty() else ""
 	var portal = creative.place_portal(Vector2(500, 0), destination)
@@ -73,6 +84,8 @@ func _run() -> void:
 	var motion := InputEventMouseMotion.new()
 	motion.position = root.get_canvas_transform() * (portal.global_position + Vector2(30, 20))
 	creative.editor_mouse_motion(motion)
+	# 松开事件要带当前位置：真实鼠标在拖动终点松手，而不是回到按下点。
+	press.position = motion.position
 	press.pressed = false
 	creative.editor_mouse_button(press)
 	_check("control left drag moves portal", portal.global_position.is_equal_approx(Vector2(530, 20)))
@@ -102,6 +115,7 @@ func _run() -> void:
 	body.update_aabb()
 	_check("real player body overlap", portal.overlaps_player(player))
 	body.position += Vector2(1000, 0)
+	body.refresh_com()
 	body.update_aabb()
 	_check("outside hole not overlap", not portal.overlaps_player(player))
 	_check("explicit target resolves", portal.resolve_destination() == destination)
@@ -147,6 +161,7 @@ func _run() -> void:
 	var placed_portal = creative._selected_portal
 	_check("single placement switches to control", creative.editor_portals().size() == 2 \
 		and creative._monster_mode == creative.CONTROL_MODE)
+	# 松开后新传送门应立刻可拖动（自动切到控制工具）。
 	press.pressed = false
 	creative.editor_mouse_button(press)
 	press.pressed = true
@@ -154,6 +169,8 @@ func _run() -> void:
 	_check("new portal immediately draggable", creative._layout_drag_target == placed_portal)
 	motion.position = root.get_canvas_transform() * Vector2(840, 30)
 	creative.editor_mouse_motion(motion)
+	# 松开事件带当前位置，否则会被当成"拖回按下点"。
+	press.position = motion.position
 	press.pressed = false
 	creative.editor_mouse_button(press)
 	_check("automatic control moves without placing more", creative.editor_portals().size() == 2 \

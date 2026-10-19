@@ -1,7 +1,7 @@
 extends SceneTree
 
 const Monster := preload("res://actor/monster/src/map_monster.gd")
-const MapImage := preload("res://debug/creative/src/map_imported_image.gd")
+const MapImage := preload("res://map/src/map_imported_image.gd")
 var failures := 0
 var checks := 0
 var creative: Node

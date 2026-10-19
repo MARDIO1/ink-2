@@ -1,5 +1,7 @@
 extends Node2D
 ## 角色死亡的纯视觉残影：不引用原角色，不烘焙、不碰撞、不参与存档。
+## 输入是调用方给出的表现记录（source / role / mask / face / cut_cap / skip_bounds），
+## 本文件不按节点名、路径或骨骼判断角色结构。
 signal finished
 
 const DeathShader := preload("res://actor/general/effects/character_death.gdshader")
@@ -16,7 +18,17 @@ var _height := 100.0
 var _width := 70.0
 
 
-static func spawn(host: Node2D, sprites: Array, effect_style: Style,
+#region 表现记录
+## 描述一个待复制的部件。mask 为空表示沿用部件自身贴图；skip_bounds 为真时不参与脚底包围盒。
+## 记录由 Player / Monster 各自按自身节点结构生成，通用效果不读取骨骼、路径或部件命名。
+static func record(source: Sprite2D, role: String, mask: Texture2D = null,
+		face := false, cut_cap := false, skip_bounds := false) -> Dictionary:
+	return {"source": source, "role": role, "mask": mask, "face": face,
+		"cut_cap": cut_cap, "skip_bounds": skip_bounds}
+
+
+## 记录入口：按调用方给出的部件记录生成残影。
+static func spawn(host: Node2D, records: Array[Dictionary], effect_style: Style,
 		foot: Vector2, hit_direction := 1.0, only_dissolve := false):
 	var effect := load("res://actor/general/effects/character_death.gd").new() as Node2D
 	effect.name = "CharacterDeathEffect"
@@ -30,14 +42,17 @@ static func spawn(host: Node2D, sprites: Array, effect_style: Style,
 	host.add_child(effect)
 	effect.global_transform = Transform2D(0.0, foot)
 	effect._origin = foot
-	for source: Sprite2D in sprites:
-		if source.texture == null or not source.is_visible_in_tree():
-			continue
-		effect._copy_piece(source)
+	for entry: Dictionary in records:
+		effect._copy_piece(entry)
 	effect._prepare()
 	return effect
 
 
+#endregion
+
+
+#region 部件采集
+## 节点下所有可见且有贴图的 Sprite2D；部件分类由调用方决定。
 static func visible_sprites(node: Node) -> Array:
 	var result: Array = []
 	for sprite: Sprite2D in node.find_children("*", "Sprite2D", true, false):
@@ -52,10 +67,23 @@ static func foot_position(sprite: Sprite2D) -> Vector2:
 	return Vector2(bounds.get_center().x, bounds.end.y)
 
 
-static func sprites_foot_position(sprites: Array, fallback: Vector2) -> Vector2:
+## 按记录集计算脚底：skip_bounds 的记录（如盾牌）不参与包围盒。
+static func records_foot_position(records: Array[Dictionary], fallback: Vector2) -> Vector2:
+	var sprites: Array = []
+	var skip: Array = []
+	for entry: Dictionary in records:
+		var sprite: Sprite2D = entry.source
+		sprites.append(sprite)
+		if entry.skip_bounds:
+			skip.append(sprite)
+	return sprites_foot_position(sprites, fallback, skip)
+
+
+## 纯 Sprite2D 版本供测试夹具使用；skip 显式列出不参与包围盒的部件。
+static func sprites_foot_position(sprites: Array, fallback: Vector2, skip: Array = []) -> Vector2:
 	var bounds := Rect2()
 	for sprite: Sprite2D in sprites:
-		if sprite.texture == null or sprite.name == "ShieldArt" or not sprite.is_visible_in_tree():
+		if sprite.texture == null or sprite in skip or not sprite.is_visible_in_tree():
 			continue
 		var rect := Rect2(sprite.texture.get_image().get_used_rect())
 		if rect.size == Vector2.ZERO:
@@ -68,14 +96,20 @@ static func sprites_foot_position(sprites: Array, fallback: Vector2) -> Vector2:
 		var world_rect: Rect2 = sprite.global_transform * rect
 		bounds = world_rect if bounds.size == Vector2.ZERO else bounds.merge(world_rect)
 	return Vector2(bounds.get_center().x, bounds.end.y) if bounds.size != Vector2.ZERO else fallback
+#endregion
 
 
-func _copy_piece(source: Sprite2D) -> void:
+#region 复制与播放
+## 按记录复制一个部件；mask 为空时使用部件自身贴图，cut_cap 为真时额外拆出瓶盖。
+func _copy_piece(record: Dictionary) -> void:
+	var source: Sprite2D = record.source
+	if source == null or source.texture == null:
+		return
 	if source.texture.get_image().get_used_rect().size == Vector2i.ZERO:
 		return
+	var role: String = str(record.role)
 	var sprite := Sprite2D.new()
-	if source.name == "BombArt":
-		sprite.name = "BombArt"
+	sprite.name = role
 	sprite.texture = source.texture
 	sprite.centered = source.centered
 	sprite.offset = source.offset
@@ -97,21 +131,10 @@ func _copy_piece(source: Sprite2D) -> void:
 	sprite.material = material
 	add_child(sprite)
 	sprite.global_transform = source.global_transform
-	var role := str(source.get_parent().name)
-	if source.name == "ShieldArt":
-		role = "Shield"
-	elif style in [Style.PLAYER, Style.REVIVE]:
-		role = "Hand" if source.get_path().get_concatenated_names().contains("/Arm/") else "Bottle"
-		material.set_shader_parameter("death_face", style == Style.PLAYER and source.name == "Visual")
+	material.set_shader_parameter("death_face", bool(record.face))
 	var mask_texture: Texture2D = source.texture
-	var mask := source.get_parent().get_node_or_null("OcclusionMask") as Sprite2D
-	if mask == null:
-		mask = source.get_parent().get_node_or_null(role + "OcclusionMask") as Sprite2D
-	if role == "BodyBone":
-		mask = source.get_parent().get_node_or_null("BodyOcclusionMask") as Sprite2D
-	# 手持炸弹是独立实心图像，不能复用手臂的线稿遮罩。
-	if mask != null and source.name != "BombArt":
-		mask_texture = mask.texture
+	if record.mask != null:
+		mask_texture = record.mask
 	var bounds := Rect2(source.texture.get_image().get_used_rect())
 	bounds.position += source.offset
 	if source.centered:
@@ -125,9 +148,10 @@ func _copy_piece(source: Sprite2D) -> void:
 		"mask": mask_texture, "bounds": bounds, "pivot": pivot})
 	material.set_shader_parameter("cell_pixels", (5.0 if style == Style.SHIELD else 2.5)
 		/ maxf(source.global_transform.x.length(), 0.01))
-	if style == Style.PLAYER and role == "Bottle" and source.name == "Visual":
+	if bool(record.cut_cap):
 		material.set_shader_parameter("cut_cap", true)
 		var cap := Sprite2D.new()
+		cap.name = "Cap"
 		cap.texture = sprite.texture
 		cap.centered = false
 		cap.offset = sprite.offset
@@ -199,6 +223,9 @@ func _update_pose(time: float) -> void:
 			local_angle = direction * collapse * 0.35
 			if style == Style.SHIELD:
 				local_angle = direction * smoothstep(0.08, 0.3, progress) * 0.65
+		elif role == "Bomb":
+			# 手持炸弹随手臂甩出；旧版由臂骨名命中得到同一角度，改为明确角色后保持结果。
+			local_angle = direction * collapse * 0.55
 		elif role == "Shield":
 			local_angle = -direction * smoothstep(0.05, 0.3, progress) * 1.2
 		elif role == "Hand":
@@ -254,3 +281,4 @@ func _sync_masks() -> void:
 			material.set_shader_parameter("mask_%d_inv_y" % index, inverse.y)
 			material.set_shader_parameter("mask_%d_inv_origin" % index, inverse.origin)
 		front.append(piece)
+#endregion

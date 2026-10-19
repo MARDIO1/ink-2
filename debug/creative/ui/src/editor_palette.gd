@@ -50,10 +50,17 @@ var _place_text_button: Button = null
 var _delete_text_button: Button = null
 var _editor_nail_visibility: Button
 var _map_canvas: Node
+var _brush_slider: HSlider
+var _brush_label: Label
 var query_ink_quota: Callable
+## 装配点传入的初始显示值（笔刷量程、当前墨水、钉子可见性）。
+var _view: Dictionary = {}
 
-func bind_canvas(canvas: Node) -> void:
+## `initial` 是装配点给的纯显示值：笔刷量程/当前值、当前墨水、钉子是否可见。
+## 视图自己不读画布内部字段；后续变化靠画布信号回填。
+func bind_canvas(canvas: Node, initial: Dictionary = {}) -> void:
 	_map_canvas = canvas
+	_view = initial
 	_build_monster_palette()
 
 func ink_quota_of(material_id: int) -> float:
@@ -171,7 +178,7 @@ func _build_monster_palette() -> void:
 	if _map_canvas != null:
 		if not _map_canvas.ink_selected.is_connected(_refresh_editor_ink):
 			_map_canvas.ink_selected.connect(_refresh_editor_ink)
-		_refresh_editor_ink(_map_canvas.surface.selected_ink, false)
+		_refresh_editor_ink(int(_view.get("selected_ink", 0)), false)
 	var brush_row := HBoxContainer.new()
 	brush_row.name = "BrushSizeRow"
 	brush_row.add_theme_constant_override("separation", 12)
@@ -185,23 +192,22 @@ func _build_monster_palette() -> void:
 	brush_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	brush_slider.custom_minimum_size = Vector2(160, 32)
 	brush_slider.focus_mode = Control.FOCUS_NONE
-	var source_slider: HSlider = _map_canvas.brush_panel.get_node("PenSlider")
-	brush_slider.min_value = source_slider.min_value
-	brush_slider.max_value = source_slider.max_value
-	brush_slider.step = source_slider.step
-	brush_slider.value = _map_canvas.surface.brush_size
+	brush_slider.min_value = float(_view.get("brush_min", 1))
+	brush_slider.max_value = float(_view.get("brush_max", 65))
+	brush_slider.step = float(_view.get("brush_step", 1))
+	brush_slider.value = float(_view.get("brush_size", 7))
 	brush_label.text = "粗细：%d px" % int(brush_slider.value)
 	brush_slider.tooltip_text = "调整画笔、橡皮和形状的笔触直径"
 	brush_row.add_child(brush_slider)
+	_brush_slider = brush_slider
+	_brush_label = brush_label
+	# 用户拖动只发动作；画布确认后经 brush_changed 回填，两个控件不会互相触发。
 	brush_slider.value_changed.connect(func(value: float):
-		_map_canvas.set_brush_size(int(round(value)))
-		source_slider.set_value_no_signal(value)
+		action_requested.emit(&"set_brush_size", [int(round(value))])
 		brush_label.text = "粗细：%d px" % int(round(value))
 	)
-	source_slider.value_changed.connect(func(value: float):
-		brush_slider.set_value_no_signal(value)
-		brush_label.text = "粗细：%d px" % int(round(value))
-	)
+	if _map_canvas != null and not _map_canvas.brush_changed.is_connected(_on_brush_changed):
+		_map_canvas.brush_changed.connect(_on_brush_changed)
 	var color_separator := HSeparator.new()
 	column.add_child(color_separator)
 	var edit_actions := HBoxContainer.new()
@@ -229,7 +235,11 @@ func _build_monster_palette() -> void:
 	_editor_nail_visibility.toggle_mode = true
 	_editor_nail_visibility.focus_mode = Control.FOCUS_NONE
 	_editor_nail_visibility.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_editor_nail_visibility.toggled.connect(_map_canvas._on_nail_visibility_toggled)
+	_editor_nail_visibility.toggled.connect(func(on: bool):
+		action_requested.emit(&"set_nails_visible", [on])
+	)
+	if not _map_canvas.nails_visibility_changed.is_connected(_on_nails_visibility_changed):
+		_map_canvas.nails_visibility_changed.connect(_on_nails_visibility_changed)
 	view_actions.add_child(_editor_nail_visibility)
 	_refresh_editor_visibility()
 
@@ -530,10 +540,21 @@ func _build_ink_quota_table(column: VBoxContainer) -> void:
 ## 本关该墨水的满瓶量：地图根节点 starting_ink 里有就用自己的，没有就用玩家默认值。
 
 func _refresh_editor_visibility() -> void:
-	if _map_canvas == null:
-		return
 	if is_instance_valid(_editor_nail_visibility):
-		_editor_nail_visibility.set_pressed_no_signal(_map_canvas._nails_visible)
+		_editor_nail_visibility.set_pressed_no_signal(bool(_view.get("nails_visible", true)))
+
+
+## 画布确认了新的笔宽：只改显示，不再发动作。
+func _on_brush_changed(px: int) -> void:
+	if is_instance_valid(_brush_slider):
+		_brush_slider.set_value_no_signal(float(px))
+	if is_instance_valid(_brush_label):
+		_brush_label.text = "粗细：%d px" % px
+
+
+func _on_nails_visibility_changed(show_nails: bool) -> void:
+	if is_instance_valid(_editor_nail_visibility):
+		_editor_nail_visibility.set_pressed_no_signal(show_nails)
 
 func _toggle_monster_palette_panel() -> void:
 	if _monster_palette_panel == null or _monster_palette_toggle == null:
@@ -549,8 +570,7 @@ func _toggle_monster_palette_panel() -> void:
 	_monster_palette_toggle.offset_right = -16.0
 
 func _select_editor_ink(index: int) -> void:
-	if _map_canvas != null and _map_canvas.has_method("select_ink"):
-		_map_canvas.call("select_ink", index)
+	action_requested.emit(&"select_ink", [index])
 
 func _refresh_editor_ink(index: int, animate := true) -> void:
 	for i in _editor_ink_buttons.size():

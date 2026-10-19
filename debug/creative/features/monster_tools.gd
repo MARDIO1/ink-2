@@ -78,3 +78,67 @@ static func apply_transform(container, monster_id: String, position: Vector2, sc
 	if monster.has_method("sync_physics_from_node"):
 		monster.sync_physics_from_node(true)
 	return true
+
+
+## 滚轮缩放：返回变换前后的最小记录（无变化则返回空字典）。
+## 缩放同步物理由这里做；历史仍由调用方用返回的记录提交一次。
+static func resize(monster, amount: float, min_scale: float) -> Dictionary:
+	if not is_instance_valid(monster):
+		return {}
+	var old_position: Vector2 = monster.global_position
+	var old_scale: Vector2 = monster.scale
+	var next_scale := maxf(old_scale.x + amount, min_scale)
+	if not is_finite(next_scale) or is_equal_approx(next_scale, old_scale.x):
+		return {}
+	monster.scale = Vector2.ONE * next_scale
+	_sync_physics(monster)
+	return {"monster": monster, "position": old_position, "scale": old_scale}
+
+
+## 恢复该种类的固定大小；记录格式同上。
+static func reset_scale(monster, fixed_scales: Dictionary) -> Dictionary:
+	if not is_instance_valid(monster):
+		return {}
+	var old_position: Vector2 = monster.global_position
+	var old_scale: Vector2 = monster.scale
+	var fixed_scale: float = float(fixed_scales.get(int(monster.get("kind")), 1.0))
+	monster.scale = Vector2.ONE * fixed_scale
+	_sync_physics(monster)
+	return {"monster": monster, "position": old_position, "scale": old_scale}
+
+
+## 开始拖动：只改会话里的拖动状态，相机锁定与选中仍由调用方处理。
+static func begin_drag(session, monster, world_position: Vector2) -> bool:
+	if session == null or not is_instance_valid(monster):
+		return false
+	session.dragging_monster = true
+	session.drag_offset = monster.global_position - world_position
+	session.drag_start_position = monster.global_position
+	session.drag_start_scale = monster.scale
+	return true
+
+
+## 拖动中：跟手移动，并记下"待同步物理"的目标（松手/失焦时统一提交）。
+static func update_drag(session, monster, world_position: Vector2) -> bool:
+	if session == null or not session.dragging_monster or not is_instance_valid(monster):
+		return false
+	monster.global_position = world_position + session.drag_offset
+	session.pending_monster_move = monster
+	return true
+
+
+## 结束拖动：清状态并把变换前的记录交给调用方提交历史。
+static func finish_drag(session) -> Dictionary:
+	if session == null or not session.dragging_monster:
+		return {}
+	session.dragging_monster = false
+	var monster = session.selected_monster
+	if not is_instance_valid(monster):
+		return {}
+	return {"monster": monster, "position": session.drag_start_position,
+		"scale": session.drag_start_scale}
+
+
+static func _sync_physics(monster) -> void:
+	if monster.has_method("sync_physics_from_node"):
+		monster.sync_physics_from_node(true)

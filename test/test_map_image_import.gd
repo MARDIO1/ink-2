@@ -1,7 +1,7 @@
 extends SceneTree
 
 const GifDecoder := preload("res://debug/creative/src/gif_decoder.gd")
-const MapImage := preload("res://debug/creative/src/map_imported_image.gd")
+const MapImage := preload("res://map/src/map_imported_image.gd")
 const Creative := preload("res://debug/creative/src/creative.gd")
 var failures := 0
 
