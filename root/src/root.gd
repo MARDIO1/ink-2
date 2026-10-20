@@ -20,6 +20,7 @@ signal level_changed(level: Node)
 ## 帧率不漂亮但动画一直在走，指针也交还给系统绘制。
 @export_range(1, 32, 1) var bake_bodies_per_frame := 1
 
+const LevelRestart := preload("res://root/src/level_restart.gd")
 const BodyNode := preload("res://addons/pixel_destruction/nodes/pixel_body_2d.gd")
 const ContentPaths := preload("res://map/src/content_paths.gd")
 
@@ -27,6 +28,7 @@ const ContentPaths := preload("res://map/src/content_paths.gd")
 @onready var ui_root: Node = $UI
 @onready var music_player: AudioStreamPlayer = $Music
 var _loading_level := false
+var _current_level_path := ""
 @onready var _transition: Node = get_node("/root/SceneTransition")
 
 
@@ -102,8 +104,17 @@ func finish_current_level() -> void:
 	await _transition.finish()
 
 
+## 重启策略独立于菜单和加载流程。
+func can_restart_current_level() -> bool:
+	return not LevelRestart.saved_path(self).is_empty()
+
+
+func restart_current_level() -> bool:
+	return await LevelRestart.restart(self)
+
+
 ## 菜单和传送门共用异步加载入口，锁住期间拒绝其他切关请求。
-func request_level_change(path: String) -> bool:
+func request_level_change(path: String, cache_mode: ResourceLoader.CacheMode = ResourceLoader.CACHE_MODE_REUSE) -> bool:
 	if _loading_level or _transition.busy:
 		return false
 	var logical_path := ContentPaths.to_res_path(path)
@@ -112,7 +123,7 @@ func request_level_change(path: String) -> bool:
 	# Do not fan scene dependencies out to worker sub-threads. Several levels depend
 	# on native/custom resources that are safe to load in the background loader but
 	# fail intermittently when Godot parses their dependency graph concurrently.
-	var request_error := ResourceLoader.load_threaded_request(path, "PackedScene", false)
+	var request_error := ResourceLoader.load_threaded_request(path, "PackedScene", false, cache_mode)
 	if request_error != OK:
 		_loading_level = false
 		_restore_level_select_after_failure(logical_path)
@@ -239,6 +250,10 @@ func load_level(scene: PackedScene, editing := false, source_path := "") -> Node
 		_restore_exported_static_collisions(level)
 		_prepare_player_for_play(level, level_player)
 	level.process_mode = level_process_mode
+	if not source_path.is_empty():
+		_current_level_path = source_path
+	elif not scene.resource_path.is_empty():
+		_current_level_path = scene.resource_path
 	level_changed.emit(level)
 	return level
 

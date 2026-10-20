@@ -116,18 +116,17 @@ func _run() -> void:
 	_check(dialogue.current_line == 1, "再次单击应进入下一句")
 	_check(dialogue.dialogue_label.visible_characters == 0, "新句应重新逐字显示")
 
-	# Esc 与单击同义：第一次补全本句，第二次进入下一句，最后一句再按关闭。
+	# Esc 一次跳过整段；未出现的后续句子不得记为已读。
 	dialogue.start_dialogue(PackedStringArray(["甲", "乙"]))
-	_check(dialogue.current_line == 0 and dialogue._typing, "Esc 测试从第一句打字开始")
+	var read_count := dialogue.viewed_lines.size()
 	dialogue._input(_escape_event())
-	_check(dialogue.dialogue_label.visible_characters == -1 and dialogue.next_hint.visible,
-		"Esc 第一次应补全当前句")
+	_check(not dialogue.root.visible and not dialogue._typing, "Esc 应立即关闭整段文本框")
+	_check(dialogue.viewed_lines.size() == read_count, "跳过的后续句子不得进入已读日志")
+	dialogue.hide_when_finished = false
+	dialogue.start_dialogue(PackedStringArray(["保留末句"]))
 	dialogue._input(_escape_event())
-	_check(dialogue.current_line == 1 and dialogue._typing,
-		"Esc 第二次应跳转下一句")
-	dialogue._input(_escape_event())
-	dialogue._input(_escape_event())
-	_check(not dialogue.root.visible, "最后一句按 Esc 后应关闭文本框")
+	_check(not dialogue.root.visible, "配置保留末句时 Esc 仍应关闭文本框")
+	dialogue.hide_when_finished = true
 
 	dialogue.set_lines(PackedStringArray(["甲", "乙"]))
 	dialogue.advance()

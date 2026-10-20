@@ -82,6 +82,14 @@ func advance() -> void:
 	_show_current_line()
 
 
+## 跳过整段对话；未显示的句子不写入已读日志。
+func skip_dialogue() -> void:
+	if not root.visible:
+		return
+	current_line = lines.size()
+	_finish_dialogue(true)
+
+
 ## 在运行时替换全部台词；restart 为 true 时立即从第一句重新播放。
 func set_lines(new_lines: PackedStringArray, restart: bool = true) -> void:
 	lines = new_lines.duplicate()
@@ -110,10 +118,10 @@ func _finish_typing() -> void:
 	next_hint.show()
 
 
-func _finish_dialogue() -> void:
+func _finish_dialogue(force_hide := false) -> void:
 	_typing = false
 	next_hint.hide()
-	if hide_when_finished:
+	if force_hide or hide_when_finished:
 		root.hide()
 	dialogue_finished.emit()
 
@@ -153,13 +161,17 @@ func hide_log() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if log_root.visible and event.is_action_pressed("escape"):
+	if not event.is_action_pressed("escape") or event.is_echo():
+		return
+	var menu := get_tree().get_first_node_in_group(&"esc_menu")
+	if menu != null and menu.visible:
+		return
+	if log_root.visible:
 		hide_log()
 		get_viewport().set_input_as_handled()
 		return
-	if root.visible and event.is_action_pressed("escape"):
-		# 剧情播放时 Esc 与单击同义：先补全当前句，再进入下一句；最后一句后关闭。
-		advance()
+	if root.visible:
+		skip_dialogue()
 		get_viewport().set_input_as_handled()
 
 

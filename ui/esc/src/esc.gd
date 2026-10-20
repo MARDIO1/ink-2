@@ -45,7 +45,7 @@ func open_sound_settings() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _settings_only and not visible:
 		return
-	if event.is_action_pressed("escape"):
+	if event.is_action_pressed("escape") and not event.is_echo():
 		get_viewport().set_input_as_handled()
 		if _recovery_busy:
 			return
@@ -82,6 +82,7 @@ func _set_open(open: bool) -> void:
 		show_recovery_status("")
 		var recovery := _recovery_controller()
 		$Center/Panel/Buttons/EscapeStuckButton.disabled = recovery == null or recovery._editor_active()
+		_refresh_restart_button()
 		continue_button.grab_focus()
 	elif _previous_focus != null:
 		var previous := _previous_focus.get_ref() as Control
@@ -95,34 +96,9 @@ func _exit_tree() -> void:
 
 
 func _build_help_page() -> void:
-	help_page = VBoxContainer.new()
-	help_page.name = "HelpPage"
-	help_page.add_theme_constant_override("separation", 12)
+	help_page = preload("res://ui/esc/src/help_page.gd").new()
 	$Center/Panel.add_child(help_page)
-	var title := Label.new()
-	title.text = "操作说明"
-	title.theme_type_variation = &"TitleLabel"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	help_page.add_child(title)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(360, 300)
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	help_page.add_child(scroll)
-	var content := Label.new()
-	content.custom_minimum_size.x = 336
-	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	content.text = "游玩\nA / D 移动 · 空格跳跃 · Tab 调试视图\n靠近画布展开工具栏，离开后恢复操纵。\n\n画布\n1 画笔 · 2 橡皮 · 3 形状 · 4 填充\n5 清空 · 6 框选 · 7 固化 · 8 墨化 · F 操纵\n画笔右键临时擦除；形状含矩形、圆形、直线。\n灰墨＋圆形放固定钉子；白墨＋圆形放背景钉子。\n右键框选按钮切换矩形 / 圆形。\n左拖选区连同图像移动；Ctrl＋左拖只移动选框。\nBackspace 或框内右键删除；框选后可保存蓝图。\nCtrl＋Z 撤销 · Ctrl＋Y 重做（也可点击撤销/重做）。\n\n地图编辑器\nF2 进入/退出 · CapsLock 展开右侧工具\n9 固定钉子（兼容） · 0 扩展画布 · F5 打开地图保存窗口\n操纵：左键选中拖动，右键删除，滚轮缩放支持的物品。\n齿轮：按下定圆心，拖动定半径，使用当前颜色。\n传送门：先选择目标地图，再单击放置。\n\n蓝图手册\n可在任意位置查看；游玩时靠近画布才能放置。\n左键放置 · Shift＋左键连续放置 · 右键 / Esc 取消。\n含齿轮的蓝图仅地图编辑器可用。"
-	scroll.add_child(content)
-	var back := Button.new()
-	back.name = "BackButton"
-	back.text = "返回  Esc"
-	back.custom_minimum_size.y = 58
-	back.theme_type_variation = &"MenuActionButton"
-	back.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	back.pressed.connect(_on_help_back_pressed)
-	help_page.add_child(back)
+	help_page.back_pressed.connect(_on_help_back_pressed)
 	help_page.hide()
 
 
@@ -184,6 +160,22 @@ func _on_continue_button_pressed() -> void:
 	_set_open(false)
 
 
+func _refresh_restart_button() -> void:
+	var router := get_tree().get_first_node_in_group(&"level_router")
+	$Center/Panel/Buttons/RestartButton.disabled = router == null or not router.can_restart_current_level()
+
+
+func _on_restart_button_pressed() -> void:
+	if _recovery_busy:
+		return
+	var router := get_tree().get_first_node_in_group(&"level_router")
+	if router == null or not router.can_restart_current_level():
+		return
+	_set_open(false)
+	# 路由器持有异步任务；重载会释放当前菜单，不能在菜单里等待结果。
+	router.restart_current_level()
+
+
 func _recovery_controller() -> Node:
 	var player := get_tree().get_first_node_in_group(&"player")
 	return player.get_node_or_null("FallDeath") if player != null else null
@@ -206,6 +198,7 @@ func _on_escape_stuck_button_pressed(skipped: Array = [], search = null) -> bool
 		if button is Button:
 			button.disabled = false
 	$Center/Panel/Buttons/EscapeStuckButton.disabled = recovery._editor_active()
+	_refresh_restart_button()
 	if succeeded:
 		_was_paused = false # 脱离卡死成功即返回游玩，不保留恢复搜索的临时暂停。
 		_set_open(false)

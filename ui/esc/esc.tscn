@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Texture2D" path="res://ui/menu/asset/icon_play.svg" id="1_play"]
 [ext_resource type="Texture2D" path="res://ui/menu/asset/icon_exit.svg" id="2_exit"]
@@ -8,6 +8,8 @@
 [ext_resource type="Texture2D" path="res://ui/esc/asset/icon_sound.svg" id="6_sound"]
 [ext_resource type="Texture2D" path="res://ui/esc/asset/icon_home.svg" id="7_home"]
 [ext_resource type="Texture2D" path="res://ui/esc/asset/icon_help.svg" id="8_help"]
+
+[ext_resource type="Texture2D" path="res://ui/esc/asset/icon_unstuck.svg" id="9_unstuck"]
 
 [sub_resource type="StyleBoxFlat" id="VolumeTrack"]
 bg_color = Color(0.68, 0.65, 0.56, 1)
@@ -55,7 +57,7 @@ theme_type_variation = &"OverlayPanel"
 
 [node name="Buttons" type="VBoxContainer" parent="Center/Panel"]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 10
 
 [node name="Title" type="Label" parent="Center/Panel/Buttons"]
 layout_mode = 2
@@ -64,7 +66,7 @@ text = "INT FFF"
 horizontal_alignment = 1
 
 [node name="ContinueButton" type="Button" parent="Center/Panel/Buttons"]
-custom_minimum_size = Vector2(0, 58)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
@@ -72,18 +74,28 @@ text = "继续"
 icon = ExtResource("1_play")
 expand_icon = true
 
+[node name="RestartButton" type="Button" parent="Center/Panel/Buttons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_type_variation = &"MenuActionButton"
+mouse_default_cursor_shape = 2
+text = "重新开始"
+tooltip_text = "恢复到地图保存状态；地图编辑模式不可用"
+icon = ExtResource("5_recover")
+expand_icon = true
+
 [node name="EscapeStuckButton" type="Button" parent="Center/Panel/Buttons"]
-custom_minimum_size = Vector2(0, 58)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
 text = "脱离卡死"
 tooltip_text = "返回当前关卡中已经经过的最近出生点或复活点"
-icon = ExtResource("5_recover")
+icon = ExtResource("9_unstuck")
 expand_icon = true
 
 [node name="SoundButton" type="Button" parent="Center/Panel/Buttons"]
-custom_minimum_size = Vector2(0, 58)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
@@ -92,7 +104,7 @@ icon = ExtResource("6_sound")
 expand_icon = true
 
 [node name="MenuButton" type="Button" parent="Center/Panel/Buttons"]
-custom_minimum_size = Vector2(0, 58)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
@@ -101,7 +113,7 @@ icon = ExtResource("7_home")
 expand_icon = true
 
 [node name="HelpButton" type="Button" parent="Center/Panel/Buttons"]
-custom_minimum_size = Vector2(0, 58)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
@@ -110,7 +122,7 @@ icon = ExtResource("8_help")
 expand_icon = true
 
 [node name="QuitButton" type="Button" parent="Center/Panel/Buttons"]
-custom_minimum_size = Vector2(0, 58)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_type_variation = &"MenuActionButton"
 mouse_default_cursor_shape = 2
@@ -197,3 +209,5 @@ text = "返回"
 [connection signal="pressed" from="Center/Panel/Buttons/EscapeStuckButton" to="." method="_on_escape_stuck_button_pressed"]
 [connection signal="pressed" from="Center/Panel/Buttons/MenuButton" to="." method="_on_menu_button_pressed"]
 [connection signal="pressed" from="Center/Panel/Buttons/QuitButton" to="." method="_on_quit_button_pressed"]
+
+[connection signal="pressed" from="Center/Panel/Buttons/RestartButton" to="." method="_on_restart_button_pressed"]
